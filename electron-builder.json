@@ -35,17 +35,41 @@
   "win": {
     "target": [
       {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
         "target": "portable",
         "arch": ["x64"]
       }
     ],
     "icon": "assets/icon.ico",
-    "publisherName": "LittleLLM",
+    "publisherName": "LittleLLM Team",
     "requestedExecutionLevel": "asInvoker",
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "verifyUpdateCodeSignature": false,
     "fileAssociations": [],
     "protocols": []
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowElevation": true,
+    "allowToChangeInstallationDirectory": true,
+    "installerIcon": "assets/icon.ico",
+    "uninstallerIcon": "assets/icon.ico",
+    "installerHeaderIcon": "assets/icon.ico",
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "LittleLLM",
+    "artifactName": "${productName}-Setup-${version}.${ext}",
+    "deleteAppDataOnUninstall": false,
+    "runAfterFinish": true,
+    "menuCategory": "Productivity",
+    "displayLanguageSelector": false,
+    "installerLanguages": ["en_US"],
+    "license": "LICENSE.txt",
+    "warningsAsErrors": false,
+    "include": "scripts/installer.nsh"
   },
   "mac": {
     "target": "dmg",

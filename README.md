@@ -44,9 +44,19 @@ A lightweight, floating AI chat application for Windows that provides quick acce
 ## 🚀 Quick Start
 
 ### Download & Install
-1. Download the latest release from [Releases](https://github.com/yourusername/littlellm/releases)
-2. Run the installer (Windows)
-3. Launch LittleLLM
+
+**Windows Installer (Recommended)**
+1. Download `LittleLLM-Setup-1.0.0.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
+2. Run the installer (may need "Run as administrator")
+3. Follow installation wizard
+4. Launch from Desktop shortcut or Start Menu
+
+**Portable Version**
+1. Download `LittleLLM-1.0.0-x64.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
+2. Place anywhere (Desktop, USB drive, etc.)
+3. Double-click to run - no installation needed
+
+📖 **[Full Installation Guide](INSTALLATION.md)**
 
 ### Setup API Keys
 1. Click the settings icon ⚙️
@@ -170,16 +180,23 @@ npm run electron-dev
 # Build for production
 npm run build
 
-# Build Electron app
-npm run dist
+# Build both installer and portable (Windows)
+npm run build:windows
 
-# Platform-specific builds
-npm run dist:win    # Windows (portable .exe)
-npm run dist:mac    # macOS (.dmg)
-npm run dist:linux  # Linux (AppImage)
+# Build specific versions
+npm run dist:win-installer  # Windows installer (.exe)
+npm run dist:win-portable   # Windows portable (.exe)
+npm run dist:mac            # macOS (.dmg)
+npm run dist:linux          # Linux (AppImage)
 ```
 
 ## 🐛 Recent Fixes
+
+### Windows Installer & Distribution ✅
+Created full Windows installer with setup wizard:
+- **NSIS Installer**: Full installation with uninstaller, shortcuts, and Windows integration
+- **Portable Version**: Single executable that runs without installation
+- **Both versions**: Include the Windows taskbar icon fix
 
 ### Windows Taskbar Icon Issue ✅
 Fixed the blank taskbar icon issue on Windows by:

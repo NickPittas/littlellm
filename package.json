@@ -19,6 +19,9 @@
     "build-electron": "tsc --project electron/tsconfig.json",
     "dist": "npm run build && npm run build-electron && electron-builder --publish=never",
     "dist:win": "npm run build && npm run build-electron && electron-builder --win --publish=never",
+    "dist:win-installer": "npm run build && npm run build-electron && electron-builder --win --config.win.target=nsis --publish=never",
+    "dist:win-portable": "npm run build && npm run build-electron && electron-builder --win --config.win.target=portable --publish=never",
+    "build:windows": "node scripts/build-windows.js",
     "dist:mac": "npm run build && npm run build-electron && electron-builder --mac --publish=never",
     "dist:linux": "npm run build && npm run build-electron && electron-builder --linux --publish=never"
   },
