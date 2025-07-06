@@ -140,8 +140,60 @@ LittleLLM supports 20+ themes including:
 - Use fallback models if API is down
 
 ### Support
-- Create an issue on [GitHub](https://github.com/yourusername/littlellm/issues)
+- Create an issue on [GitHub](https://github.com/NickPittas/littlellm-ai-assistant/issues)
 - Check existing issues for solutions
+
+## 🔧 Development
+
+### Prerequisites
+- Node.js 18+
+- npm or yarn
+
+### Setup
+```bash
+# Clone the repository
+git clone https://github.com/NickPittas/littlellm-ai-assistant.git
+cd littlellm-ai-assistant
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# In another terminal, start Electron
+npm run electron-dev
+```
+
+### Building
+```bash
+# Build for production
+npm run build
+
+# Build Electron app
+npm run dist
+
+# Platform-specific builds
+npm run dist:win    # Windows (portable .exe)
+npm run dist:mac    # macOS (.dmg)
+npm run dist:linux  # Linux (AppImage)
+```
+
+## 🐛 Recent Fixes
+
+### Windows Taskbar Icon Issue ✅
+Fixed the blank taskbar icon issue on Windows by:
+- Regenerating ICO files with multiple sizes (16x16, 32x32, 48x48, 64x64, 128x128, 256x256)
+- Implementing robust icon path resolution for different build environments
+- Adding Windows-specific icon handling with `setIcon()` and `setAppUserModelId()`
+- Configuring electron-builder for proper icon embedding in executables
+
+### Tech Stack
+- **Frontend**: Next.js 14, React 18, TypeScript
+- **Desktop**: Electron 37
+- **Styling**: Tailwind CSS, Radix UI components
+- **Build**: Electron Builder for cross-platform distribution
+- **Icons**: Multi-size ICO files for Windows compatibility
 
 ## 📄 License
 
