@@ -140,7 +140,7 @@ LittleLLM supports 20+ themes including:
 - Use fallback models if API is down
 
 ### Support
-- Create an issue on [GitHub](https://github.com/NickPittas/littlellm-ai-assistant/issues)
+- Create an issue on [GitHub](https://github.com/NickPittas/littlellm/issues)
 - Check existing issues for solutions
 
 ## 🔧 Development
