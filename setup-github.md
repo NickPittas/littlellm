@@ -6,7 +6,7 @@
 2. Click the "+" icon in the top right corner
 3. Select "New repository"
 4. Fill in the repository details:
-   - **Repository name**: `littlellm-ai-assistant`
+   - **Repository name**: `littlellm`
    - **Description**: `A lightweight AI chat application with multi-provider support built with Next.js and Electron`
    - **Visibility**: Public (or Private if you prefer)
    - **DO NOT** initialize with README, .gitignore, or license (we already have these)
@@ -18,7 +18,7 @@ After creating the repository on GitHub, run these commands in your terminal:
 
 ```bash
 # Add the GitHub repository as remote origin
-git remote add origin https://github.com/NickPittas/littlellm-ai-assistant.git
+git remote add origin https://github.com/NickPittas/littlellm.git
 
 # Rename the default branch to main (if needed)
 git branch -M main
@@ -29,7 +29,7 @@ git push -u origin main
 
 ## Step 3: Verify Upload
 
-1. Go to your repository: https://github.com/NickPittas/littlellm-ai-assistant
+1. Go to your repository: https://github.com/NickPittas/littlellm
 2. Verify that all files are uploaded except:
    - `dist/` folder (excluded by .gitignore)
    - `*.exe` files (excluded by .gitignore)

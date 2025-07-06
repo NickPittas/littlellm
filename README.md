@@ -152,8 +152,8 @@ LittleLLM supports 20+ themes including:
 ### Setup
 ```bash
 # Clone the repository
-git clone https://github.com/NickPittas/littlellm-ai-assistant.git
-cd littlellm-ai-assistant
+git clone https://github.com/NickPittas/littlellm.git
+cd littlellm
 
 # Install dependencies
 npm install
