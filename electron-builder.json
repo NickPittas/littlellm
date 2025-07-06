@@ -1,0 +1,58 @@
+{
+  "appId": "com.littlellm.app",
+  "productName": "LittleLLM",
+  "copyright": "Copyright © 2024 LittleLLM Team",
+  "directories": {
+    "output": "dist",
+    "buildResources": "assets"
+  },
+  "icon": "assets/icon.ico",
+
+  "files": [
+    "dist/electron/**/*",
+    "out/**/*",
+    "public/**/*",
+    "node_modules/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "public",
+      "to": "public",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "out",
+      "to": "out",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "assets",
+      "to": "assets",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "assets/icon.ico",
+    "publisherName": "LittleLLM",
+    "requestedExecutionLevel": "asInvoker",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "verifyUpdateCodeSignature": false,
+    "fileAssociations": [],
+    "protocols": []
+  },
+  "mac": {
+    "target": "dmg",
+    "category": "public.app-category.productivity"
+  },
+  "linux": {
+    "target": "AppImage",
+    "category": "Office"
+  }
+}

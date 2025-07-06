@@ -1,0 +1,84 @@
+{
+  "prompts": [
+    {
+      "id": "summarize",
+      "name": "Summarize Text",
+      "description": "Summarize the selected text in a concise manner",
+      "prompt": "Please summarize the following text in 2-3 sentences, highlighting the key points:\n\n{content}",
+      "category": "text",
+      "icon": "📝"
+    },
+    {
+      "id": "rephrase",
+      "name": "Rephrase Text",
+      "description": "Rephrase the text to be more professional or clear",
+      "prompt": "Please rephrase the following text to be more professional and clear while maintaining the original meaning:\n\n{content}",
+      "category": "text",
+      "icon": "✏️"
+    },
+    {
+      "id": "explain",
+      "name": "Explain Code",
+      "description": "Explain what the code does and how it works",
+      "prompt": "Please explain what this code does, how it works, and any important details:\n\n```\n{content}\n```",
+      "category": "code",
+      "icon": "💻"
+    },
+    {
+      "id": "refactor",
+      "name": "Refactor Code",
+      "description": "Suggest improvements and refactoring for the code",
+      "prompt": "Please analyze this code and suggest improvements, refactoring opportunities, and best practices:\n\n```\n{content}\n```",
+      "category": "code",
+      "icon": "🔧"
+    },
+    {
+      "id": "debug",
+      "name": "Debug Code",
+      "description": "Help identify and fix potential bugs in the code",
+      "prompt": "Please review this code for potential bugs, errors, or issues and suggest fixes:\n\n```\n{content}\n```",
+      "category": "code",
+      "icon": "🐛"
+    },
+    {
+      "id": "translate",
+      "name": "Translate Text",
+      "description": "Translate text to another language",
+      "prompt": "Please translate the following text to English (or specify target language):\n\n{content}",
+      "category": "text",
+      "icon": "🌐"
+    },
+    {
+      "id": "grammar",
+      "name": "Fix Grammar",
+      "description": "Correct grammar and spelling mistakes",
+      "prompt": "Please correct any grammar, spelling, or punctuation errors in the following text:\n\n{content}",
+      "category": "text",
+      "icon": "📚"
+    },
+    {
+      "id": "email_professional",
+      "name": "Make Email Professional",
+      "description": "Convert casual text into a professional email",
+      "prompt": "Please convert the following text into a professional email format:\n\n{content}",
+      "category": "email",
+      "icon": "📧"
+    },
+    {
+      "id": "bullet_points",
+      "name": "Convert to Bullet Points",
+      "description": "Convert text into organized bullet points",
+      "prompt": "Please convert the following text into clear, organized bullet points:\n\n{content}",
+      "category": "text",
+      "icon": "📋"
+    },
+    {
+      "id": "meeting_notes",
+      "name": "Format Meeting Notes",
+      "description": "Format text as structured meeting notes",
+      "prompt": "Please format the following text as structured meeting notes with key points, action items, and decisions:\n\n{content}",
+      "category": "text",
+      "icon": "📅"
+    }
+  ]
+}
