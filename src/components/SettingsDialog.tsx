@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { settingsService, type AppSettings } from '../services/settingsService';
 import { promptsService, type Prompt } from '../services/promptsService';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -42,6 +43,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     category: 'text',
     icon: '📝'
   });
+  const { theme, setTheme, themes } = useTheme();
 
   // Load settings and prompts
   useEffect(() => {
@@ -173,7 +175,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto hide-scrollbar">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
@@ -182,10 +184,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         </DialogHeader>
 
         <Tabs defaultValue="api-keys" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="api-keys">API Keys</TabsTrigger>
             <TabsTrigger value="shortcuts">Shortcuts</TabsTrigger>
             <TabsTrigger value="prompts">Prompts</TabsTrigger>
+            <TabsTrigger value="appearance">Appearance</TabsTrigger>
             <TabsTrigger value="general">General</TabsTrigger>
           </TabsList>
 
@@ -236,6 +239,48 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     }
                   })}
                   placeholder="sk-or-..."
+                />
+              </div>
+
+              {/* Requesty */}
+              <div className="space-y-2">
+                <Label htmlFor="requesty-key">Requesty API Key</Label>
+                <Input
+                  id="requesty-key"
+                  type="password"
+                  value={settings.chat.providers.requesty.apiKey}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    chat: {
+                      ...settings.chat,
+                      providers: {
+                        ...settings.chat.providers,
+                        requesty: { ...settings.chat.providers.requesty, apiKey: e.target.value }
+                      }
+                    }
+                  })}
+                  placeholder="req-..."
+                />
+              </div>
+
+              {/* Replicate */}
+              <div className="space-y-2">
+                <Label htmlFor="replicate-key">Replicate API Key</Label>
+                <Input
+                  id="replicate-key"
+                  type="password"
+                  value={settings.chat.providers.replicate.apiKey}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    chat: {
+                      ...settings.chat,
+                      providers: {
+                        ...settings.chat.providers,
+                        replicate: { ...settings.chat.providers.replicate, apiKey: e.target.value }
+                      }
+                    }
+                  })}
+                  placeholder="r8_..."
                 />
               </div>
 
@@ -332,6 +377,22 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="action-menu-shortcut">Action Menu</Label>
+                <Input
+                  id="action-menu-shortcut"
+                  value={settings.shortcuts.actionMenu}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    shortcuts: { ...settings.shortcuts, actionMenu: e.target.value }
+                  })}
+                  placeholder="CommandOrControl+Shift+Space"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Shortcut to open the action menu in chat mode
+                </p>
+              </div>
+
               <div className="text-sm text-muted-foreground">
                 <p>Use modifiers: CommandOrControl, Alt, Shift</p>
                 <p>Examples: CommandOrControl+K, Alt+Space, Shift+F1</p>
@@ -364,7 +425,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </div>
 
               {/* Custom Prompts List */}
-              <div className="space-y-2 max-h-64 overflow-y-auto">
+              <div className="space-y-2 max-h-64 overflow-y-auto hide-scrollbar">
                 {customPrompts.map((prompt) => (
                   <div key={prompt.id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div className="flex items-center gap-3">
@@ -512,6 +573,106 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   </div>
                 </div>
               )}
+            </div>
+          </TabsContent>
+
+          {/* Appearance Tab */}
+          <TabsContent value="appearance" className="space-y-4">
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Appearance Settings</h3>
+
+              <div className="space-y-2">
+                <Label>Theme</Label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-64 overflow-y-auto hide-scrollbar">
+                  {themes.map((themeOption) => (
+                    <div
+                      key={themeOption.id}
+                      className={`p-3 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                        theme.id === themeOption.id
+                          ? 'border-primary bg-primary/5 shadow-md'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                      onClick={() => setTheme(themeOption)}
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="text-lg">
+                          {typeof themeOption.icon === 'string' ? (
+                            themeOption.icon
+                          ) : (
+                            <themeOption.icon className="w-4 h-4" />
+                          )}
+                        </div>
+                        <div className="text-xs font-medium text-center">{themeOption.name}</div>
+
+                        {/* Theme preview */}
+                        <div className="w-full h-4 rounded flex overflow-hidden">
+                          <div
+                            className="flex-1"
+                            style={{ backgroundColor: `hsl(${themeOption.colors.background})` }}
+                          />
+                          <div
+                            className="flex-1"
+                            style={{ backgroundColor: `hsl(${themeOption.colors.primary})` }}
+                          />
+                          <div
+                            className="flex-1"
+                            style={{ backgroundColor: `hsl(${themeOption.colors.secondary})` }}
+                          />
+                          <div
+                            className="flex-1"
+                            style={{ backgroundColor: `hsl(${themeOption.colors.accent})` }}
+                          />
+                        </div>
+
+                        {theme.id === themeOption.id && (
+                          <div className="text-xs text-primary font-medium">✓ Active</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Choose your preferred theme. {themes.length} themes available.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Window Opacity</Label>
+                <Input
+                  type="number"
+                  min="0.5"
+                  max="1"
+                  step="0.05"
+                  value={settings.ui.opacity || 1}
+                  onChange={(e) => setSettings({
+                    ...settings,
+                    ui: { ...settings.ui, opacity: parseFloat(e.target.value) }
+                  })}
+                />
+                <p className="text-sm text-muted-foreground">
+                  Adjust window transparency (0.5 = 50% transparent, 1 = fully opaque)
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Font Size</Label>
+                <Select
+                  value={settings.ui.fontSize || 'medium'}
+                  onValueChange={(value) => setSettings({
+                    ...settings,
+                    ui: { ...settings.ui, fontSize: value as 'small' | 'medium' | 'large' }
+                  })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="small">Small</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="large">Large</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </TabsContent>
 

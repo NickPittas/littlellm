@@ -22,6 +22,7 @@ export interface ProviderSettings {
   apiKey: string;
   baseUrl?: string;
   models?: string[];
+  lastSelectedModel?: string;
 }
 
 export interface ChatSettings {
@@ -373,6 +374,14 @@ export const chatService = {
     onStream?: (chunk: string) => void,
     signal?: AbortSignal
   ): Promise<Message> {
+    console.log('🚀 ChatService.sendMessage called with:', {
+      message: message.substring(0, 100) + '...',
+      provider: settings.provider,
+      model: settings.model,
+      hasApiKey: !!settings.providers[settings.provider]?.apiKey,
+      filesCount: files?.length || 0
+    });
+
     try {
       // Handle file attachments with proper OpenRouter vision API format
       let messageContent: string | Array<any> = message;
@@ -561,6 +570,12 @@ export const chatService = {
 
       // Convert ChatSettings to LLMSettings
       const providerSettings = settings.providers[settings.provider] || { apiKey: '' };
+
+      // Check if API key is required and missing
+      if (settings.provider !== 'ollama' && !providerSettings.apiKey) {
+        throw new Error(`API key is required for ${settings.provider}. Please configure it in Settings.`);
+      }
+
       const llmSettings: LLMSettings = {
         provider: settings.provider,
         model: settings.model,
@@ -578,6 +593,13 @@ export const chatService = {
       }));
 
       // Send to LLM service with conversation history
+      console.log('🔄 Calling llmService.sendMessage with settings:', {
+        provider: llmSettings.provider,
+        model: llmSettings.model,
+        hasApiKey: !!llmSettings.apiKey,
+        baseUrl: llmSettings.baseUrl
+      });
+
       const response = await llmService.sendMessage(
         messageContent,
         llmSettings,
@@ -585,6 +607,11 @@ export const chatService = {
         onStream,
         signal
       );
+
+      console.log('✅ LLM response received:', {
+        contentLength: response.content?.length || 0,
+        hasUsage: !!response.usage
+      });
 
       return {
         id: Date.now().toString(),
@@ -594,7 +621,7 @@ export const chatService = {
         usage: response.usage,
       };
     } catch (error) {
-      console.error('Chat service error:', error);
+      console.error('❌ Chat service error:', error);
       throw new Error(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },

@@ -1,12 +1,32 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { getStorageItem, setStorageItem } from '../utils/storage';
+import { settingsService } from '../services/settingsService';
+import {
+  Sun,
+  Moon,
+  Palette,
+  Mountain,
+  Sunset,
+  Trees,
+  Waves,
+  Flower,
+  Star,
+  Heart,
+  Coffee,
+  Zap,
+  Sparkles,
+  Eye,
+  Shield,
+  Terminal,
+  Gamepad2,
+  Headphones
+} from 'lucide-react';
 
 export interface Theme {
   id: string;
   name: string;
-  icon: string;
+  icon: React.ComponentType<any>;
   colors: {
     background: string;
     foreground: string;
@@ -57,7 +77,7 @@ export const themes: Theme[] = [
   {
     id: 'light',
     name: 'Light',
-    icon: '☀️',
+    icon: Sun,
     colors: {
       background: '0 0% 100%',
       foreground: '222.2 84% 4.9%',
@@ -81,7 +101,7 @@ export const themes: Theme[] = [
   {
     id: 'dark',
     name: 'Dark',
-    icon: '🌙',
+    icon: Moon,
     colors: {
       background: '224 71% 4%',
       foreground: '213 31% 91%',
@@ -680,113 +700,147 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+// Helper function to apply theme to DOM
+const applyThemeToDOM = (theme: Theme) => {
+  try {
+    const root = document.documentElement;
+    const body = document.body;
+
+    console.log('Applying theme to DOM:', theme.id, theme.colors);
+
+    // Apply CSS variables with higher priority
+    Object.entries(theme.colors).forEach(([key, value]) => {
+      // Convert camelCase to kebab-case for CSS variables
+      const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+      root.style.setProperty(`--${cssKey}`, value, 'important');
+      console.log(`Set CSS variable: --${cssKey} = ${value}`);
+    });
+
+    // Apply theme class for dark/light mode
+    const isDark = theme.id.includes('dark') ||
+                   theme.id === 'midnight' ||
+                   theme.id === 'forest' ||
+                   theme.id === 'sunset' ||
+                   theme.id === 'cyberpunk' ||
+                   theme.id === 'dracula' ||
+                   theme.id === 'matrix';
+
+    if (isDark) {
+      root.classList.add('dark');
+      body.classList.add('dark');
+      console.log('Applied dark theme classes');
+    } else {
+      root.classList.remove('dark');
+      body.classList.remove('dark');
+      console.log('Applied light theme classes');
+    }
+
+    // Force a repaint
+    body.style.display = 'none';
+    body.offsetHeight; // Trigger reflow
+    body.style.display = '';
+
+    console.log('Theme successfully applied to DOM:', theme.id);
+  } catch (error) {
+    console.error('Error applying theme:', error);
+  }
+};
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Default to dark theme for better UX
   const [theme, setThemeState] = useState<Theme>(themes[1]); // themes[1] is dark theme
 
+  // Apply default theme immediately on mount
   useEffect(() => {
-    // Load saved theme
+    console.log('ThemeProvider mounted, applying default theme:', themes[1].id);
+    applyThemeToDOM(themes[1]);
+  }, []);
+
+  useEffect(() => {
+    // Load saved theme from settings
     const loadTheme = async () => {
       try {
-        const savedThemeId = await getStorageItem('littlellm-theme');
-        if (savedThemeId) {
-          const savedTheme = themes.find(t => t.id === savedThemeId);
+        const appSettings = await settingsService.getSettings();
+        if (appSettings.ui && appSettings.ui.theme) {
+          // Handle both old string format and new object format
+          let themeId = appSettings.ui.theme;
+          if (typeof themeId === 'object' && themeId.id) {
+            themeId = themeId.id;
+          }
+
+          const savedTheme = themes.find(t => t.id === themeId);
           if (savedTheme) {
             setThemeState(savedTheme);
+            applyThemeToDOM(savedTheme);
+            return;
+          }
+
+          // Handle 'system' theme by forcing dark theme
+          if (themeId === 'system') {
+            setThemeState(themes[1]); // Force dark theme instead of system detection
+            applyThemeToDOM(themes[1]);
             return;
           }
         }
         // If no saved theme, default to dark theme
-        setThemeState(themes[1]);
+        setThemeState(themes[1]); // Force dark theme
+        applyThemeToDOM(themes[1]);
       } catch (error) {
         console.error('Error loading theme:', error);
         // Fallback to dark theme
         setThemeState(themes[1]);
+        applyThemeToDOM(themes[1]);
       }
     };
 
     loadTheme();
-  }, []);
+
+    // Subscribe to settings changes to update theme immediately
+    const handleSettingsChange = (newSettings: any) => {
+      if (newSettings.ui && newSettings.ui.theme) {
+        let themeId = newSettings.ui.theme;
+        if (typeof themeId === 'object' && themeId.id) {
+          themeId = themeId.id;
+        }
+
+        const newTheme = themes.find(t => t.id === themeId);
+        if (newTheme && newTheme.id !== theme.id) {
+          setThemeState(newTheme);
+        }
+      }
+    };
+
+    const unsubscribe = settingsService.subscribe(handleSettingsChange);
+
+    // Cleanup subscription
+    return unsubscribe;
+  }, [theme.id]);
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
+    applyThemeToDOM(newTheme);
 
-    // Save theme asynchronously
+    // Save theme to settings asynchronously
     const saveTheme = async () => {
       try {
-        await setStorageItem('littlellm-theme', newTheme.id);
+        const currentSettings = settingsService.getSettings();
+        settingsService.updateSettings({
+          ...currentSettings,
+          ui: {
+            ...currentSettings.ui,
+            theme: newTheme.id as any // Type assertion to handle the theme ID
+          }
+        });
       } catch (error) {
         console.error('Error saving theme:', error);
       }
     };
     saveTheme();
-
-    // Apply CSS variables and theme class
-    try {
-      const root = document.documentElement;
-      const body = document.body;
-
-      // Apply CSS variables with higher priority
-      Object.entries(newTheme.colors).forEach(([key, value]) => {
-        // Convert camelCase to kebab-case for CSS variables
-        const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
-        root.style.setProperty(`--${cssKey}`, value, 'important');
-
-      });
-
-      // Apply theme class for dark/light mode
-      const isDark = newTheme.id.includes('dark') ||
-                     newTheme.id === 'midnight' ||
-                     newTheme.id === 'forest' ||
-                     newTheme.id === 'sunset' ||
-                     newTheme.id === 'cyberpunk' ||
-                     newTheme.id === 'dracula' ||
-                     newTheme.id === 'matrix';
-
-      if (isDark) {
-        root.classList.add('dark');
-        body.classList.add('dark');
-      } else {
-        root.classList.remove('dark');
-        body.classList.remove('dark');
-      }
-    } catch (error) {
-      console.error('Error applying theme:', error);
-    }
   };
 
   useEffect(() => {
-    // Apply initial theme
-    try {
-      const root = document.documentElement;
-      const body = document.body;
-
-      // Apply CSS variables with higher priority
-      Object.entries(theme.colors).forEach(([key, value]) => {
-        // Convert camelCase to kebab-case for CSS variables
-        const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
-        root.style.setProperty(`--${cssKey}`, value, 'important');
-      });
-
-      // Apply theme class for dark/light mode
-      const isDark = theme.id.includes('dark') ||
-                     theme.id === 'midnight' ||
-                     theme.id === 'forest' ||
-                     theme.id === 'sunset' ||
-                     theme.id === 'cyberpunk' ||
-                     theme.id === 'dracula' ||
-                     theme.id === 'matrix';
-
-      if (isDark) {
-        root.classList.add('dark');
-        body.classList.add('dark');
-      } else {
-        root.classList.remove('dark');
-        body.classList.remove('dark');
-      }
-    } catch (error) {
-      console.error('Error applying initial theme:', error);
-    }
+    // Apply theme whenever it changes
+    applyThemeToDOM(theme);
   }, [theme]);
 
   return (

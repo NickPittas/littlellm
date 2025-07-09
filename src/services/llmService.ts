@@ -569,24 +569,32 @@ class LLMService {
       // Add current message
       prompt += `User: ${message}\nAssistant:`;
 
-      const response = await fetch(`${baseUrl}/api/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: settings.model,
-          prompt: prompt,
-        stream: !!onStream,
-        options: {
-          temperature: settings.temperature,
-          num_predict: settings.maxTokens
-        }
-      })
-    });
+      let response;
+      try {
+        response = await fetch(`${baseUrl}/api/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: settings.model,
+            prompt: prompt,
+            stream: !!onStream,
+            options: {
+              temperature: settings.temperature,
+              num_predict: settings.maxTokens
+            }
+          })
+        });
+      } catch (error) {
+        throw new Error(`Cannot connect to Ollama at ${baseUrl}. Please make sure Ollama is running and accessible.`);
+      }
 
     if (!response.ok) {
       const error = await response.text();
+      if (response.status === 0 || error.includes('ECONNREFUSED')) {
+        throw new Error(`Ollama is not running. Please start Ollama and try again. Visit https://ollama.ai for installation instructions.`);
+      }
       throw new Error(`Ollama API error: ${error}`);
     }
 

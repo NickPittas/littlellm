@@ -33,6 +33,9 @@ interface ChatInterfaceProps {
   onPromptSelect: (prompt: string) => void;
   messages?: Message[];
   onMessagesChange?: (messages: Message[]) => void;
+  hideInput?: boolean; // Hide the bottom input area
+  attachedFiles?: File[]; // Files to attach to the next message
+  onAttachedFilesChange?: (files: File[]) => void;
 }
 
 interface AttachedFile {
@@ -56,14 +59,25 @@ export function ChatInterface({
   onActionMenuClose,
   onPromptSelect,
   messages: externalMessages,
-  onMessagesChange
+  onMessagesChange,
+  hideInput = false,
+  attachedFiles: externalAttachedFiles,
+  onAttachedFilesChange
 }: ChatInterfaceProps) {
   const [internalMessages, setInternalMessages] = useState<Message[]>([]);
   const messages = externalMessages || internalMessages;
   const setMessages = onMessagesChange || setInternalMessages;
   const [isLoading, setIsLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
-  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [internalAttachedFiles, setInternalAttachedFiles] = useState<AttachedFile[]>([]);
+
+  // Use external attached files if provided, otherwise use internal state
+  const attachedFiles = externalAttachedFiles
+    ? externalAttachedFiles.map(file => ({ file }))
+    : internalAttachedFiles;
+  const setAttachedFiles = onAttachedFilesChange
+    ? (files: AttachedFile[]) => onAttachedFilesChange(files.map(af => af.file))
+    : setInternalAttachedFiles;
   const [settings, setSettings] = useState<ChatSettings>({
     provider: 'openrouter',
     model: 'mistralai/mistral-7b-instruct:free',
@@ -286,7 +300,7 @@ export function ChatInterface({
   return (
     <div className="flex flex-col h-full relative">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar">
         {messages.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
             <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -383,101 +397,103 @@ export function ChatInterface({
       )}
 
       {/* Input Area */}
-      <div className="p-4 border-t border-border">
-        {/* Attached Files */}
-        {attachedFiles.length > 0 && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {attachedFiles.map((attachedFile, index) => (
-              <div key={index} className="relative group">
-                {attachedFile.preview ? (
-                  <div className="relative">
-                    <img
-                      src={attachedFile.preview}
-                      alt={attachedFile.file.name}
-                      className="w-16 h-16 object-cover rounded border"
-                    />
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="absolute -top-2 -right-2 w-5 h-5 p-0 rounded-full opacity-0 group-hover:opacity-100"
-                      onClick={() => removeAttachedFile(index)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="relative flex items-center gap-2 p-2 border rounded bg-muted">
-                    <Paperclip className="h-4 w-4" />
-                    <span className="text-sm truncate max-w-[100px]">
-                      {attachedFile.file.name}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-4 h-4 p-0 opacity-0 group-hover:opacity-100"
-                      onClick={() => removeAttachedFile(index)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="flex gap-2">
-          <div className="flex-1 relative">
-            <Textarea
-              value={input}
-              onChange={(e) => onInputChange(e.target.value)}
-              placeholder="Type your message..."
-              className="flex-1 min-h-[40px] max-h-[120px] resize-none pr-10"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-            />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute right-2 top-2 w-6 h-6 p-0"
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.multiple = true;
-                input.accept = 'image/*,.pdf,.txt,.doc,.docx';
-                input.onchange = (e) => {
-                  const files = (e.target as HTMLInputElement).files;
-                  handleFileAttach(files);
-                };
-                input.click();
-              }}
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
-          </div>
-          {isLoading ? (
-            <Button
-              onClick={handleStopGeneration}
-              variant="outline"
-              size="sm"
-            >
-              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            </Button>
-          ) : (
-            <Button
-              onClick={handleSendMessage}
-              disabled={!input.trim() && attachedFiles.length === 0}
-              size="sm"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
+      {!hideInput && (
+        <div className="p-4 border-t border-border">
+          {/* Attached Files */}
+          {attachedFiles.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {attachedFiles.map((attachedFile, index) => (
+                <div key={index} className="relative group">
+                  {attachedFile.preview ? (
+                    <div className="relative">
+                      <img
+                        src={attachedFile.preview}
+                        alt={attachedFile.file.name}
+                        className="w-16 h-16 object-cover rounded border"
+                      />
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="absolute -top-2 -right-2 w-5 h-5 p-0 rounded-full opacity-0 group-hover:opacity-100"
+                        onClick={() => removeAttachedFile(index)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="relative flex items-center gap-2 p-2 border rounded bg-muted">
+                      <Paperclip className="h-4 w-4" />
+                      <span className="text-sm truncate max-w-[100px]">
+                        {attachedFile.file.name}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-4 h-4 p-0 opacity-0 group-hover:opacity-100"
+                        onClick={() => removeAttachedFile(index)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
+
+            <div className="flex gap-2">
+              <div className="flex-1 relative">
+                <Textarea
+                  value={input}
+                  onChange={(e) => onInputChange(e.target.value)}
+                  placeholder="Type your message..."
+                  className="flex-1 min-h-[40px] max-h-[120px] resize-none pr-10"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-2 top-2 w-6 h-6 p-0"
+                  onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.multiple = true;
+                    input.accept = 'image/*,.pdf,.txt,.doc,.docx';
+                    input.onchange = (e) => {
+                      const files = (e.target as HTMLInputElement).files;
+                      handleFileAttach(files);
+                    };
+                    input.click();
+                  }}
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+              </div>
+              {isLoading ? (
+                <Button
+                  onClick={handleStopGeneration}
+                  variant="outline"
+                  size="sm"
+                >
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={!input.trim() && attachedFiles.length === 0}
+                  size="sm"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

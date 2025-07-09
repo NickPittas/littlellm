@@ -6,6 +6,8 @@ export interface AppSettings {
     theme: 'light' | 'dark' | 'system';
     alwaysOnTop: boolean;
     startMinimized: boolean;
+    opacity?: number;
+    fontSize?: 'small' | 'medium' | 'large';
     windowBounds: {
       width: number;
       height: number;
@@ -14,6 +16,7 @@ export interface AppSettings {
   shortcuts: {
     toggleWindow: string;
     processClipboard: string;
+    actionMenu: string;
   };
   general: {
     autoStartWithSystem: boolean;
@@ -24,23 +27,25 @@ export interface AppSettings {
 
 const DEFAULT_SETTINGS: AppSettings = {
   chat: {
-    provider: 'openrouter',
-    model: 'mistralai/mistral-7b-instruct:free',
+    provider: 'ollama',
+    model: 'llama2',
     temperature: 0.7,
     maxTokens: 4096,
     systemPrompt: 'You are a helpful AI assistant. Please provide concise and helpful responses.',
     providers: {
-      openai: { apiKey: '' },
-      openrouter: { apiKey: '' },
-      requesty: { apiKey: '' },
-      ollama: { apiKey: '', baseUrl: 'http://localhost:11434' },
-      replicate: { apiKey: '' },
+      openai: { apiKey: '', lastSelectedModel: 'gpt-4o' },
+      openrouter: { apiKey: '', lastSelectedModel: 'mistralai/mistral-7b-instruct:free' },
+      requesty: { apiKey: '', lastSelectedModel: 'openai/gpt-4o-mini' },
+      ollama: { apiKey: '', baseUrl: 'http://localhost:11434', lastSelectedModel: 'llama2' },
+      replicate: { apiKey: '', lastSelectedModel: 'meta/llama-2-70b-chat' },
     },
   },
   ui: {
     theme: 'system',
     alwaysOnTop: true,
     startMinimized: false,
+    opacity: 1.0,
+    fontSize: 'medium',
     windowBounds: {
       width: 400,
       height: 600,
@@ -49,6 +54,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   shortcuts: {
     toggleWindow: 'CommandOrControl+Shift+L',
     processClipboard: 'CommandOrControl+Shift+V',
+    actionMenu: 'CommandOrControl+Shift+Space',
   },
   general: {
     autoStartWithSystem: false,
@@ -79,9 +85,9 @@ class SettingsService {
 
   private async loadSettings() {
     try {
-      // Try to load from Electron store first
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const electronSettings = await window.electronAPI.getSettings();
+      // Try to load from Electron app settings store first
+      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.getAppSettings) {
+        const electronSettings = await window.electronAPI.getAppSettings();
         if (electronSettings) {
           this.settings = { ...DEFAULT_SETTINGS, ...electronSettings };
           this.notifyListeners();
@@ -121,15 +127,15 @@ class SettingsService {
 
   private async saveSettings() {
     try {
-      // Save to Electron store if available
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const success = await window.electronAPI.updateSettings(this.settings);
+      // Save to Electron app settings store if available
+      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.updateAppSettings) {
+        const success = await window.electronAPI.updateAppSettings(this.settings);
         if (success) {
-          console.log('Settings saved to Electron store');
+          console.log('Settings saved to Electron app store');
         }
       }
 
-      // Also save to Electron storage API
+      // Also save to Electron storage API as backup
       if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.setStorageItem) {
         await window.electronAPI.setStorageItem('app-settings', this.settings);
         console.log('Settings saved to Electron storage');

@@ -544,7 +544,13 @@ export function ChatLayout() {
                 // Update both provider and model in a single call to prevent race conditions
                 const updates: Partial<ChatSettings> = { provider: value };
                 if (models.length > 0) {
-                  updates.model = models[0];
+                  // Use the last selected model for this provider if available, otherwise use the first model
+                  const providerSettings = settings.providers?.[value] || { apiKey: '' };
+                  const lastSelectedModel = providerSettings.lastSelectedModel;
+                  const modelToSelect = lastSelectedModel && models.includes(lastSelectedModel)
+                    ? lastSelectedModel
+                    : models[0];
+                  updates.model = modelToSelect;
                 }
 
                 console.log('Updating settings with:', updates);
@@ -574,7 +580,20 @@ export function ChatLayout() {
             ) : (
               <SearchableSelect
                 value={settings.model}
-                onValueChange={(value) => updateSettings({ model: value })}
+                onValueChange={(value) => {
+                  // Update the model and save it as the last selected model for the current provider
+                  const updatedProviders = {
+                    ...settings.providers,
+                    [settings.provider]: {
+                      ...settings.providers[settings.provider],
+                      lastSelectedModel: value
+                    }
+                  };
+                  updateSettings({
+                    model: value,
+                    providers: updatedProviders
+                  });
+                }}
                 placeholder="Select a model..."
                 options={chatService.getProvider(settings.provider)?.models || []}
                 disabled={isLoadingModels}
@@ -616,7 +635,7 @@ export function ChatLayout() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-background">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-background hide-scrollbar">
         {messages.length === 0 ? (
           <div className="text-center text-muted-foreground mt-8">
             <p>Welcome to LittleLLM Chat!</p>
@@ -689,7 +708,7 @@ export function ChatLayout() {
                 }
               }}
               placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
-              className="w-full min-h-[40px] max-h-[240px] resize-none overflow-y-auto"
+              className="w-full min-h-[40px] max-h-[240px] resize-none overflow-y-auto hide-scrollbar"
               rows={1}
               style={{ height: '40px' }}
             />

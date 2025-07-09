@@ -86,14 +86,16 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWindow: BrowserWindow | null = null;
+let actionMenuWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 
 // Initialize electron store for settings
 const store = new Store({
   defaults: {
-    shortcut: 'CommandOrControl+Shift+L',
-    windowBounds: { width: 400, height: 600 },
+    shortcut: 'CommandOrControl+\\',
+    windowBounds: { width: 520, height: 160 }, // Start with minimum dimensions
     alwaysOnTop: true,
     startMinimized: false,
   }
@@ -110,33 +112,55 @@ const appStore = new Store({
       maxTokens: 4096,
       systemPrompt: 'You are a helpful AI assistant. Please provide concise and helpful responses.',
       providers: {
-        openai: { apiKey: '' },
-        openrouter: { apiKey: '' },
-        requesty: { apiKey: '' },
-        ollama: { apiKey: '', baseUrl: 'http://localhost:11434' },
-        replicate: { apiKey: '' },
+        openai: { apiKey: '', lastSelectedModel: 'gpt-4o' },
+        openrouter: { apiKey: '', lastSelectedModel: 'mistralai/mistral-7b-instruct:free' },
+        requesty: { apiKey: '', lastSelectedModel: 'openai/gpt-4o-mini' },
+        ollama: { apiKey: '', baseUrl: 'http://localhost:11434', lastSelectedModel: 'llama2' },
+        replicate: { apiKey: '', lastSelectedModel: 'meta/llama-2-70b-chat' },
       },
-    }
+    },
+    ui: {
+      theme: 'system',
+      alwaysOnTop: true,
+      startMinimized: false,
+      opacity: 1.0,
+      fontSize: 'medium',
+      windowBounds: {
+        width: 520,
+        height: 160,
+      },
+    },
+    shortcuts: {
+      toggleWindow: 'CommandOrControl+\\',
+      processClipboard: 'CommandOrControl+Shift+\\',
+    },
+    general: {
+      autoStartWithSystem: false,
+      showNotifications: true,
+      saveConversationHistory: true,
+    },
   }
 }) as any;
+
+
 
 function createWindow() {
   const bounds = store.get('windowBounds') as { width: number; height: number };
 
   mainWindow = new BrowserWindow({
-    width: bounds.width,
-    height: bounds.height,
-    minWidth: 400,
-    minHeight: 300,
-    maxWidth: 1200,
-    maxHeight: 800,
+    width: Math.max(bounds.width, 520), // Ensure minimum width for all UI elements
+    height: Math.max(bounds.height, 160), // Ensure minimum height for input + toolbar
+    minWidth: 520, // Ensure all bottom toolbar buttons are visible (calculated from UI elements)
+    minHeight: 160, // Ensure input + full toolbar are always visible
+    maxWidth: 1400,
+    maxHeight: 1000,
     show: !store.get('startMinimized'),
     alwaysOnTop: store.get('alwaysOnTop') as boolean,
-    frame: false, // Remove traditional frame for floating window style
+    frame: false, // Remove traditional frame completely for Windows
     resizable: true,
     skipTaskbar: false, // Show in taskbar
     autoHideMenuBar: true, // Hide menu bar
-    titleBarStyle: 'hidden', // Hide title bar for custom controls
+    titleBarStyle: 'hidden', // Hide title bar completely
     transparent: false, // Keep opaque for better performance
     webPreferences: {
       nodeIntegration: false,
@@ -145,6 +169,8 @@ function createWindow() {
       webSecurity: false, // Allow localStorage and cross-origin requests
       allowRunningInsecureContent: true,
       partition: 'persist:littlellm', // Enable localStorage and persistent storage
+      zoomFactor: 1.0,
+      disableBlinkFeatures: 'Auxclick',
     },
     icon: getIconPath(),
   });
@@ -165,6 +191,8 @@ function createWindow() {
   console.log('process.resourcesPath:', process.resourcesPath);
   console.log('Resolved path:', path.join(process.resourcesPath, 'out', 'index.html'));
 
+
+
   // Ensure icon is properly set for Windows taskbar
   if (process.platform === 'win32') {
     const iconPath = getIconPath();
@@ -179,8 +207,22 @@ function createWindow() {
 
   console.log('About to load URL:', startUrl);
 
+  // Set initial window properties from app settings
+  const appSettings = appStore.store;
+  if (appSettings.ui && appSettings.ui.opacity !== undefined) {
+    mainWindow.setOpacity(appSettings.ui.opacity);
+  }
+
   mainWindow.loadURL(startUrl).then(() => {
     console.log('Successfully loaded URL');
+
+    // Prevent zoom changes to avoid scaling issues
+    if (mainWindow) {
+      mainWindow.webContents.setZoomFactor(1.0);
+      mainWindow.webContents.on('zoom-changed', () => {
+        mainWindow?.webContents.setZoomFactor(1.0);
+      });
+    }
   }).catch((error) => {
     console.error('Failed to load URL:', error);
   });
@@ -312,10 +354,15 @@ function createTray() {
 }
 
 function registerGlobalShortcuts() {
-  const shortcut = store.get('shortcut') as string;
+  // Get shortcut from the new app settings store
+  const appSettings = appStore.store;
+  const shortcut = appSettings.shortcuts?.toggleWindow || 'CommandOrControl+\\';
+
+  console.log('Registering global shortcut:', shortcut);
 
   // Register the main shortcut to toggle window
   globalShortcut.register(shortcut, () => {
+    console.log('Global shortcut triggered:', shortcut);
     if (mainWindow) {
       if (mainWindow.isVisible() && mainWindow.isFocused()) {
         mainWindow.hide();
@@ -329,7 +376,9 @@ function registerGlobalShortcuts() {
   });
 
   // Register shortcut for clipboard processing
-  globalShortcut.register('CommandOrControl+Shift+V', () => {
+  const clipboardShortcut = appSettings.shortcuts?.processClipboard || 'CommandOrControl+Shift+\\';
+  globalShortcut.register(clipboardShortcut, () => {
+    console.log('Clipboard shortcut triggered:', clipboardShortcut);
     const clipboardText = clipboard.readText();
     if (clipboardText) {
       if (mainWindow) {
@@ -348,6 +397,15 @@ function registerGlobalShortcuts() {
     }
   });
 }
+
+// Disable GPU acceleration to prevent crashes
+app.disableHardwareAcceleration();
+
+// Add command line switches for better compatibility
+app.commandLine.appendSwitch('--disable-gpu');
+app.commandLine.appendSwitch('--disable-gpu-sandbox');
+app.commandLine.appendSwitch('--disable-software-rasterizer');
+app.commandLine.appendSwitch('--no-sandbox');
 
 app.whenReady().then(() => {
   // Start static server for production
@@ -421,6 +479,49 @@ function setupIPC() {
       // Merge with existing settings
       const currentSettings = appStore.store;
       const newSettings = { ...currentSettings, ...settings };
+
+      // Handle shortcut updates
+      if (settings.shortcuts && settings.shortcuts.toggleWindow) {
+        const currentSettings = appStore.store;
+        const currentShortcut = currentSettings.shortcuts?.toggleWindow || 'CommandOrControl+\\';
+        const newShortcut = settings.shortcuts.toggleWindow;
+
+        if (newShortcut !== currentShortcut) {
+          console.log('Updating shortcut from', currentShortcut, 'to', newShortcut);
+
+          // Unregister old shortcut
+          globalShortcut.unregister(currentShortcut);
+
+          // Register new shortcut
+          globalShortcut.register(newShortcut, () => {
+            console.log('New shortcut triggered:', newShortcut);
+            if (mainWindow) {
+              if (mainWindow.isVisible() && mainWindow.isFocused()) {
+                mainWindow.hide();
+              } else {
+                mainWindow.show();
+                mainWindow.focus();
+              }
+            } else {
+              createWindow();
+            }
+          });
+
+          // Update the old store format for compatibility
+          store.set('shortcut', newShortcut);
+        }
+      }
+
+      // Handle UI settings
+      if (settings.ui && mainWindow) {
+        if (settings.ui.alwaysOnTop !== undefined) {
+          mainWindow.setAlwaysOnTop(settings.ui.alwaysOnTop);
+        }
+        if (settings.ui.opacity !== undefined) {
+          mainWindow.setOpacity(settings.ui.opacity);
+        }
+      }
+
       appStore.store = newSettings;
       console.log('App settings updated:', newSettings);
       return true;
@@ -497,15 +598,190 @@ function setupIPC() {
     }
   });
 
+  ipcMain.handle('resize-window', (_, { width, height }) => {
+    if (mainWindow) {
+      mainWindow.setSize(width, height);
+    }
+  });
+
   ipcMain.handle('take-screenshot', async () => {
     try {
-      // This would require additional implementation for screenshot functionality
-      // For now, just log that it was called
-      console.log('Screenshot requested');
-      return true;
+      const { screen, desktopCapturer } = require('electron');
+
+      // Get all available sources (screens)
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 1920, height: 1080 }
+      });
+
+      if (sources.length > 0) {
+        // Use the primary screen
+        const primarySource = sources[0];
+        const screenshot = primarySource.thumbnail;
+
+        // Convert to base64 data URL
+        const dataURL = screenshot.toDataURL();
+
+        console.log('Screenshot captured successfully');
+        return { success: true, dataURL };
+      } else {
+        throw new Error('No screen sources available');
+      }
     } catch (error) {
       console.error('Failed to take screenshot:', error);
-      return false;
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // Window dragging functionality
+  ipcMain.handle('start-drag', () => {
+    if (mainWindow) {
+      // Get current mouse position and window position
+      const { screen } = require('electron');
+      const point = screen.getCursorScreenPoint();
+      const windowBounds = mainWindow.getBounds();
+
+      // Calculate offset from mouse to window top-left
+      const offsetX = point.x - windowBounds.x;
+      const offsetY = point.y - windowBounds.y;
+
+      return { offsetX, offsetY };
+    }
+    return null;
+  });
+
+  ipcMain.handle('drag-window', (_, { x, y, offsetX, offsetY }) => {
+    if (mainWindow) {
+      // Get current window bounds to prevent scaling issues
+      const currentBounds = mainWindow.getBounds();
+
+      // Calculate new position
+      const newX = Math.round(x - offsetX);
+      const newY = Math.round(y - offsetY);
+
+      // Set position while preserving size
+      mainWindow.setBounds({
+        x: newX,
+        y: newY,
+        width: currentBounds.width,
+        height: currentBounds.height
+      });
+    }
+  });
+
+  // Handle overlay window creation
+  ipcMain.handle('open-action-menu', () => {
+    if (!mainWindow) return;
+
+    if (actionMenuWindow) {
+      actionMenuWindow.focus();
+      return;
+    }
+
+    // Get main window position to position overlay relative to it
+    const mainBounds = mainWindow.getBounds();
+
+    actionMenuWindow = new BrowserWindow({
+      width: 600,
+      height: 400,
+      x: mainBounds.x + (mainBounds.width - 600) / 2, // Center horizontally over main window
+      y: mainBounds.y + 50, // Position below main window input
+      show: false,
+      frame: false,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      transparent: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js'),
+        webSecurity: false,
+      },
+    });
+
+    const startUrl = isProduction ? 'http://localhost:3001/index.html' : 'http://localhost:3000';
+    const actionMenuUrl = `${startUrl}?overlay=action-menu`;
+    actionMenuWindow.loadURL(actionMenuUrl);
+
+    actionMenuWindow.on('blur', () => {
+      if (actionMenuWindow) {
+        actionMenuWindow.hide();
+      }
+    });
+
+    actionMenuWindow.on('closed', () => {
+      actionMenuWindow = null;
+    });
+
+    actionMenuWindow.once('ready-to-show', () => {
+      actionMenuWindow?.show();
+      actionMenuWindow?.focus();
+    });
+  });
+
+  ipcMain.handle('close-action-menu', () => {
+    if (actionMenuWindow) {
+      actionMenuWindow.close();
+    }
+  });
+
+  ipcMain.handle('open-settings-overlay', () => {
+    if (!mainWindow) return;
+
+    if (settingsWindow) {
+      settingsWindow.focus();
+      return;
+    }
+
+    // Get main window position to position overlay relative to it
+    const mainBounds = mainWindow.getBounds();
+
+    settingsWindow = new BrowserWindow({
+      width: 800,
+      height: 600,
+      x: mainBounds.x + (mainBounds.width - 800) / 2, // Center horizontally over main window
+      y: mainBounds.y + 50, // Position below main window
+      show: false,
+      frame: false,
+      resizable: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      transparent: false,
+      minWidth: 600,
+      minHeight: 400,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js'),
+        webSecurity: false,
+      },
+    });
+
+    const startUrl = isProduction ? 'http://localhost:3001/index.html' : 'http://localhost:3000';
+    const settingsUrl = `${startUrl}?overlay=settings`;
+    settingsWindow.loadURL(settingsUrl);
+
+    settingsWindow.on('closed', () => {
+      settingsWindow = null;
+    });
+
+    settingsWindow.once('ready-to-show', () => {
+      settingsWindow?.show();
+      settingsWindow?.focus();
+    });
+  });
+
+  ipcMain.handle('close-settings-overlay', () => {
+    if (settingsWindow) {
+      settingsWindow.close();
+    }
+  });
+
+  // Handle theme change notifications from overlay to main window
+  ipcMain.handle('notify-theme-change', (_, themeId: string) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('theme-changed', themeId);
     }
   });
 }

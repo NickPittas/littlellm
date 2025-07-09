@@ -71,7 +71,7 @@ A lightweight, floating AI chat application for Windows that provides quick acce
 1. Press **Ctrl+Shift+L** to open the chat window
 2. Select a model from the dropdown
 3. Type your message and press Enter
-4. Attach images by clicking 📎 or pasting from clipboard
+4. Attach images by clicking the paperclip icon or pasting from clipboard
 
 ## 🔧 Development
 

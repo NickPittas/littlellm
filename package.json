@@ -26,6 +26,8 @@
     "dist:linux": "npm run build && npm run build-electron && electron-builder --linux --publish=never"
   },
   "dependencies": {
+    "@fluentui/react-components": "^9.66.6",
+    "@fluentui/react-icons": "^2.0.305",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@radix-ui/react-alert-dialog": "^1.0.5",
     "@radix-ui/react-dialog": "^1.1.14",
