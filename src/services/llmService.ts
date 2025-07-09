@@ -63,9 +63,11 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
   }
 ];
 
+
+
 // Fallback models in case API calls fail
 const FALLBACK_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k'],
   ollama: ['llama2', 'codellama', 'mistral', 'neural-chat', 'starling-lm'],
   openrouter: [
     'openai/gpt-4o',
@@ -567,24 +569,32 @@ class LLMService {
       // Add current message
       prompt += `User: ${message}\nAssistant:`;
 
-      const response = await fetch(`${baseUrl}/api/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: settings.model,
-          prompt: prompt,
-        stream: !!onStream,
-        options: {
-          temperature: settings.temperature,
-          num_predict: settings.maxTokens
-        }
-      })
-    });
+      let response;
+      try {
+        response = await fetch(`${baseUrl}/api/generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: settings.model,
+            prompt: prompt,
+            stream: !!onStream,
+            options: {
+              temperature: settings.temperature,
+              num_predict: settings.maxTokens
+            }
+          })
+        });
+      } catch (error) {
+        throw new Error(`Cannot connect to Ollama at ${baseUrl}. Please make sure Ollama is running and accessible.`);
+      }
 
     if (!response.ok) {
       const error = await response.text();
+      if (response.status === 0 || error.includes('ECONNREFUSED')) {
+        throw new Error(`Ollama is not running. Please start Ollama and try again. Visit https://ollama.ai for installation instructions.`);
+      }
       throw new Error(`Ollama API error: ${error}`);
     }
 
@@ -631,7 +641,7 @@ class LLMService {
         model: settings.model,
         messages,
         temperature: settings.temperature,
-        max_tokens: Math.min(settings.maxTokens || 4096, 4096), // Limit to 4096 tokens max
+        max_tokens: settings.maxTokens,
         stream: !!onStream
       }),
       signal
@@ -683,7 +693,7 @@ class LLMService {
         model: settings.model,
         messages,
         temperature: settings.temperature,
-        max_tokens: Math.min(settings.maxTokens || 4096, 4096), // Limit to 4096 tokens max
+        max_tokens: settings.maxTokens,
         stream: !!onStream
       }),
       signal

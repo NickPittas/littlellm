@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Wand2, Plus, Edit, Trash2, Download, Upload } from 'lucide-react';
 import { promptsService, type Prompt } from '../services/promptsService';
 import { getStorageItem, setStorageItem } from '../utils/storage';
+import { renderIcon } from '../utils/iconMapping';
 
 interface PromptsSelectorProps {
   onPromptSelect: (processedPrompt: string) => void;
@@ -27,7 +28,7 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
     description: '',
     prompt: '',
     category: 'text',
-    icon: '📝'
+    icon: '✏️'
   });
 
   const allPrompts = promptsService.getAllPrompts();
@@ -154,7 +155,7 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
           <Wand2 className="h-4 w-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto hide-scrollbar">
         <DialogHeader>
           <DialogTitle>
             Select a Prompt Template
@@ -219,7 +220,7 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
           </div>
 
           {/* Prompts Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto hide-scrollbar">
             {filteredPrompts.map((prompt) => (
               <div
                 key={prompt.id}
@@ -229,11 +230,11 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-lg">{prompt.icon}</span>
+                      {renderIcon(prompt.icon, "h-5 w-5")}
                       <h3 className="font-medium text-sm">{prompt.name}</h3>
                       {prompt.prompt.includes('{content}') && (
-                        <span className="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded" title="Uses clipboard content">
-                          📋
+                        <span className="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded flex items-center gap-1" title="Uses clipboard content">
+                          {renderIcon('📋', "h-3 w-3")}
                         </span>
                       )}
                     </div>
@@ -337,7 +338,7 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
                   id="icon"
                   value={newPrompt.icon}
                   onChange={(e) => setNewPrompt(prev => ({ ...prev, icon: e.target.value }))}
-                  placeholder="📝"
+                  placeholder="✏️"
                   maxLength={2}
                 />
               </div>
