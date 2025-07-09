@@ -63,9 +63,11 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
   }
 ];
 
+
+
 // Fallback models in case API calls fail
 const FALLBACK_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k'],
   ollama: ['llama2', 'codellama', 'mistral', 'neural-chat', 'starling-lm'],
   openrouter: [
     'openai/gpt-4o',
@@ -631,7 +633,7 @@ class LLMService {
         model: settings.model,
         messages,
         temperature: settings.temperature,
-        max_tokens: Math.min(settings.maxTokens || 4096, 4096), // Limit to 4096 tokens max
+        max_tokens: settings.maxTokens,
         stream: !!onStream
       }),
       signal
@@ -683,7 +685,7 @@ class LLMService {
         model: settings.model,
         messages,
         temperature: settings.temperature,
-        max_tokens: Math.min(settings.maxTokens || 4096, 4096), // Limit to 4096 tokens max
+        max_tokens: settings.maxTokens,
         stream: !!onStream
       }),
       signal

@@ -35,7 +35,7 @@ export function ChatLayout() {
     provider: 'openrouter',
     model: 'mistralai/mistral-7b-instruct:free',
     temperature: 0.7,
-    maxTokens: 2048,
+    maxTokens: 4096,
     systemPrompt: 'You are a helpful AI assistant. Please provide concise and helpful responses.',
     providers: {
       openai: { apiKey: '' },
@@ -510,7 +510,6 @@ export function ChatLayout() {
                       value={settings.maxTokens}
                       onChange={(e) => updateSettings({ maxTokens: parseInt(e.target.value) })}
                       min="1"
-                      max="4000"
                     />
                   </div>
 

@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     provider: 'openrouter',
     model: 'mistralai/mistral-7b-instruct:free',
     temperature: 0.7,
-    maxTokens: 2048,
+    maxTokens: 4096,
     systemPrompt: 'You are a helpful AI assistant. Please provide concise and helpful responses.',
     providers: {
       openai: { apiKey: '' },

@@ -107,7 +107,7 @@ const appStore = new Store({
       provider: 'openrouter',
       model: 'mistralai/mistral-7b-instruct:free',
       temperature: 0.7,
-      maxTokens: 2048,
+      maxTokens: 4096,
       systemPrompt: 'You are a helpful AI assistant. Please provide concise and helpful responses.',
       providers: {
         openai: { apiKey: '' },
@@ -126,17 +126,18 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: bounds.width,
     height: bounds.height,
-    minWidth: 350,
-    minHeight: 400,
-    maxWidth: 800,
-    maxHeight: 1000,
+    minWidth: 400,
+    minHeight: 300,
+    maxWidth: 1200,
+    maxHeight: 800,
     show: !store.get('startMinimized'),
     alwaysOnTop: store.get('alwaysOnTop') as boolean,
-    frame: true,
+    frame: false, // Remove traditional frame for floating window style
     resizable: true,
     skipTaskbar: false, // Show in taskbar
     autoHideMenuBar: true, // Hide menu bar
-    titleBarStyle: 'default',
+    titleBarStyle: 'hidden', // Hide title bar for custom controls
+    transparent: false, // Keep opaque for better performance
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -470,6 +471,41 @@ function setupIPC() {
     if (mainWindow) {
       mainWindow.show();
       mainWindow.focus();
+    }
+  });
+
+  ipcMain.handle('close-window', () => {
+    if (mainWindow) {
+      isQuitting = true;
+      app.quit();
+    }
+  });
+
+  ipcMain.handle('minimize-window', () => {
+    if (mainWindow) {
+      mainWindow.minimize();
+    }
+  });
+
+  ipcMain.handle('maximize-window', () => {
+    if (mainWindow) {
+      if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+      } else {
+        mainWindow.maximize();
+      }
+    }
+  });
+
+  ipcMain.handle('take-screenshot', async () => {
+    try {
+      // This would require additional implementation for screenshot functionality
+      // For now, just log that it was called
+      console.log('Screenshot requested');
+      return true;
+    } catch (error) {
+      console.error('Failed to take screenshot:', error);
+      return false;
     }
   });
 }

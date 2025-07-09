@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Window operations
   hideWindow: () => ipcRenderer.invoke('hide-window'),
   showWindow: () => ipcRenderer.invoke('show-window'),
+  closeWindow: () => ipcRenderer.invoke('close-window'),
+  minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
+  maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
+  takeScreenshot: () => ipcRenderer.invoke('take-screenshot'),
 
   // Event listeners
   onClipboardContent: (callback: (content: string) => void) => {
@@ -44,6 +48,10 @@ declare global {
       updateSettings: (settings: any) => Promise<void>;
       hideWindow: () => Promise<void>;
       showWindow: () => Promise<void>;
+      closeWindow: () => Promise<void>;
+      minimizeWindow: () => Promise<void>;
+      maximizeWindow: () => Promise<void>;
+      takeScreenshot: () => Promise<void>;
       onClipboardContent: (callback: (content: string) => void) => void;
       onProcessClipboard: (callback: (content: string) => void) => void;
       onOpenSettings: (callback: () => void) => void;
