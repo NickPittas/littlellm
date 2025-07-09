@@ -79,6 +79,126 @@
       "prompt": "Please format the following text as structured meeting notes with key points, action items, and decisions:\n\n{content}",
       "category": "text",
       "icon": "📅"
+    },
+    {
+      "id": "improve_writing",
+      "name": "Improve Writing",
+      "description": "Enhance the clarity, flow, and style of writing",
+      "prompt": "Please improve the writing quality of the following text by enhancing clarity, flow, and style while maintaining the original meaning:\n\n{content}",
+      "category": "writing",
+      "icon": "✨"
+    },
+    {
+      "id": "make_longer",
+      "name": "Make Longer",
+      "description": "Expand the text with more details and examples",
+      "prompt": "Please expand the following text by adding more details, examples, and explanations while maintaining the core message:\n\n{content}",
+      "category": "writing",
+      "icon": "📏"
+    },
+    {
+      "id": "make_shorter",
+      "name": "Make Shorter",
+      "description": "Condense the text while keeping key information",
+      "prompt": "Please make the following text more concise while preserving all the key information and main points:\n\n{content}",
+      "category": "writing",
+      "icon": "✂️"
+    },
+    {
+      "id": "simplify_language",
+      "name": "Simplify Language",
+      "description": "Rewrite using simpler, more accessible language",
+      "prompt": "Please rewrite the following text using simpler, more accessible language that anyone can understand:\n\n{content}",
+      "category": "writing",
+      "icon": "🔤"
+    },
+    {
+      "id": "creative_story",
+      "name": "Write Creative Story",
+      "description": "Create a creative story based on the input",
+      "prompt": "Write a creative and engaging story based on the following prompt or theme:\n\n{content}",
+      "category": "creative",
+      "icon": "📖"
+    },
+    {
+      "id": "brainstorm_ideas",
+      "name": "Brainstorm Ideas",
+      "description": "Generate creative ideas and solutions",
+      "prompt": "Please brainstorm creative ideas and solutions related to:\n\n{content}",
+      "category": "creative",
+      "icon": "💡"
+    },
+    {
+      "id": "write_email",
+      "name": "Write Email",
+      "description": "Compose a professional email",
+      "prompt": "Please write a professional email based on the following requirements:\n\n{content}",
+      "category": "email",
+      "icon": "✉️"
+    },
+    {
+      "id": "reply_email",
+      "name": "Reply to Email",
+      "description": "Generate a professional email reply",
+      "prompt": "Please write a professional reply to the following email:\n\n{content}",
+      "category": "email",
+      "icon": "↩️"
+    },
+    {
+      "id": "analyze_data",
+      "name": "Analyze Data",
+      "description": "Analyze and interpret data or information",
+      "prompt": "Please analyze the following data and provide insights, patterns, and interpretations:\n\n{content}",
+      "category": "analysis",
+      "icon": "📊"
+    },
+    {
+      "id": "create_outline",
+      "name": "Create Outline",
+      "description": "Create a structured outline from the content",
+      "prompt": "Please create a detailed outline from the following content:\n\n{content}",
+      "category": "productivity",
+      "icon": "📝"
+    },
+    {
+      "id": "action_items",
+      "name": "Extract Action Items",
+      "description": "Extract actionable tasks from the text",
+      "prompt": "Please extract clear action items and tasks from the following text:\n\n{content}",
+      "category": "productivity",
+      "icon": "✅"
+    },
+    {
+      "id": "pros_cons",
+      "name": "Pros and Cons",
+      "description": "Create a pros and cons analysis",
+      "prompt": "Please create a detailed pros and cons analysis for:\n\n{content}",
+      "category": "analysis",
+      "icon": "⚖️"
+    },
+    {
+      "id": "social_media_post",
+      "name": "Social Media Post",
+      "description": "Create engaging social media content",
+      "prompt": "Please create an engaging social media post based on:\n\n{content}",
+      "category": "social",
+      "icon": "📱"
+    },
+    {
+      "id": "linkedin_post",
+      "name": "LinkedIn Post",
+      "description": "Create professional LinkedIn content",
+      "prompt": "Please create a professional LinkedIn post based on:\n\n{content}",
+      "category": "social",
+      "icon": "💼"
+    },
+    {
+      "id": "tweet",
+      "name": "Write Tweet",
+      "description": "Create a concise, engaging tweet",
+      "prompt": "Please create a concise and engaging tweet (under 280 characters) based on:\n\n{content}",
+      "category": "social",
+      "icon": "🐦"
     }
   ]
 }
