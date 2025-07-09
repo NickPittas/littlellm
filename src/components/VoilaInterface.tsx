@@ -207,7 +207,15 @@ export function VoilaInterface({ onClose, onMinimize, onMaximize }: VoilaInterfa
         </div>
 
         {/* Bottom Toolbar */}
-        <BottomToolbar />
+        <BottomToolbar
+          onFileUpload={(files) => {
+            // Pass files to chat interface if in chat mode
+            if (mode === 'chat') {
+              // This would need to be passed down to ChatInterface
+              console.log('Files uploaded:', Array.from(files).map(f => f.name));
+            }
+          }}
+        />
       </div>
 
       {/* Resize Handle */}

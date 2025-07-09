@@ -4,10 +4,10 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
-import { 
-  Send, 
-  Copy, 
-  RotateCcw, 
+import {
+  Send,
+  Copy,
+  RotateCcw,
   Volume2,
   Edit3,
   CheckSquare,
@@ -17,7 +17,9 @@ import {
   Plus,
   Sparkles,
   RotateCw,
-  MessageSquare
+  MessageSquare,
+  Paperclip,
+  X
 } from 'lucide-react';
 import { promptsService, type Prompt } from '../services/promptsService';
 import { chatService, type Message, type ChatSettings } from '../services/chatService';
@@ -31,6 +33,11 @@ interface ChatInterfaceProps {
   onPromptSelect: (prompt: string) => void;
   messages?: Message[];
   onMessagesChange?: (messages: Message[]) => void;
+}
+
+interface AttachedFile {
+  file: File;
+  preview?: string;
 }
 
 const quickActions = [
@@ -56,6 +63,7 @@ export function ChatInterface({
   const setMessages = onMessagesChange || setInternalMessages;
   const [isLoading, setIsLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [settings, setSettings] = useState<ChatSettings>({
     provider: 'openrouter',
     model: 'mistralai/mistral-7b-instruct:free',
@@ -110,8 +118,38 @@ export function ChatInterface({
     }
   }, [showActionMenu, onActionMenuClose]);
 
+  const handleFileAttach = (files: FileList | null) => {
+    if (!files) return;
+
+    const newFiles: AttachedFile[] = [];
+    Array.from(files).forEach(file => {
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          newFiles.push({
+            file,
+            preview: e.target?.result as string
+          });
+          if (newFiles.length === files.length) {
+            setAttachedFiles(prev => [...prev, ...newFiles]);
+          }
+        };
+        reader.readAsDataURL(file);
+      } else {
+        newFiles.push({ file });
+        if (newFiles.length === files.length) {
+          setAttachedFiles(prev => [...prev, ...newFiles]);
+        }
+      }
+    });
+  };
+
+  const removeAttachedFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSendMessage = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() && attachedFiles.length === 0) return;
 
     const messageContent = input;
     const userMessage: Message = {
@@ -124,6 +162,7 @@ export function ChatInterface({
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
     onInputChange('');
+    setAttachedFiles([]);
 
     // Create abort controller for this request
     const controller = new AbortController();
@@ -146,7 +185,7 @@ export function ChatInterface({
 
       const response = await chatService.sendMessage(
         messageContent,
-        undefined, // No files for now
+        attachedFiles.map(af => af.file),
         settings,
         conversationHistory,
         (chunk: string) => {
@@ -345,19 +384,81 @@ export function ChatInterface({
 
       {/* Input Area */}
       <div className="p-4 border-t border-border">
+        {/* Attached Files */}
+        {attachedFiles.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {attachedFiles.map((attachedFile, index) => (
+              <div key={index} className="relative group">
+                {attachedFile.preview ? (
+                  <div className="relative">
+                    <img
+                      src={attachedFile.preview}
+                      alt={attachedFile.file.name}
+                      className="w-16 h-16 object-cover rounded border"
+                    />
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="absolute -top-2 -right-2 w-5 h-5 p-0 rounded-full opacity-0 group-hover:opacity-100"
+                      onClick={() => removeAttachedFile(index)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="relative flex items-center gap-2 p-2 border rounded bg-muted">
+                    <Paperclip className="h-4 w-4" />
+                    <span className="text-sm truncate max-w-[100px]">
+                      {attachedFile.file.name}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-4 h-4 p-0 opacity-0 group-hover:opacity-100"
+                      onClick={() => removeAttachedFile(index)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex gap-2">
-          <Textarea
-            value={input}
-            onChange={(e) => onInputChange(e.target.value)}
-            placeholder="Type your message..."
-            className="flex-1 min-h-[40px] max-h-[120px] resize-none"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSendMessage();
-              }
-            }}
-          />
+          <div className="flex-1 relative">
+            <Textarea
+              value={input}
+              onChange={(e) => onInputChange(e.target.value)}
+              placeholder="Type your message..."
+              className="flex-1 min-h-[40px] max-h-[120px] resize-none pr-10"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-2 top-2 w-6 h-6 p-0"
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.multiple = true;
+                input.accept = 'image/*,.pdf,.txt,.doc,.docx';
+                input.onchange = (e) => {
+                  const files = (e.target as HTMLInputElement).files;
+                  handleFileAttach(files);
+                };
+                input.click();
+              }}
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+          </div>
           {isLoading ? (
             <Button
               onClick={handleStopGeneration}
@@ -369,7 +470,7 @@ export function ChatInterface({
           ) : (
             <Button
               onClick={handleSendMessage}
-              disabled={!input.trim()}
+              disabled={!input.trim() && attachedFiles.length === 0}
               size="sm"
             >
               <Send className="h-4 w-4" />

@@ -20,6 +20,7 @@ import {
   Cpu
 } from 'lucide-react';
 import { Badge } from './ui/badge';
+import { SettingsDialog } from './SettingsDialog';
 
 const models = [
   { 
@@ -52,7 +53,11 @@ const models = [
   }
 ];
 
-export function BottomToolbar() {
+interface BottomToolbarProps {
+  onFileUpload?: (files: FileList) => void;
+}
+
+export function BottomToolbar({ onFileUpload }: BottomToolbarProps) {
   const [selectedModel, setSelectedModel] = useState('deepseek-r1');
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -80,9 +85,8 @@ export function BottomToolbar() {
     input.accept = 'image/*,.pdf,.txt,.doc,.docx';
     input.onchange = (e) => {
       const files = (e.target as HTMLInputElement).files;
-      if (files) {
-        console.log('Files selected:', Array.from(files).map(f => f.name));
-        // Handle file upload logic here
+      if (files && onFileUpload) {
+        onFileUpload(files);
       }
     };
     input.click();
@@ -163,6 +167,9 @@ export function BottomToolbar() {
           <Settings className="h-4 w-4" />
         </Button>
       </div>
+
+      {/* Settings Dialog */}
+      <SettingsDialog open={showSettings} onOpenChange={setShowSettings} />
     </div>
   );
 }
