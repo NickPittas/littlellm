@@ -36,6 +36,41 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
     models: [] // Will be fetched dynamically
   },
   {
+    id: 'anthropic',
+    name: 'Anthropic',
+    baseUrl: 'https://api.anthropic.com/v1',
+    requiresApiKey: true,
+    models: [] // Will be fetched dynamically
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    requiresApiKey: true,
+    models: [] // Will be fetched dynamically
+  },
+  {
+    id: 'mistral',
+    name: 'Mistral AI',
+    baseUrl: 'https://api.mistral.ai/v1',
+    requiresApiKey: true,
+    models: [] // Will be fetched dynamically
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    requiresApiKey: true,
+    models: [] // Will be fetched dynamically
+  },
+  {
+    id: 'lmstudio',
+    name: 'LM Studio',
+    baseUrl: 'http://localhost:1234/v1',
+    requiresApiKey: false,
+    models: [] // Will be fetched dynamically
+  },
+  {
     id: 'ollama',
     name: 'Ollama (Local)',
     baseUrl: '',
@@ -70,6 +105,11 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
 // No fallback models - force users to configure providers properly
 const FALLBACK_MODELS: Record<string, string[]> = {
   openai: [],
+  anthropic: [],
+  gemini: [],
+  mistral: [],
+  deepseek: [],
+  lmstudio: [],
   ollama: [],
   openrouter: [],
   requesty: [],
@@ -104,6 +144,21 @@ class LLMService {
       switch (providerId) {
         case 'openai':
           models = await this.fetchOpenAIModels(apiKey);
+          break;
+        case 'anthropic':
+          models = await this.fetchAnthropicModels(apiKey);
+          break;
+        case 'gemini':
+          models = await this.fetchGeminiModels(apiKey);
+          break;
+        case 'mistral':
+          models = await this.fetchMistralModels(apiKey);
+          break;
+        case 'deepseek':
+          models = await this.fetchDeepSeekModels(apiKey);
+          break;
+        case 'lmstudio':
+          models = await this.fetchLMStudioModels(baseUrl);
           break;
         case 'ollama':
           models = await this.fetchOllamaModels(baseUrl);
@@ -287,6 +342,154 @@ class LLMService {
     return popularModels;
   }
 
+  private async fetchAnthropicModels(apiKey?: string): Promise<string[]> {
+    if (!apiKey) {
+      console.log('No Anthropic API key provided, using fallback models');
+      return FALLBACK_MODELS.anthropic;
+    }
+
+    try {
+      // Anthropic doesn't have a public models endpoint, so we'll use known models
+      // These are the current Claude models available via API
+      const claudeModels = [
+        'claude-sonnet-4-20250514',
+        'claude-opus-4-20250514',
+        'claude-3-5-sonnet-20241022',
+        'claude-3-5-sonnet-20240620',
+        'claude-3-opus-20240229',
+        'claude-3-sonnet-20240229',
+        'claude-3-haiku-20240307'
+      ];
+
+      // We could validate the API key by making a test request, but for now return known models
+      return claudeModels;
+    } catch (error) {
+      console.warn('Failed to fetch Anthropic models, using fallback:', error);
+      return FALLBACK_MODELS.anthropic;
+    }
+  }
+
+  private async fetchGeminiModels(apiKey?: string): Promise<string[]> {
+    if (!apiKey) {
+      console.log('No Gemini API key provided, using fallback models');
+      return FALLBACK_MODELS.gemini;
+    }
+
+    try {
+      // Google Gemini models endpoint
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+
+      if (!response.ok) {
+        console.warn(`Gemini API error: ${response.status}, using fallback models`);
+        return FALLBACK_MODELS.gemini;
+      }
+
+      const data = await response.json();
+      const models = data.models
+        ?.filter((model: any) => model.name.includes('gemini') && model.supportedGenerationMethods?.includes('generateContent'))
+        ?.map((model: any) => model.name.replace('models/', ''))
+        ?.sort() || [];
+
+      return models.length > 0 ? models : FALLBACK_MODELS.gemini;
+    } catch (error) {
+      console.warn('Failed to fetch Gemini models, using fallback:', error);
+      return FALLBACK_MODELS.gemini;
+    }
+  }
+
+  private async fetchMistralModels(apiKey?: string): Promise<string[]> {
+    if (!apiKey) {
+      console.log('No Mistral API key provided, using fallback models');
+      return FALLBACK_MODELS.mistral;
+    }
+
+    try {
+      // Mistral AI models endpoint - correct API endpoint from their documentation
+      const response = await fetch('https://api.mistral.ai/v1/models', {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.warn(`Mistral API error: ${response.status} ${response.statusText}, using fallback models`);
+        return FALLBACK_MODELS.mistral;
+      }
+
+      const data = await response.json();
+      console.log('Mistral API response:', data);
+
+      // Mistral API returns models in data array with id field
+      const models = data.data?.map((model: any) => model.id)?.sort() || [];
+
+      console.log(`Fetched ${models.length} Mistral models:`, models);
+      return models.length > 0 ? models : FALLBACK_MODELS.mistral;
+    } catch (error) {
+      console.warn('Failed to fetch Mistral models, using fallback:', error);
+      return FALLBACK_MODELS.mistral;
+    }
+  }
+
+  private async fetchDeepSeekModels(apiKey?: string): Promise<string[]> {
+    if (!apiKey) {
+      console.log('No DeepSeek API key provided, using fallback models');
+      return FALLBACK_MODELS.deepseek;
+    }
+
+    try {
+      // DeepSeek models endpoint (OpenAI-compatible)
+      const response = await fetch('https://api.deepseek.com/v1/models', {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.warn(`DeepSeek API error: ${response.status}, using fallback models`);
+        return FALLBACK_MODELS.deepseek;
+      }
+
+      const data = await response.json();
+      const models = data.data?.map((model: any) => model.id)?.sort() || [];
+
+      return models.length > 0 ? models : FALLBACK_MODELS.deepseek;
+    } catch (error) {
+      console.warn('Failed to fetch DeepSeek models, using fallback:', error);
+      return FALLBACK_MODELS.deepseek;
+    }
+  }
+
+  private async fetchLMStudioModels(baseUrl?: string): Promise<string[]> {
+    if (!baseUrl) {
+      console.log('No LM Studio base URL provided, using fallback models');
+      return FALLBACK_MODELS.lmstudio;
+    }
+
+    try {
+      // LM Studio models endpoint (OpenAI-compatible)
+      const response = await fetch(`${baseUrl}/models`, {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.warn(`LM Studio API error: ${response.status}, using fallback models`);
+        return FALLBACK_MODELS.lmstudio;
+      }
+
+      const data = await response.json();
+      const models = data.data?.map((model: any) => model.id)?.sort() || [];
+
+      return models.length > 0 ? models : FALLBACK_MODELS.lmstudio;
+    } catch (error) {
+      console.warn('Failed to fetch LM Studio models, using fallback:', error);
+      return FALLBACK_MODELS.lmstudio;
+    }
+  }
+
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
@@ -302,6 +505,16 @@ class LLMService {
     switch (settings.provider) {
       case 'openai':
         return this.sendOpenAIMessage(message, settings, provider, conversationHistory, onStream, signal);
+      case 'anthropic':
+        return this.sendAnthropicMessage(message, settings, provider, conversationHistory, onStream, signal);
+      case 'gemini':
+        return this.sendGeminiMessage(message, settings, provider, conversationHistory, onStream, signal);
+      case 'mistral':
+        return this.sendMistralMessage(message, settings, provider, conversationHistory, onStream, signal);
+      case 'deepseek':
+        return this.sendDeepSeekMessage(message, settings, provider, conversationHistory, onStream, signal);
+      case 'lmstudio':
+        return this.sendLMStudioMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'ollama':
         return this.sendOllamaMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'openrouter':
@@ -353,6 +566,398 @@ class LLMService {
     if (!response.ok) {
       const error = await response.text();
       throw new Error(`OpenAI API error: ${error}`);
+    }
+
+    if (onStream) {
+      return this.handleStreamResponse(response, onStream);
+    } else {
+      const data = await response.json();
+      return {
+        content: data.choices[0].message.content,
+        usage: data.usage
+      };
+    }
+  }
+
+  private async sendAnthropicMessage(
+    message: MessageContent,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<LLMResponse> {
+    const messages = [];
+
+    // Add conversation history
+    messages.push(...conversationHistory);
+
+    // Add current message
+    if (typeof message === 'string') {
+      messages.push({ role: 'user', content: message });
+    } else if (Array.isArray(message)) {
+      messages.push({ role: 'user', content: message });
+    } else {
+      // Handle vision format
+      const messageWithImages = message as { text: string; images: string[] };
+      const content = [];
+      content.push({ type: 'text', text: messageWithImages.text });
+
+      // Add images in Anthropic format
+      for (const imageUrl of messageWithImages.images) {
+        // Determine media type from data URL
+        const mediaType = imageUrl.includes('data:image/png') ? 'image/png' :
+                         imageUrl.includes('data:image/gif') ? 'image/gif' :
+                         imageUrl.includes('data:image/webp') ? 'image/webp' : 'image/jpeg';
+
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: mediaType,
+            data: imageUrl.split(',')[1] // Remove data:image/jpeg;base64, prefix
+          }
+        });
+      }
+      messages.push({ role: 'user', content });
+    }
+
+    const response = await fetch(`${provider.baseUrl}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': settings.apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        max_tokens: settings.maxTokens,
+        temperature: settings.temperature,
+        system: settings.systemPrompt || undefined,
+        messages: messages,
+        stream: !!onStream
+      }),
+      signal
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Anthropic API error: ${error}`);
+    }
+
+    if (onStream) {
+      return this.handleAnthropicStreamResponse(response, onStream);
+    } else {
+      const data = await response.json();
+      return {
+        content: data.content[0].text,
+        usage: data.usage ? {
+          promptTokens: data.usage.input_tokens,
+          completionTokens: data.usage.output_tokens,
+          totalTokens: data.usage.input_tokens + data.usage.output_tokens
+        } : undefined
+      };
+    }
+  }
+
+  private async sendGeminiMessage(
+    message: MessageContent,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<LLMResponse> {
+    const contents = [];
+
+    // Add conversation history
+    for (const msg of conversationHistory) {
+      contents.push({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content) }]
+      });
+    }
+
+    // Add current message
+    if (typeof message === 'string') {
+      contents.push({
+        role: 'user',
+        parts: [{ text: message }]
+      });
+    } else if (Array.isArray(message)) {
+      contents.push({
+        role: 'user',
+        parts: [{ text: JSON.stringify(message) }]
+      });
+    } else {
+      // Handle vision format
+      const messageWithImages = message as { text: string; images: string[] };
+      const parts = [{ text: messageWithImages.text }];
+
+      // Add images in Gemini format
+      for (const imageUrl of messageWithImages.images) {
+        // Determine mime type from data URL
+        const mimeType = imageUrl.includes('data:image/png') ? 'image/png' :
+                        imageUrl.includes('data:image/gif') ? 'image/gif' :
+                        imageUrl.includes('data:image/webp') ? 'image/webp' : 'image/jpeg';
+
+        parts.push({
+          inline_data: {
+            mime_type: mimeType,
+            data: imageUrl.split(',')[1] // Remove data:image/jpeg;base64, prefix
+          }
+        });
+      }
+      contents.push({ role: 'user', parts });
+    }
+
+    const endpoint = onStream ? 'streamGenerateContent?alt=sse' : 'generateContent';
+    const url = `${provider.baseUrl}/models/${settings.model}:${endpoint}${onStream ? '' : '?key=' + settings.apiKey}`;
+
+    const requestBody: any = {
+      contents,
+      generationConfig: {
+        temperature: settings.temperature,
+        maxOutputTokens: settings.maxTokens
+      }
+    };
+
+    if (settings.systemPrompt) {
+      requestBody.system_instruction = {
+        parts: [{ text: settings.systemPrompt }]
+      };
+    }
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+
+    if (onStream) {
+      headers['x-goog-api-key'] = settings.apiKey;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+      signal
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Gemini API error: ${error}`);
+    }
+
+    if (onStream) {
+      return this.handleGeminiStreamResponse(response, onStream);
+    } else {
+      const data = await response.json();
+      return {
+        content: data.candidates[0].content.parts[0].text,
+        usage: data.usageMetadata ? {
+          promptTokens: data.usageMetadata.promptTokenCount,
+          completionTokens: data.usageMetadata.candidatesTokenCount,
+          totalTokens: data.usageMetadata.totalTokenCount
+        } : undefined
+      };
+    }
+  }
+
+  private async sendMistralMessage(
+    message: MessageContent,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<LLMResponse> {
+    // Mistral uses OpenAI-compatible API
+    const messages = [];
+
+    if (settings.systemPrompt) {
+      messages.push({ role: 'system', content: settings.systemPrompt });
+    }
+
+    // Add conversation history
+    messages.push(...conversationHistory);
+
+    // Add current message
+    if (typeof message === 'string') {
+      messages.push({ role: 'user', content: message });
+    } else if (Array.isArray(message)) {
+      messages.push({ role: 'user', content: message });
+    } else {
+      // Handle vision format (convert to OpenAI format)
+      const messageWithImages = message as { text: string; images: string[] };
+      const content = [{ type: 'text', text: messageWithImages.text }];
+
+      for (const imageUrl of messageWithImages.images) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: imageUrl }
+        });
+      }
+      messages.push({ role: 'user', content });
+    }
+
+    const response = await fetch(`${provider.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        messages: messages,
+        temperature: settings.temperature,
+        max_tokens: settings.maxTokens,
+        stream: !!onStream
+      }),
+      signal
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Mistral API error: ${error}`);
+    }
+
+    if (onStream) {
+      return this.handleStreamResponse(response, onStream);
+    } else {
+      const data = await response.json();
+      return {
+        content: data.choices[0].message.content,
+        usage: data.usage
+      };
+    }
+  }
+
+  private async sendDeepSeekMessage(
+    message: MessageContent,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<LLMResponse> {
+    // DeepSeek uses OpenAI-compatible API
+    const messages = [];
+
+    if (settings.systemPrompt) {
+      messages.push({ role: 'system', content: settings.systemPrompt });
+    }
+
+    // Add conversation history
+    messages.push(...conversationHistory);
+
+    // Add current message
+    if (typeof message === 'string') {
+      messages.push({ role: 'user', content: message });
+    } else if (Array.isArray(message)) {
+      messages.push({ role: 'user', content: message });
+    } else {
+      // Handle vision format (convert to OpenAI format)
+      const messageWithImages = message as { text: string; images: string[] };
+      const content = [{ type: 'text', text: messageWithImages.text }];
+
+      for (const imageUrl of messageWithImages.images) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: imageUrl }
+        });
+      }
+      messages.push({ role: 'user', content });
+    }
+
+    const response = await fetch(`${provider.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        messages: messages,
+        temperature: settings.temperature,
+        max_tokens: settings.maxTokens,
+        stream: !!onStream
+      }),
+      signal
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`DeepSeek API error: ${error}`);
+    }
+
+    if (onStream) {
+      return this.handleStreamResponse(response, onStream);
+    } else {
+      const data = await response.json();
+      return {
+        content: data.choices[0].message.content,
+        usage: data.usage
+      };
+    }
+  }
+
+  private async sendLMStudioMessage(
+    message: MessageContent,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<LLMResponse> {
+    // LM Studio uses OpenAI-compatible API
+    const baseUrl = settings.baseUrl || provider.baseUrl;
+    const messages = [];
+
+    if (settings.systemPrompt) {
+      messages.push({ role: 'system', content: settings.systemPrompt });
+    }
+
+    // Add conversation history
+    messages.push(...conversationHistory);
+
+    // Add current message
+    if (typeof message === 'string') {
+      messages.push({ role: 'user', content: message });
+    } else if (Array.isArray(message)) {
+      messages.push({ role: 'user', content: message });
+    } else {
+      // Handle vision format (convert to OpenAI format)
+      const messageWithImages = message as { text: string; images: string[] };
+      const content = [{ type: 'text', text: messageWithImages.text }];
+
+      for (const imageUrl of messageWithImages.images) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: imageUrl }
+        });
+      }
+      messages.push({ role: 'user', content });
+    }
+
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey || 'not-needed'}`
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        messages: messages,
+        temperature: settings.temperature,
+        max_tokens: settings.maxTokens,
+        stream: !!onStream
+      }),
+      signal
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`LM Studio API error: ${error}`);
     }
 
     if (onStream) {
@@ -833,6 +1438,107 @@ class LLMService {
       console.error('Connection test failed:', error);
       return false;
     }
+  }
+
+  private async handleAnthropicStreamResponse(
+    response: Response,
+    onStream: (chunk: string) => void
+  ): Promise<LLMResponse> {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    let fullContent = '';
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            // Skip event type lines
+            continue;
+          }
+
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (!data || data === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(data);
+
+              // Handle content_block_delta events with text_delta
+              if (parsed.type === 'content_block_delta' &&
+                  parsed.delta?.type === 'text_delta' &&
+                  parsed.delta?.text) {
+                const content = parsed.delta.text;
+                fullContent += content;
+                onStream(content);
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { content: fullContent };
+  }
+
+  private async handleGeminiStreamResponse(
+    response: Response,
+    onStream: (chunk: string) => void
+  ): Promise<LLMResponse> {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    let fullContent = '';
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (!data || data === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.candidates && parsed.candidates[0]?.content?.parts) {
+                const content = parsed.candidates[0].content.parts[0]?.text || '';
+                if (content) {
+                  fullContent += content;
+                  onStream(content);
+                }
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { content: fullContent };
   }
 }
 

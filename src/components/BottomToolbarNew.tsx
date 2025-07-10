@@ -7,7 +7,8 @@ import {
   Camera,
   Paperclip,
   History,
-  Settings
+  Settings,
+  Wand2
 } from 'lucide-react';
 import { chatService } from '../services/chatService';
 import type { ChatSettings } from '../services/chatService';
@@ -16,6 +17,7 @@ import { settingsService } from '../services/settingsService';
 interface BottomToolbarProps {
   onFileUpload?: (files: FileList) => void;
   onScreenshotCapture?: (file: File) => void;
+  onPromptsClick?: () => void;
   settings: ChatSettings;
   onSettingsChange: (settings: Partial<ChatSettings>) => void;
   showHistory?: boolean;
@@ -25,6 +27,7 @@ interface BottomToolbarProps {
 export function BottomToolbar({
   onFileUpload,
   onScreenshotCapture,
+  onPromptsClick,
   settings,
   onSettingsChange,
   showHistory,
@@ -77,8 +80,8 @@ export function BottomToolbar({
       const providerSettings = settings.providers?.[providerId] || { apiKey: '' };
       console.log('Provider settings:', providerSettings);
 
-      // Only fetch models if we have an API key (except for Ollama which doesn't require one)
-      if (providerId !== 'ollama' && !providerSettings.apiKey) {
+      // Only fetch models if we have an API key (except for Ollama and LM Studio which don't require one)
+      if (providerId !== 'ollama' && providerId !== 'lmstudio' && !providerSettings.apiKey) {
         console.log(`No API key configured for ${providerId}, fetching without API key`);
         const models = await chatService.fetchModels(providerId, '', '');
         console.log('Models fetched (no API key):', models);
@@ -400,6 +403,16 @@ export function BottomToolbar({
           title="Upload File"
         >
           <Paperclip className="h-4 w-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onPromptsClick}
+          className="h-8 w-8 p-0"
+          title="Prompts"
+        >
+          <Wand2 className="h-4 w-4" />
         </Button>
 
         <Button

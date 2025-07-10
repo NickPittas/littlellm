@@ -79,7 +79,7 @@ export function ActionMenuOverlay() {
         category: 'action',
         icon: <FileText className="h-4 w-4" />,
         action: () => {
-          handlePromptSelect('Please summarize the following text:\n\n{content}');
+          handlePromptSelect('Please provide a concise summary of the following text:\n\n{content}\n\nYour summary should capture the main points, key ideas, and overall message of the text in a clear and concise manner. Aim to keep the summary around 100-200 words, depending on the length and complexity of the original text.');
         },
         keywords: ['summarize', 'summary', 'text', 'document']
       },
@@ -90,7 +90,7 @@ export function ActionMenuOverlay() {
         category: 'action',
         icon: <Code className="h-4 w-4" />,
         action: () => {
-          handlePromptSelect('Please explain how this code works:\n\n{content}');
+          handlePromptSelect('Please analyze and explain the functionality of the following code snippet. Break down each part of the code to describe what it does, and explain how the code works as a whole.:\n\n{content}');
         },
         keywords: ['explain', 'code', 'programming', 'understand']
       },
@@ -101,7 +101,7 @@ export function ActionMenuOverlay() {
         category: 'action',
         icon: <MessageSquare className="h-4 w-4" />,
         action: () => {
-          handlePromptSelect('Please translate the following text to English:\n\n{content}');
+          handlePromptSelect('Please translate the following text to English:\n\n{content}\n\nIf the original text is not in English, provide the translation along with the original language if possible. Thank you!');
         },
         keywords: ['translate', 'language', 'convert']
       },
@@ -112,7 +112,7 @@ export function ActionMenuOverlay() {
         category: 'action',
         icon: <Zap className="h-4 w-4" />,
         action: () => {
-          handlePromptSelect('Please improve the grammar and style of this text:\n\n{content}');
+          handlePromptSelect('Please review and improve the grammar and style of the following text. Ensure that the improved version maintains the original meaning while enhancing clarity, readability, and overall quality.:\n\n{content}');
         },
         keywords: ['improve', 'grammar', 'writing', 'style']
       },

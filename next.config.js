@@ -13,6 +13,12 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Only use export mode when building for production
+  ...(process.env.NODE_ENV === 'production' && {
+    output: 'export',
+    trailingSlash: true,
+    distDir: 'out',
+  }),
 }
 
 module.exports = nextConfig

@@ -86,9 +86,14 @@ export function ChatInterface({
     systemPrompt: '',
     providers: {
       openai: { apiKey: '' },
+      anthropic: { apiKey: '' },
+      gemini: { apiKey: '' },
+      mistral: { apiKey: '' },
+      deepseek: { apiKey: '' },
+      lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1' },
+      ollama: { apiKey: '', baseUrl: '' },
       openrouter: { apiKey: '' },
       requesty: { apiKey: '' },
-      ollama: { apiKey: '', baseUrl: '' },
       replicate: { apiKey: '' },
     },
   });

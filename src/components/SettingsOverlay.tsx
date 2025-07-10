@@ -43,18 +43,79 @@ export function SettingsOverlay() {
 
   // Load settings and prompts
   useEffect(() => {
+    console.log('SettingsOverlay component mounted');
+    console.log('Theme context available:', theme);
     loadSettings();
     loadCustomPrompts();
   }, []);
 
-  const loadSettings = () => {
+  const loadSettings = async () => {
     try {
       console.log('=== LOADING SETTINGS IN OVERLAY ===');
+
+      // Try to get settings from electron API first
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        console.log('Getting settings from electronAPI...');
+        const electronSettings = await window.electronAPI.getAppSettings();
+        console.log('Electron settings:', electronSettings);
+        if (electronSettings) {
+          setSettings(electronSettings);
+          return;
+        }
+      }
+
+      // Fallback to settings service
+      console.log('Getting settings from settingsService...');
       const appSettings = settingsService.getSettings();
       console.log('Loaded settings in overlay:', appSettings);
       setSettings(appSettings);
     } catch (error) {
       console.error('Failed to load settings:', error);
+      // Set default settings if loading fails
+      const defaultSettings = {
+        chat: {
+          provider: '',
+          model: '',
+          temperature: 0.3,
+          maxTokens: 8192,
+          systemPrompt: '',
+          providers: {
+            openai: { apiKey: '', lastSelectedModel: '' },
+            anthropic: { apiKey: '', lastSelectedModel: '' },
+            gemini: { apiKey: '', lastSelectedModel: '' },
+            mistral: { apiKey: '', lastSelectedModel: '' },
+            deepseek: { apiKey: '', lastSelectedModel: '' },
+            lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
+            ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+            openrouter: { apiKey: '', lastSelectedModel: '' },
+            requesty: { apiKey: '', lastSelectedModel: '' },
+            replicate: { apiKey: '', lastSelectedModel: '' },
+          },
+        },
+        ui: {
+          theme: 'system',
+          alwaysOnTop: true,
+          startMinimized: false,
+          opacity: 1.0,
+          fontSize: 'small',
+          windowBounds: {
+            width: 400,
+            height: 600,
+          },
+        },
+        shortcuts: {
+          toggleWindow: 'CommandOrControl+Shift+L',
+          processClipboard: 'CommandOrControl+Shift+V',
+          actionMenu: 'CommandOrControl+Shift+Space',
+        },
+        general: {
+          autoStartWithSystem: false,
+          showNotifications: true,
+          saveConversationHistory: true,
+        },
+      };
+      console.log('Using default settings:', defaultSettings);
+      setSettings(defaultSettings);
     }
   };
 
@@ -200,9 +261,18 @@ export function SettingsOverlay() {
       {/* Settings Content */}
       <div className="flex-1 overflow-y-auto hide-scrollbar p-6">
         {!settings ? (
-          <div className="text-center">
+          <div className="text-center space-y-4">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
             <p>Loading settings...</p>
+            <Button
+              onClick={() => {
+                console.log('Retry button clicked');
+                loadSettings();
+              }}
+              variant="outline"
+            >
+              Retry
+            </Button>
           </div>
         ) : (
           <Tabs defaultValue="api-keys" className="w-full">
@@ -236,6 +306,90 @@ export function SettingsOverlay() {
                         providers: {
                           ...settings.chat.providers,
                           openai: { ...settings.chat.providers.openai, apiKey: e.target.value }
+                        }
+                      }
+                    })}
+                    placeholder="sk-..."
+                  />
+                </div>
+
+                {/* Anthropic */}
+                <div className="space-y-2">
+                  <Label htmlFor="anthropic-key">Anthropic API Key</Label>
+                  <Input
+                    id="anthropic-key"
+                    type="password"
+                    value={settings.chat.providers.anthropic?.apiKey || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      chat: {
+                        ...settings.chat,
+                        providers: {
+                          ...settings.chat.providers,
+                          anthropic: { ...(settings.chat.providers.anthropic || {}), apiKey: e.target.value }
+                        }
+                      }
+                    })}
+                    placeholder="sk-ant-..."
+                  />
+                </div>
+
+                {/* Google Gemini */}
+                <div className="space-y-2">
+                  <Label htmlFor="gemini-key">Google Gemini API Key</Label>
+                  <Input
+                    id="gemini-key"
+                    type="password"
+                    value={settings.chat.providers.gemini?.apiKey || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      chat: {
+                        ...settings.chat,
+                        providers: {
+                          ...settings.chat.providers,
+                          gemini: { ...(settings.chat.providers.gemini || {}), apiKey: e.target.value }
+                        }
+                      }
+                    })}
+                    placeholder="AIza..."
+                  />
+                </div>
+
+                {/* Mistral AI */}
+                <div className="space-y-2">
+                  <Label htmlFor="mistral-key">Mistral AI API Key</Label>
+                  <Input
+                    id="mistral-key"
+                    type="password"
+                    value={settings.chat.providers.mistral?.apiKey || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      chat: {
+                        ...settings.chat,
+                        providers: {
+                          ...settings.chat.providers,
+                          mistral: { ...(settings.chat.providers.mistral || {}), apiKey: e.target.value }
+                        }
+                      }
+                    })}
+                    placeholder="..."
+                  />
+                </div>
+
+                {/* DeepSeek */}
+                <div className="space-y-2">
+                  <Label htmlFor="deepseek-key">DeepSeek API Key</Label>
+                  <Input
+                    id="deepseek-key"
+                    type="password"
+                    value={settings.chat.providers.deepseek?.apiKey || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      chat: {
+                        ...settings.chat,
+                        providers: {
+                          ...settings.chat.providers,
+                          deepseek: { ...(settings.chat.providers.deepseek || {}), apiKey: e.target.value }
                         }
                       }
                     })}
@@ -306,6 +460,29 @@ export function SettingsOverlay() {
                   />
                 </div>
 
+                {/* LM Studio */}
+                <div className="space-y-2">
+                  <Label htmlFor="lmstudio-url">LM Studio Base URL</Label>
+                  <Input
+                    id="lmstudio-url"
+                    value={settings.chat.providers.lmstudio?.baseUrl || 'http://localhost:1234/v1'}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      chat: {
+                        ...settings.chat,
+                        providers: {
+                          ...settings.chat.providers,
+                          lmstudio: { ...(settings.chat.providers.lmstudio || {}), baseUrl: e.target.value }
+                        }
+                      }
+                    })}
+                    placeholder="http://localhost:1234/v1"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Make sure LM Studio server is running and accessible at this URL.
+                  </p>
+                </div>
+
                 {/* Ollama */}
                 <div className="space-y-2">
                   <Label htmlFor="ollama-url">Ollama Base URL</Label>
@@ -324,6 +501,9 @@ export function SettingsOverlay() {
                     })}
                     placeholder="http://localhost:11434"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Make sure Ollama is running and accessible at this URL.
+                  </p>
                 </div>
 
                 {/* Default Model */}
