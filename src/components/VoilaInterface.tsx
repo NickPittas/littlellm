@@ -8,6 +8,7 @@ import { Card, CardContent } from './ui/card';
 import { ChatInterface } from './ChatInterface';
 import { BottomToolbar } from './BottomToolbarNew';
 import { HistoryDialog } from './HistoryDialog';
+
 // Settings handled by separate overlay window
 import { AttachmentPreview } from './AttachmentPreview';
 import { AutoResizeTextarea } from './AutoResizeTextarea';
@@ -31,7 +32,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   const [messages, setMessages] = useState<any[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [showChat, setShowChat] = useState(false); // Hide chat until first message
-  const [size, setSize] = useState({ width: 520, height: 180 }); // Start with minimum dimensions
+  const [size, setSize] = useState({ width: 570, height: 142 }); // Start with minimum dimensions
   const [showHistory, setShowHistory] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [windowExpanded, setWindowExpanded] = useState(false); // Track if window has been expanded
@@ -47,9 +48,14 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     systemPrompt: '',
     providers: {
       openai: { apiKey: '', lastSelectedModel: '' },
+      anthropic: { apiKey: '', lastSelectedModel: '' },
+      gemini: { apiKey: '', lastSelectedModel: '' },
+      mistral: { apiKey: '', lastSelectedModel: '' },
+      deepseek: { apiKey: '', lastSelectedModel: '' },
+      lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
+      ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       openrouter: { apiKey: '', lastSelectedModel: '' },
       requesty: { apiKey: '', lastSelectedModel: '' },
-      ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       replicate: { apiKey: '', lastSelectedModel: '' },
     },
   });
@@ -164,7 +170,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   // Auto-context window resizing - grows based on content, never shrinks unless cleared
   useEffect(() => {
     if (typeof window !== 'undefined' && window.electronAPI) {
-      const baseWidth = 520; // Minimum width for UI elements
+      const baseWidth = 570; // Minimum width for UI elements
 
       // Get current textarea height
       const currentTextareaHeight = textareaRef.current?.style.height
@@ -275,8 +281,8 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
       // Resize window to accommodate new textarea height
       if (typeof window !== 'undefined' && window.electronAPI) {
-        const baseWidth = 520;
-        const baseHeight = 165; // Base height (padding, borders, etc.)
+        const baseWidth = 570;
+        const baseHeight = 142; // Base height (padding, borders, etc.)
         const chatHeight = showChat && messages.length > 0 ? 450 : 0; // Chat area height
         const textareaExtraHeight = Math.max(0, contentHeight - 40); // Extra height beyond minimum
         const newWindowHeight = baseHeight + chatHeight + textareaExtraHeight;
@@ -449,6 +455,13 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     setInput(prompt);
   };
 
+  // Handle prompts button click - open action menu like Ctrl+Shift+Space
+  const handlePromptsClick = () => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      window.electronAPI.openActionMenu();
+    }
+  };
+
   // Handle clearing chat
   const handleClearChat = async () => {
     // Save the current conversation before clearing
@@ -598,8 +611,8 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                     textarea.style.height = `${contentHeight}px`;
 
                     // Resize window to accommodate new textarea height
-                    const baseWidth = 520;
-                    const baseHeight = 165; // Base height (padding, borders, etc.)
+                    const baseWidth = 570;
+                    const baseHeight = 142; // Base height (padding, borders, etc.)
                     const chatHeight = showChat && messages.length > 0 ? 450 : 0; // Chat area height
                     const textareaExtraHeight = Math.max(0, contentHeight - 40); // Extra height beyond minimum
                     const newWindowHeight = baseHeight + chatHeight + textareaExtraHeight;
@@ -731,6 +744,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               onHistoryChange={setShowHistory}
               onFileUpload={handleFileUpload}
               onScreenshotCapture={handleScreenshotCapture}
+              onPromptsClick={handlePromptsClick}
             />
           </Card>
         </div>

@@ -46,7 +46,7 @@
     "icon": "assets/icon.ico",
     "publisherName": "LittleLLM Team",
     "requestedExecutionLevel": "asInvoker",
-    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "artifactName": "${productName}-Portable-${version}.${ext}",
     "verifyUpdateCodeSignature": false,
     "fileAssociations": [],
     "protocols": []

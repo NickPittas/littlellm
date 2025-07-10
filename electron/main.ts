@@ -11,8 +11,7 @@ import Store from 'electron-store';
 // More reliable way to detect production vs development
 const isProduction = app.isPackaged || process.env.NODE_ENV === 'production';
 
-// HTTP server for serving static files
-let staticServer: http.Server | null = null;
+
 
 // Function to get the correct icon path for different environments
 function getIconPath(): string {
@@ -42,68 +41,106 @@ async function detectNextJSPort(): Promise<number> {
     try {
       const response = await new Promise<boolean>((resolve) => {
         const req = http.get(`http://localhost:${port}`, (res) => {
+          console.log(`Checking port ${port}: status ${res.statusCode}, headers:`, res.headers);
           // Check if this looks like a Next.js server
           const isNextJS = res.headers['x-powered-by']?.includes('Next.js') ||
                           res.statusCode === 200;
           resolve(isNextJS);
         });
 
-        req.on('error', () => resolve(false));
-        req.setTimeout(1000, () => {
+        req.on('error', (err) => {
+          console.log(`Port ${port} error:`, err.message);
+          resolve(false);
+        });
+        req.setTimeout(2000, () => {
           req.destroy();
+          console.log(`Port ${port} timeout`);
           resolve(false);
         });
       });
 
       if (response) {
-        console.log(`Found Next.js server on port ${port}`);
+        console.log(`✓ Found Next.js server on port ${port}`);
         return port;
       }
     } catch (error) {
+      console.log(`Port ${port} exception:`, error);
       // Continue to next port
     }
   }
 
-  // Default to 3001 if no server found
-  console.log('No Next.js server found, defaulting to port 3001');
-  return 3001;
+  // Default to 3000 if no server found (standard Next.js port)
+  console.log('No Next.js server found, defaulting to port 3000');
+  return 3000;
 }
 
-function createStaticServer() {
-  const server = http.createServer((req, res) => {
-    if (!req.url) {
-      res.writeHead(404);
-      res.end('Not found');
-      return;
-    }
+async function createStaticServer(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      if (!req.url) {
+        res.writeHead(404);
+        res.end('Not found');
+        return;
+      }
 
-    let filePath: string;
-    const urlPath = req.url.startsWith('/') ? req.url.slice(1) : req.url;
+      let filePath: string;
+      let urlPath = req.url.startsWith('/') ? req.url.slice(1) : req.url;
 
-    if (isProduction) {
-      filePath = path.join(process.resourcesPath, 'out', urlPath);
-    } else {
-      filePath = path.join(__dirname, '..', 'out', urlPath);
-    }
+      // Remove query parameters
+      const queryIndex = urlPath.indexOf('?');
+      if (queryIndex !== -1) {
+        urlPath = urlPath.substring(0, queryIndex);
+      }
 
-    console.log('Static server request:', req.url, '-> ', filePath);
+      // Default to index.html for root requests
+      if (urlPath === '' || urlPath === '/') {
+        urlPath = 'index.html';
+      }
 
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      const mimeType = mime.lookup(filePath) || 'application/octet-stream';
-      res.writeHead(200, { 'Content-Type': mimeType });
-      fs.createReadStream(filePath).pipe(res);
-    } else {
-      console.log('File not found:', filePath);
-      res.writeHead(404);
-      res.end('Not found');
-    }
+      if (isProduction) {
+        filePath = path.join(process.resourcesPath, 'out', urlPath);
+      } else {
+        filePath = path.join(__dirname, '..', 'out', urlPath);
+      }
+
+      console.log('Static server request:', req.url, '-> ', filePath);
+
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+        res.writeHead(200, {
+          'Content-Type': mimeType,
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+        });
+        fs.createReadStream(filePath).pipe(res);
+      } else {
+        console.log('File not found:', filePath);
+        res.writeHead(404);
+        res.end('Not found');
+      }
+    });
+
+    // Try ports starting from 3001
+    const tryPort = (port: number) => {
+      server.listen(port, 'localhost', () => {
+        console.log(`Static server running on http://localhost:${port}`);
+        resolve(port);
+      });
+
+      server.on('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+          console.log(`Port ${port} is busy, trying ${port + 1}...`);
+          server.removeAllListeners('error');
+          tryPort(port + 1);
+        } else {
+          reject(err);
+        }
+      });
+    };
+
+    tryPort(3001);
   });
-
-  server.listen(3001, 'localhost', () => {
-    console.log('Static server running on http://localhost:3001');
-  });
-
-  return server;
 }
 
 // Register custom scheme as privileged
@@ -123,7 +160,80 @@ let mainWindow: BrowserWindow | null = null;
 let actionMenuWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+let staticServerPort: number = 3001;
 let isQuitting = false;
+
+// Global function to open action menu
+async function openActionMenu() {
+  if (!mainWindow) return;
+
+  if (actionMenuWindow) {
+    actionMenuWindow.focus();
+    return;
+  }
+
+  // Get main window position to position overlay relative to it
+  const mainBounds = mainWindow.getBounds();
+  const { screen } = require('electron');
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+  // Calculate position ensuring window stays on screen
+  const windowWidth = 600;
+  const windowHeight = 400;
+  let x = mainBounds.x + (mainBounds.width - windowWidth) / 2;
+  let y = mainBounds.y + 50;
+
+  // Ensure window doesn't go off screen
+  x = Math.max(0, Math.min(x, screenWidth - windowWidth));
+  y = Math.max(0, Math.min(y, screenHeight - windowHeight));
+
+  actionMenuWindow = new BrowserWindow({
+    width: windowWidth,
+    height: windowHeight,
+    x: x,
+    y: y,
+    show: false,
+    frame: true, // Enable frame for dragging
+    resizable: true, // Allow resizing
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    transparent: false,
+    titleBarStyle: 'default', // Show title bar for dragging
+    title: 'Prompts',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: false,
+    },
+  });
+
+  let startUrl: string;
+  if (isProduction) {
+    startUrl = `http://localhost:${staticServerPort}`;
+  } else {
+    const detectedPort = await detectNextJSPort();
+    startUrl = `http://localhost:${detectedPort}`;
+  }
+  const actionMenuUrl = `${startUrl}?overlay=action-menu`;
+  actionMenuWindow.loadURL(actionMenuUrl);
+
+  actionMenuWindow.on('blur', () => {
+    if (actionMenuWindow) {
+      actionMenuWindow.hide();
+    }
+  });
+
+  actionMenuWindow.on('closed', () => {
+    actionMenuWindow = null;
+  });
+
+  actionMenuWindow.once('ready-to-show', () => {
+    actionMenuWindow?.show();
+    actionMenuWindow?.focus();
+  });
+}
 
 // Use simple JSON file storage instead of electron-store to avoid nesting issues
 const settingsPath = path.join(app.getPath('userData'), 'voila-settings.json');
@@ -154,7 +264,7 @@ function saveAppSettings(settings: any) {
 
 async function createWindow() {
   const appSettings = loadAppSettings();
-  const bounds = appSettings.ui?.windowBounds || { width: 520, height: 142 };
+  const bounds = appSettings.ui?.windowBounds || { width: 570, height: 142 };
 
   mainWindow = new BrowserWindow({
     width: Math.max(bounds.width, 350), // Ensure minimum width for all UI elements
@@ -187,8 +297,9 @@ async function createWindow() {
   // Load the app with automatic port detection
   let startUrl: string;
   if (isProduction) {
-    // Load from local HTTP server
-    startUrl = 'http://localhost:3001/index.html';
+    // Start local HTTP server for static files
+    staticServerPort = await createStaticServer();
+    startUrl = `http://localhost:${staticServerPort}`;
   } else {
     // Detect the Next.js port automatically
     const detectedPort = await detectNextJSPort();
@@ -451,6 +562,21 @@ function registerGlobalShortcuts() {
       }
     }
   });
+
+  // Register shortcut for action menu
+  const actionMenuShortcut = appSettings.shortcuts?.actionMenu || 'CommandOrControl+Shift+Space';
+  globalShortcut.register(actionMenuShortcut, async () => {
+    console.log('Action menu shortcut triggered:', actionMenuShortcut);
+    if (mainWindow) {
+      // Show main window first if hidden
+      if (!mainWindow.isVisible()) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+      // Open action menu using the global function
+      await openActionMenu();
+    }
+  });
 }
 
 // Disable GPU acceleration to prevent crashes
@@ -466,11 +592,6 @@ app.commandLine.appendSwitch('--no-sandbox');
 app.disableHardwareAcceleration();
 
 app.whenReady().then(async () => {
-  // Start static server for production
-  if (isProduction) {
-    staticServer = createStaticServer();
-  }
-
   await createWindow();
   createTray();
   registerGlobalShortcuts();
@@ -536,6 +657,34 @@ function setupIPC() {
               }
             } else {
               createWindow().catch(console.error);
+            }
+          });
+        }
+      }
+
+      // Handle action menu shortcut updates
+      if (cleanSettings.shortcuts && cleanSettings.shortcuts.actionMenu) {
+        const currentSettings = loadAppSettings();
+        const currentActionMenuShortcut = currentSettings.shortcuts?.actionMenu || 'CommandOrControl+Shift+Space';
+        const newActionMenuShortcut = cleanSettings.shortcuts.actionMenu;
+
+        if (newActionMenuShortcut !== currentActionMenuShortcut) {
+          console.log('Updating action menu shortcut from', currentActionMenuShortcut, 'to', newActionMenuShortcut);
+
+          // Unregister old shortcut
+          globalShortcut.unregister(currentActionMenuShortcut);
+
+          // Register new shortcut
+          globalShortcut.register(newActionMenuShortcut, async () => {
+            console.log('New action menu shortcut triggered:', newActionMenuShortcut);
+            if (mainWindow) {
+              // Show main window first if hidden
+              if (!mainWindow.isVisible()) {
+                mainWindow.show();
+                mainWindow.focus();
+              }
+              // Open action menu
+              await openActionMenu();
             }
           });
         }
@@ -678,7 +827,7 @@ function setupIPC() {
       const [width, height] = mainWindow.getSize();
       return { width, height };
     }
-    return { width: 520, height: 180 }; // Default size
+    return { width: 570, height: 180 }; // Default size
   });
 
   ipcMain.handle('take-screenshot', async () => {
@@ -747,56 +896,7 @@ function setupIPC() {
   });
 
   // Handle overlay window creation
-  ipcMain.handle('open-action-menu', async () => {
-    if (!mainWindow) return;
-
-    if (actionMenuWindow) {
-      actionMenuWindow.focus();
-      return;
-    }
-
-    // Get main window position to position overlay relative to it
-    const mainBounds = mainWindow.getBounds();
-
-    actionMenuWindow = new BrowserWindow({
-      width: 600,
-      height: 400,
-      x: mainBounds.x + (mainBounds.width - 600) / 2, // Center horizontally over main window
-      y: mainBounds.y + 50, // Position below main window input
-      show: false,
-      frame: false,
-      resizable: false,
-      alwaysOnTop: true,
-      skipTaskbar: true,
-      transparent: false,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js'),
-        webSecurity: false,
-      },
-    });
-
-    const detectedPort = isProduction ? 3001 : await detectNextJSPort();
-    const startUrl = isProduction ? 'http://localhost:3001/index.html' : `http://localhost:${detectedPort}`;
-    const actionMenuUrl = `${startUrl}?overlay=action-menu`;
-    actionMenuWindow.loadURL(actionMenuUrl);
-
-    actionMenuWindow.on('blur', () => {
-      if (actionMenuWindow) {
-        actionMenuWindow.hide();
-      }
-    });
-
-    actionMenuWindow.on('closed', () => {
-      actionMenuWindow = null;
-    });
-
-    actionMenuWindow.once('ready-to-show', () => {
-      actionMenuWindow?.show();
-      actionMenuWindow?.focus();
-    });
-  });
+  ipcMain.handle('open-action-menu', openActionMenu);
 
   ipcMain.handle('close-action-menu', () => {
     if (actionMenuWindow) {
@@ -825,18 +925,33 @@ function setupIPC() {
 
     // Get main window position to position overlay relative to it
     const mainBounds = mainWindow.getBounds();
+    const { screen } = require('electron');
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+    // Calculate position ensuring window stays on screen
+    const windowWidth = 800;
+    const windowHeight = 600;
+    let x = mainBounds.x + (mainBounds.width - windowWidth) / 2;
+    let y = mainBounds.y + 50;
+
+    // Ensure window doesn't go off screen
+    x = Math.max(0, Math.min(x, screenWidth - windowWidth));
+    y = Math.max(0, Math.min(y, screenHeight - windowHeight));
 
     settingsWindow = new BrowserWindow({
-      width: 800,
-      height: 600,
-      x: mainBounds.x + (mainBounds.width - 800) / 2, // Center horizontally over main window
-      y: mainBounds.y + 50, // Position below main window
+      width: windowWidth,
+      height: windowHeight,
+      x: x,
+      y: y,
       show: false,
-      frame: false,
+      frame: true, // Enable frame for dragging
       resizable: true,
       alwaysOnTop: true,
       skipTaskbar: true,
       transparent: false,
+      titleBarStyle: 'default', // Show title bar for dragging
+      title: 'Settings',
       minWidth: 600,
       minHeight: 400,
       webPreferences: {
@@ -847,8 +962,13 @@ function setupIPC() {
       },
     });
 
-    const detectedPort = isProduction ? 3001 : await detectNextJSPort();
-    const startUrl = isProduction ? 'http://localhost:3001/index.html' : `http://localhost:${detectedPort}`;
+    let startUrl: string;
+    if (isProduction) {
+      startUrl = `http://localhost:${staticServerPort}`;
+    } else {
+      const detectedPort = await detectNextJSPort();
+      startUrl = `http://localhost:${detectedPort}`;
+    }
     const settingsUrl = `${startUrl}?overlay=settings`;
     settingsWindow.loadURL(settingsUrl);
 
@@ -882,9 +1002,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  if (staticServer) {
-    staticServer.close();
-  }
+  isQuitting = true;
 });
 
 app.on('activate', () => {

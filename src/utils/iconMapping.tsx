@@ -69,10 +69,12 @@ import {
   Frown,
   Meh,
   Bot,
+  Brain,
   Cloud,
   Globe,
   Layers,
-  Repeat
+  Repeat,
+  Wind
 } from 'lucide-react';
 
 // Mapping of emoji/emoticon strings to Lucide React components
@@ -213,6 +215,11 @@ export const renderIcon = (emoji: string, className: string = "h-4 w-4") => {
 // Provider icons mapping
 export const providerIcons: Record<string, React.ComponentType<any>> = {
   openai: Zap,        // Lightning bolt for OpenAI
+  anthropic: Brain,   // Brain for Anthropic Claude
+  gemini: Sparkles,   // Sparkles for Google Gemini
+  mistral: Wind,      // Wind for Mistral AI
+  deepseek: Search,   // Search for DeepSeek
+  lmstudio: Monitor,  // Monitor for LM Studio (local server)
   ollama: Terminal,   // Terminal for local Ollama
   openrouter: Globe,  // Globe for OpenRouter (routing)
   requesty: Layers,   // Layers for Requesty (smart routing)

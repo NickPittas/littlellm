@@ -4,201 +4,274 @@
       "id": "summarize",
       "name": "Summarize Text",
       "description": "Summarize the selected text in a concise manner",
-      "prompt": "Please summarize the following text in 2-3 sentences, highlighting the key points:\n\n{content}",
-      "category": "text",
+      "prompt": "Summarize the following text in a concise manner, focusing on the key points:\n\n{content}",
       "icon": "📝"
     },
     {
-      "id": "rephrase",
-      "name": "Rephrase Text",
-      "description": "Rephrase the text to be more professional or clear",
-      "prompt": "Please rephrase the following text to be more professional and clear while maintaining the original meaning:\n\n{content}",
-      "category": "text",
+      "id": "rephrase_polite",
+      "name": "Rephrase Text Politely",
+      "description": "Rephrase the text to be more polite",
+      "prompt": "Rephrase the following text in a polite manner:\n\n{content}",
       "icon": "✏️"
     },
     {
-      "id": "explain",
-      "name": "Explain Code",
-      "description": "Explain what the code does and how it works",
-      "prompt": "Please explain what this code does, how it works, and any important details:\n\n```\n{content}\n```",
-      "category": "code",
-      "icon": "💻"
+      "id": "rephrase_professional",
+      "name": "Rephrase Text Professionally",
+      "description": "Rephrase the text to be more professional",
+      "prompt": "Rephrase the following text in a professional manner:\n\n{content}",
+      "icon": "✏️"
     },
     {
-      "id": "refactor",
-      "name": "Refactor Code",
-      "description": "Suggest improvements and refactoring for the code",
-      "prompt": "Please analyze this code and suggest improvements, refactoring opportunities, and best practices:\n\n```\n{content}\n```",
-      "category": "code",
-      "icon": "🔧"
+      "id": "rephrase_funny",
+      "name": "Rephrase Text in a Funny Way",
+      "description": "Rephrase the text to be more humorous",
+      "prompt": "Rephrase the following text in a funny manner:\n\n{content}",
+      "icon": "✏️"
     },
     {
-      "id": "debug",
-      "name": "Debug Code",
-      "description": "Help identify and fix potential bugs in the code",
-      "prompt": "Please review this code for potential bugs, errors, or issues and suggest fixes:\n\n```\n{content}\n```",
-      "category": "code",
-      "icon": "🐛"
+      "id": "rephrase_kind",
+      "name": "Rephrase Text Kindly",
+      "description": "Rephrase the text to be more kind",
+      "prompt": "Rephrase the following text in a kind manner:\n\n{content}",
+      "icon": "✏️"
+    },
+    {
+      "id": "rephrase_angry",
+      "name": "Rephrase Text in an Angry Tone",
+      "description": "Rephrase the text to be more angry",
+      "prompt": "Rephrase the following text in an angry manner:\n\n{content}",
+      "icon": "✏️"
     },
     {
       "id": "translate",
       "name": "Translate Text",
       "description": "Translate text to another language",
-      "prompt": "Please translate the following text to English (or specify target language):\n\n{content}",
-      "category": "text",
+      "prompt": "Translate the following text to {target_language}:\n\n{content}",
       "icon": "🌐"
     },
     {
       "id": "grammar",
       "name": "Fix Grammar",
       "description": "Correct grammar and spelling mistakes",
-      "prompt": "Please correct any grammar, spelling, or punctuation errors in the following text:\n\n{content}",
-      "category": "text",
+      "prompt": "Correct any grammar, spelling, or punctuation errors in the following text:\n\n{content}",
       "icon": "📚"
-    },
-    {
-      "id": "email_professional",
-      "name": "Make Email Professional",
-      "description": "Convert casual text into a professional email",
-      "prompt": "Please convert the following text into a professional email format:\n\n{content}",
-      "category": "email",
-      "icon": "📧"
     },
     {
       "id": "bullet_points",
       "name": "Convert to Bullet Points",
       "description": "Convert text into organized bullet points",
-      "prompt": "Please convert the following text into clear, organized bullet points:\n\n{content}",
-      "category": "text",
+      "prompt": "Convert the following text into clear and organized bullet points:\n\n{content}",
       "icon": "📋"
     },
     {
-      "id": "meeting_notes",
-      "name": "Format Meeting Notes",
-      "description": "Format text as structured meeting notes",
-      "prompt": "Please format the following text as structured meeting notes with key points, action items, and decisions:\n\n{content}",
-      "category": "text",
-      "icon": "📅"
+      "id": "explain",
+      "name": "Explain Code",
+      "description": "Explain what the code does and how it works",
+      "prompt": "Explain the functionality and workings of this code, including any key details:\n\n```\n{content}\n```",
+      "icon": "💻"
+    },
+    {
+      "id": "refactor",
+      "name": "Refactor Code",
+      "description": "Suggest improvements and refactoring for the code",
+      "prompt": "Analyze this code and suggest improvements and refactoring opportunities:\n\n```\n{content}\n```",
+      "icon": "🔧"
+    },
+    {
+      "id": "debug",
+      "name": "Debug Code",
+      "description": "Help identify and fix potential bugs in the code",
+      "prompt": "Review this code to identify and suggest fixes for any potential bugs or issues:\n\n```\n{content}\n```",
+      "icon": "🐛"
     },
     {
       "id": "improve_writing",
       "name": "Improve Writing",
       "description": "Enhance the clarity, flow, and style of writing",
-      "prompt": "Please improve the writing quality of the following text by enhancing clarity, flow, and style while maintaining the original meaning:\n\n{content}",
-      "category": "writing",
+      "prompt": "Enhance the clarity, flow, and style of the following text while preserving its original meaning:\n\n{content}",
       "icon": "✨"
     },
     {
       "id": "make_longer",
       "name": "Make Longer",
       "description": "Expand the text with more details and examples",
-      "prompt": "Please expand the following text by adding more details, examples, and explanations while maintaining the core message:\n\n{content}",
-      "category": "writing",
+      "prompt": "Expand the following text by adding more details and examples while keeping the core message intact:\n\n{content}",
       "icon": "📏"
     },
     {
       "id": "make_shorter",
       "name": "Make Shorter",
       "description": "Condense the text while keeping key information",
-      "prompt": "Please make the following text more concise while preserving all the key information and main points:\n\n{content}",
-      "category": "writing",
+      "prompt": "Condense the following text while retaining all key information and main points:\n\n{content}",
       "icon": "✂️"
     },
     {
       "id": "simplify_language",
       "name": "Simplify Language",
       "description": "Rewrite using simpler, more accessible language",
-      "prompt": "Please rewrite the following text using simpler, more accessible language that anyone can understand:\n\n{content}",
-      "category": "writing",
+      "prompt": "Rewrite the following text using simpler and more accessible language:\n\n{content}",
       "icon": "🔤"
     },
     {
       "id": "creative_story",
       "name": "Write Creative Story",
       "description": "Create a creative story based on the input",
-      "prompt": "Write a creative and engaging story based on the following prompt or theme:\n\n{content}",
-      "category": "creative",
+      "prompt": "Write a creative and engaging story inspired by the following prompt or theme:\n\n{content}",
       "icon": "📖"
     },
     {
       "id": "brainstorm_ideas",
       "name": "Brainstorm Ideas",
       "description": "Generate creative ideas and solutions",
-      "prompt": "Please brainstorm creative ideas and solutions related to:\n\n{content}",
-      "category": "creative",
+      "prompt": "Brainstorm creative ideas and solutions for the following topic:\n\n{content}",
       "icon": "💡"
+    },
+    {
+      "id": "email_professional",
+      "name": "Make Email Professional",
+      "description": "Convert casual text into a professional email",
+      "prompt": "Transform the following text into a professional email format:\n\n{content}",
+      "icon": "📧"
     },
     {
       "id": "write_email",
       "name": "Write Email",
       "description": "Compose a professional email",
-      "prompt": "Please write a professional email based on the following requirements:\n\n{content}",
-      "category": "email",
+      "prompt": "Compose a professional email based on the following details:\n\n{content}",
       "icon": "✉️"
     },
     {
       "id": "reply_email",
       "name": "Reply to Email",
       "description": "Generate a professional email reply",
-      "prompt": "Please write a professional reply to the following email:\n\n{content}",
-      "category": "email",
+      "prompt": "Generate a professional reply to the following email:\n\n{content}",
       "icon": "↩️"
     },
     {
-      "id": "analyze_data",
-      "name": "Analyze Data",
-      "description": "Analyze and interpret data or information",
-      "prompt": "Please analyze the following data and provide insights, patterns, and interpretations:\n\n{content}",
-      "category": "analysis",
-      "icon": "📊"
+      "id": "meeting_notes",
+      "name": "Format Meeting Notes",
+      "description": "Format text as structured meeting notes",
+      "prompt": "Format the following text into structured meeting notes with key points and action items:\n\n{content}",
+      "icon": "📅"
     },
     {
       "id": "create_outline",
       "name": "Create Outline",
       "description": "Create a structured outline from the content",
-      "prompt": "Please create a detailed outline from the following content:\n\n{content}",
-      "category": "productivity",
+      "prompt": "Create a structured outline based on the following content:\n\n{content}",
       "icon": "📝"
     },
     {
       "id": "action_items",
       "name": "Extract Action Items",
       "description": "Extract actionable tasks from the text",
-      "prompt": "Please extract clear action items and tasks from the following text:\n\n{content}",
-      "category": "productivity",
+      "prompt": "Extract clear action items and tasks from the following text:\n\n{content}",
       "icon": "✅"
+    },
+    {
+      "id": "interview_questions",
+      "name": "Interview Questions",
+      "description": "Generate a list of interview questions",
+      "prompt": "Generate a list of interview questions for the following position:\n\n{content}",
+      "icon": "💼"
+    },
+    {
+      "id": "resume_feedback",
+      "name": "Resume Feedback",
+      "description": "Provide feedback on a resume",
+      "prompt": "Provide constructive feedback on the following resume:\n\n{content}",
+      "icon": "📄"
+    },
+    {
+      "id": "event_plan",
+      "name": "Event Plan",
+      "description": "Create a detailed event plan",
+      "prompt": "Create a detailed event plan based on the following requirements:\n\n{content}",
+      "icon": "📅"
+    },
+    {
+      "id": "survey_questions",
+      "name": "Survey Questions",
+      "description": "Generate a list of survey questions",
+      "prompt": "Generate a list of survey questions for the following topic:\n\n{content}",
+      "icon": "📋"
+    },
+    {
+      "id": "lesson_plan",
+      "name": "Lesson Plan",
+      "description": "Create a structured lesson plan",
+      "prompt": "Create a structured lesson plan based on the following educational objectives:\n\n{content}",
+      "icon": "📚"
+    },
+    {
+      "id": "analyze_data",
+      "name": "Analyze Data",
+      "description": "Analyze and interpret data or information",
+      "prompt": "Analyze the following data and provide insights and interpretations:\n\n{content}",
+      "icon": "📊"
     },
     {
       "id": "pros_cons",
       "name": "Pros and Cons",
       "description": "Create a pros and cons analysis",
-      "prompt": "Please create a detailed pros and cons analysis for:\n\n{content}",
-      "category": "analysis",
+      "prompt": "Create a detailed pros and cons analysis for the following topic:\n\n{content}",
       "icon": "⚖️"
+    },
+    {
+      "id": "review_analysis",
+      "name": "Review Analysis",
+      "description": "Analyze and summarize reviews",
+      "prompt": "Analyze and summarize the following reviews, highlighting key points and sentiments:\n\n{content}",
+      "icon": "📄"
     },
     {
       "id": "social_media_post",
       "name": "Social Media Post",
       "description": "Create engaging social media content",
-      "prompt": "Please create an engaging social media post based on:\n\n{content}",
-      "category": "social",
+      "prompt": "Create an engaging social media post based on the following content:\n\n{content}",
       "icon": "📱"
     },
     {
       "id": "linkedin_post",
       "name": "LinkedIn Post",
       "description": "Create professional LinkedIn content",
-      "prompt": "Please create a professional LinkedIn post based on:\n\n{content}",
-      "category": "social",
+      "prompt": "Create a professional LinkedIn post based on the following content:\n\n{content}",
       "icon": "💼"
     },
     {
       "id": "tweet",
       "name": "Write Tweet",
       "description": "Create a concise, engaging tweet",
-      "prompt": "Please create a concise and engaging tweet (under 280 characters) based on:\n\n{content}",
-      "category": "social",
+      "prompt": "Create a concise and engaging tweet based on the following content:\n\n{content}",
       "icon": "🐦"
+    },
+    {
+      "id": "blog_post",
+      "name": "Write Blog Post",
+      "description": "Create a detailed and engaging blog post",
+      "prompt": "Write a detailed and engaging blog post based on the following topic:\n\n{content}",
+      "icon": "📝"
+    },
+    {
+      "id": "product_description",
+      "name": "Product Description",
+      "description": "Create a compelling product description",
+      "prompt": "Create a compelling product description based on the following details:\n\n{content}",
+      "icon": "🛍️"
+    },
+    {
+      "id": "press_release",
+      "name": "Press Release",
+      "description": "Write a professional press release",
+      "prompt": "Write a professional press release based on the following information:\n\n{content}",
+      "icon": "📰"
+    },
+    {
+      "id": "cover_letter",
+      "name": "Write Cover Letter",
+      "description": "Create a professional cover letter",
+      "prompt": "Create a professional cover letter based on the following job description and candidate details:\n\n{content}",
+      "icon": "📝"
     }
   ]
 }

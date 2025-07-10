@@ -1,10 +1,10 @@
-# LittleLLM Installation Guide
+# LittleLLM v1.5.5 Installation Guide
 
-LittleLLM is available in two distribution formats for Windows:
+LittleLLM v1.5.5 is available in two distribution formats for Windows:
 
 ## 📦 Windows Installer (Recommended)
 
-**File**: `LittleLLM-Setup-1.0.0.exe` (~146 MB)
+**File**: `LittleLLM-Setup-1.5.5.exe` (~154 MB)
 
 ### Features:
 - ✅ **Full Windows Integration**: Proper installation with uninstaller
@@ -16,7 +16,7 @@ LittleLLM is available in two distribution formats for Windows:
 - ✅ **Taskbar Icon Fix**: Properly displays icon in Windows taskbar
 
 ### Installation Steps:
-1. Download `LittleLLM-Setup-1.0.0.exe`
+1. Download `LittleLLM-Setup-1.5.5.exe`
 2. Right-click and select "Run as administrator" (recommended)
 3. Follow the installation wizard:
    - Choose installation directory
@@ -38,7 +38,7 @@ LittleLLM is available in two distribution formats for Windows:
 
 ## 📱 Portable Version
 
-**File**: `LittleLLM-1.0.0-x64.exe` (~123 MB)
+**File**: `LittleLLM-Portable-1.5.0.exe` (~150 MB)
 
 ### Features:
 - ✅ **No Installation Required**: Run directly from any location

@@ -34,9 +34,14 @@ const DEFAULT_SETTINGS: AppSettings = {
     systemPrompt: '',
     providers: {
       openai: { apiKey: '', lastSelectedModel: '' },
+      anthropic: { apiKey: '', lastSelectedModel: '' },
+      gemini: { apiKey: '', lastSelectedModel: '' },
+      mistral: { apiKey: '', lastSelectedModel: '' },
+      deepseek: { apiKey: '', lastSelectedModel: '' },
+      lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
+      ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       openrouter: { apiKey: '', lastSelectedModel: '' },
       requesty: { apiKey: '', lastSelectedModel: '' },
-      ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       replicate: { apiKey: '', lastSelectedModel: '' },
     },
   },
@@ -153,9 +158,14 @@ class SettingsService {
     if (!chatSettings.providers) {
       chatSettings.providers = {
         openai: { apiKey: '' },
+        anthropic: { apiKey: '' },
+        gemini: { apiKey: '' },
+        mistral: { apiKey: '' },
+        deepseek: { apiKey: '' },
+        lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1' },
+        ollama: { apiKey: '', baseUrl: '' },
         openrouter: { apiKey: '' },
         requesty: { apiKey: '' },
-        ollama: { apiKey: '', baseUrl: '' },
         replicate: { apiKey: '' },
       };
     }
@@ -274,16 +284,26 @@ class SettingsService {
   // Validation methods
   validateApiKey(provider: string, apiKey: string): boolean {
     if (!apiKey) return false;
-    
+
     switch (provider) {
       case 'openai':
         return apiKey.startsWith('sk-');
+      case 'anthropic':
+        return apiKey.startsWith('sk-ant-');
+      case 'gemini':
+        return apiKey.length > 20; // Google API keys are typically longer
+      case 'mistral':
+        return apiKey.length > 10; // Basic length check
+      case 'deepseek':
+        return apiKey.startsWith('sk-');
+      case 'lmstudio':
+        return true; // LM Studio doesn't require API key
+      case 'ollama':
+        return true; // Ollama doesn't require API key
       case 'openrouter':
         return apiKey.startsWith('sk-or-');
       case 'replicate':
         return apiKey.length > 10; // Basic length check
-      case 'ollama':
-        return true; // Ollama doesn't require API key
       default:
         return apiKey.length > 0;
     }
