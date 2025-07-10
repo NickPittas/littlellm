@@ -1,16 +1,15 @@
 import { app, BrowserWindow, globalShortcut, Tray, Menu, clipboard, ipcMain, nativeImage, protocol, session, net } from 'electron';
 import * as path from 'path';
 import * as isDev from 'electron-is-dev';
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
+import * as fs from 'fs';
 import * as os from 'os';
 import { pathToFileURL } from 'url';
 import * as http from 'http';
-import * as fs from 'fs';
 import * as mime from 'mime-types';
+import Store from 'electron-store';
 
 // More reliable way to detect production vs development
 const isProduction = app.isPackaged || process.env.NODE_ENV === 'production';
-import Store from 'electron-store';
 
 // HTTP server for serving static files
 let staticServer: http.Server | null = null;
@@ -25,7 +24,7 @@ function getIconPath(): string {
   ];
 
   for (const iconPath of possiblePaths) {
-    if (existsSync(iconPath)) {
+    if (fs.existsSync(iconPath)) {
       console.log('Using icon path:', iconPath);
       return iconPath;
     }
@@ -33,6 +32,41 @@ function getIconPath(): string {
 
   console.warn('Icon file not found, using default');
   return path.join(__dirname, '../assets/icon.ico'); // fallback
+}
+
+// Function to detect available Next.js port
+async function detectNextJSPort(): Promise<number> {
+  const portsToTry = [3000, 3001, 3002, 3003, 3004, 3005];
+
+  for (const port of portsToTry) {
+    try {
+      const response = await new Promise<boolean>((resolve) => {
+        const req = http.get(`http://localhost:${port}`, (res) => {
+          // Check if this looks like a Next.js server
+          const isNextJS = res.headers['x-powered-by']?.includes('Next.js') ||
+                          res.statusCode === 200;
+          resolve(isNextJS);
+        });
+
+        req.on('error', () => resolve(false));
+        req.setTimeout(1000, () => {
+          req.destroy();
+          resolve(false);
+        });
+      });
+
+      if (response) {
+        console.log(`Found Next.js server on port ${port}`);
+        return port;
+      }
+    } catch (error) {
+      // Continue to next port
+    }
+  }
+
+  // Default to 3001 if no server found
+  console.log('No Next.js server found, defaulting to port 3001');
+  return 3001;
 }
 
 function createStaticServer() {
@@ -91,83 +125,58 @@ let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
 
-// Initialize electron store for settings
-const store = new Store({
-  defaults: {
-    shortcut: 'CommandOrControl+\\',
-    windowBounds: { width: 520, height: 160 }, // Start with minimum dimensions
-    alwaysOnTop: true,
-    startMinimized: false,
+// Use simple JSON file storage instead of electron-store to avoid nesting issues
+const settingsPath = path.join(app.getPath('userData'), 'voila-settings.json');
+
+function loadAppSettings() {
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const data = fs.readFileSync(settingsPath, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Failed to load settings:', error);
   }
-}) as any;
+  return {};
+}
 
-// Initialize separate store for app settings
-const appStore = new Store({
-  name: 'app-settings',
-  defaults: {
-    chat: {
-      provider: 'openrouter',
-      model: 'mistralai/mistral-7b-instruct:free',
-      temperature: 0.7,
-      maxTokens: 4096,
-      systemPrompt: 'You are a helpful AI assistant. Please provide concise and helpful responses.',
-      providers: {
-        openai: { apiKey: '', lastSelectedModel: 'gpt-4o' },
-        openrouter: { apiKey: '', lastSelectedModel: 'mistralai/mistral-7b-instruct:free' },
-        requesty: { apiKey: '', lastSelectedModel: 'openai/gpt-4o-mini' },
-        ollama: { apiKey: '', baseUrl: 'http://localhost:11434', lastSelectedModel: 'llama2' },
-        replicate: { apiKey: '', lastSelectedModel: 'meta/llama-2-70b-chat' },
-      },
-    },
-    ui: {
-      theme: 'system',
-      alwaysOnTop: true,
-      startMinimized: false,
-      opacity: 1.0,
-      fontSize: 'medium',
-      windowBounds: {
-        width: 520,
-        height: 160,
-      },
-    },
-    shortcuts: {
-      toggleWindow: 'CommandOrControl+\\',
-      processClipboard: 'CommandOrControl+Shift+\\',
-    },
-    general: {
-      autoStartWithSystem: false,
-      showNotifications: true,
-      saveConversationHistory: true,
-    },
+function saveAppSettings(settings: any) {
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Failed to save settings:', error);
+    return false;
   }
-}) as any;
+}
 
 
 
-function createWindow() {
-  const bounds = store.get('windowBounds') as { width: number; height: number };
+async function createWindow() {
+  const appSettings = loadAppSettings();
+  const bounds = appSettings.ui?.windowBounds || { width: 520, height: 142 };
 
   mainWindow = new BrowserWindow({
-    width: Math.max(bounds.width, 520), // Ensure minimum width for all UI elements
-    height: Math.max(bounds.height, 160), // Ensure minimum height for input + toolbar
-    minWidth: 520, // Ensure all bottom toolbar buttons are visible (calculated from UI elements)
-    minHeight: 160, // Ensure input + full toolbar are always visible
+    width: Math.max(bounds.width, 350), // Ensure minimum width for all UI elements
+    height: Math.max(bounds.height, 142), // Ensure minimum height for input + toolbar
+    minWidth: 350, // Ensure all bottom toolbar buttons are visible (calculated from UI elements)
+    minHeight: 142, // Ensure input + full toolbar are always visible
     maxWidth: 1400,
     maxHeight: 1000,
-    show: !store.get('startMinimized'),
-    alwaysOnTop: store.get('alwaysOnTop') as boolean,
+    show: !appSettings.ui?.startMinimized,
+    alwaysOnTop: appSettings.ui?.alwaysOnTop !== false, // Default to true if not set
     frame: false, // Remove traditional frame completely for Windows
     resizable: true,
-    skipTaskbar: false, // Show in taskbar
+    skipTaskbar: true, // Show in taskbar
     autoHideMenuBar: true, // Hide menu bar
     titleBarStyle: 'hidden', // Hide title bar completely
-    transparent: false, // Keep opaque for better performance
+    transparent: false, // Disable transparency to test React rendering
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: false, // Allow localStorage and cross-origin requests
-      allowRunningInsecureContent: true,
+      webSecurity: true, // Enable web security
+      allowRunningInsecureContent: false,
       partition: 'persist:littlellm', // Enable localStorage and persistent storage
       zoomFactor: 1.0,
       disableBlinkFeatures: 'Auxclick',
@@ -175,13 +184,15 @@ function createWindow() {
     icon: getIconPath(),
   });
 
-  // Load the app
+  // Load the app with automatic port detection
   let startUrl: string;
   if (isProduction) {
     // Load from local HTTP server
     startUrl = 'http://localhost:3001/index.html';
   } else {
-    startUrl = 'http://localhost:3000';
+    // Detect the Next.js port automatically
+    const detectedPort = await detectNextJSPort();
+    startUrl = `http://localhost:${detectedPort}`;
   }
 
   console.log('isProduction:', isProduction);
@@ -196,7 +207,7 @@ function createWindow() {
   // Ensure icon is properly set for Windows taskbar
   if (process.platform === 'win32') {
     const iconPath = getIconPath();
-    if (existsSync(iconPath)) {
+    if (fs.existsSync(iconPath)) {
       const icon = nativeImage.createFromPath(iconPath);
       if (!icon.isEmpty()) {
         mainWindow.setIcon(icon);
@@ -208,9 +219,9 @@ function createWindow() {
   console.log('About to load URL:', startUrl);
 
   // Set initial window properties from app settings
-  const appSettings = appStore.store;
-  if (appSettings.ui && appSettings.ui.opacity !== undefined) {
-    mainWindow.setOpacity(appSettings.ui.opacity);
+  const currentAppSettings = loadAppSettings();
+  if (currentAppSettings.ui && currentAppSettings.ui.opacity !== undefined) {
+    mainWindow.setOpacity(currentAppSettings.ui.opacity);
   }
 
   mainWindow.loadURL(startUrl).then(() => {
@@ -223,6 +234,41 @@ function createWindow() {
         mainWindow?.webContents.setZoomFactor(1.0);
       });
     }
+
+    // Hide scrollbars globally after page loads
+    mainWindow?.webContents.executeJavaScript(`
+      // Inject CSS to hide all scrollbars
+      const style = document.createElement('style');
+      style.textContent = \`
+        /* Hide all scrollbars globally */
+        ::-webkit-scrollbar {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+          background: transparent !important;
+        }
+
+        ::-webkit-scrollbar-track {
+          display: none !important;
+        }
+
+        ::-webkit-scrollbar-thumb {
+          display: none !important;
+        }
+
+        * {
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+        }
+
+        /* Ensure scrolling still works */
+        html, body {
+          overflow-y: auto !important;
+          overflow-x: hidden !important;
+        }
+      \`;
+      document.head.appendChild(style);
+    `);
   }).catch((error) => {
     console.error('Failed to load URL:', error);
   });
@@ -232,9 +278,9 @@ function createWindow() {
     console.error('Failed to load page:', errorCode, errorDescription, validatedURL);
   });
 
-  // Only open DevTools in development mode
+  // Only open DevTools in development mode (detached for transparency)
   if (!isProduction) {
-    mainWindow.webContents.openDevTools();
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
   // Handle window events
@@ -253,7 +299,15 @@ function createWindow() {
   mainWindow.on('resize', () => {
     if (mainWindow) {
       const bounds = mainWindow.getBounds();
-      store.set('windowBounds', { width: bounds.width, height: bounds.height });
+      const currentSettings = loadAppSettings();
+      const updatedSettings = {
+        ...currentSettings,
+        ui: {
+          ...currentSettings.ui,
+          windowBounds: { width: bounds.width, height: bounds.height }
+        }
+      };
+      saveAppSettings(updatedSettings);
     }
   });
 
@@ -299,7 +353,7 @@ function createTray() {
           mainWindow.show();
           mainWindow.focus();
         } else {
-          createWindow();
+          createWindow().catch(console.error);
         }
       }
     },
@@ -348,14 +402,14 @@ function createTray() {
         mainWindow.focus();
       }
     } else {
-      createWindow();
+      createWindow().catch(console.error);
     }
   });
 }
 
 function registerGlobalShortcuts() {
   // Get shortcut from the new app settings store
-  const appSettings = appStore.store;
+  const appSettings = loadAppSettings();
   const shortcut = appSettings.shortcuts?.toggleWindow || 'CommandOrControl+\\';
 
   console.log('Registering global shortcut:', shortcut);
@@ -371,7 +425,7 @@ function registerGlobalShortcuts() {
         mainWindow.focus();
       }
     } else {
-      createWindow();
+      createWindow().catch(console.error);
     }
   });
 
@@ -386,13 +440,14 @@ function registerGlobalShortcuts() {
         mainWindow.show();
         mainWindow.focus();
       } else {
-        createWindow();
-        // Wait for window to be ready then send clipboard content
-        setTimeout(() => {
-          if (mainWindow) {
-            mainWindow.webContents.send('process-clipboard', clipboardText);
-          }
-        }, 1000);
+        createWindow().then(() => {
+          // Wait for window to be ready then send clipboard content
+          setTimeout(() => {
+            if (mainWindow) {
+              mainWindow.webContents.send('process-clipboard', clipboardText);
+            }
+          }, 1000);
+        }).catch(console.error);
       }
     }
   });
@@ -407,13 +462,16 @@ app.commandLine.appendSwitch('--disable-gpu-sandbox');
 app.commandLine.appendSwitch('--disable-software-rasterizer');
 app.commandLine.appendSwitch('--no-sandbox');
 
-app.whenReady().then(() => {
+// Disable hardware acceleration for better transparency support
+app.disableHardwareAcceleration();
+
+app.whenReady().then(async () => {
   // Start static server for production
   if (isProduction) {
     staticServer = createStaticServer();
   }
 
-  createWindow();
+  await createWindow();
   createTray();
   registerGlobalShortcuts();
 
@@ -434,57 +492,31 @@ function setupIPC() {
 
   // Handle settings updates
   ipcMain.handle('get-settings', () => {
-    return store.store;
+    return loadAppSettings();
   });
 
-  ipcMain.handle('update-settings', (_, settings: any) => {
-    // Update shortcut if changed
-    const currentShortcut = store.get('shortcut') as string;
-    if (settings.shortcut && settings.shortcut !== currentShortcut) {
-      globalShortcut.unregister(currentShortcut);
-      globalShortcut.register(settings.shortcut, () => {
-        if (mainWindow) {
-          if (mainWindow.isVisible() && mainWindow.isFocused()) {
-            mainWindow.hide();
-          } else {
-            mainWindow.show();
-            mainWindow.focus();
-          }
-        } else {
-          createWindow();
-        }
-      });
-    }
-
-    // Update store
-    Object.keys(settings).forEach(key => {
-      store.set(key, settings[key]);
-    });
-
-    // Update window properties if needed
-    if (mainWindow) {
-      if (settings.alwaysOnTop !== undefined) {
-        mainWindow.setAlwaysOnTop(settings.alwaysOnTop);
-      }
-    }
-  });
+  // Removed old update-settings handler to prevent conflicts with update-app-settings
 
   // Handle app settings
   ipcMain.handle('get-app-settings', () => {
-    return appStore.store;
+    const settings = loadAppSettings();
+    console.log('get-app-settings called, returning:', settings);
+    return settings;
   });
 
   ipcMain.handle('update-app-settings', (_, settings: any) => {
     try {
-      // Merge with existing settings
-      const currentSettings = appStore.store;
-      const newSettings = { ...currentSettings, ...settings };
+      console.log('update-app-settings called, received:', settings);
+
+      // Clean settings to avoid nested structures
+      const cleanSettings = { ...settings };
+      delete cleanSettings['app-settings']; // Remove any nested app-settings key
 
       // Handle shortcut updates
-      if (settings.shortcuts && settings.shortcuts.toggleWindow) {
-        const currentSettings = appStore.store;
+      if (cleanSettings.shortcuts && cleanSettings.shortcuts.toggleWindow) {
+        const currentSettings = loadAppSettings();
         const currentShortcut = currentSettings.shortcuts?.toggleWindow || 'CommandOrControl+\\';
-        const newShortcut = settings.shortcuts.toggleWindow;
+        const newShortcut = cleanSettings.shortcuts.toggleWindow;
 
         if (newShortcut !== currentShortcut) {
           console.log('Updating shortcut from', currentShortcut, 'to', newShortcut);
@@ -503,28 +535,26 @@ function setupIPC() {
                 mainWindow.focus();
               }
             } else {
-              createWindow();
+              createWindow().catch(console.error);
             }
           });
-
-          // Update the old store format for compatibility
-          store.set('shortcut', newShortcut);
         }
       }
 
       // Handle UI settings
-      if (settings.ui && mainWindow) {
-        if (settings.ui.alwaysOnTop !== undefined) {
-          mainWindow.setAlwaysOnTop(settings.ui.alwaysOnTop);
+      if (cleanSettings.ui && mainWindow) {
+        if (cleanSettings.ui.alwaysOnTop !== undefined) {
+          mainWindow.setAlwaysOnTop(cleanSettings.ui.alwaysOnTop);
         }
-        if (settings.ui.opacity !== undefined) {
-          mainWindow.setOpacity(settings.ui.opacity);
+        if (cleanSettings.ui.opacity !== undefined) {
+          console.log('Setting window opacity to:', cleanSettings.ui.opacity);
+          mainWindow.setOpacity(cleanSettings.ui.opacity);
         }
       }
 
-      appStore.store = newSettings;
-      console.log('App settings updated:', newSettings);
-      return true;
+      const success = saveAppSettings(cleanSettings);
+      console.log('App settings updated in store:', cleanSettings);
+      return success;
     } catch (error) {
       console.error('Failed to update app settings:', error);
       return false;
@@ -534,7 +564,8 @@ function setupIPC() {
   // Handle storage operations (alternative to localStorage)
   ipcMain.handle('get-storage-item', (_, key: string) => {
     try {
-      return appStore.get(key);
+      const settings = loadAppSettings();
+      return settings[key];
     } catch (error) {
       console.error('Failed to get storage item:', error);
       return null;
@@ -543,8 +574,9 @@ function setupIPC() {
 
   ipcMain.handle('set-storage-item', (_, key: string, value: any) => {
     try {
-      appStore.set(key, value);
-      return true;
+      const settings = loadAppSettings();
+      settings[key] = value;
+      return saveAppSettings(settings);
     } catch (error) {
       console.error('Failed to set storage item:', error);
       return false;
@@ -553,10 +585,47 @@ function setupIPC() {
 
   ipcMain.handle('remove-storage-item', (_, key: string) => {
     try {
-      appStore.delete(key);
-      return true;
+      const settings = loadAppSettings();
+      delete settings[key];
+      return saveAppSettings(settings);
     } catch (error) {
       console.error('Failed to remove storage item:', error);
+      return false;
+    }
+  });
+
+  // Save individual conversation to JSON file
+  ipcMain.handle('save-conversation-to-file', (_, conversationId: string, conversation: any) => {
+    try {
+      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      if (!fs.existsSync(conversationsDir)) {
+        fs.mkdirSync(conversationsDir, { recursive: true });
+      }
+
+      const filePath = path.join(conversationsDir, `${conversationId}.json`);
+      fs.writeFileSync(filePath, JSON.stringify(conversation, null, 2));
+      console.log(`Conversation ${conversationId} saved to file: ${filePath}`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to save conversation ${conversationId}:`, error);
+      return false;
+    }
+  });
+
+  // Save conversation index to JSON file
+  ipcMain.handle('save-conversation-index', (_, conversationIndex: any[]) => {
+    try {
+      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      if (!fs.existsSync(conversationsDir)) {
+        fs.mkdirSync(conversationsDir, { recursive: true });
+      }
+
+      const indexPath = path.join(conversationsDir, 'index.json');
+      fs.writeFileSync(indexPath, JSON.stringify(conversationIndex, null, 2));
+      console.log(`Conversation index saved to file: ${indexPath}`);
+      return true;
+    } catch (error) {
+      console.error('Failed to save conversation index:', error);
       return false;
     }
   });
@@ -598,15 +667,23 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('resize-window', (_, { width, height }) => {
+  ipcMain.handle('resize-window', (_, width: number, height: number) => {
     if (mainWindow) {
       mainWindow.setSize(width, height);
     }
   });
 
+  ipcMain.handle('get-current-window-size', () => {
+    if (mainWindow) {
+      const [width, height] = mainWindow.getSize();
+      return { width, height };
+    }
+    return { width: 520, height: 180 }; // Default size
+  });
+
   ipcMain.handle('take-screenshot', async () => {
     try {
-      const { screen, desktopCapturer } = require('electron');
+      const { desktopCapturer } = require('electron');
 
       // Get all available sources (screens)
       const sources = await desktopCapturer.getSources({
@@ -670,7 +747,7 @@ function setupIPC() {
   });
 
   // Handle overlay window creation
-  ipcMain.handle('open-action-menu', () => {
+  ipcMain.handle('open-action-menu', async () => {
     if (!mainWindow) return;
 
     if (actionMenuWindow) {
@@ -700,7 +777,8 @@ function setupIPC() {
       },
     });
 
-    const startUrl = isProduction ? 'http://localhost:3001/index.html' : 'http://localhost:3000';
+    const detectedPort = isProduction ? 3001 : await detectNextJSPort();
+    const startUrl = isProduction ? 'http://localhost:3001/index.html' : `http://localhost:${detectedPort}`;
     const actionMenuUrl = `${startUrl}?overlay=action-menu`;
     actionMenuWindow.loadURL(actionMenuUrl);
 
@@ -726,7 +804,18 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('open-settings-overlay', () => {
+  // Handle prompt selection from action menu
+  ipcMain.handle('send-prompt-to-main', (event, promptText: string) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('prompt-selected', promptText);
+    }
+    // Close the action menu after sending prompt
+    if (actionMenuWindow) {
+      actionMenuWindow.close();
+    }
+  });
+
+  ipcMain.handle('open-settings-overlay', async () => {
     if (!mainWindow) return;
 
     if (settingsWindow) {
@@ -758,7 +847,8 @@ function setupIPC() {
       },
     });
 
-    const startUrl = isProduction ? 'http://localhost:3001/index.html' : 'http://localhost:3000';
+    const detectedPort = isProduction ? 3001 : await detectNextJSPort();
+    const startUrl = isProduction ? 'http://localhost:3001/index.html' : `http://localhost:${detectedPort}`;
     const settingsUrl = `${startUrl}?overlay=settings`;
     settingsWindow.loadURL(settingsUrl);
 
@@ -799,7 +889,7 @@ app.on('before-quit', () => {
 
 app.on('activate', () => {
   if (mainWindow === null) {
-    createWindow();
+    createWindow().catch(console.error);
   }
 });
 

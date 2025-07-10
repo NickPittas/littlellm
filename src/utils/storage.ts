@@ -85,7 +85,7 @@ class NoOpStorage implements StorageAPI {
     return null;
   }
 
-  async setItem(key: string, value: string): Promise<void> {
+  async setItem(key: string, _value: string): Promise<void> {
     console.warn('No storage available for setItem:', key);
   }
 

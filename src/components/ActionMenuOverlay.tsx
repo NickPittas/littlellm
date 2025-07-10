@@ -79,7 +79,7 @@ export function ActionMenuOverlay() {
         category: 'action',
         icon: <FileText className="h-4 w-4" />,
         action: () => {
-          handlePromptSelect('Please summarize the following text: ');
+          handlePromptSelect('Please summarize the following text:\n\n{content}');
         },
         keywords: ['summarize', 'summary', 'text', 'document']
       },
@@ -90,7 +90,7 @@ export function ActionMenuOverlay() {
         category: 'action',
         icon: <Code className="h-4 w-4" />,
         action: () => {
-          handlePromptSelect('Please explain how this code works: ');
+          handlePromptSelect('Please explain how this code works:\n\n{content}');
         },
         keywords: ['explain', 'code', 'programming', 'understand']
       },
@@ -101,7 +101,7 @@ export function ActionMenuOverlay() {
         category: 'action',
         icon: <MessageSquare className="h-4 w-4" />,
         action: () => {
-          handlePromptSelect('Please translate the following text: ');
+          handlePromptSelect('Please translate the following text to English:\n\n{content}');
         },
         keywords: ['translate', 'language', 'convert']
       },
@@ -112,7 +112,7 @@ export function ActionMenuOverlay() {
         category: 'action',
         icon: <Zap className="h-4 w-4" />,
         action: () => {
-          handlePromptSelect('Please improve the grammar and style of this text: ');
+          handlePromptSelect('Please improve the grammar and style of this text:\n\n{content}');
         },
         keywords: ['improve', 'grammar', 'writing', 'style']
       },
@@ -123,7 +123,7 @@ export function ActionMenuOverlay() {
         category: 'action',
         icon: <Star className="h-4 w-4" />,
         action: () => {
-          handlePromptSelect('Please brainstorm creative ideas for: ');
+          handlePromptSelect('Please brainstorm creative ideas for:\n\n{content}');
         },
         keywords: ['brainstorm', 'ideas', 'creative', 'generate']
       }
@@ -132,12 +132,12 @@ export function ActionMenuOverlay() {
     return [...items, ...builtInActions];
   };
 
-  const handlePromptSelect = (prompt: string) => {
+  const handlePromptSelect = (promptText: string) => {
     // Send the prompt back to the main window and close overlay
     if (typeof window !== 'undefined' && window.electronAPI) {
-      // We'll need to implement a way to communicate back to main window
-      // For now, close the overlay
-      window.electronAPI.closeActionMenu();
+      console.log('Selected prompt:', promptText);
+      // Send the prompt to the main window
+      window.electronAPI.sendPromptToMain(promptText);
     }
   };
 

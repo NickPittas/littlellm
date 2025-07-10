@@ -9,7 +9,7 @@ import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Wand2, Plus, Edit, Trash2, Download, Upload } from 'lucide-react';
 import { promptsService, type Prompt } from '../services/promptsService';
-import { getStorageItem, setStorageItem } from '../utils/storage';
+
 import { renderIcon } from '../utils/iconMapping';
 
 interface PromptsSelectorProps {
@@ -136,11 +136,17 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         const content = e.target?.result as string;
-        if (promptsService.importPrompts(content)) {
-          alert('Prompts imported successfully!');
-        } else {
+        try {
+          const success = await promptsService.importPrompts(content);
+          if (success) {
+            alert('Prompts imported successfully!');
+          } else {
+            alert('Failed to import prompts. Please check the file format.');
+          }
+        } catch (error) {
+          console.error('Failed to import prompts:', error);
           alert('Failed to import prompts. Please check the file format.');
         }
       };

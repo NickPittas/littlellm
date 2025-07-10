@@ -38,18 +38,12 @@ export interface ChatSettings {
 
 
 
-/**
- * Estimate token count for a message
- * Rough estimation: 1 token ≈ 4 characters
- */
-function estimateTokens(content: string): number {
-  return Math.ceil(content.length / 4);
-}
+
 
 export const chatService = {
   // Helper function to check if a model supports vision
   supportsVision(provider: string, model: string): boolean {
-    const visionModels = {
+    const visionModels: Record<string, string[]> = {
       openai: [
         'gpt-4o',
         'gpt-4o-mini',
@@ -85,7 +79,7 @@ export const chatService = {
       ollama: [] // Ollama vision support is detected differently
     };
 
-    const supportedModels = visionModels[provider as keyof typeof visionModels] || [];
+    const supportedModels = visionModels[provider] || [];
     const isSupported = supportedModels.includes(model);
 
     console.log(`Vision support check - Provider: ${provider}, Model: ${model}, Supported: ${isSupported}`);
@@ -105,10 +99,8 @@ export const chatService = {
 
       const loadingTask = pdfjsLib.getDocument({
         data: arrayBuffer,
-        verbosity: 0,
-        disableWorker: false,
-        isEvalSupported: false
-      });
+        verbosity: 0
+      } as any);
 
       const pdf = await loadingTask.promise;
       console.log('PDF loaded for image conversion, pages:', pdf.numPages);
@@ -263,10 +255,8 @@ export const chatService = {
 
             const loadingTask = pdfjsLib.getDocument({
               data: arrayBuffer,
-              verbosity: 0, // Reduce console noise
-              disableWorker: false, // Try with worker first
-              isEvalSupported: false // Disable eval for security
-            });
+              verbosity: 0 // Reduce console noise
+            } as any);
 
             const pdf = await loadingTask.promise;
             console.log('PDF loaded successfully, pages:', pdf.numPages);
@@ -305,7 +295,7 @@ export const chatService = {
             console.error('PDF parsing error:', pdfError);
 
             // Try fallback without worker if worker-related error
-            if (pdfError.message && pdfError.message.includes('worker')) {
+            if (pdfError instanceof Error && pdfError.message && pdfError.message.includes('worker')) {
               try {
                 console.log('Retrying PDF parsing without worker...');
                 const pdfjsLib = await import('pdfjs-dist');
@@ -313,11 +303,11 @@ export const chatService = {
                 // Disable worker completely
                 pdfjsLib.GlobalWorkerOptions.workerSrc = '';
 
+                const fallbackArrayBuffer = await file.arrayBuffer();
                 const fallbackLoadingTask = pdfjsLib.getDocument({
-                  data: arrayBuffer,
-                  verbosity: 0,
-                  disableWorker: true // Force disable worker
-                });
+                  data: fallbackArrayBuffer,
+                  verbosity: 0
+                } as any);
 
                 const fallbackPdf = await fallbackLoadingTask.promise;
                 console.log('PDF loaded successfully without worker, pages:', fallbackPdf.numPages);
@@ -352,7 +342,7 @@ export const chatService = {
               }
             }
 
-            resolve(`[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Could not extract text from this PDF due to an error: ${pdfError.message}. Please describe the content you'd like me to analyze.`);
+            resolve(`[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Could not extract text from this PDF due to an error: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}. Please describe the content you'd like me to analyze.`);
           }
         } else if (file.type.includes('word') || file.type.includes('document')) {
           // For Word documents, provide placeholder
@@ -384,7 +374,7 @@ export const chatService = {
 
     try {
       // Handle file attachments with proper OpenRouter vision API format
-      let messageContent: string | Array<any> = message;
+      let messageContent: string | Array<any> | any = message;
 
       if (files && files.length > 0) {
         console.log('Processing files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
@@ -433,7 +423,7 @@ export const chatService = {
                 console.log(`PDF converted to ${pdfImages.length} images`);
 
                 // Add each PDF page as an image
-                pdfImages.forEach((imageDataUrl, index) => {
+                pdfImages.forEach((imageDataUrl) => {
                   contentArray.push({
                     type: 'image_url',
                     image_url: {
@@ -494,7 +484,7 @@ export const chatService = {
                   console.log(`PDF converted to ${pdfImages.length} images for Ollama`);
 
                   // Add each PDF page as an image (extract base64 data only)
-                  pdfImages.forEach((imageDataUrl, index) => {
+                  pdfImages.forEach((imageDataUrl) => {
                     const base64Data = imageDataUrl.split(',')[1];
                     images.push(base64Data);
                   });
@@ -628,11 +618,12 @@ export const chatService = {
 
   async testConnection(settings: ChatSettings): Promise<boolean> {
     try {
+      const providerSettings = settings.providers[settings.provider];
       const llmSettings: LLMSettings = {
         provider: settings.provider,
         model: settings.model,
-        apiKey: settings.apiKey,
-        baseUrl: settings.baseUrl,
+        apiKey: providerSettings?.apiKey || '',
+        baseUrl: providerSettings?.baseUrl,
         temperature: settings.temperature,
         maxTokens: 100, // Use fewer tokens for testing
         systemPrompt: settings.systemPrompt,

@@ -1,26 +1,10 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { settingsService } from '../services/settingsService';
 import {
   Sun,
-  Moon,
-  Palette,
-  Mountain,
-  Sunset,
-  Trees,
-  Waves,
-  Flower,
-  Star,
-  Heart,
-  Coffee,
-  Zap,
-  Sparkles,
-  Eye,
-  Shield,
-  Terminal,
-  Gamepad2,
-  Headphones
+  Moon
 } from 'lucide-react';
 
 export interface Theme {
@@ -735,10 +719,7 @@ const applyThemeToDOM = (theme: Theme) => {
       console.log('Applied light theme classes');
     }
 
-    // Force a repaint
-    body.style.display = 'none';
-    body.offsetHeight; // Trigger reflow
-    body.style.display = '';
+    // Theme applied successfully - no forced repaint needed
 
     console.log('Theme successfully applied to DOM:', theme.id);
   } catch (error) {
@@ -752,24 +733,20 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Apply default theme immediately on mount
   useEffect(() => {
-    console.log('ThemeProvider mounted, applying default theme:', themes[1].id);
-    applyThemeToDOM(themes[1]);
-  }, []);
-
-  useEffect(() => {
-    // Load saved theme from settings
+    // Load saved theme from settings ONLY ONCE on mount
     const loadTheme = async () => {
       try {
-        const appSettings = await settingsService.getSettings();
+        const appSettings = settingsService.getSettings();
         if (appSettings.ui && appSettings.ui.theme) {
           // Handle both old string format and new object format
           let themeId = appSettings.ui.theme;
-          if (typeof themeId === 'object' && themeId.id) {
-            themeId = themeId.id;
+          if (typeof themeId === 'object' && themeId && 'id' in themeId) {
+            themeId = (themeId as any).id;
           }
 
           const savedTheme = themes.find(t => t.id === themeId);
           if (savedTheme) {
+            console.log('ThemeProvider: Loading saved theme:', savedTheme.id);
             setThemeState(savedTheme);
             applyThemeToDOM(savedTheme);
             return;
@@ -777,74 +754,59 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
           // Handle 'system' theme by forcing dark theme
           if (themeId === 'system') {
+            console.log('ThemeProvider: Converting system theme to dark theme');
             setThemeState(themes[1]); // Force dark theme instead of system detection
             applyThemeToDOM(themes[1]);
             return;
           }
         }
         // If no saved theme, default to dark theme
+        console.log('ThemeProvider: No saved theme, using default dark theme');
         setThemeState(themes[1]); // Force dark theme
         applyThemeToDOM(themes[1]);
       } catch (error) {
         console.error('Error loading theme:', error);
         // Fallback to dark theme
+        console.log('ThemeProvider: Error fallback to dark theme');
         setThemeState(themes[1]);
         applyThemeToDOM(themes[1]);
       }
     };
 
     loadTheme();
-
-    // Subscribe to settings changes to update theme immediately
-    const handleSettingsChange = (newSettings: any) => {
-      if (newSettings.ui && newSettings.ui.theme) {
-        let themeId = newSettings.ui.theme;
-        if (typeof themeId === 'object' && themeId.id) {
-          themeId = themeId.id;
-        }
-
-        const newTheme = themes.find(t => t.id === themeId);
-        if (newTheme && newTheme.id !== theme.id) {
-          setThemeState(newTheme);
-        }
-      }
-    };
-
-    const unsubscribe = settingsService.subscribe(handleSettingsChange);
-
-    // Cleanup subscription
-    return unsubscribe;
-  }, [theme.id]);
+  }, []); // EMPTY DEPENDENCY ARRAY - ONLY RUN ONCE ON MOUNT
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
     applyThemeToDOM(newTheme);
 
-    // Save theme to settings asynchronously
-    const saveTheme = async () => {
-      try {
-        const currentSettings = settingsService.getSettings();
-        settingsService.updateSettings({
-          ...currentSettings,
-          ui: {
-            ...currentSettings.ui,
-            theme: newTheme.id as any // Type assertion to handle the theme ID
-          }
-        });
-      } catch (error) {
-        console.error('Error saving theme:', error);
-      }
-    };
-    saveTheme();
+    // Update theme in memory only - DO NOT SAVE TO DISK
+    try {
+      const currentSettings = settingsService.getSettings();
+      settingsService.updateSettingsInMemory({
+        ...currentSettings,
+        ui: {
+          ...currentSettings.ui,
+          theme: newTheme.id as any // Type assertion to handle the theme ID
+        }
+      });
+    } catch (error) {
+      console.error('Error updating theme in memory:', error);
+    }
   };
 
-  useEffect(() => {
-    // Apply theme whenever it changes
-    applyThemeToDOM(theme);
-  }, [theme]);
+  // REMOVED: This useEffect was causing infinite loops
+  // Theme is now applied directly in setTheme() function
+
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    theme,
+    setTheme,
+    themes
+  }), [theme]); // Only re-create when theme changes
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, themes }}>
+    <ThemeContext.Provider value={contextValue}>
       {children}
     </ThemeContext.Provider>
   );

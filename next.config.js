@@ -1,11 +1,9 @@
 /** @type {import("next").NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false, // Disable to prevent double renders in development
   experimental: {
     typedRoutes: true,
   },
-  output: 'export',
-  trailingSlash: true,
   images: {
     unoptimized: true
   },
@@ -14,7 +12,7 @@ const nextConfig = {
   },
   typescript: {
     ignoreBuildErrors: true,
-  }
+  },
 }
 
 module.exports = nextConfig

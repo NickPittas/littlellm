@@ -23,23 +23,11 @@ import {
   RotateCw,
   Search,
   Settings,
-  User,
-  Globe,
-  Shield,
-  Database,
   Terminal,
   Cpu,
   Smartphone,
   Monitor,
-  Camera,
-  Image,
-  Video,
-  Music,
-  File,
-  Folder,
-  Download,
-  Upload,
-  Share,
+  Database,
   Link,
   Clock,
   Calendar,
@@ -49,9 +37,6 @@ import {
   TrendingUp,
   BarChart,
   Activity,
-  Briefcase,
-  Award,
-  Trophy,
   Gift,
   ShoppingCart,
   CreditCard,
@@ -70,7 +55,6 @@ import {
   Lock,
   Unlock,
   Eye,
-  EyeOff,
   Volume2,
   VolumeX,
   Battery,
@@ -78,15 +62,17 @@ import {
   RotateCcw,
   X,
   Check,
-  AlertTriangle,
   AlertCircle,
-  Info,
-  HelpCircle,
   ThumbsUp,
   ThumbsDown,
   Smile,
   Frown,
-  Meh
+  Meh,
+  Bot,
+  Cloud,
+  Globe,
+  Layers,
+  Repeat
 } from 'lucide-react';
 
 // Mapping of emoji/emoticon strings to Lucide React components
@@ -221,5 +207,25 @@ export const getIconComponent = (emoji: string): React.ComponentType<any> => {
 // Helper function to render icon with consistent props
 export const renderIcon = (emoji: string, className: string = "h-4 w-4") => {
   const IconComponent = getIconComponent(emoji);
+  return <IconComponent className={className} />;
+};
+
+// Provider icons mapping
+export const providerIcons: Record<string, React.ComponentType<any>> = {
+  openai: Zap,        // Lightning bolt for OpenAI
+  ollama: Terminal,   // Terminal for local Ollama
+  openrouter: Globe,  // Globe for OpenRouter (routing)
+  requesty: Layers,   // Layers for Requesty (smart routing)
+  replicate: Repeat,  // Repeat for Replicate (cloud models)
+};
+
+// Helper function to get provider icon
+export const getProviderIcon = (providerId: string): React.ComponentType<any> => {
+  return providerIcons[providerId] || Bot; // Default to Bot icon
+};
+
+// Helper function to render provider icon
+export const renderProviderIcon = (providerId: string, className: string = "h-4 w-4") => {
+  const IconComponent = getProviderIcon(providerId);
   return <IconComponent className={className} />;
 };
