@@ -1,16 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, type Theme } from '../contexts/ThemeContext';
 import { Palette } from 'lucide-react';
 
 export function ThemeSelector() {
   const [showDialog, setShowDialog] = useState(false);
   const { theme, setTheme, themes } = useTheme();
 
-  const handleThemeSelect = (selectedTheme: any) => {
+  const handleThemeSelect = (selectedTheme: Theme) => {
     setTheme(selectedTheme);
     setShowDialog(false);
   };
@@ -42,7 +42,12 @@ export function ThemeSelector() {
               onClick={() => handleThemeSelect(themeOption)}
             >
               <div className="flex flex-col items-center gap-2">
-                <div className="text-2xl">{themeOption.icon}</div>
+                <div className="text-2xl">
+                  {typeof themeOption.icon === 'string'
+                    ? themeOption.icon
+                    : React.createElement(themeOption.icon, { size: 24 })
+                  }
+                </div>
                 <div className="text-sm font-medium text-center">{themeOption.name}</div>
                 
                 {/* Theme preview */}

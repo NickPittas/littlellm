@@ -746,3 +746,5 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     </Dialog>
   );
 }
+
+export default SettingsDialog;

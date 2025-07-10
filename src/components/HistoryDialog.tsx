@@ -63,7 +63,10 @@ export function HistoryDialog({ open, onOpenChange, onLoadConversation }: Histor
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[80vh]">
+      <DialogContent
+        className="max-w-md max-h-[80vh]"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <span>Chat History</span>
@@ -98,6 +101,7 @@ export function HistoryDialog({ open, onOpenChange, onLoadConversation }: Histor
                   key={conversation.id}
                   className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer group"
                   onClick={() => handleLoadConversation(conversation)}
+                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">

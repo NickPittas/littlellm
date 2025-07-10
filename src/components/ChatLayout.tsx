@@ -13,6 +13,8 @@ import { chatService, type ChatSettings, type Message } from '../services/chatSe
 import { PromptsSelector } from './PromptsSelector';
 import { ThemeSelector } from './ThemeSelector';
 import { settingsService } from '../services/settingsService';
+import { MessageWithThinking } from './MessageWithThinking';
+import { UserMessage } from './UserMessage';
 
 
 
@@ -32,16 +34,16 @@ export function ChatLayout() {
   const [isLoading, setIsLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [settings, setSettings] = useState<ChatSettings>({
-    provider: 'openrouter',
-    model: 'mistralai/mistral-7b-instruct:free',
-    temperature: 0.7,
-    maxTokens: 4096,
-    systemPrompt: 'You are a helpful AI assistant. Please provide concise and helpful responses.',
+    provider: '',
+    model: '',
+    temperature: 0.3,
+    maxTokens: 8192,
+    systemPrompt: '',
     providers: {
       openai: { apiKey: '' },
       openrouter: { apiKey: '' },
       requesty: { apiKey: '' },
-      ollama: { apiKey: '', baseUrl: 'http://localhost:11434' },
+      ollama: { apiKey: '', baseUrl: '' },
       replicate: { apiKey: '' },
     },
   });
@@ -80,8 +82,6 @@ export function ChatLayout() {
   useEffect(() => {
     // Load settings on client side only
     if (typeof window !== 'undefined') {
-
-
       const loadedSettings = settingsService.getChatSettings();
 
       // Ensure providers object exists for backward compatibility
@@ -98,8 +98,22 @@ export function ChatLayout() {
 
       setSettings(settingsWithProviders);
 
-      // Don't subscribe to settings changes to prevent conflicts with local state
-      // The settings are loaded once on mount and managed locally
+      // Subscribe to settings changes to keep components in sync
+      const unsubscribe = settingsService.subscribe((newSettings) => {
+        if (newSettings.chat) {
+          const chatSettings = {
+            ...newSettings.chat,
+            providers: newSettings.chat.providers || {
+              openai: { apiKey: '' },
+              openrouter: { apiKey: '' },
+              requesty: { apiKey: '' },
+              ollama: { apiKey: '', baseUrl: '' },
+              replicate: { apiKey: '' },
+            }
+          };
+          setSettings(chatSettings);
+        }
+      });
 
       if (window.electronAPI) {
         // Listen for clipboard content from main process
@@ -122,6 +136,7 @@ export function ChatLayout() {
 
       // Cleanup listeners on unmount
       return () => {
+        unsubscribe();
         if (window.electronAPI) {
           window.electronAPI.removeAllListeners('clipboard-content');
           window.electronAPI.removeAllListeners('process-clipboard');
@@ -260,37 +275,12 @@ export function ChatLayout() {
     }
   };
 
-  const updateSettings = async (updates: Partial<ChatSettings>) => {
+  const updateSettings = (updates: Partial<ChatSettings>) => {
     try {
-      // Ensure providers object exists
-      const currentProviders = settings.providers || {
-        openai: { apiKey: '' },
-        openrouter: { apiKey: '' },
-        requesty: { apiKey: '' },
-        ollama: { apiKey: '', baseUrl: 'http://localhost:11434' },
-        replicate: { apiKey: '' },
-      };
-
-      const newSettings = {
-        ...settings,
-        providers: currentProviders,
-        ...updates
-      };
-
-      // Update local state immediately
-      setSettings(newSettings);
-
-      if (typeof window !== 'undefined') {
-        // Update the settings service
-        await settingsService.updateChatSettings(newSettings);
-
-        // Also save to Electron store if available
-        if (window.electronAPI) {
-          await window.electronAPI.updateSettings({ chat: newSettings });
-        }
-      }
+      // Update settings in memory only - will propagate to all components via subscription
+      settingsService.updateChatSettingsInMemory(updates);
     } catch (error) {
-      console.error('Failed to save settings:', error);
+      console.error('Failed to update settings:', error);
     }
   };
 
@@ -519,7 +509,7 @@ export function ChatLayout() {
                       id="systemPrompt"
                       value={settings.systemPrompt || ''}
                       onChange={(e) => updateSettings({ systemPrompt: e.target.value })}
-                      placeholder="You are a helpful AI assistant..."
+                      placeholder="Enter system prompt..."
                       rows={3}
                     />
                   </div>
@@ -654,7 +644,11 @@ export function ChatLayout() {
                     : 'bg-card text-card-foreground border border-border shadow-sm'
                 }`}
               >
-                <p className="whitespace-pre-wrap">{message.content}</p>
+                {message.role === 'assistant' ? (
+                  <MessageWithThinking content={message.content} />
+                ) : (
+                  <UserMessage content={message.content} />
+                )}
                 <div className="text-xs opacity-70 mt-1 flex items-center justify-between">
                   <span>{message.timestamp.toLocaleTimeString()}</span>
                   {message.usage && (

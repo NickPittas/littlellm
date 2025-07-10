@@ -38,22 +38,57 @@ class ConversationHistoryService {
     this.initialized = true;
   }
 
-  private async saveToStorage() {
+  // Save individual conversation to its own JSON file
+  private async saveConversationToFile(conversation: Conversation) {
     try {
-      // Serialize conversations with proper Date handling
-      const serializedConversations = this.conversations.map(conv => ({
-        ...conv,
-        createdAt: conv.createdAt.toISOString(),
-        updatedAt: conv.updatedAt.toISOString(),
-        messages: conv.messages.map(msg => ({
-          ...msg,
-          timestamp: msg.timestamp.toISOString()
-        }))
-      }));
+      if (typeof window !== 'undefined' && window.electronAPI?.saveConversationToFile) {
+        const serializedConversation = {
+          ...conversation,
+          createdAt: conversation.createdAt.toISOString(),
+          updatedAt: conversation.updatedAt.toISOString(),
+          messages: conversation.messages.map(msg => ({
+            ...msg,
+            timestamp: msg.timestamp.toISOString()
+          }))
+        };
 
-      await setStorageItem('conversation-history', serializedConversations);
+        const success = await window.electronAPI.saveConversationToFile(conversation.id, serializedConversation);
+        if (success) {
+          console.log(`Conversation ${conversation.id} saved to file successfully`);
+        } else {
+          console.error(`Failed to save conversation ${conversation.id} to file`);
+        }
+        return success;
+      }
+      return false;
     } catch (error) {
-      console.error('Failed to save conversation history:', error);
+      console.error('Error saving conversation to file:', error);
+      return false;
+    }
+  }
+
+  // Save conversation list (just metadata) to index file
+  private async saveConversationIndex() {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI?.saveConversationIndex) {
+        const conversationIndex = this.conversations.map(conv => ({
+          id: conv.id,
+          title: conv.title,
+          createdAt: conv.createdAt.toISOString(),
+          updatedAt: conv.updatedAt.toISOString(),
+          messageCount: conv.messages.length
+        }));
+
+        const success = await window.electronAPI.saveConversationIndex(conversationIndex);
+        if (success) {
+          console.log('Conversation index saved successfully');
+        }
+        return success;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error saving conversation index:', error);
+      return false;
     }
   }
 
@@ -72,7 +107,7 @@ class ConversationHistoryService {
 
   async createNewConversation(messages: Message[]): Promise<string> {
     await this.initialize();
-    
+
     const conversationId = Date.now().toString();
     const conversation: Conversation = {
       id: conversationId,
@@ -84,30 +119,37 @@ class ConversationHistoryService {
 
     this.conversations.unshift(conversation); // Add to beginning
     this.currentConversationId = conversationId;
-    
+
     // Keep only last 50 conversations
     if (this.conversations.length > 50) {
       this.conversations = this.conversations.slice(0, 50);
     }
-    
-    await this.saveToStorage();
+
+    // Save individual conversation to its own JSON file
+    await this.saveConversationToFile(conversation);
+    // Update the conversation index
+    await this.saveConversationIndex();
+
     return conversationId;
   }
 
   async updateConversation(conversationId: string, messages: Message[]) {
     await this.initialize();
-    
+
     const conversation = this.conversations.find(c => c.id === conversationId);
     if (conversation) {
       conversation.messages = [...messages];
       conversation.updatedAt = new Date();
-      
+
       // Update title if it's still the default
       if (conversation.title.startsWith('Chat ')) {
         conversation.title = this.generateTitle(messages);
       }
-      
-      await this.saveToStorage();
+
+      // Save updated conversation to its own JSON file
+      await this.saveConversationToFile(conversation);
+      // Update the conversation index
+      await this.saveConversationIndex();
     }
   }
 
@@ -129,13 +171,13 @@ class ConversationHistoryService {
       this.currentConversationId = null;
     }
     
-    await this.saveToStorage();
+    await this.saveConversationIndex();
   }
 
   async clearAllHistory() {
     this.conversations = [];
     this.currentConversationId = null;
-    await this.saveToStorage();
+    await this.saveConversationIndex();
   }
 
   getCurrentConversationId(): string | null {

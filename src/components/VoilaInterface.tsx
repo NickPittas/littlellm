@@ -1,151 +1,144 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { X, Minus, Square, Camera, Paperclip, History, Settings, ChevronDown, Send, ArrowLeft } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { X, Minus, Send, Copy, Check } from 'lucide-react';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
+
+import { Card, CardContent } from './ui/card';
 import { ChatInterface } from './ChatInterface';
-import { BottomToolbar } from './BottomToolbar';
+import { BottomToolbar } from './BottomToolbarNew';
 import { HistoryDialog } from './HistoryDialog';
+// Settings handled by separate overlay window
 import { AttachmentPreview } from './AttachmentPreview';
 import { AutoResizeTextarea } from './AutoResizeTextarea';
-import { ActionMenuPopup } from './ActionMenuPopup';
-import { promptsService } from '../services/promptsService';
+
 import { chatService, type ChatSettings } from '../services/chatService';
 import { settingsService, type AppSettings } from '../services/settingsService';
 import { conversationHistoryService } from '../services/conversationHistoryService';
+import { MessageWithThinking } from './MessageWithThinking';
+import { UserMessage } from './UserMessage';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface VoilaInterfaceProps {
   onClose?: () => void;
-  onMinimize?: () => void;
-  onMaximize?: () => void;
 }
 
-export function VoilaInterface({ onClose, onMinimize, onMaximize }: VoilaInterfaceProps) {
+export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
+  // VoilaInterface component mounting
+
   // Always in chat mode now - simplified interface
   const [input, setInput] = useState('');
-  const [showActionMenu, setShowActionMenu] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [showChat, setShowChat] = useState(false); // Hide chat until first message
-  const [isResizing, setIsResizing] = useState(false);
-  const [size, setSize] = useState({ width: 520, height: 160 }); // Start with minimum dimensions
+  const [size, setSize] = useState({ width: 520, height: 180 }); // Start with minimum dimensions
   const [showHistory, setShowHistory] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [windowExpanded, setWindowExpanded] = useState(false); // Track if window has been expanded
   const { themes, setTheme } = useTheme();
+
+  // Ref for auto-resizing textarea
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [settings, setSettings] = useState<ChatSettings>({
-    provider: 'openrouter',
-    model: 'mistralai/mistral-7b-instruct:free',
-    temperature: 0.7,
-    maxTokens: 4096,
-    systemPrompt: 'You are a helpful AI assistant. Please provide concise and helpful responses.',
+    provider: '',
+    model: '',
+    temperature: 0.3,
+    maxTokens: 8192,
+    systemPrompt: '',
     providers: {
-      openai: { apiKey: '', lastSelectedModel: 'gpt-4o' },
-      openrouter: { apiKey: '', lastSelectedModel: 'mistralai/mistral-7b-instruct:free' },
-      requesty: { apiKey: '', lastSelectedModel: 'openai/gpt-4o-mini' },
-      ollama: { apiKey: '', baseUrl: 'http://localhost:11434', lastSelectedModel: 'llama2' },
-      replicate: { apiKey: '', lastSelectedModel: 'meta/llama-2-70b-chat' },
+      openai: { apiKey: '', lastSelectedModel: '' },
+      openrouter: { apiKey: '', lastSelectedModel: '' },
+      requesty: { apiKey: '', lastSelectedModel: '' },
+      ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+      replicate: { apiKey: '', lastSelectedModel: '' },
     },
   });
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Load app settings on mount
+  // Load app settings on mount and subscribe to changes
   useEffect(() => {
-    const loadAppSettings = async () => {
-      try {
-        const settings = await settingsService.getSettings();
-        setAppSettings(settings);
-      } catch (error) {
-        console.error('Failed to load app settings:', error);
+    try {
+      console.log('VoilaInterface: Loading app settings on mount...');
+      const appSettings = settingsService.getSettings();
+      console.log('VoilaInterface: Loaded app settings:', appSettings);
+
+      // Set both app settings and chat settings
+      setAppSettings(appSettings);
+      if (appSettings.chat) {
+        setSettings(appSettings.chat);
       }
-    };
-    loadAppSettings();
+
+      console.log('VoilaInterface: Settings loaded successfully');
+
+      // Subscribe to settings changes
+      const unsubscribe = settingsService.subscribe((newAppSettings) => {
+        console.log('VoilaInterface: Settings changed via subscription:', newAppSettings);
+        setAppSettings(newAppSettings);
+        if (newAppSettings.chat) {
+          setSettings(newAppSettings.chat);
+          console.log('VoilaInterface: Chat settings updated via subscription:', newAppSettings.chat);
+        }
+      });
+
+      // Cleanup subscription on unmount
+      return unsubscribe;
+    } catch (error) {
+      console.error('VoilaInterface: Failed to load app settings:', error);
+    }
+  }, []);
+
+  // Memoized file upload handler to prevent infinite re-renders
+  const handleFileUpload = useCallback((files: FileList) => {
+    // Add files to attached files list
+    const newFiles = Array.from(files);
+    setAttachedFiles(prev => [...prev, ...newFiles]);
+    console.log('Files uploaded:', newFiles.map(f => f.name));
+  }, []);
+
+  // Memoized screenshot capture handler to prevent infinite re-renders
+  const handleScreenshotCapture = useCallback((file: File) => {
+    // Auto-attach screenshot to chat
+    setAttachedFiles(prev => [...prev, file]);
+    console.log('Screenshot captured:', file.name);
   }, []);
 
   // Helper function to check if keyboard event matches action menu shortcut
   const isActionMenuShortcut = (e: KeyboardEvent | React.KeyboardEvent) => {
-    if (!appSettings?.shortcuts?.actionMenu) {
-      return false;
-    }
-
-    const shortcut = appSettings.shortcuts.actionMenu;
-    const parts = shortcut.split('+');
-
-    let requiresCommandOrControl = false;
-    let requiresCtrl = false;
-    let requiresShift = false;
-    let requiresMeta = false;
-    let key = '';
-
-    for (const part of parts) {
-      const lowerPart = part.toLowerCase();
-      if (lowerPart === 'commandorcontrol') {
-        requiresCommandOrControl = true;
-      } else if (lowerPart === 'ctrl' || lowerPart === 'control') {
-        requiresCtrl = true;
-      } else if (lowerPart === 'shift') {
-        requiresShift = true;
-      } else if (lowerPart === 'meta' || lowerPart === 'cmd' || lowerPart === 'command') {
-        requiresMeta = true;
-      } else {
-        key = lowerPart === 'space' ? ' ' : part;
-      }
-    }
-
-    // Handle CommandOrControl (Ctrl on Windows/Linux, Cmd on Mac)
-    const hasRequiredModifier = requiresCommandOrControl ? (e.ctrlKey || e.metaKey) :
-                               requiresCtrl ? e.ctrlKey :
-                               requiresMeta ? e.metaKey : true;
-
-    const hasShift = !requiresShift || e.shiftKey;
-    const hasCorrectKey = e.key.toLowerCase() === key.toLowerCase();
-
-    return hasRequiredModifier && hasShift && hasCorrectKey;
+    // Simple check for Ctrl+Shift+Space
+    return e.ctrlKey && e.shiftKey && e.key === ' ';
   };
 
-  const handleSettingsChange = async (newSettings: Partial<ChatSettings>) => {
-    const updatedSettings = { ...settings, ...newSettings };
-    setSettings(updatedSettings);
+  const handleSettingsChange = (newSettings: Partial<ChatSettings>) => {
+    console.log('VoilaInterface handleSettingsChange called with:', newSettings);
+    console.log('Current settings before update:', settings);
 
-    // Persist settings
-    try {
-      const currentAppSettings = await settingsService.getSettings();
-      await settingsService.updateSettings({
-        ...currentAppSettings,
-        chat: updatedSettings
-      });
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-    }
+    // Update settings in memory only - will propagate to all components via subscription
+    settingsService.updateChatSettingsInMemory(newSettings);
+
+    console.log('Settings service updated, new settings should propagate');
   };
 
-  // Load settings on mount
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const appSettings = await settingsService.getSettings();
-        if (appSettings.chat) {
-          setSettings(appSettings.chat);
-        }
-      } catch (error) {
-        console.error('Failed to load settings:', error);
-      }
-    };
-
-    loadSettings();
-  }, []);
+  // REMOVED: Duplicate settings loading - now handled in combined useEffect above
 
   // Global keyboard shortcuts
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Check for action menu shortcut first
+      if (isActionMenuShortcut(e)) {
+        e.preventDefault();
+        console.log('Action menu shortcut detected globally');
+        if (typeof window !== 'undefined' && window.electronAPI) {
+          window.electronAPI.openActionMenu();
+        }
+        return;
+      }
+
       if (e.ctrlKey || e.metaKey) {
         switch (e.key) {
           case 'k':
             e.preventDefault();
             setInput('');
-            setShowActionMenu(false);
             break;
           case ',':
             e.preventDefault();
@@ -159,21 +152,41 @@ export function VoilaInterface({ onClose, onMinimize, onMaximize }: VoilaInterfa
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  // Handle window resizing based on chat visibility
+  // Calculate total window height needed
+  const calculateWindowHeight = useCallback((textareaHeight: number = 40) => {
+    const baseHeight = 165; // Base height (padding, borders, etc.)
+    const chatHeight = showChat && messages.length > 0 ? 450 : 0; // Chat area height
+    const textareaExtraHeight = Math.max(0, textareaHeight - 40); // Extra height beyond minimum
+
+    return baseHeight + chatHeight + textareaExtraHeight;
+  }, [showChat, messages.length]);
+
+  // Auto-context window resizing - grows based on content, never shrinks unless cleared
   useEffect(() => {
     if (typeof window !== 'undefined' && window.electronAPI) {
-      // Resize window based on chat state
-      // Width: 520px minimum to show all bottom toolbar buttons properly
-      // Compact: input (50px) + toolbar (50px) + padding (60px) = 160px
-      // Expanded: input (50px) + chat (450px) + toolbar (50px) + padding (60px) = 610px
-      const targetWidth = 520; // Minimum width to show all UI elements
-      const targetHeight = showChat ? 610 : 160;
+      const baseWidth = 520; // Minimum width for UI elements
 
-      window.electronAPI.resizeWindow(targetWidth, targetHeight);
+      // Get current textarea height
+      const currentTextareaHeight = textareaRef.current?.style.height
+        ? parseInt(textareaRef.current.style.height)
+        : 40;
+
+      const targetHeight = calculateWindowHeight(currentTextareaHeight);
+
+      // Only resize if we're changing to a larger size or going back to compact (no messages)
+      if (showChat && messages.length > 0 && !windowExpanded) {
+        console.log('Auto-expanding window for chat content');
+        window.electronAPI.resizeWindow(baseWidth, targetHeight);
+        setWindowExpanded(true);
+      } else if (messages.length === 0 && windowExpanded) {
+        console.log('Auto-compacting window - no content');
+        window.electronAPI.resizeWindow(baseWidth, targetHeight);
+        setWindowExpanded(false);
+      }
     }
-  }, [showChat]);
+  }, [showChat, messages.length, windowExpanded, calculateWindowHeight]);
 
-  // Listen for theme changes from overlay windows
+  // Listen for theme changes from overlay windows - ONLY SETUP ONCE
   useEffect(() => {
     if (typeof window !== 'undefined' && window.electronAPI) {
       const handleThemeChange = (themeId: string) => {
@@ -189,12 +202,100 @@ export function VoilaInterface({ onClose, onMinimize, onMaximize }: VoilaInterfa
         window.electronAPI.removeAllListeners('theme-changed');
       };
     }
-  }, [themes, setTheme]);
+  }, []); // EMPTY DEPENDENCY ARRAY - ONLY SETUP ONCE
+
+  // Listen for prompt selections from action menu overlay
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      const handlePromptSelected = async (promptText: string) => {
+        console.log('Received prompt from action menu:', promptText);
+
+        let processedPrompt = promptText;
+
+        // If the prompt contains {content} placeholder, replace it with clipboard content
+        if (promptText.includes('{content}')) {
+          try {
+            console.log('Prompt contains {content}, reading clipboard...');
+            const clipboardContent = await window.electronAPI.readClipboard();
+
+            if (clipboardContent && clipboardContent.trim()) {
+              processedPrompt = promptText.replace('{content}', clipboardContent.trim());
+              console.log('Replaced {content} with clipboard content');
+            } else {
+              processedPrompt = promptText.replace('{content}', '[No clipboard content available]');
+              console.log('No clipboard content available, using placeholder');
+            }
+          } catch (error) {
+            console.error('Failed to read clipboard:', error);
+            processedPrompt = promptText.replace('{content}', '[Clipboard access failed]');
+          }
+        }
+
+        // Add the processed prompt to the input field
+        setInput(processedPrompt);
+        console.log('Set input with processed prompt:', processedPrompt);
+        // Trigger resize after prompt is set - will be handled by input change effect
+      };
+
+      window.electronAPI.onPromptSelected(handlePromptSelected);
+
+      return () => {
+        window.electronAPI.removeAllListeners('prompt-selected');
+      };
+    }
+  }, []); // EMPTY DEPENDENCY ARRAY - ONLY SETUP ONCE
 
   // Handle input changes
   const handleInputChange = (value: string) => {
     setInput(value);
+    // Auto-resize will be handled by useEffect
   };
+
+  // Auto-resize textarea and window based on content
+  const autoResizeTextarea = useCallback(() => {
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+
+      // Reset height to get accurate scrollHeight
+      textarea.style.height = '40px'; // Reset to minimum height first
+
+      // Force a reflow to get accurate scrollHeight
+      textarea.offsetHeight;
+
+      // Calculate the new height based on content
+      const minHeight = 40; // Minimum height (40px)
+      const maxHeight = 200; // Maximum height before scrolling
+
+      // Get the scroll height
+      const scrollHeight = textarea.scrollHeight;
+      const contentHeight = Math.max(minHeight, Math.min(maxHeight, scrollHeight));
+
+      // Set the new height
+      textarea.style.height = `${contentHeight}px`;
+
+      // Resize window to accommodate new textarea height
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const baseWidth = 520;
+        const baseHeight = 165; // Base height (padding, borders, etc.)
+        const chatHeight = showChat && messages.length > 0 ? 450 : 0; // Chat area height
+        const textareaExtraHeight = Math.max(0, contentHeight - 40); // Extra height beyond minimum
+        const newWindowHeight = baseHeight + chatHeight + textareaExtraHeight;
+        window.electronAPI.resizeWindow(baseWidth, newWindowHeight);
+      }
+
+      console.log('Auto-resize:', { scrollHeight, contentHeight, inputLength: input.length });
+    }
+  }, [input, showChat, messages.length]);
+
+  // Auto-resize when input changes
+  useEffect(() => {
+    // Use setTimeout to ensure DOM is updated
+    const timer = setTimeout(() => {
+      autoResizeTextarea();
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [input, autoResizeTextarea]);
 
   // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -215,7 +316,7 @@ export function VoilaInterface({ onClose, onMinimize, onMaximize }: VoilaInterfa
       return;
     }
     if (e.key === 'Escape') {
-      setShowActionMenu(false);
+      // Handle escape key
     }
     // Global shortcuts
     if (e.ctrlKey || e.metaKey) {
@@ -223,12 +324,10 @@ export function VoilaInterface({ onClose, onMinimize, onMaximize }: VoilaInterfa
         case 'k':
           e.preventDefault();
           setInput('');
-          setShowActionMenu(false);
           break;
         case 'n':
           e.preventDefault();
           setInput('');
-          setShowActionMenu(false);
           // Clear chat history
           setMessages([]);
           break;
@@ -259,9 +358,22 @@ export function VoilaInterface({ onClose, onMinimize, onMaximize }: VoilaInterfa
       timestamp: new Date()
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInput('');
-    setShowActionMenu(false);
+
+    // Save conversation immediately after user message
+    try {
+      const currentConversationId = conversationHistoryService.getCurrentConversationId();
+      if (currentConversationId) {
+        await conversationHistoryService.updateConversation(currentConversationId, updatedMessages);
+      } else {
+        const newConversationId = await conversationHistoryService.createNewConversation(updatedMessages);
+        conversationHistoryService.setCurrentConversationId(newConversationId);
+      }
+    } catch (error) {
+      console.error('Failed to save conversation after user message:', error);
+    }
 
     // Send message to LLM service
     try {
@@ -335,14 +447,55 @@ export function VoilaInterface({ onClose, onMinimize, onMaximize }: VoilaInterfa
   // Handle prompt selection
   const handlePromptSelect = (prompt: string) => {
     setInput(prompt);
-    setShowActionMenu(false);
   };
 
   // Handle clearing chat
-  const handleClearChat = () => {
+  const handleClearChat = async () => {
+    // Save the current conversation before clearing
+    if (messages.length > 0) {
+      try {
+        const currentConversationId = conversationHistoryService.getCurrentConversationId();
+        if (currentConversationId) {
+          await conversationHistoryService.updateConversation(currentConversationId, messages);
+        } else if (messages.length > 0) {
+          // Create a new conversation if there isn't one
+          const newConversationId = await conversationHistoryService.createNewConversation(messages);
+          // Don't set as current since we're clearing it
+        }
+      } catch (error) {
+        console.error('Failed to save conversation before clearing:', error);
+      }
+    }
+
+    // Clear the current conversation ID
+    conversationHistoryService.setCurrentConversationId(null);
+
+    // Clear the UI
     setMessages([]);
     setInput('');
     setAttachedFiles([]);
+    setShowChat(false);
+  };
+
+  // Handle minimizing chat (save current state)
+  const handleMinimizeChat = async () => {
+    // Save the current conversation before minimizing
+    if (messages.length > 0) {
+      try {
+        const currentConversationId = conversationHistoryService.getCurrentConversationId();
+        if (currentConversationId) {
+          await conversationHistoryService.updateConversation(currentConversationId, messages);
+        } else {
+          // Create a new conversation if there isn't one
+          const newConversationId = await conversationHistoryService.createNewConversation(messages);
+          conversationHistoryService.setCurrentConversationId(newConversationId);
+        }
+      } catch (error) {
+        console.error('Failed to save conversation before minimizing:', error);
+      }
+    }
+
+    // Hide the chat
     setShowChat(false);
   };
 
@@ -365,171 +518,237 @@ export function VoilaInterface({ onClose, onMinimize, onMaximize }: VoilaInterfa
 
   return (
     <div
-      ref={containerRef}
-      className="h-full w-full bg-background flex flex-col overflow-hidden"
+      className="h-screen w-full bg-background flex flex-col text-foreground"
       style={{
-        transform: 'none !important',
-        transformOrigin: 'initial !important',
-        zoom: 'normal !important',
-        scale: '1 !important',
         userSelect: 'none',
-        WebkitTransform: 'none !important',
-        MozTransform: 'none !important',
-        msTransform: 'none !important',
-        WebkitAppRegion: 'no-drag'
-      }}
+        WebkitAppRegion: 'drag',
+        overflow: 'hidden'
+      } as React.CSSProperties & { WebkitAppRegion?: string }}
     >
-      {/* Invisible drag area at the top */}
-      <div
-        className="absolute top-0 left-0 right-0 h-8 z-10"
-        style={{ WebkitAppRegion: 'drag' } as any}
-      />
+      {/* Content wrapper - Fixed height container */}
+      <div className="h-full flex flex-col min-h-0">
 
-      {/* Main Content Area */}
-      <div className={`flex flex-col overflow-hidden ${showChat ? 'flex-1' : 'flex-shrink-0'}`}>
-        {/* Input Area */}
-        <div className="border-b border-border flex-shrink-0">
-          <div className={`${showChat ? 'p-4' : 'px-4 py-3'}`}>
-            <div className="flex gap-2 items-end">
-              <AutoResizeTextarea
-                value={input}
-                onChange={(e) => handleInputChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your message..."
-                className="flex-1 text-lg border-none shadow-none focus-visible:ring-0 bg-transparent"
-                minRows={1}
-                maxRows={6}
-                autoFocus
-              />
-              {/* Chat Controls */}
-              {showChat && (
-                <div className="flex gap-1 mb-2">
-                  <Button
-                    onClick={handleToggleChat}
-                    variant="ghost"
-                    size="sm"
-                    className="flex-shrink-0"
-                    title="Hide Chat"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    onClick={handleClearChat}
-                    variant="ghost"
-                    size="sm"
-                    className="flex-shrink-0"
-                    title="Clear Chat"
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-
-              <Button
-                onClick={handleSendMessage}
-                disabled={!input.trim()}
-                size="sm"
-                className="flex-shrink-0 mb-2"
-              >
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
+        {/* Input Area with Attachment Preview */}
+      <div className="flex-none p-2">
+        <Card className="p-2">
           {/* Attachment Preview */}
           {attachedFiles.length > 0 && (
-            <AttachmentPreview
-              files={attachedFiles}
-              onRemoveFile={(index) => {
-                setAttachedFiles(prev => prev.filter((_, i) => i !== index));
-              }}
-            />
+            <div
+              className="mb-3 p-3 bg-muted rounded-lg"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+            >
+              <div className="flex flex-wrap gap-2">
+                {attachedFiles.map((file, index) => (
+                  <div key={index} className="flex items-center gap-2 bg-background p-2 rounded border">
+                    {/* Thumbnail or Icon */}
+                    {file.type.startsWith('image/') ? (
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={file.name}
+                        className="w-8 h-8 object-cover rounded"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 bg-primary/20 rounded flex items-center justify-center">
+                        <span className="text-xs font-medium text-primary">
+                          {file.name.split('.').pop()?.toUpperCase() || 'FILE'}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* File Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{file.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {(file.size / 1024).toFixed(1)} KB
+                      </div>
+                    </div>
+
+                    {/* Remove Button */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
+                      className="h-6 w-6 p-0 hover:bg-destructive/20"
+                      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
-        </div>
 
-        {/* Content Area - Only show when chat is active */}
-        {showChat && (
-          <div className="overflow-hidden" style={{ height: '450px' }}>
-            <ChatInterface
-              input={input}
-              onInputChange={setInput}
-              showActionMenu={false}
-              onActionMenuClose={() => {}}
-              onPromptSelect={handlePromptSelect}
-              messages={messages}
-              onMessagesChange={setMessages}
-              hideInput={true}
-              attachedFiles={attachedFiles}
-              onAttachedFilesChange={setAttachedFiles}
-              onSendMessage={handleSendMessage}
+          {/* Input Area */}
+          <div className="flex gap-2 items-end">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                setInput(newValue);
+                // Trigger immediate resize
+                setTimeout(() => {
+                  if (textareaRef.current && typeof window !== 'undefined' && window.electronAPI) {
+                    const textarea = textareaRef.current;
+                    textarea.style.height = '40px';
+                    textarea.offsetHeight; // Force reflow
+                    const scrollHeight = textarea.scrollHeight;
+                    const contentHeight = Math.max(40, Math.min(200, scrollHeight));
+                    textarea.style.height = `${contentHeight}px`;
+
+                    // Resize window to accommodate new textarea height
+                    const baseWidth = 520;
+                    const baseHeight = 165; // Base height (padding, borders, etc.)
+                    const chatHeight = showChat && messages.length > 0 ? 450 : 0; // Chat area height
+                    const textareaExtraHeight = Math.max(0, contentHeight - 40); // Extra height beyond minimum
+                    const newWindowHeight = baseHeight + chatHeight + textareaExtraHeight;
+                    window.electronAPI.resizeWindow(baseWidth, newWindowHeight);
+                  }
+                }, 0);
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Type your message..."
+              className="flex-1 min-h-[40px] p-2 border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground cursor-text overflow-y-auto"
+              style={{ WebkitAppRegion: 'no-drag', lineHeight: '1.5' } as React.CSSProperties & { WebkitAppRegion?: string }}
             />
+            <Button
+              onClick={handleSendMessage}
+              disabled={!input.trim() && attachedFiles.length === 0}
+              className="h-10 w-10 cursor-pointer flex-shrink-0"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+            >
+              <Send className="h-4 w-4" />
+            </Button>
           </div>
-        )}
+        </Card>
+      </div>
 
-        {/* Bottom Toolbar */}
-        <div className="flex-shrink-0 sticky bottom-0">
-          <BottomToolbar
-            settings={settings}
-            onSettingsChange={handleSettingsChange}
-            showHistory={showHistory}
-            onHistoryChange={setShowHistory}
-            onFileUpload={(files) => {
-              // Add files to attached files list
-              const newFiles = Array.from(files);
-              setAttachedFiles(prev => [...prev, ...newFiles]);
-              console.log('Files uploaded:', newFiles.map(f => f.name));
-            }}
-            onScreenshotCapture={(file) => {
-              // Auto-attach screenshot to chat
-              setAttachedFiles(prev => [...prev, file]);
-              console.log('Screenshot captured:', file.name);
-            }}
-          />
+      {/* Chat Interface - Only show after first message - Positioned between input and bottom toolbar */}
+      {messages.length > 0 && showChat && (
+        <div
+          className="flex-1 flex flex-col p-2 overflow-hidden"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        >
+          <Card
+            className="flex-1 flex flex-col overflow-hidden"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          >
+            {/* Chat Header with Controls - FIXED POSITION */}
+            <div
+              className="flex-none flex items-center justify-between p-2 border-b border-border bg-background"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+            >
+              <div className="text-sm font-medium text-muted-foreground">Chat</div>
+              <div className="flex items-center gap-1">
+                {/* Minimize Button */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleMinimizeChat}
+                  className="h-6 w-6 p-0 hover:bg-muted"
+                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+                >
+                  <Minus className="h-3 w-3" />
+                </Button>
+                {/* Close Button */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearChat}
+                  className="h-6 w-6 p-0 hover:bg-destructive/20"
+                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Chat Messages */}
+            <div
+              className="flex-1 p-4 space-y-4 hide-scrollbar scrollable chat-messages"
+              style={{
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+                WebkitAppRegion: 'no-drag'
+              } as React.CSSProperties & { WebkitAppRegion?: string }}
+              onWheel={(e) => {
+                // Ensure mouse wheel scrolling works smoothly
+                e.preventDefault();
+                e.stopPropagation();
+
+                const element = e.currentTarget;
+                const { deltaY } = e;
+
+                // Smooth scrolling with proper speed
+                const scrollSpeed = 3; // Adjust scroll speed
+                const scrollAmount = deltaY * scrollSpeed;
+
+                element.scrollTop += scrollAmount;
+              }}
+            >
+              {messages.map((message, index) => (
+                <div
+                  key={index}
+                  className={`flex ${
+                    message.role === 'user' ? 'justify-end' : 'justify-start'
+                  }`}
+                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+                >
+                  <div
+                    className={`max-w-[80%] p-3 rounded-lg ${
+                      message.role === 'user'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted'
+                    }`}
+                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+                  >
+                    {message.role === 'assistant' ? (
+                      <MessageWithThinking content={message.content} />
+                    ) : (
+                      <UserMessage content={message.content} />
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Bottom Toolbar - TESTING MINIMAL VERSION */}
+      <div
+        className="flex-none cursor-default p-2"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+      >
+        <Card className="rounded-lg border border-border">
+            <BottomToolbar
+              settings={settings}
+              onSettingsChange={handleSettingsChange}
+              showHistory={showHistory}
+              onHistoryChange={setShowHistory}
+              onFileUpload={handleFileUpload}
+              onScreenshotCapture={handleScreenshotCapture}
+            />
+          </Card>
         </div>
 
-        {/* History Dialog */}
+        {/* Settings now opens as separate overlay window via electronAPI */}
+
+        {/* History Dialog - TESTING HISTORY FUNCTIONALITY */}
         <HistoryDialog
           open={showHistory}
           onOpenChange={setShowHistory}
           onLoadConversation={handleLoadConversation}
         />
 
-
-      </div>
-
-      {/* Resize Handle */}
-      <div
-        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize bg-muted/50 hover:bg-muted"
-        onMouseDown={(e) => {
-          e.preventDefault();
-          setIsResizing(true);
-          const startX = e.clientX;
-          const startY = e.clientY;
-          const startWidth = size.width;
-          const startHeight = size.height;
-
-          const handleResize = (e: MouseEvent) => {
-            const newWidth = Math.max(520, startWidth + (e.clientX - startX)); // Minimum width for all UI elements
-            const newHeight = Math.max(160, startHeight + (e.clientY - startY)); // Minimum height for input + toolbar
-            setSize({ width: newWidth, height: newHeight });
-
-            // Resize the Electron window
-            if (typeof window !== 'undefined' && window.electronAPI) {
-              window.electronAPI.resizeWindow(newWidth, newHeight);
-            }
-          };
-
-          const handleResizeEnd = () => {
-            setIsResizing(false);
-            document.removeEventListener('mousemove', handleResize);
-            document.removeEventListener('mouseup', handleResizeEnd);
-          };
-
-          document.addEventListener('mousemove', handleResize);
-          document.addEventListener('mouseup', handleResizeEnd);
-        }}
-      >
-        <div className="absolute bottom-0 right-0 w-2 h-2 bg-border" />
+        {/* STILL COMMENTED OUT */}
+        {/* AutoResizeTextarea */}
+        {/* Chat Controls */}
+        {/* ChatInterface */}
+        {/* Resize Handle */}
       </div>
     </div>
   );

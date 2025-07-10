@@ -16,6 +16,8 @@ export interface LLMSettings {
   systemPrompt?: string;
 }
 
+export type MessageContent = string | Array<any> | { text: string; images: string[] };
+
 export interface LLMResponse {
   content: string;
   usage?: {
@@ -36,7 +38,7 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
   {
     id: 'ollama',
     name: 'Ollama (Local)',
-    baseUrl: 'http://localhost:11434',
+    baseUrl: '',
     requiresApiKey: false,
     models: [] // Will be fetched dynamically
   },
@@ -65,140 +67,13 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
 
 
 
-// Fallback models in case API calls fail
+// No fallback models - force users to configure providers properly
 const FALLBACK_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k'],
-  ollama: ['llama2', 'codellama', 'mistral', 'neural-chat', 'starling-lm'],
-  openrouter: [
-    'openai/gpt-4o',
-    'openai/gpt-4o-mini',
-    'openai/gpt-4-turbo',
-    'openai/gpt-4',
-    'openai/gpt-3.5-turbo',
-    'anthropic/claude-3.5-sonnet',
-    'anthropic/claude-3-opus',
-    'anthropic/claude-3-sonnet',
-    'anthropic/claude-3-haiku',
-    'google/gemini-pro-1.5',
-    'google/gemini-flash-1.5',
-    'meta-llama/llama-3.1-405b-instruct',
-    'meta-llama/llama-3.1-70b-instruct',
-    'meta-llama/llama-3.1-8b-instruct',
-    'meta-llama/llama-3-70b-instruct',
-    'meta-llama/llama-3-8b-instruct',
-    'mistralai/mistral-large',
-    'mistralai/mistral-medium',
-    'mistralai/mistral-small',
-    'mistralai/mistral-7b-instruct:free',
-    'mistralai/mixtral-8x7b-instruct',
-    'microsoft/wizardlm-2-8x22b',
-    'qwen/qwen-2-72b-instruct',
-    'deepseek/deepseek-coder',
-    'perplexity/llama-3.1-sonar-large-128k-online',
-    'perplexity/llama-3.1-sonar-small-128k-online'
-  ],
-  requesty: [
-    // OpenAI Models
-    'openai/gpt-4o',
-    'openai/gpt-4o-mini',
-    'openai/gpt-4-turbo',
-    'openai/gpt-4',
-    'openai/gpt-3.5-turbo',
-    'openai/gpt-3.5-turbo-16k',
-    'openai/o1-preview',
-    'openai/o1-mini',
-
-    // Anthropic Models
-    'anthropic/claude-3.5-sonnet',
-    'anthropic/claude-3-opus',
-    'anthropic/claude-3-sonnet',
-    'anthropic/claude-3-haiku',
-    'anthropic/claude-2.1',
-    'anthropic/claude-2',
-    'anthropic/claude-instant-1.2',
-
-    // Google Models
-    'google/gemini-pro-1.5',
-    'google/gemini-flash-1.5',
-    'google/gemini-pro',
-    'google/gemini-pro-vision',
-    'google/palm-2-chat-bison',
-    'google/palm-2-codechat-bison',
-
-    // Meta Llama Models
-    'meta-llama/llama-3.1-405b-instruct',
-    'meta-llama/llama-3.1-70b-instruct',
-    'meta-llama/llama-3.1-8b-instruct',
-    'meta-llama/llama-3-70b-instruct',
-    'meta-llama/llama-3-8b-instruct',
-    'meta-llama/llama-2-70b-chat',
-    'meta-llama/llama-2-13b-chat',
-    'meta-llama/llama-2-7b-chat',
-    'meta-llama/codellama-34b-instruct',
-    'meta-llama/codellama-13b-instruct',
-    'meta-llama/codellama-7b-instruct',
-
-    // Mistral Models
-    'mistralai/mistral-large',
-    'mistralai/mistral-medium',
-    'mistralai/mistral-small',
-    'mistralai/mistral-tiny',
-    'mistralai/mistral-7b-instruct',
-    'mistralai/mixtral-8x7b-instruct',
-    'mistralai/mixtral-8x22b-instruct',
-    'mistralai/codestral',
-
-    // Cohere Models
-    'cohere/command-r-plus',
-    'cohere/command-r',
-    'cohere/command',
-    'cohere/command-light',
-
-    // Perplexity Models
-    'perplexity/llama-3.1-sonar-large-128k-online',
-    'perplexity/llama-3.1-sonar-small-128k-online',
-    'perplexity/llama-3.1-sonar-large-128k-chat',
-    'perplexity/llama-3.1-sonar-small-128k-chat',
-
-    // Microsoft Models
-    'microsoft/wizardlm-2-8x22b',
-    'microsoft/wizardlm-2-70b',
-    'microsoft/phi-3-medium-128k-instruct',
-    'microsoft/phi-3-mini-128k-instruct',
-
-    // Qwen Models
-    'qwen/qwen-2-72b-instruct',
-    'qwen/qwen-2-7b-instruct',
-    'qwen/qwen-1.5-72b-chat',
-    'qwen/qwen-1.5-32b-chat',
-    'qwen/qwen-1.5-14b-chat',
-    'qwen/qwen-1.5-7b-chat',
-
-    // DeepSeek Models
-    'deepseek/deepseek-coder',
-    'deepseek/deepseek-chat',
-    'deepseek/deepseek-v2-chat',
-
-    // Other Popular Models
-    'databricks/dbrx-instruct',
-    'nvidia/nemotron-4-340b-instruct',
-    '01-ai/yi-large',
-    '01-ai/yi-34b-chat',
-    'huggingfaceh4/zephyr-7b-beta',
-    'teknium/openhermes-2.5-mistral-7b',
-    'openchat/openchat-7b',
-    'togethercomputer/redpajama-incite-7b-chat',
-    'nousresearch/nous-hermes-2-mixtral-8x7b-dpo',
-    'nousresearch/nous-hermes-llama2-13b',
-    'alpindale/goliath-120b',
-    'gryphe/mythomist-7b',
-    'undi95/toppy-m-7b'
-  ],
-  replicate: [
-    'meta/llama-2-70b-chat',
-    'meta/llama-2-13b-chat',
-    'mistralai/mistral-7b-instruct-v0.1'
-  ]
+  openai: [],
+  ollama: [],
+  openrouter: [],
+  requesty: [],
+  replicate: []
 };
 
 class LLMService {
@@ -307,7 +182,10 @@ class LLMService {
   }
 
   private async fetchOllamaModels(baseUrl?: string): Promise<string[]> {
-    const url = baseUrl || 'http://localhost:11434';
+    if (!baseUrl) {
+      return FALLBACK_MODELS.ollama;
+    }
+    const url = baseUrl;
 
     try {
       const response = await fetch(`${url}/api/tags`);
@@ -320,7 +198,7 @@ class LLMService {
       const models = data.models?.map((model: any) => model.name) || [];
 
       return models.length > 0 ? models : FALLBACK_MODELS.ollama;
-    } catch (error) {
+    } catch {
       // Ollama might not be running
       return FALLBACK_MODELS.ollama;
     }
@@ -410,7 +288,7 @@ class LLMService {
   }
 
   async sendMessage(
-    message: string | Array<any>,
+    message: MessageContent,
     settings: LLMSettings,
     conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
     onStream?: (chunk: string) => void,
@@ -438,12 +316,12 @@ class LLMService {
   }
 
   private async sendOpenAIMessage(
-    message: string | Array<any>,
+    message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
     onStream?: (chunk: string) => void,
-    signal?: AbortSignal
+    _signal?: AbortSignal
   ): Promise<LLMResponse> {
     const messages = [];
 
@@ -489,7 +367,7 @@ class LLMService {
   }
 
   private async sendOllamaMessage(
-    message: string | Array<any>,
+    message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
@@ -499,7 +377,7 @@ class LLMService {
     const baseUrl = settings.baseUrl || provider.baseUrl;
 
     // Check if this is a vision model request (has images)
-    const hasImages = typeof message === 'object' && message.images && message.images.length > 0;
+    const hasImages = typeof message === 'object' && !Array.isArray(message) && 'images' in message && message.images && message.images.length > 0;
 
     if (hasImages) {
       // Use Ollama's chat API for vision models (correct format)
@@ -513,10 +391,11 @@ class LLMService {
       messages.push(...conversationHistory);
 
       // Add current message with images in the correct Ollama format
+      const messageWithImages = message as { text: string; images: string[] };
       messages.push({
         role: 'user',
-        content: message.text,
-        images: message.images // Array of base64 encoded images
+        content: messageWithImages.text,
+        images: messageWithImages.images // Array of base64 encoded images
       });
 
       const response = await fetch(`${baseUrl}/api/chat`, {
@@ -610,7 +489,7 @@ class LLMService {
   }
 
   private async sendOpenRouterMessage(
-    message: string | Array<any>,
+    message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
@@ -664,7 +543,7 @@ class LLMService {
   }
 
   private async sendRequestyMessage(
-    message: string | Array<any>,
+    message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
@@ -716,7 +595,7 @@ class LLMService {
   }
 
   private async sendReplicateMessage(
-    message: string | Array<any>,
+    message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
@@ -739,9 +618,16 @@ class LLMService {
       }
     }
 
-    // Add current message (handle both string and array formats)
-    const messageText = typeof message === 'string' ? message :
-      message.map(item => item.type === 'text' ? item.text : '[Image]').join(' ');
+    // Add current message (handle string, array, and object formats)
+    let messageText: string;
+    if (typeof message === 'string') {
+      messageText = message;
+    } else if (Array.isArray(message)) {
+      messageText = message.map((item: any) => item.type === 'text' ? item.text : '[Image]').join(' ');
+    } else {
+      // Object with text and images
+      messageText = message.text;
+    }
     prompt += `User: ${messageText}\nAssistant:`;
 
     const response = await fetch(`${provider.baseUrl}/predictions`, {

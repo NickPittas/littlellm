@@ -41,9 +41,11 @@ export function SearchableSelect({
   }, [sortedOptions, searchValue])
 
   const handleSelect = (selectedValue: string) => {
-    onValueChange?.(selectedValue)
-    setOpen(false)
-    setSearchValue("")
+    console.log('SearchableSelect handleSelect called with:', selectedValue);
+    onValueChange?.(selectedValue);
+    setOpen(false);
+    setSearchValue("");
+    console.log('SearchableSelect selection completed');
   }
 
   const displayValue = value || placeholder
@@ -66,8 +68,24 @@ export function SearchableSelect({
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0 bg-card border shadow-lg backdrop-blur-none" align="start">
-        <div className="flex flex-col">
+      <PopoverContent
+        className="w-[400px] p-0 bg-card border shadow-lg backdrop-blur-none z-[9999]"
+        align="start"
+        side="top"
+        sideOffset={4}
+        avoidCollisions={false}
+        collisionPadding={0}
+        style={{
+          WebkitAppRegion: 'no-drag',
+          position: 'fixed',
+          maxHeight: '300px',
+          overflow: 'visible'
+        } as React.CSSProperties & { WebkitAppRegion?: string }}
+      >
+        <div
+          className="flex flex-col"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        >
           <div className="flex items-center border-b px-3 py-2">
             <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
             <Input
@@ -91,11 +109,17 @@ export function SearchableSelect({
                   {filteredOptions.map((option) => (
                     <div
                       key={option}
-                      onClick={() => handleSelect(option)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('Dropdown item clicked:', option);
+                        handleSelect(option);
+                      }}
                       className={cn(
                         "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
                         value === option && "bg-accent text-accent-foreground"
                       )}
+                      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
                     >
                       <Check
                         className={cn(

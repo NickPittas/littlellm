@@ -27,17 +27,17 @@ export interface AppSettings {
 
 const DEFAULT_SETTINGS: AppSettings = {
   chat: {
-    provider: 'ollama',
-    model: 'llama2',
-    temperature: 0.7,
-    maxTokens: 4096,
-    systemPrompt: 'You are a helpful AI assistant. Please provide concise and helpful responses.',
+    provider: '',
+    model: '',
+    temperature: 0.3,
+    maxTokens: 8192,
+    systemPrompt: '',
     providers: {
-      openai: { apiKey: '', lastSelectedModel: 'gpt-4o' },
-      openrouter: { apiKey: '', lastSelectedModel: 'mistralai/mistral-7b-instruct:free' },
-      requesty: { apiKey: '', lastSelectedModel: 'openai/gpt-4o-mini' },
-      ollama: { apiKey: '', baseUrl: 'http://localhost:11434', lastSelectedModel: 'llama2' },
-      replicate: { apiKey: '', lastSelectedModel: 'meta/llama-2-70b-chat' },
+      openai: { apiKey: '', lastSelectedModel: '' },
+      openrouter: { apiKey: '', lastSelectedModel: '' },
+      requesty: { apiKey: '', lastSelectedModel: '' },
+      ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+      replicate: { apiKey: '', lastSelectedModel: '' },
     },
   },
   ui: {
@@ -45,7 +45,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     alwaysOnTop: true,
     startMinimized: false,
     opacity: 1.0,
-    fontSize: 'medium',
+    fontSize: 'small',
     windowBounds: {
       width: 400,
       height: 600,
@@ -68,93 +68,66 @@ class SettingsService {
   private listeners: Array<(settings: AppSettings) => void> = [];
   private initialized = false;
 
+
   constructor() {
-    // Only load settings on client side
-    if (typeof window !== 'undefined') {
-      this.loadSettings();
-      this.initialized = true;
-    }
+    // Initialize with defaults
+    this.settings = { ...DEFAULT_SETTINGS };
+
+    // Load settings immediately if Electron is available
+    this.loadSettingsSync();
+    this.initialized = true;
   }
 
-  private ensureInitialized() {
-    if (!this.initialized && typeof window !== 'undefined') {
-      this.loadSettings();
-      this.initialized = true;
-    }
-  }
-
-  private async loadSettings() {
-    try {
-      // Try to load from Electron app settings store first
-      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.getAppSettings) {
-        const electronSettings = await window.electronAPI.getAppSettings();
-        if (electronSettings) {
-          this.settings = { ...DEFAULT_SETTINGS, ...electronSettings };
-          this.notifyListeners();
-          return;
-        }
-      }
-
-      // Fallback to Electron storage API
-      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.getStorageItem) {
-        const stored = await window.electronAPI.getStorageItem('app-settings');
-        if (stored) {
-          this.settings = { ...DEFAULT_SETTINGS, ...stored };
-          this.notifyListeners();
-          return;
-        }
-      }
-
-      // Last fallback to localStorage for web version (if available)
-      if (typeof window !== 'undefined' && window.localStorage) {
-        try {
-          const stored = localStorage.getItem('app-settings');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            this.settings = { ...DEFAULT_SETTINGS, ...parsed };
+  private loadSettingsSync() {
+    // Load settings from disk ONCE at startup
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      try {
+        console.log('Loading settings from disk...');
+        // This should be synchronous at startup
+        window.electronAPI.getSettings().then((savedSettings) => {
+          if (savedSettings) {
+            console.log('Settings loaded from disk:', savedSettings);
+            this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
+            this.notifyListeners();
+          } else {
+            console.log('No saved settings found, using defaults');
           }
-        } catch (localStorageError) {
-          console.warn('localStorage not available, using defaults');
-        }
+        }).catch((error) => {
+          console.error('Failed to load settings from disk:', error);
+          console.log('Using default settings');
+        });
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        console.log('Settings service initialized with defaults only');
       }
-    } catch (error) {
-      console.error('Failed to load settings:', error);
-      this.settings = DEFAULT_SETTINGS;
+    } else {
+      console.log('Settings service initialized with defaults only (no Electron API)');
     }
-
-    this.notifyListeners();
   }
 
-  private async saveSettings() {
+  // Save settings to JSON file via Electron
+  private async saveSettingsToFile() {
     try {
-      // Save to Electron app settings store if available
-      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.updateAppSettings) {
+      if (typeof window !== 'undefined' && window.electronAPI?.updateAppSettings) {
         const success = await window.electronAPI.updateAppSettings(this.settings);
         if (success) {
-          console.log('Settings saved to Electron app store');
+          console.log('Settings saved to JSON file successfully');
+          return true;
+        } else {
+          console.error('Failed to save settings to JSON file');
+          return false;
         }
       }
-
-      // Also save to Electron storage API as backup
-      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.setStorageItem) {
-        await window.electronAPI.setStorageItem('app-settings', this.settings);
-        console.log('Settings saved to Electron storage');
-      }
-
-      // Fallback to localStorage if available
-      if (typeof window !== 'undefined' && window.localStorage) {
-        try {
-          localStorage.setItem('app-settings', JSON.stringify(this.settings));
-          console.log('Settings saved to localStorage');
-        } catch (localStorageError) {
-          console.warn('localStorage not available for saving');
-        }
-      }
-
-      this.notifyListeners();
+      return false;
     } catch (error) {
-      console.error('Failed to save settings:', error);
+      console.error('Error saving settings to file:', error);
+      return false;
     }
+  }
+
+  // Simple method that just calls the file save
+  private async saveSettings() {
+    return await this.saveSettingsToFile();
   }
 
   private notifyListeners() {
@@ -162,12 +135,18 @@ class SettingsService {
   }
 
   getSettings(): AppSettings {
-    this.ensureInitialized();
+    if (!this.initialized) {
+      // Return defaults if not initialized yet
+      return { ...DEFAULT_SETTINGS };
+    }
     return { ...this.settings };
   }
 
   getChatSettings(): ChatSettings {
-    this.ensureInitialized();
+    if (!this.initialized) {
+      // Return defaults if not initialized yet
+      return { ...DEFAULT_SETTINGS.chat };
+    }
 
     // Ensure providers object exists for backward compatibility
     const chatSettings = { ...this.settings.chat };
@@ -176,7 +155,7 @@ class SettingsService {
         openai: { apiKey: '' },
         openrouter: { apiKey: '' },
         requesty: { apiKey: '' },
-        ollama: { apiKey: '', baseUrl: 'http://localhost:11434' },
+        ollama: { apiKey: '', baseUrl: '' },
         replicate: { apiKey: '' },
       };
     }
@@ -184,29 +163,60 @@ class SettingsService {
     return chatSettings;
   }
 
-  async updateChatSettings(updates: Partial<ChatSettings>) {
-    this.settings.chat = { ...this.settings.chat, ...updates };
-    await this.saveSettings();
-  }
-
-  async updateUISettings(updates: Partial<AppSettings['ui']>) {
-    this.settings.ui = { ...this.settings.ui, ...updates };
-    await this.saveSettings();
-  }
-
-  async updateShortcuts(updates: Partial<AppSettings['shortcuts']>) {
-    this.settings.shortcuts = { ...this.settings.shortcuts, ...updates };
-    await this.saveSettings();
-  }
-
-  async updateGeneralSettings(updates: Partial<AppSettings['general']>) {
-    this.settings.general = { ...this.settings.general, ...updates };
-    await this.saveSettings();
-  }
-
-  async updateSettings(updates: Partial<AppSettings>) {
+  // Update settings in memory only (for UI changes) - NO SAVE, NO NOTIFICATIONS
+  updateSettingsInMemory(updates: Partial<AppSettings>) {
     this.settings = { ...this.settings, ...updates };
-    await this.saveSettings();
+    // DO NOT NOTIFY LISTENERS - PREVENTS INFINITE LOOPS
+  }
+
+  // Update chat settings in memory only - NO SAVE
+  updateChatSettingsInMemory(updates: Partial<ChatSettings>) {
+    this.settings.chat = { ...this.settings.chat, ...updates };
+    this.notifyListeners();
+  }
+
+  // SAVE settings to JSON file - ONLY called when user clicks "Save Settings"
+  async saveSettingsToDisk(): Promise<boolean> {
+    const success = await this.saveSettings();
+    if (success) {
+      this.notifyListeners();
+    }
+    return success;
+  }
+
+  // Method for SettingsOverlay - SAVE TO DISK and RELOAD after 1 second
+  async updateSettings(updates: Partial<AppSettings>): Promise<boolean> {
+    // Update settings in memory
+    this.settings = { ...this.settings, ...updates };
+
+    // Save to disk
+    const success = await this.saveSettingsToFile();
+
+    if (success) {
+      // Reload settings from disk after 1 second
+      setTimeout(() => {
+        this.reloadSettingsFromDisk();
+      }, 1000);
+    }
+
+    return success;
+  }
+
+  // Reload settings from disk (called 1 second after save)
+  private async reloadSettingsFromDisk() {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      try {
+        console.log('Reloading settings from disk after save...');
+        const savedSettings = await window.electronAPI.getSettings();
+        if (savedSettings) {
+          console.log('Settings reloaded from disk:', savedSettings);
+          this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
+          this.notifyListeners();
+        }
+      } catch (error) {
+        console.error('Failed to reload settings from disk:', error);
+      }
+    }
   }
 
   async resetSettings() {
@@ -257,20 +267,9 @@ class SettingsService {
     }
   }
 
-  // Utility methods for common operations
-  async toggleAlwaysOnTop() {
-    await this.updateUISettings({ alwaysOnTop: !this.settings.ui.alwaysOnTop });
-  }
-
-  async setTheme(theme: 'light' | 'dark' | 'system') {
-    await this.updateUISettings({ theme });
-  }
-
-  async updateWindowBounds(width: number, height: number) {
-    await this.updateUISettings({ 
-      windowBounds: { width, height } 
-    });
-  }
+  // Removed utility methods to prevent automatic saves
+  // All settings changes should go through the main updateSettings method
+  // which is only called when user clicks "Save Settings"
 
   // Validation methods
   validateApiKey(provider: string, apiKey: string): boolean {

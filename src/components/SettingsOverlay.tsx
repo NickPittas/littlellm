@@ -47,9 +47,11 @@ export function SettingsOverlay() {
     loadCustomPrompts();
   }, []);
 
-  const loadSettings = async () => {
+  const loadSettings = () => {
     try {
-      const appSettings = await settingsService.getSettings();
+      console.log('=== LOADING SETTINGS IN OVERLAY ===');
+      const appSettings = settingsService.getSettings();
+      console.log('Loaded settings in overlay:', appSettings);
       setSettings(appSettings);
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -65,7 +67,12 @@ export function SettingsOverlay() {
     if (!settings) return;
 
     try {
+      console.log('=== SAVING SETTINGS FROM OVERLAY ===');
+      console.log('Settings to save:', settings);
+      console.log('AutoStart value:', settings.general.autoStartWithSystem);
+
       await settingsService.updateSettings(settings);
+      console.log('=== SETTINGS SAVED FROM OVERLAY ===');
 
       // Force theme update in main window by triggering a settings change event
       if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.notifyThemeChange) {
@@ -459,7 +466,7 @@ export function SettingsOverlay() {
                   <Label>Window Opacity</Label>
                   <Input
                     type="number"
-                    min="0.5"
+                    min="0.1"
                     max="1"
                     step="0.05"
                     value={settings.ui.opacity || 1}

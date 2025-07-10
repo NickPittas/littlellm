@@ -10,9 +10,7 @@ import {
   FileText,
   Code,
   MessageSquare,
-  Zap,
-  Star,
-  Clock
+  Zap
 } from 'lucide-react';
 import { promptsService, type Prompt } from '../services/promptsService';
 
@@ -42,7 +40,7 @@ export function ActionMenuPopup({ open, onOpenChange, onPromptSelect }: ActionMe
   useEffect(() => {
     const loadPrompts = async () => {
       try {
-        const allPrompts = await promptsService.getAllPrompts();
+        const allPrompts = promptsService.getAllPrompts();
         setPrompts(allPrompts || []); // Ensure we always have an array
       } catch (error) {
         console.error('Failed to load prompts:', error);
@@ -197,18 +195,7 @@ export function ActionMenuPopup({ open, onOpenChange, onPromptSelect }: ActionMe
     setSelectedIndex(0);
   }, [filteredItems.length]);
 
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'prompt':
-        return <Wand2 className="h-3 w-3" />;
-      case 'action':
-        return <Zap className="h-3 w-3" />;
-      case 'recent':
-        return <Clock className="h-3 w-3" />;
-      default:
-        return <Search className="h-3 w-3" />;
-    }
-  };
+
 
   const getCategoryColor = (category: string) => {
     switch (category) {

@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
-import { Badge } from './ui/badge';
+
+import { Card, CardContent } from './ui/card';
 import {
   Send,
   Copy,
@@ -11,8 +12,7 @@ import {
   Volume2,
   Edit3,
   CheckSquare,
-  Lightbulb,
-  FileText,
+
   Minus,
   Plus,
   Sparkles,
@@ -21,8 +21,10 @@ import {
   Paperclip,
   X
 } from 'lucide-react';
-import { promptsService, type Prompt } from '../services/promptsService';
+import { promptsService } from '../services/promptsService';
 import { chatService, type Message, type ChatSettings } from '../services/chatService';
+import { MessageWithThinking } from './MessageWithThinking';
+import { UserMessage } from './UserMessage';
 import { settingsService } from '../services/settingsService';
 
 interface ChatInterfaceProps {
@@ -66,29 +68,27 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   const [internalMessages, setInternalMessages] = useState<Message[]>([]);
   const messages = externalMessages || internalMessages;
-  const setMessages = onMessagesChange || setInternalMessages;
+
   const [isLoading, setIsLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [internalAttachedFiles, setInternalAttachedFiles] = useState<AttachedFile[]>([]);
 
   // Use external attached files if provided, otherwise use internal state
   const attachedFiles = externalAttachedFiles
-    ? externalAttachedFiles.map(file => ({ file }))
+    ? externalAttachedFiles.map(file => ({ file, preview: undefined }))
     : internalAttachedFiles;
-  const setAttachedFiles = onAttachedFilesChange
-    ? (files: AttachedFile[]) => onAttachedFilesChange(files.map(af => af.file))
-    : setInternalAttachedFiles;
+
   const [settings, setSettings] = useState<ChatSettings>({
-    provider: 'openrouter',
-    model: 'mistralai/mistral-7b-instruct:free',
-    temperature: 0.7,
-    maxTokens: 4096,
-    systemPrompt: 'You are a helpful AI assistant. Please provide concise and helpful responses.',
+    provider: '',
+    model: '',
+    temperature: 0.3,
+    maxTokens: 8192,
+    systemPrompt: '',
     providers: {
       openai: { apiKey: '' },
       openrouter: { apiKey: '' },
       requesty: { apiKey: '' },
-      ollama: { apiKey: '', baseUrl: 'http://localhost:11434' },
+      ollama: { apiKey: '', baseUrl: '' },
       replicate: { apiKey: '' },
     },
   });
@@ -99,7 +99,7 @@ export function ChatInterface({
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const appSettings = await settingsService.getSettings();
+        const appSettings = settingsService.getSettings();
         if (appSettings.chat) {
           setSettings(appSettings.chat);
         }
@@ -145,21 +145,34 @@ export function ChatInterface({
             preview: e.target?.result as string
           });
           if (newFiles.length === files.length) {
-            setAttachedFiles(prev => [...prev, ...newFiles]);
+            if (onAttachedFilesChange) {
+              onAttachedFilesChange([...attachedFiles.map(af => af.file), ...newFiles.map(nf => nf.file)]);
+            } else {
+              setInternalAttachedFiles((prev: AttachedFile[]) => [...prev, ...newFiles]);
+            }
           }
         };
         reader.readAsDataURL(file);
       } else {
         newFiles.push({ file });
         if (newFiles.length === files.length) {
-          setAttachedFiles(prev => [...prev, ...newFiles]);
+          if (onAttachedFilesChange) {
+            onAttachedFilesChange([...attachedFiles.map(af => af.file), ...newFiles.map(nf => nf.file)]);
+          } else {
+            setInternalAttachedFiles((prev: AttachedFile[]) => [...prev, ...newFiles]);
+          }
         }
       }
     });
   };
 
   const removeAttachedFile = (index: number) => {
-    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+    if (onAttachedFilesChange) {
+      const newFiles = attachedFiles.filter((_, i) => i !== index).map(af => af.file);
+      onAttachedFilesChange(newFiles);
+    } else {
+      setInternalAttachedFiles((prev: AttachedFile[]) => prev.filter((_, i: number) => i !== index));
+    }
   };
 
   const handleSendMessage = async () => {
@@ -173,10 +186,18 @@ export function ChatInterface({
       timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    if (onMessagesChange) {
+      onMessagesChange([...messages, userMessage]);
+    } else {
+      setInternalMessages((prev: Message[]) => [...prev, userMessage]);
+    }
     setIsLoading(true);
     onInputChange('');
-    setAttachedFiles([]);
+    if (onAttachedFilesChange) {
+      onAttachedFilesChange([]);
+    } else {
+      setInternalAttachedFiles([]);
+    }
 
     // Create abort controller for this request
     const controller = new AbortController();
@@ -192,7 +213,11 @@ export function ChatInterface({
       };
 
       // Add the assistant message immediately for streaming
-      setMessages(prev => [...prev, assistantMessage]);
+      if (onMessagesChange) {
+        onMessagesChange([...messages, assistantMessage]);
+      } else {
+        setInternalMessages((prev: Message[]) => [...prev, assistantMessage]);
+      }
 
       // Get conversation history (exclude the current user message we just added)
       const conversationHistory = messages.slice(0, -1);
@@ -205,32 +230,55 @@ export function ChatInterface({
         (chunk: string) => {
           // Handle streaming response
           assistantContent += chunk;
-          setMessages(prev =>
-            prev.map(msg =>
+          if (onMessagesChange) {
+            const updatedMessages = messages.map((msg: Message) =>
               msg.id === assistantMessage.id
                 ? { ...msg, content: assistantContent }
                 : msg
-            )
-          );
+            );
+            onMessagesChange(updatedMessages);
+          } else {
+            setInternalMessages((prev: Message[]) =>
+              prev.map((msg: Message) =>
+                msg.id === assistantMessage.id
+                  ? { ...msg, content: assistantContent }
+                  : msg
+              )
+            );
+          }
         },
         controller.signal
       );
 
       // Update final message with complete response
-      setMessages(prev =>
-        prev.map(msg =>
+      if (onMessagesChange) {
+        const updatedMessages = messages.map((msg: Message) =>
           msg.id === assistantMessage.id
             ? { ...msg, content: response.content, usage: response.usage }
             : msg
-        )
-      );
+        );
+        onMessagesChange(updatedMessages);
+      } else {
+        setInternalMessages((prev: Message[]) =>
+          prev.map((msg: Message) =>
+            msg.id === assistantMessage.id
+              ? { ...msg, content: response.content, usage: response.usage }
+              : msg
+          )
+        );
+      }
     } catch (error) {
       console.error('Error sending message:', error);
 
       // Check if the error is due to abort
       if (error instanceof Error && error.name === 'AbortError') {
         // Remove the assistant message that was being generated
-        setMessages(prev => prev.filter(msg => msg.id !== (Date.now() + 1).toString()));
+        if (onMessagesChange) {
+          const filteredMessages = messages.filter((msg: Message) => msg.id !== (Date.now() + 1).toString());
+          onMessagesChange(filteredMessages);
+        } else {
+          setInternalMessages((prev: Message[]) => prev.filter((msg: Message) => msg.id !== (Date.now() + 1).toString()));
+        }
       } else {
         const errorMessage: Message = {
           id: (Date.now() + 2).toString(),
@@ -238,7 +286,11 @@ export function ChatInterface({
           role: 'assistant',
           timestamp: new Date(),
         };
-        setMessages(prev => [...prev, errorMessage]);
+        if (onMessagesChange) {
+          onMessagesChange([...messages, errorMessage]);
+        } else {
+          setInternalMessages((prev: Message[]) => [...prev, errorMessage]);
+        }
       }
     } finally {
       setIsLoading(false);
@@ -314,56 +366,92 @@ export function ChatInterface({
               key={message.id}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div
-                className={`max-w-[80%] p-3 rounded-lg ${
-                  message.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-foreground'
-                }`}
+              <Card
+                style={{
+                  backgroundColor: message.role === 'user' ? 'rgb(13, 148, 136)' : 'rgb(30, 41, 59)',
+                  borderColor: message.role === 'user' ? 'rgb(20, 184, 166)' : 'rgb(71, 85, 105)'
+                }}
+                className="max-w-[80%] shadow-2xl text-white"
               >
-                <p className="whitespace-pre-wrap">{message.content}</p>
-                <div className="flex items-center justify-between mt-2 text-xs opacity-70">
-                  <span>{message.timestamp.toLocaleTimeString()}</span>
-                  {message.role === 'assistant' && (
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                        onClick={() => copyToClipboard(message.content)}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                      >
-                        <Volume2 className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                      </Button>
-                    </div>
+                <CardContent className="p-3">
+                  {message.role === 'assistant' ? (
+                    <MessageWithThinking
+                      content={
+                        typeof message.content === 'string'
+                          ? message.content
+                          : Array.isArray(message.content)
+                            ? message.content.map((item, idx) =>
+                                item.type === 'text' ? item.text : `[Image ${idx + 1}]`
+                              ).join(' ')
+                            : String(message.content)
+                      }
+                    />
+                  ) : (
+                    <UserMessage
+                      content={
+                        typeof message.content === 'string'
+                          ? message.content
+                          : Array.isArray(message.content)
+                            ? message.content.map((item, idx) =>
+                                item.type === 'text' ? item.text : `[Image ${idx + 1}]`
+                              ).join(' ')
+                            : String(message.content)
+                      }
+                    />
                   )}
-                </div>
-              </div>
+                  <div className="flex items-center justify-between mt-2 text-xs opacity-70">
+                    <span>{message.timestamp.toLocaleTimeString()}</span>
+                    {message.role === 'assistant' && (
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => copyToClipboard(
+                            typeof message.content === 'string'
+                              ? message.content
+                              : Array.isArray(message.content)
+                                ? message.content.map((item, idx) =>
+                                    item.type === 'text' ? item.text : `[Image ${idx + 1}]`
+                                  ).join(' ')
+                                : String(message.content)
+                          )}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                        >
+                          <Volume2 className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           ))
         )}
         
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-muted text-foreground p-3 rounded-lg">
-              <div className="flex items-center gap-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                <span>Thinking...</span>
-              </div>
-            </div>
+            <Card style={{ backgroundColor: 'rgb(30, 41, 59)', borderColor: 'rgb(71, 85, 105)' }} className="text-white shadow-2xl">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500"></div>
+                  <span>Thinking...</span>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
         
