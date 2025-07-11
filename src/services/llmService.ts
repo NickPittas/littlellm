@@ -4,6 +4,8 @@ export interface LLMProvider {
   baseUrl: string;
   requiresApiKey: boolean;
   models: string[];
+  logo: string; // Path to the provider logo (dark theme)
+  logoLight?: string; // Path to the provider logo (light theme)
 }
 
 export interface LLMSettings {
@@ -33,70 +35,91 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
     name: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
     requiresApiKey: true,
-    models: [] // Will be fetched dynamically
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/openai.png',
+    logoLight: '/assets/providers/openai-light.png'
   },
   {
     id: 'anthropic',
     name: 'Anthropic',
     baseUrl: 'https://api.anthropic.com/v1',
     requiresApiKey: true,
-    models: [] // Will be fetched dynamically
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/anthropic.png',
+    logoLight: '/assets/providers/anthropic-light.png'
   },
   {
     id: 'gemini',
     name: 'Google Gemini',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     requiresApiKey: true,
-    models: [] // Will be fetched dynamically
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/gemini.png',
+    logoLight: '/assets/providers/gemini-light.png'
   },
   {
     id: 'mistral',
     name: 'Mistral AI',
     baseUrl: 'https://api.mistral.ai/v1',
     requiresApiKey: true,
-    models: [] // Will be fetched dynamically
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/mistral.png'
   },
   {
     id: 'deepseek',
     name: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
     requiresApiKey: true,
-    models: [] // Will be fetched dynamically
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/deepseek.png'
   },
   {
     id: 'lmstudio',
     name: 'LM Studio',
     baseUrl: 'http://localhost:1234/v1',
     requiresApiKey: false,
-    models: [] // Will be fetched dynamically
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/lmstudio.png'
   },
   {
     id: 'ollama',
     name: 'Ollama (Local)',
     baseUrl: '',
     requiresApiKey: false,
-    models: [] // Will be fetched dynamically
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/ollama.png'
   },
   {
     id: 'openrouter',
     name: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     requiresApiKey: true,
-    models: [] // Will be fetched dynamically
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/openrouter.png'
   },
   {
     id: 'requesty',
     name: 'Requesty',
     baseUrl: 'https://router.requesty.ai/v1',
     requiresApiKey: true,
-    models: [] // Will be fetched dynamically
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/requesty.svg'
   },
   {
     id: 'replicate',
     name: 'Replicate',
     baseUrl: 'https://api.replicate.com/v1',
     requiresApiKey: true,
-    models: [] // Will be fetched dynamically
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/replicate.png'
+  },
+  {
+    id: 'n8n',
+    name: 'n8n Workflow',
+    baseUrl: '', // Will be configured by user
+    requiresApiKey: false,
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/n8n.png'
   }
 ];
 
@@ -113,7 +136,8 @@ const FALLBACK_MODELS: Record<string, string[]> = {
   ollama: [],
   openrouter: [],
   requesty: [],
-  replicate: []
+  replicate: [],
+  n8n: []
 };
 
 class LLMService {
@@ -171,6 +195,9 @@ class LLMService {
           break;
         case 'replicate':
           models = await this.fetchReplicateModels(apiKey);
+          break;
+        case 'n8n':
+          models = await this.fetchN8nModels(baseUrl);
           break;
         default:
           models = FALLBACK_MODELS[providerId] || [];
@@ -349,20 +376,31 @@ class LLMService {
     }
 
     try {
-      // Anthropic doesn't have a public models endpoint, so we'll use known models
-      // These are the current Claude models available via API
-      const claudeModels = [
-        'claude-sonnet-4-20250514',
-        'claude-opus-4-20250514',
-        'claude-3-5-sonnet-20241022',
-        'claude-3-5-sonnet-20240620',
-        'claude-3-opus-20240229',
-        'claude-3-sonnet-20240229',
-        'claude-3-haiku-20240307'
-      ];
+      // Fetch models from Anthropic's models API endpoint
+      const response = await fetch('https://api.anthropic.com/v1/models', {
+        method: 'GET',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        }
+      });
 
-      // We could validate the API key by making a test request, but for now return known models
-      return claudeModels;
+      if (!response.ok) {
+        console.warn('Failed to fetch Anthropic models, API response not ok:', response.status);
+        return FALLBACK_MODELS.anthropic;
+      }
+
+      const data = await response.json();
+
+      if (data.data && Array.isArray(data.data)) {
+        // Extract model IDs from the response
+        const models = data.data.map((model: any) => model.id);
+        console.log('Successfully fetched Anthropic models:', models);
+        return models;
+      } else {
+        console.warn('Unexpected Anthropic models API response format');
+        return FALLBACK_MODELS.anthropic;
+      }
     } catch (error) {
       console.warn('Failed to fetch Anthropic models, using fallback:', error);
       return FALLBACK_MODELS.anthropic;
@@ -490,6 +528,47 @@ class LLMService {
     }
   }
 
+  private async fetchN8nModels(baseUrl?: string): Promise<string[]> {
+    if (!baseUrl) {
+      console.log('No n8n webhook URL provided, using fallback models');
+      return FALLBACK_MODELS.n8n;
+    }
+
+    try {
+      // For n8n workflows, we don't fetch models from an endpoint
+      // Instead, we return a list of workflow names/IDs that the user can configure
+      // This is a placeholder - in a real implementation, you might want to:
+      // 1. Parse the webhook URL to extract workflow info
+      // 2. Allow users to configure custom workflow names
+      // 3. Store workflow configurations in settings
+
+      const workflowName = this.extractWorkflowNameFromUrl(baseUrl);
+      return workflowName ? [workflowName] : ['n8n-workflow'];
+    } catch (error) {
+      console.warn('Failed to process n8n workflow URL, using fallback:', error);
+      return FALLBACK_MODELS.n8n;
+    }
+  }
+
+  private extractWorkflowNameFromUrl(url: string): string | null {
+    try {
+      // Extract a meaningful name from the webhook URL
+      // This is a simple implementation - you might want to make this more sophisticated
+      const urlObj = new URL(url);
+      const pathParts = urlObj.pathname.split('/').filter(part => part.length > 0);
+
+      // Look for webhook ID or workflow name in the path
+      if (pathParts.length > 0) {
+        const lastPart = pathParts[pathParts.length - 1];
+        return `n8n-${lastPart}`;
+      }
+
+      return 'n8n-workflow';
+    } catch (error) {
+      return null;
+    }
+  }
+
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
@@ -523,6 +602,8 @@ class LLMService {
         return this.sendRequestyMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'replicate':
         return this.sendReplicateMessage(message, settings, provider, conversationHistory, onStream, signal);
+      case 'n8n':
+        return this.sendN8nMessage(message, settings, provider, conversationHistory, onStream, signal);
       default:
         throw new Error(`Provider ${settings.provider} not implemented`);
     }
@@ -706,7 +787,7 @@ class LLMService {
             mime_type: mimeType,
             data: imageUrl.split(',')[1] // Remove data:image/jpeg;base64, prefix
           }
-        });
+        } as any);
       }
       contents.push({ role: 'user', parts });
     }
@@ -795,7 +876,7 @@ class LLMService {
         content.push({
           type: 'image_url',
           image_url: { url: imageUrl }
-        });
+        } as any);
       }
       messages.push({ role: 'user', content });
     }
@@ -864,7 +945,7 @@ class LLMService {
         content.push({
           type: 'image_url',
           image_url: { url: imageUrl }
-        });
+        } as any);
       }
       messages.push({ role: 'user', content });
     }
@@ -934,7 +1015,7 @@ class LLMService {
         content.push({
           type: 'image_url',
           image_url: { url: imageUrl }
-        });
+        } as any);
       }
       messages.push({ role: 'user', content });
     }
@@ -1263,6 +1344,115 @@ class LLMService {
       return this.pollReplicatePrediction(data.id, settings.apiKey, onStream);
     } else {
       return this.pollReplicatePrediction(data.id, settings.apiKey);
+    }
+  }
+
+  private async sendN8nMessage(
+    message: MessageContent,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<LLMResponse> {
+    // For n8n, the baseUrl should be the webhook URL from settings
+    const webhookUrl = settings.baseUrl;
+
+    if (!webhookUrl) {
+      throw new Error('n8n webhook URL is required. Please configure it in the provider settings.');
+    }
+
+    // Prepare the payload for n8n webhook
+    let messageText = '';
+    if (typeof message === 'string') {
+      messageText = message;
+    } else if (Array.isArray(message)) {
+      messageText = JSON.stringify(message);
+    } else if (message && typeof message === 'object' && 'text' in message) {
+      messageText = (message as { text: string }).text;
+    } else {
+      messageText = JSON.stringify(message);
+    }
+
+    const payload = {
+      message: messageText,
+      conversationHistory: conversationHistory,
+      settings: {
+        model: settings.model,
+        temperature: settings.temperature,
+        maxTokens: settings.maxTokens,
+        systemPrompt: settings.systemPrompt
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    try {
+      // n8n webhook expects GET request with query parameters
+      const url = new URL(webhookUrl);
+      url.searchParams.append('message', messageText);
+      url.searchParams.append('conversationHistory', JSON.stringify(conversationHistory));
+      url.searchParams.append('settings', JSON.stringify(payload.settings));
+      url.searchParams.append('timestamp', payload.timestamp);
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+        signal
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`n8n webhook error: ${response.status} - ${error}`);
+      }
+
+      // Handle response - n8n webhooks might return empty responses
+      let data = null;
+      let content = '';
+
+      const responseText = await response.text();
+      if (responseText.trim()) {
+        try {
+          data = JSON.parse(responseText);
+
+          // Handle different response formats from n8n
+          if (typeof data === 'string') {
+            content = data;
+          } else if (data.output) {
+            // n8n workflow returns content in 'output' field
+            content = data.output;
+          } else if (data.response) {
+            content = data.response;
+          } else if (data.message) {
+            content = data.message;
+          } else if (data.content) {
+            content = data.content;
+          } else {
+            content = JSON.stringify(data);
+          }
+        } catch (parseError) {
+          // If JSON parsing fails, use the raw text
+          content = responseText;
+        }
+      } else {
+        // Empty response - webhook processed successfully
+        content = 'Message sent to n8n workflow successfully.';
+      }
+
+      return {
+        content: content,
+        usage: {
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0
+        }
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`n8n workflow error: ${error.message}`);
+      }
+      throw new Error('n8n workflow error: Unknown error occurred');
     }
   }
 

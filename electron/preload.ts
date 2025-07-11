@@ -46,6 +46,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeSettingsOverlay: () => ipcRenderer.invoke('close-settings-overlay'),
   notifyThemeChange: (themeId: string) => ipcRenderer.invoke('notify-theme-change', themeId),
 
+  // Dropdown operations
+  openDropdown: (x: number, y: number, width: number, height: number, content: string) =>
+    ipcRenderer.invoke('open-dropdown', { x, y, width, height, content }),
+  closeDropdown: () => ipcRenderer.invoke('close-dropdown'),
+  selectDropdownItem: (value: string) => ipcRenderer.invoke('select-dropdown-item', value),
+
   // Event listeners
   onClipboardContent: (callback: (content: string) => void) => {
     ipcRenderer.on('clipboard-content', (_, content) => callback(content));
@@ -65,6 +71,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onPromptSelected: (callback: (promptText: string) => void) => {
     ipcRenderer.on('prompt-selected', (_, promptText) => callback(promptText));
+  },
+
+  onDropdownItemSelected: (callback: (value: string) => void) => {
+    ipcRenderer.on('dropdown-item-selected', (_, value) => callback(value));
   },
 
   // Remove listeners
@@ -103,6 +113,10 @@ declare global {
       openSettingsOverlay: () => Promise<void>;
       closeSettingsOverlay: () => Promise<void>;
       notifyThemeChange: (themeId: string) => Promise<void>;
+      openDropdown: (x: number, y: number, width: number, height: number, content: string) => Promise<void>;
+      closeDropdown: () => Promise<void>;
+      selectDropdownItem: (value: string) => Promise<void>;
+      onDropdownItemSelected: (callback: (value: string) => void) => void;
       onClipboardContent: (callback: (content: string) => void) => void;
       onProcessClipboard: (callback: (content: string) => void) => void;
       onOpenSettings: (callback: () => void) => void;

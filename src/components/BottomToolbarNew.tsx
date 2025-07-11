@@ -3,9 +3,8 @@
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { ElectronDropdown } from './ui/electron-dropdown';
+import { ProviderDropdown } from './ui/provider-dropdown';
 import {
-  Camera,
-  Paperclip,
   History,
   Settings,
   Wand2
@@ -37,8 +36,8 @@ export function BottomToolbar({
   const [isLoadingModels, setIsLoadingModels] = useState(false);
 
   // Get provider display options
-  const getProviderOptions = () => {
-    return chatService.getProviders().map(provider => provider.name);
+  const getProviders = () => {
+    return chatService.getProviders();
   };
 
   const getProviderIdFromName = (name: string) => {
@@ -57,7 +56,11 @@ export function BottomToolbar({
     console.log('Total providers found:', providers.length);
     console.log('Available providers:', providers.map(p => ({ id: p.id, name: p.name })));
     console.log('Current provider:', settings.provider);
+    console.log('Current model:', settings.model);
     console.log('Settings object:', settings);
+
+    // Clean any corrupted data on startup
+    settingsService.forceCleanCorruptedData();
 
     if (!settings.provider && providers.length > 0) {
       console.log('No provider set, initializing with first provider:', providers[0].id);
@@ -80,18 +83,21 @@ export function BottomToolbar({
       const providerSettings = settings.providers?.[providerId] || { apiKey: '' };
       console.log('Provider settings:', providerSettings);
 
-      // Only fetch models if we have an API key (except for Ollama and LM Studio which don't require one)
-      if (providerId !== 'ollama' && providerId !== 'lmstudio' && !providerSettings.apiKey) {
+      // Only fetch models if we have an API key (except for Ollama, LM Studio, and n8n which don't require one)
+      if (providerId !== 'ollama' && providerId !== 'lmstudio' && providerId !== 'n8n' && !providerSettings.apiKey) {
         console.log(`No API key configured for ${providerId}, fetching without API key`);
         const models = await chatService.fetchModels(providerId, '', '');
         console.log('Models fetched (no API key):', models);
         setAvailableModels(models);
 
-        // If no model is currently selected but there's a last selected model for this provider, restore it
+        // ONLY restore model if it exists in the fetched models list
         const lastSelectedModel = settings.providers?.[providerId]?.lastSelectedModel;
+
         if (!settings.model && lastSelectedModel && models.includes(lastSelectedModel)) {
-          console.log('Restoring last selected model for provider (no API key):', providerId, '->', lastSelectedModel);
+          console.log('✅ RESTORING valid model for provider (no API key):', providerId, '->', lastSelectedModel);
           onSettingsChange({ model: lastSelectedModel });
+        } else if (lastSelectedModel && !models.includes(lastSelectedModel)) {
+          console.log('❌ INVALID model found, NOT restoring:', lastSelectedModel, 'not in models:', models.slice(0, 3));
         }
         return;
       }
@@ -103,11 +109,14 @@ export function BottomToolbar({
       console.log('Models fetched:', models);
       setAvailableModels(models);
 
-      // If no model is currently selected but there's a last selected model for this provider, restore it
+      // ONLY restore model if it exists in the fetched models list
       const lastSelectedModel = settings.providers?.[providerId]?.lastSelectedModel;
+
       if (!settings.model && lastSelectedModel && models.includes(lastSelectedModel)) {
-        console.log('Restoring last selected model for provider:', providerId, '->', lastSelectedModel);
+        console.log('✅ RESTORING valid model for provider (with API key):', providerId, '->', lastSelectedModel);
         onSettingsChange({ model: lastSelectedModel });
+      } else if (lastSelectedModel && !models.includes(lastSelectedModel)) {
+        console.log('❌ INVALID model found, NOT restoring:', lastSelectedModel, 'not in models:', models.slice(0, 3));
       }
     } catch (error) {
       console.error('Failed to fetch models:', error);
@@ -280,47 +289,90 @@ export function BottomToolbar({
   return (
     <div
       className="flex items-center justify-between px-4 py-2"
-      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
     >
       {/* Left side - Provider Selection */}
       <div
         className="flex items-center gap-2"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
         {/* Provider Dropdown */}
         <div
           className="flex items-center gap-1"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
         >
           <div
             className="relative"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
           >
-            <ElectronDropdown
+            <ProviderDropdown
               value={getProviderNameFromId(settings.provider)}
-              onValueChange={(providerName: string) => {
-                const providerId = getProviderIdFromName(providerName);
-                console.log('Provider selection callback triggered!');
-                console.log('Provider selected:', providerName, '->', providerId);
-                console.log('Available providers:', chatService.getProviders().map(p => ({ id: p.id, name: p.name })));
+              onValueChange={(value: string) => {
+                console.log('🔥 ProviderDropdown onValueChange triggered!');
+                console.log('🔥 Raw value received:', value);
+
+                // Check if the value is a provider ID or provider name
+                let providerId: string;
+                let providerName: string;
+
+                const providerById = chatService.getProviders().find(p => p.id === value);
+                const providerByName = chatService.getProviders().find(p => p.name === value);
+
+                if (providerById) {
+                  // Value is a provider ID (from Electron dropdown)
+                  providerId = value;
+                  providerName = providerById.name;
+                  console.log('🔥 Received provider ID:', providerId, '-> name:', providerName);
+                } else if (providerByName) {
+                  // Value is a provider name (from regular dropdown)
+                  providerId = providerByName.id;
+                  providerName = value;
+                  console.log('🔥 Received provider name:', providerName, '-> ID:', providerId);
+                } else {
+                  console.error('🔥 Unknown provider value:', value);
+                  return;
+                }
 
                 if (providerId) {
-                  // Get the last selected model for this provider
-                  const lastSelectedModel = settings.providers?.[providerId]?.lastSelectedModel || '';
-                  console.log('Switching to provider:', providerId, 'with last selected model:', lastSelectedModel);
+                  console.log('=== PROVIDER SWITCH DEBUG ===');
+                  console.log('Switching FROM provider:', settings.provider, 'TO provider:', providerId);
+                  console.log('Provider name:', providerName);
+                  console.log('Current settings.model:', settings.model);
+                  console.log('Current settings.providers:', settings.providers);
+
+                  // FIRST: Save the current model to the current provider's lastSelectedModel
+                  const currentProvider = settings.provider;
+                  const currentModel = settings.model;
+
+                  let updatedProviders = { ...settings.providers };
+
+                  if (currentProvider && currentModel && currentModel.trim() !== '') {
+                    console.log('💾 SAVING current model to current provider:', currentProvider, '->', currentModel);
+                    updatedProviders[currentProvider] = {
+                      ...updatedProviders[currentProvider],
+                      lastSelectedModel: currentModel
+                    };
+                  }
+
+                  // SECOND: ALWAYS CLEAR THE MODEL WHEN SWITCHING PROVIDERS
+                  // The model will be restored ONLY when models are fetched and validated
+                  console.log('🧹 CLEARING model field - will be restored after models are fetched');
+                  console.log('Final providers object:', updatedProviders);
+                  console.log('=== END PROVIDER SWITCH DEBUG ===');
 
                   onSettingsChange({
                     provider: providerId,
-                    model: lastSelectedModel // Restore last selected model for this provider
+                    model: '', // ALWAYS CLEAR - will be restored in fetchModelsForProvider
+                    providers: updatedProviders // Include the updated providers object
                   });
-                  console.log('Settings updated with provider:', providerId, 'and model:', lastSelectedModel);
+                  console.log('Settings updated with provider:', providerId, 'and model:', modelToSet);
                 } else {
                   console.error('Could not find provider ID for name:', providerName);
                 }
               }}
               placeholder="Select Provider"
-              options={getProviderOptions()}
-              className="h-8 min-w-[120px] text-xs"
+              providers={chatService.getProviders()}
+              className="h-8 w-[50px] text-xs"
             />
           </div>
         </div>
@@ -333,7 +385,7 @@ export function BottomToolbar({
       >
         {settings.provider && (
           <div
-            className="min-w-[200px]"
+            className="w-[200px]"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
           >
             {isLoadingModels ? (
@@ -343,11 +395,23 @@ export function BottomToolbar({
             ) : (
               <ElectronDropdown
                 value={settings.model}
+                options={availableModels}
                 onValueChange={(value: string) => {
-                  console.log('Model selection callback triggered!');
-                  console.log('Model selected:', value);
-                  console.log('Current provider:', settings.provider);
-                  console.log('Available models:', availableModels);
+                  console.log('🚨 ElectronDropdown onValueChange called!');
+                  console.log('🚨 Value received:', value);
+                  console.log('🚨 Type of value:', typeof value);
+                  console.log('🚨 Available models:', availableModels);
+                  console.log('🚨 Is value in availableModels?', availableModels.includes(value));
+                  console.log('🎯 Model selection callback triggered!');
+                  console.log('🎯 Model selected:', value);
+                  console.log('🎯 Current provider:', settings.provider);
+                  console.log('🎯 Available models:', availableModels.slice(0, 3));
+
+                  // VALIDATE: Only allow models that are in the availableModels list
+                  if (!availableModels.includes(value)) {
+                    console.error('🚨 REJECTED: Model not in available models list:', value);
+                    return;
+                  }
 
                   if (value && settings.provider) {
                     // Update the model and save it as the last selected model for the current provider
@@ -383,7 +447,13 @@ export function BottomToolbar({
                 }}
                 placeholder="Select model..."
                 options={availableModels}
-                className="h-8 text-xs"
+                className="h-8 w-full text-xs"
+                displayTransform={(modelName: string) => {
+                  // Remove provider prefix from model names for display
+                  // e.g., "openai/gpt-4o" -> "gpt-4o", "anthropic/claude-3.5-sonnet" -> "claude-3.5-sonnet"
+                  const parts = modelName.split('/');
+                  return parts.length > 1 ? parts[1] : modelName;
+                }}
               />
             )}
           </div>
@@ -393,36 +463,17 @@ export function BottomToolbar({
       {/* Right side - Action buttons */}
       <div
         className="flex items-center gap-2"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleFileUpload}
-          className="h-8 w-8 p-0"
-          title="Upload File"
-        >
-          <Paperclip className="h-4 w-4" />
-        </Button>
-
         <Button
           variant="ghost"
           size="sm"
           onClick={onPromptsClick}
           className="h-8 w-8 p-0"
           title="Prompts"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
         >
           <Wand2 className="h-4 w-4" />
-        </Button>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleScreenshot}
-          className="h-8 w-8 p-0"
-          title="Take Screenshot"
-        >
-          <Camera className="h-4 w-4" />
         </Button>
 
         <Button
@@ -431,6 +482,7 @@ export function BottomToolbar({
           onClick={() => onHistoryChange?.(!showHistory)}
           className="h-8 w-8 p-0"
           title="Chat History"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
         >
           <History className="h-4 w-4" />
         </Button>
@@ -445,6 +497,7 @@ export function BottomToolbar({
           }}
           className="h-8 w-8 p-0"
           title="Settings"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
         >
           <Settings className="h-4 w-4" />
         </Button>

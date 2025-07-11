@@ -19,6 +19,7 @@ import {
   RotateCw,
   MessageSquare,
   Paperclip,
+  Camera,
   X
 } from 'lucide-react';
 import { promptsService } from '../services/promptsService';
@@ -26,6 +27,7 @@ import { chatService, type Message, type ChatSettings } from '../services/chatSe
 import { MessageWithThinking } from './MessageWithThinking';
 import { UserMessage } from './UserMessage';
 import { settingsService } from '../services/settingsService';
+
 
 interface ChatInterfaceProps {
   input: string;
@@ -38,6 +40,7 @@ interface ChatInterfaceProps {
   hideInput?: boolean; // Hide the bottom input area
   attachedFiles?: File[]; // Files to attach to the next message
   onAttachedFilesChange?: (files: File[]) => void;
+  onScreenshotCapture?: (file: File) => void; // Screenshot capture handler
 }
 
 interface AttachedFile {
@@ -179,6 +182,22 @@ export function ChatInterface({
       setInternalAttachedFiles((prev: AttachedFile[]) => prev.filter((_, i: number) => i !== index));
     }
   };
+
+
+
+  // Create ref for the textarea to enable auto-focus
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-focus chat input when component mounts or becomes visible
+  useEffect(() => {
+    if (!hideInput && textareaRef.current) {
+      // Small delay to ensure the component is fully rendered
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        console.log('ChatInterface input auto-focused');
+      }, 100);
+    }
+  }, [hideInput]); // Re-focus when hideInput changes
 
   const handleSendMessage = async () => {
     if (!input.trim() && attachedFiles.length === 0) return;
@@ -537,6 +556,7 @@ export function ChatInterface({
             <div className="flex gap-2">
               <div className="flex-1 relative">
                 <Textarea
+                  ref={textareaRef}
                   value={input}
                   onChange={(e) => onInputChange(e.target.value)}
                   placeholder="Type your message..."
