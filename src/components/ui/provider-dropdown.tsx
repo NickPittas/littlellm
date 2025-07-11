@@ -1,47 +1,41 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronDown, Search } from "lucide-react"
+import { Check, ChevronDown } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { Button } from "./button"
-import { Input } from "./input"
+import { ProviderLogo } from "./provider-logo"
+import type { LLMProvider } from "../../services/llmService"
 
-interface ElectronDropdownProps {
+interface ProviderDropdownProps {
   value?: string
   onValueChange?: (value: string) => void
   placeholder?: string
-  options: string[]
+  providers: LLMProvider[]
   disabled?: boolean
   className?: string
-  displayTransform?: (value: string) => string // Optional function to transform display text
 }
 
-export function ElectronDropdown({
+export function ProviderDropdown({
   value,
   onValueChange,
-  placeholder = "Select an option...",
-  options,
+  placeholder = "Select a provider...",
+  providers,
   disabled = false,
-  className,
-  displayTransform
-}: ElectronDropdownProps) {
+  className
+}: ProviderDropdownProps) {
   const [open, setOpen] = React.useState(false)
-  const [searchValue, setSearchValue] = React.useState("")
+
   const triggerRef = React.useRef<HTMLButtonElement>(null)
   const isElectron = typeof window !== 'undefined' && window.electronAPI
 
-  // Sort options alphabetically
-  const sortedOptions = React.useMemo(() => {
-    return [...options].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-  }, [options])
+  // Sort providers alphabetically by name
+  const sortedProviders = React.useMemo(() => {
+    return [...providers].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+  }, [providers])
 
-  // Filter options based on search
-  const filteredOptions = React.useMemo(() => {
-    if (!searchValue) return sortedOptions
-    return sortedOptions.filter(option =>
-      option.toLowerCase().includes(searchValue.toLowerCase())
-    )
-  }, [sortedOptions, searchValue])
+  // Use all sorted providers (no search filtering)
+  const filteredProviders = sortedProviders
 
   const handleClose = React.useCallback(async () => {
     if (isElectron) {
@@ -52,8 +46,14 @@ export function ElectronDropdown({
       }
     }
     setOpen(false)
-    setSearchValue("")
   }, [isElectron])
+
+  const handleSelect = (selectedProvider: LLMProvider) => {
+    console.log('ProviderDropdown handleSelect called with:', selectedProvider.name);
+    onValueChange?.(selectedProvider.name);
+    handleClose();
+    console.log('ProviderDropdown selection completed');
+  }
 
   const openDropdown = async () => {
     if (!isElectron || !triggerRef.current) {
@@ -63,7 +63,7 @@ export function ElectronDropdown({
 
     // Calculate dropdown dimensions
     const dropdownWidth = 280
-    const dropdownHeight = Math.min(300, filteredOptions.length * 40 + 80) // Dynamic height
+    const dropdownHeight = Math.min(300, filteredProviders.length * 40 + 80) // Dynamic height
 
     try {
       // Get trigger button position relative to the window (not viewport)
@@ -74,7 +74,7 @@ export function ElectronDropdown({
       const y = rect.bottom + 4 // 4px gap below the button
 
       // Generate HTML content for dropdown
-      const content = generateOptionsDropdownHTML(filteredOptions, value, searchValue, displayTransform)
+      const content = generateProviderDropdownHTML(filteredProviders, value)
 
       // Open dropdown at calculated position
       await window.electronAPI.openDropdown(x, y, dropdownWidth, dropdownHeight, content)
@@ -95,21 +95,13 @@ export function ElectronDropdown({
     }
   }
 
-  const handleSelect = (selectedValue: string) => {
-    console.log('ElectronDropdown handleSelect called with:', selectedValue);
-    onValueChange?.(selectedValue);
-    handleClose(); // This will close dropdown and restore window size
-    console.log('ElectronDropdown selection completed');
-  }
-
   // Handle dropdown selection events from Electron
   React.useEffect(() => {
     if (isElectron && window.electronAPI?.onDropdownItemSelected) {
-      const handleSelection = (selectedValue: string) => {
-        console.log('🔥 ELECTRON DROPDOWN: Item selected:', selectedValue);
-        console.log('🔥 ELECTRON DROPDOWN: Available options:', options);
-        console.log('🔥 ELECTRON DROPDOWN: Is selected value in options?', options.includes(selectedValue));
-        onValueChange?.(selectedValue);
+      const handleSelection = (value: string) => {
+        console.log('🚀 ELECTRON DROPDOWN: Provider selected:', value);
+        console.log('🚀 ELECTRON DROPDOWN: Calling onValueChange with:', value);
+        onValueChange?.(value);
         setOpen(false);
       };
 
@@ -136,7 +128,9 @@ export function ElectronDropdown({
     }
   }, [open, isElectron]);
 
-  const displayValue = value ? (displayTransform ? displayTransform(value) : value) : placeholder
+  // Find the selected provider to show its logo
+  const selectedProvider = providers.find(p => p.name === value)
+  const displayValue = value || placeholder
 
   return (
     <div className="relative" style={{ zIndex: 1 }}>
@@ -154,7 +148,15 @@ export function ElectronDropdown({
         onClick={toggleDropdown}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
-        <span className="truncate text-sm">{displayValue}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          {selectedProvider ? (
+            <div className="w-4 h-4 flex-shrink-0">
+              <ProviderLogo provider={selectedProvider} size={16} className="flex-shrink-0" />
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">?</span>
+          )}
+        </div>
         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
       </Button>
 
@@ -167,75 +169,68 @@ export function ElectronDropdown({
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
           />
 
-          {/* Dropdown content - opens downward */}
+          {/* Dropdown content - only show for non-Electron fallback */}
           <div
-            className="absolute top-full mt-1 left-0 z-[99999] w-[350px] bg-card border shadow-lg rounded-md overflow-hidden"
+            className="absolute top-full mt-1 left-0 z-[99999] w-[280px] bg-card border shadow-lg rounded-md overflow-hidden"
             style={{
               WebkitAppRegion: 'no-drag',
-              maxHeight: '300px'
+              maxHeight: '300px',
+              overflowX: 'hidden'
             } as React.CSSProperties & { WebkitAppRegion?: string }}
           >
             <div className="flex flex-col h-full">
-              <div className="flex items-center border-b px-3 py-2 flex-shrink-0">
-                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                <Input
-                  placeholder="Search..."
-                  value={searchValue}
-                  onChange={(e) => setSearchValue(e.target.value)}
-                  className="border-0 bg-transparent p-0 text-sm outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-                />
-              </div>
               <div
-                className="overflow-y-scroll flex-1 min-h-0"
+                className="overflow-y-auto flex-1 min-h-0"
                 style={{
                   WebkitAppRegion: 'no-drag',
-                  scrollbarWidth: 'auto',
-                  scrollBehavior: 'smooth',
-                  maxHeight: '220px' // Fixed height to ensure scrolling
+                  scrollbarWidth: 'none',
+                  overflowX: 'hidden',
+                  maxHeight: '180px'
                 } as React.CSSProperties & { WebkitAppRegion?: string }}
                 onWheel={(e) => {
-                  // Ensure wheel events are handled properly and don't bubble up
                   e.stopPropagation();
                   e.preventDefault();
-
-                  // Manual scroll handling
                   const target = e.currentTarget;
                   target.scrollTop += e.deltaY;
                 }}
               >
                 <div className="p-1">
-                  {filteredOptions.length === 0 ? (
+                  {filteredProviders.length === 0 ? (
                     <div className="py-6 text-center text-sm text-muted-foreground">
-                      No options found.
+                      No providers found.
                     </div>
                   ) : (
                     <>
                       <div className="px-2 py-1 text-xs text-muted-foreground">
-                        {filteredOptions.length} options available
+                        {filteredProviders.length} providers available
                       </div>
-                      {filteredOptions.map((option) => (
+                      {filteredProviders.map((provider) => (
                         <div
-                          key={option}
+                          key={provider.id}
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            console.log('Dropdown item clicked:', option);
-                            handleSelect(option);
+                            console.log('Provider item clicked:', provider.name);
+                            handleSelect(provider);
                           }}
                           className={cn(
                             "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-                            value === option && "bg-accent text-accent-foreground"
+                            value === provider.name && "bg-accent text-accent-foreground"
                           )}
                           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
                         >
                           <Check
                             className={cn(
-                              "mr-2 h-4 w-4",
-                              value === option ? "opacity-100" : "opacity-0"
+                              "mr-2 h-4 w-4 flex-shrink-0",
+                              value === provider.name ? "opacity-100" : "opacity-0"
                             )}
                           />
-                          <span className="text-sm">{displayTransform ? displayTransform(option) : option}</span>
+                          <ProviderLogo
+                            provider={provider}
+                            size={20}
+                            className="mr-3 flex-shrink-0"
+                          />
+                          <span className="text-sm truncate">{provider.name}</span>
                         </div>
                       ))}
                     </>
@@ -251,32 +246,51 @@ export function ElectronDropdown({
 }
 
 // Helper function to generate HTML content for the floating dropdown
-function generateOptionsDropdownHTML(options: string[], selectedValue?: string, searchValue?: string, displayTransform?: (value: string) => string): string {
-  const searchSection = `
-    <div class="search-section">
-      <input
-        type="text"
-        class="search-input"
-        placeholder="Search options..."
-        value="${searchValue || ''}"
+function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: string): string {
+
+  const providerItems = providers.map(provider => {
+    // Convert relative path to absolute URL for Electron context
+    const logoUrl = provider.logo.startsWith('/') ? `http://localhost:3000${provider.logo}` : provider.logo;
+
+    return `
+    <div
+      class="dropdown-item ${selectedValue === provider.name ? 'selected' : ''}"
+      data-value="${provider.id}"
+    >
+      <span class="check-icon ${selectedValue === provider.name ? 'visible' : ''}">✓</span>
+      <img
+        src="${logoUrl}"
+        alt="${provider.name}"
+        class="provider-icon"
+        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
       />
+      <div class="provider-icon-fallback" style="display: none; width: 20px; height: 20px; background: hsl(240 3.7% 15.9%); border-radius: 4px; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: hsl(0 0% 98%);">
+        ${provider.name.charAt(0).toUpperCase()}
+      </div>
+      <span>${provider.name}</span>
     </div>
   `;
-
-  const optionItems = options.map(option => `
-    <div
-      class="dropdown-item ${selectedValue === option ? 'selected' : ''}"
-      data-value="${option}"
-    >
-      <span class="check-icon ${selectedValue === option ? 'visible' : ''}">✓</span>
-      <span>${displayTransform ? displayTransform(option) : option}</span>
-    </div>
-  `).join('');
+  }).join('');
 
   return `
-    ${searchSection}
+    <style>
+      .provider-icon {
+        width: 20px;
+        height: 20px;
+        margin-right: 12px;
+        border-radius: 4px;
+        object-fit: contain;
+      }
+      .provider-icon-fallback {
+        color: hsl(0 0% 98%);
+      }
+      .dropdown-content {
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+    </style>
     <div class="dropdown-content">
-      ${optionItems}
+      ${providerItems}
     </div>
   `;
 }

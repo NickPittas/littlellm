@@ -90,6 +90,7 @@ export function SettingsOverlay() {
             openrouter: { apiKey: '', lastSelectedModel: '' },
             requesty: { apiKey: '', lastSelectedModel: '' },
             replicate: { apiKey: '', lastSelectedModel: '' },
+            n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
           },
         },
         ui: {
@@ -458,6 +459,29 @@ export function SettingsOverlay() {
                     })}
                     placeholder="r8_..."
                   />
+                </div>
+
+                {/* n8n Workflow */}
+                <div className="space-y-2">
+                  <Label htmlFor="n8n-webhook">n8n Webhook URL</Label>
+                  <Input
+                    id="n8n-webhook"
+                    value={settings.chat.providers.n8n?.baseUrl || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      chat: {
+                        ...settings.chat,
+                        providers: {
+                          ...settings.chat.providers,
+                          n8n: { ...(settings.chat.providers.n8n || {}), baseUrl: e.target.value }
+                        }
+                      }
+                    })}
+                    placeholder="https://your-n8n-instance.com/webhook/your-workflow-name"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter your n8n webhook URL. The workflow will receive the message and conversation history.
+                  </p>
                 </div>
 
                 {/* LM Studio */}

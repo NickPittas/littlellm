@@ -159,6 +159,7 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow: BrowserWindow | null = null;
 let actionMenuWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+let dropdownWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let staticServerPort: number = 3001;
 let isQuitting = false;
@@ -205,7 +206,7 @@ async function openActionMenu() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: false,
+      webSecurity: isProduction, // Disable web security in development for testing
     },
   });
 
@@ -285,8 +286,8 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: true, // Enable web security
-      allowRunningInsecureContent: false,
+      webSecurity: isProduction, // Disable web security in development for testing
+      allowRunningInsecureContent: !isProduction, // Allow insecure content in development
       partition: 'persist:littlellm', // Enable localStorage and persistent storage
       zoomFactor: 1.0,
       disableBlinkFeatures: 'Auxclick',
@@ -958,7 +959,7 @@ function setupIPC() {
         nodeIntegration: false,
         contextIsolation: true,
         preload: path.join(__dirname, 'preload.js'),
-        webSecurity: false,
+        webSecurity: isProduction, // Disable web security in development for testing
       },
     });
 
@@ -992,6 +993,246 @@ function setupIPC() {
   ipcMain.handle('notify-theme-change', (_, themeId: string) => {
     if (mainWindow) {
       mainWindow.webContents.send('theme-changed', themeId);
+    }
+  });
+
+  // Handle dropdown window creation
+  ipcMain.handle('open-dropdown', async (_, { x, y, width, height, content }) => {
+    if (!mainWindow) return;
+
+    // Close existing dropdown if open
+    if (dropdownWindow) {
+      dropdownWindow.close();
+      dropdownWindow = null;
+    }
+
+    // Get main window position and calculate absolute position
+    const mainBounds = mainWindow.getBounds();
+    const contentBounds = mainWindow.getContentBounds();
+
+    // Calculate the frame offset (difference between window bounds and content bounds)
+    const frameOffsetX = contentBounds.x - mainBounds.x;
+    const frameOffsetY = contentBounds.y - mainBounds.y;
+
+    // Add frame offset to get correct absolute position
+    const absoluteX = contentBounds.x + x;
+    const absoluteY = contentBounds.y + y;
+
+    // Get screen dimensions to ensure dropdown stays on screen
+    const { screen } = require('electron');
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+    // Adjust position if dropdown would go off screen
+    const adjustedX = Math.max(0, Math.min(absoluteX, screenWidth - width));
+    const adjustedY = Math.max(0, Math.min(absoluteY, screenHeight - height));
+
+    dropdownWindow = new BrowserWindow({
+      width: width,
+      height: height,
+      x: adjustedX,
+      y: adjustedY,
+      show: false,
+      frame: false,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      transparent: true,
+      focusable: true, // Enable focus to receive click events
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js'),
+        webSecurity: false,
+      },
+    });
+
+    // Create HTML content for the dropdown with proper theme and interactivity
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: white;
+          }
+          .dropdown-container {
+            background: hsl(240 10% 3.9%);
+            border: 1px solid hsl(240 3.7% 15.9%);
+            border-radius: 6px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            overflow: hidden;
+            min-width: 280px;
+          }
+          .search-section {
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid hsl(240 3.7% 15.9%);
+            padding: 8px 12px;
+          }
+          .search-input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: hsl(0 0% 98%);
+            width: 100%;
+            font-size: 14px;
+            padding: 4px 8px;
+          }
+          .search-input::placeholder {
+            color: hsl(240 5% 64.9%);
+          }
+          .dropdown-content {
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 4px;
+          }
+          .dropdown-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            color: hsl(0 0% 98%);
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 1px 0;
+            font-size: 14px;
+            user-select: none;
+          }
+          .dropdown-item:hover {
+            background: hsl(240 3.7% 15.9%);
+          }
+          .dropdown-item.selected {
+            background: hsl(240 3.7% 15.9%);
+          }
+          .check-icon {
+            margin-right: 8px;
+            width: 16px;
+            height: 16px;
+            opacity: 0;
+          }
+          .check-icon.visible {
+            opacity: 1;
+          }
+          .provider-icon {
+            margin-right: 12px;
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+          }
+          /* Custom scrollbar */
+          .dropdown-content::-webkit-scrollbar {
+            width: 6px;
+          }
+          .dropdown-content::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .dropdown-content::-webkit-scrollbar-thumb {
+            background: hsl(240 3.7% 15.9%);
+            border-radius: 3px;
+          }
+          .dropdown-content::-webkit-scrollbar-thumb:hover {
+            background: hsl(240 5% 26%);
+          }
+        </style>
+      </head>
+      <body>
+        <div class="dropdown-container">
+          ${content}
+        </div>
+        <script>
+          // Handle click events
+          document.addEventListener('click', function(e) {
+            const item = e.target.closest('.dropdown-item');
+            if (item && item.dataset.value) {
+              // Send selection back to main process
+              window.electronAPI?.selectDropdownItem?.(item.dataset.value);
+            }
+          });
+
+          // Handle search input
+          const searchInput = document.querySelector('.search-input');
+          if (searchInput) {
+            searchInput.addEventListener('input', function(e) {
+              const searchTerm = e.target.value.toLowerCase();
+              const items = document.querySelectorAll('.dropdown-item');
+              items.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(searchTerm) ? 'flex' : 'none';
+              });
+            });
+          }
+        </script>
+      </body>
+      </html>
+    `;
+
+    dropdownWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+
+    // Handle click outside to close
+    dropdownWindow.on('blur', () => {
+      // Small delay to allow click events to process first
+      setTimeout(() => {
+        if (dropdownWindow && !dropdownWindow.isDestroyed()) {
+          dropdownWindow.close();
+        }
+      }, 100);
+    });
+
+    dropdownWindow.on('closed', () => {
+      dropdownWindow = null;
+    });
+
+    dropdownWindow.once('ready-to-show', () => {
+      dropdownWindow?.show();
+      dropdownWindow?.focus(); // Ensure it can receive events
+    });
+
+    // Close dropdown if main window moves or is minimized
+    const handleMainWindowMove = () => {
+      if (dropdownWindow && !dropdownWindow.isDestroyed()) {
+        dropdownWindow.close();
+      }
+    };
+
+    const handleMainWindowMinimize = () => {
+      if (dropdownWindow && !dropdownWindow.isDestroyed()) {
+        dropdownWindow.close();
+      }
+    };
+
+    mainWindow.on('move', handleMainWindowMove);
+    mainWindow.on('minimize', handleMainWindowMinimize);
+    mainWindow.on('hide', handleMainWindowMove);
+
+    // Clean up listeners when dropdown closes
+    dropdownWindow.on('closed', () => {
+      mainWindow?.off('move', handleMainWindowMove);
+      mainWindow?.off('minimize', handleMainWindowMinimize);
+      mainWindow?.off('hide', handleMainWindowMove);
+    });
+  });
+
+  ipcMain.handle('close-dropdown', () => {
+    if (dropdownWindow) {
+      dropdownWindow.close();
+      dropdownWindow = null;
+    }
+  });
+
+  // Handle dropdown item selection
+  ipcMain.handle('select-dropdown-item', (_, value: string) => {
+    // Send selection to main window
+    if (mainWindow) {
+      mainWindow.webContents.send('dropdown-item-selected', value);
+    }
+    // Close dropdown
+    if (dropdownWindow) {
+      dropdownWindow.close();
+      dropdownWindow = null;
     }
   });
 }

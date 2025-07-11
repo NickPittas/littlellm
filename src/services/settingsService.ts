@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS: AppSettings = {
       openrouter: { apiKey: '', lastSelectedModel: '' },
       requesty: { apiKey: '', lastSelectedModel: '' },
       replicate: { apiKey: '', lastSelectedModel: '' },
+      n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
     },
   },
   ui: {
@@ -92,6 +93,25 @@ class SettingsService {
         window.electronAPI.getSettings().then((savedSettings) => {
           if (savedSettings) {
             console.log('Settings loaded from disk:', savedSettings);
+
+            // Migration fix: Check if model is set to a provider name and clear it
+            const providerNames = ['OpenAI', 'Anthropic', 'Google Gemini', 'Mistral AI', 'DeepSeek', 'LM Studio', 'Ollama (Local)', 'OpenRouter', 'Requesty', 'Replicate'];
+            if (savedSettings.chat?.model && providerNames.includes(savedSettings.chat.model)) {
+              console.log('Migration: Detected model set to provider name, clearing it:', savedSettings.chat.model);
+              savedSettings.chat.model = '';
+            }
+
+            // Also clean up any corrupted lastSelectedModel values in providers
+            if (savedSettings.chat?.providers) {
+              Object.keys(savedSettings.chat.providers).forEach(providerId => {
+                const provider = savedSettings.chat.providers[providerId];
+                if (provider.lastSelectedModel && providerNames.includes(provider.lastSelectedModel)) {
+                  console.log('Migration: Detected corrupted lastSelectedModel for provider', providerId, ':', provider.lastSelectedModel);
+                  provider.lastSelectedModel = '';
+                }
+              });
+            }
+
             this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
             this.notifyListeners();
           } else {
@@ -167,6 +187,7 @@ class SettingsService {
         openrouter: { apiKey: '' },
         requesty: { apiKey: '' },
         replicate: { apiKey: '' },
+        n8n: { apiKey: '', baseUrl: '' },
       };
     }
 
@@ -187,11 +208,42 @@ class SettingsService {
 
   // SAVE settings to JSON file - ONLY called when user clicks "Save Settings"
   async saveSettingsToDisk(): Promise<boolean> {
+    // Clean settings before saving to prevent corruption
+    this.cleanCorruptedData();
     const success = await this.saveSettings();
     if (success) {
       this.notifyListeners();
     }
     return success;
+  }
+
+  // Clean any corrupted data in settings
+  private cleanCorruptedData(): void {
+    const providerNames = ['OpenAI', 'Anthropic', 'Google Gemini', 'Mistral AI', 'DeepSeek', 'LM Studio', 'Ollama (Local)', 'OpenRouter', 'Requesty', 'Replicate'];
+
+    // Clean main model field
+    if (this.settings.chat?.model && providerNames.includes(this.settings.chat.model)) {
+      console.log('Cleaning corrupted model field:', this.settings.chat.model);
+      this.settings.chat.model = '';
+    }
+
+    // Clean provider lastSelectedModel fields
+    if (this.settings.chat?.providers) {
+      Object.keys(this.settings.chat.providers).forEach(providerId => {
+        const provider = this.settings.chat.providers[providerId];
+        if (provider.lastSelectedModel && providerNames.includes(provider.lastSelectedModel)) {
+          console.log('Cleaning corrupted lastSelectedModel for provider', providerId, ':', provider.lastSelectedModel);
+          provider.lastSelectedModel = '';
+        }
+      });
+    }
+  }
+
+  // Force clean all corrupted data immediately
+  forceCleanCorruptedData(): void {
+    console.log('Force cleaning all corrupted data...');
+    this.cleanCorruptedData();
+    this.notifyListeners();
   }
 
   // Method for SettingsOverlay - SAVE TO DISK and RELOAD after 1 second
@@ -304,6 +356,8 @@ class SettingsService {
         return apiKey.startsWith('sk-or-');
       case 'replicate':
         return apiKey.length > 10; // Basic length check
+      case 'n8n':
+        return true; // n8n doesn't require API key, uses webhook URL
       default:
         return apiKey.length > 0;
     }

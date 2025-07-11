@@ -562,7 +562,8 @@ export const chatService = {
       const providerSettings = settings.providers[settings.provider] || { apiKey: '' };
 
       // Check if API key is required and missing
-      if (settings.provider !== 'ollama' && !providerSettings.apiKey) {
+      // n8n uses webhooks (baseUrl), not API keys
+      if (settings.provider !== 'ollama' && settings.provider !== 'n8n' && !providerSettings.apiKey) {
         throw new Error(`API key is required for ${settings.provider}. Please configure it in Settings.`);
       }
 

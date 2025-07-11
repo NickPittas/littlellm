@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Minus, Send, Copy, Check } from 'lucide-react';
+import { X, Minus, Send, Copy, Check, Paperclip, Camera } from 'lucide-react';
 import { Button } from './ui/button';
 
 import { Card, CardContent } from './ui/card';
@@ -19,6 +19,7 @@ import { conversationHistoryService } from '../services/conversationHistoryServi
 import { MessageWithThinking } from './MessageWithThinking';
 import { UserMessage } from './UserMessage';
 import { useTheme } from '../contexts/ThemeContext';
+
 
 interface VoilaInterfaceProps {
   onClose?: () => void;
@@ -40,6 +41,10 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
   // Ref for auto-resizing textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Ref for chat messages container
+  const chatMessagesRef = useRef<HTMLDivElement>(null);
+  // Track if user has manually scrolled up
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
   const [settings, setSettings] = useState<ChatSettings>({
     provider: '',
     model: '',
@@ -108,6 +113,64 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     setAttachedFiles(prev => [...prev, file]);
     console.log('Screenshot captured:', file.name);
   }, []);
+
+
+
+  // Auto-focus chat input on app startup and window activation
+  useEffect(() => {
+    const focusInput = () => {
+      if (textareaRef.current) {
+        // Small delay to ensure the component is fully rendered
+        setTimeout(() => {
+          try {
+            textareaRef.current?.focus();
+            // Also set cursor to end of text if there's any content
+            const textarea = textareaRef.current;
+            if (textarea && textarea.value) {
+              textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            }
+            console.log('Chat input auto-focused');
+          } catch (error) {
+            console.warn('Failed to focus input:', error);
+          }
+        }, 150); // Slightly longer delay for better reliability
+      }
+    };
+
+    // Focus immediately on mount
+    focusInput();
+
+    // Focus when window becomes visible
+    const handleWindowFocus = () => {
+      focusInput();
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        focusInput();
+      }
+    };
+
+    // Listen for various focus events
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Also focus when clicking anywhere in the window (if not clicking on another input)
+    const handleWindowClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.matches('input, textarea, button, [contenteditable]')) {
+        focusInput();
+      }
+    };
+
+    document.addEventListener('click', handleWindowClick);
+
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('click', handleWindowClick);
+    };
+  }, []); // Empty dependency array - only run on mount
 
   // Helper function to check if keyboard event matches action menu shortcut
   const isActionMenuShortcut = (e: KeyboardEvent | React.KeyboardEvent) => {
@@ -302,6 +365,14 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
     return () => clearTimeout(timer);
   }, [input, autoResizeTextarea]);
+
+  // Auto-scroll to bottom when new messages are added (unless user is scrolling)
+  useEffect(() => {
+    if (!isUserScrolling && chatMessagesRef.current) {
+      const scrollContainer = chatMessagesRef.current;
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+    }
+  }, [messages, isUserScrolling]);
 
   // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -535,18 +606,32 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       style={{
         userSelect: 'none',
         WebkitAppRegion: 'drag',
-        overflow: 'hidden'
+        overflow: 'visible'
       } as React.CSSProperties & { WebkitAppRegion?: string }}
     >
       {/* Content wrapper - Fixed height container */}
-      <div className="h-full flex flex-col min-h-0">
+      <div
+        className="h-full flex flex-col min-h-0"
+        style={{
+          overflow: 'visible',
+          WebkitAppRegion: 'drag'
+        } as React.CSSProperties & { WebkitAppRegion?: string }}
+      >
 
         {/* Input Area with Attachment Preview */}
-      <div className="flex-none p-2">
-        <Card className="p-2">
+      <div
+        id="input-area"
+        className="flex-none p-2"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+      >
+        <Card
+          className="p-2"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        >
           {/* Attachment Preview */}
           {attachedFiles.length > 0 && (
             <div
+              id="attachment-preview"
               className="mb-3 p-3 bg-muted rounded-lg"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
             >
@@ -600,23 +685,15 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               onChange={(e) => {
                 const newValue = e.target.value;
                 setInput(newValue);
-                // Trigger immediate resize
+                // Simple textarea auto-resize without window resizing
                 setTimeout(() => {
-                  if (textareaRef.current && typeof window !== 'undefined' && window.electronAPI) {
+                  if (textareaRef.current) {
                     const textarea = textareaRef.current;
                     textarea.style.height = '40px';
                     textarea.offsetHeight; // Force reflow
                     const scrollHeight = textarea.scrollHeight;
                     const contentHeight = Math.max(40, Math.min(200, scrollHeight));
                     textarea.style.height = `${contentHeight}px`;
-
-                    // Resize window to accommodate new textarea height
-                    const baseWidth = 570;
-                    const baseHeight = 142; // Base height (padding, borders, etc.)
-                    const chatHeight = showChat && messages.length > 0 ? 450 : 0; // Chat area height
-                    const textareaExtraHeight = Math.max(0, contentHeight - 40); // Extra height beyond minimum
-                    const newWindowHeight = baseHeight + chatHeight + textareaExtraHeight;
-                    window.electronAPI.resizeWindow(baseWidth, newWindowHeight);
                   }
                 }, 0);
               }}
@@ -625,13 +702,63 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               className="flex-1 min-h-[40px] p-2 border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground cursor-text overflow-y-auto"
               style={{ WebkitAppRegion: 'no-drag', lineHeight: '1.5' } as React.CSSProperties & { WebkitAppRegion?: string }}
             />
+
+            {/* Attachment and Screenshot buttons - moved to left of Send button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.multiple = true;
+                input.accept = 'image/*,.pdf,.txt,.doc,.docx,.jpg,.png,.md,.log';
+                input.onchange = (e) => {
+                  const files = (e.target as HTMLInputElement).files;
+                  if (files) {
+                    handleFileUpload(files);
+                  }
+                };
+                input.click();
+              }}
+              className="h-10 w-10 cursor-pointer flex-shrink-0"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+              title="Attach File"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                try {
+                  if (typeof window !== 'undefined' && window.electronAPI) {
+                    const result = await window.electronAPI.takeScreenshot();
+                    if (result.success && result.dataURL) {
+                      const response = await fetch(result.dataURL);
+                      const blob = await response.blob();
+                      const file = new File([blob], `screenshot-${Date.now()}.png`, { type: 'image/png' });
+                      handleScreenshotCapture(file);
+                    }
+                  }
+                } catch (error) {
+                  console.error('Failed to take screenshot:', error);
+                }
+              }}
+              className="h-10 w-10 cursor-pointer flex-shrink-0"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+              title="Take Screenshot"
+            >
+              <Camera className="h-4 w-4" />
+            </Button>
+
             <Button
               onClick={handleSendMessage}
               disabled={!input.trim() && attachedFiles.length === 0}
               className="h-10 w-10 cursor-pointer flex-shrink-0"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-5 w-5" />
             </Button>
           </div>
         </Card>
@@ -641,16 +768,16 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       {messages.length > 0 && showChat && (
         <div
           className="flex-1 flex flex-col p-2 overflow-hidden"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
         >
           <Card
             className="flex-1 flex flex-col overflow-hidden"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+            style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
           >
             {/* Chat Header with Controls - FIXED POSITION */}
             <div
               className="flex-none flex items-center justify-between p-2 border-b border-border bg-background"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+              style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
             >
               <div className="text-sm font-medium text-muted-foreground">Chat</div>
               <div className="flex items-center gap-1">
@@ -679,6 +806,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
             {/* Chat Messages */}
             <div
+              ref={chatMessagesRef}
               className="flex-1 p-4 space-y-4 hide-scrollbar scrollable chat-messages"
               style={{
                 overflowY: 'auto',
@@ -687,6 +815,17 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 msOverflowStyle: 'none',
                 WebkitAppRegion: 'no-drag'
               } as React.CSSProperties & { WebkitAppRegion?: string }}
+              onScroll={(e) => {
+                const element = e.currentTarget;
+                const { scrollTop, scrollHeight, clientHeight } = element;
+
+                // Check if user is near the bottom (within 50px)
+                const isNearBottom = scrollHeight - scrollTop - clientHeight < 50;
+
+                // If user scrolled up from bottom, disable auto-scroll
+                // If user scrolled back to bottom, re-enable auto-scroll
+                setIsUserScrolling(!isNearBottom);
+              }}
               onWheel={(e) => {
                 // Ensure mouse wheel scrolling works smoothly
                 e.preventDefault();
@@ -733,10 +872,14 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
       {/* Bottom Toolbar - TESTING MINIMAL VERSION */}
       <div
+        id="bottom-toolbar"
         className="flex-none cursor-default p-2"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
-        <Card className="rounded-lg border border-border">
+        <Card
+          className="rounded-lg border border-border"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        >
             <BottomToolbar
               settings={settings}
               onSettingsChange={handleSettingsChange}
