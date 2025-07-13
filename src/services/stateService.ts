@@ -1,6 +1,12 @@
 // Service for managing frequently-changing state data
 // Separate from main settings to avoid constant file writes
 
+// Type helper for accessing Electron API methods that might not be in the interface
+type ElectronAPIWithStateFiles = {
+  getStateFile: (filename: string) => Promise<unknown>;
+  saveStateFile: (filename: string, data: unknown) => Promise<boolean>;
+};
+
 export interface ProviderState {
   currentProvider: string;
   currentModel: string;
@@ -36,13 +42,13 @@ class StateService {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
         // Load provider state
-        const providerData = await window.electronAPI.getStateFile('provider-state.json');
+        const providerData = await (window.electronAPI as unknown as ElectronAPIWithStateFiles).getStateFile('provider-state.json');
         if (providerData) {
           this.providerState = { ...this.providerState, ...providerData };
         }
 
         // Load MCP state
-        const mcpData = await window.electronAPI.getStateFile('mcp-state.json');
+        const mcpData = await (window.electronAPI as unknown as ElectronAPIWithStateFiles).getStateFile('mcp-state.json');
         if (mcpData) {
           this.mcpState = { ...this.mcpState, ...mcpData };
         }
@@ -97,7 +103,7 @@ class StateService {
   private async saveProviderState() {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
-        await window.electronAPI.saveStateFile('provider-state.json', this.providerState);
+        await (window.electronAPI as unknown as ElectronAPIWithStateFiles).saveStateFile('provider-state.json', this.providerState);
       }
     } catch (error) {
       console.error('Failed to save provider state:', error);
@@ -136,7 +142,7 @@ class StateService {
   private async saveMCPState() {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
-        await window.electronAPI.saveStateFile('mcp-state.json', this.mcpState);
+        await (window.electronAPI as unknown as ElectronAPIWithStateFiles).saveStateFile('mcp-state.json', this.mcpState);
       }
     } catch (error) {
       console.error('Failed to save MCP state:', error);
