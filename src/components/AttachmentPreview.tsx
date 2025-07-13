@@ -35,7 +35,7 @@ export function AttachmentPreview({ files, onRemoveFile }: AttachmentPreviewProp
         }
       });
     };
-  }, [files]);
+  }, [files, previews]);
 
   if (files.length === 0) return null;
 

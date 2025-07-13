@@ -4,41 +4,46 @@ export interface ElectronAPI {
   writeClipboard: (text: string) => Promise<void>;
 
   // Settings operations
-  getSettings: () => Promise<any>;
-  updateSettings: (settings: any) => Promise<boolean>;
+  getSettings: () => Promise<unknown>;
+  updateSettings: (settings: unknown) => Promise<boolean>;
 
   // App settings operations
-  getAppSettings: () => Promise<any>;
-  updateAppSettings: (settings: any) => Promise<boolean>;
+  getAppSettings: () => Promise<unknown>;
+  updateAppSettings: (settings: unknown) => Promise<boolean>;
 
   // Storage operations
-  getStorageItem: (key: string) => Promise<any>;
-  setStorageItem: (key: string, value: any) => Promise<boolean>;
+  getStorageItem: (key: string) => Promise<unknown>;
+  setStorageItem: (key: string, value: unknown) => Promise<boolean>;
 
   // State file operations (separate from settings)
-  getStateFile: (filename: string) => Promise<any>;
-  saveStateFile: (filename: string, data: any) => Promise<boolean>;
+  getStateFile: (filename: string) => Promise<unknown>;
+  saveStateFile: (filename: string, data: unknown) => Promise<boolean>;
 
   // MCP servers operations
-  getMCPServers: () => Promise<{ servers: any[]; version: string }>;
-  saveMCPServers: (mcpData: { servers: any[]; version: string }) => Promise<boolean>;
-  addMCPServer: (server: any) => Promise<any>;
-  updateMCPServer: (id: string, updates: any) => Promise<boolean>;
+  getMCPServers: () => Promise<{ servers: unknown[]; version: string }>;
+  saveMCPServers: (mcpData: { servers: unknown[]; version: string }) => Promise<boolean>;
+  addMCPServer: (server: unknown) => Promise<unknown>;
+  updateMCPServer: (id: string, updates: unknown) => Promise<boolean>;
   removeMCPServer: (id: string) => Promise<boolean>;
   connectMCPServer: (serverId: string) => Promise<boolean>;
   disconnectMCPServer: (serverId: string) => Promise<void>;
   disconnectAllMCPServers: () => Promise<void>;
   connectEnabledMCPServers: () => Promise<void>;
-  restartMCPServers: () => Promise<void>;
-  callMCPTool: (toolName: string, args: any) => Promise<any>;
-  readMCPResource: (uri: string) => Promise<any>;
-  getMCPPrompt: (name: string, args: any) => Promise<any>;
+  callMCPTool: (toolName: string, args: unknown) => Promise<unknown>;
+  readMCPResource: (uri: string) => Promise<unknown>;
+  getMCPPrompt: (name: string, args: unknown) => Promise<unknown>;
+  getAllMCPTools: () => Promise<unknown[]>;
+  getAllMCPResources: () => Promise<unknown[]>;
+  getAllMCPPrompts: () => Promise<unknown[]>;
+  getMCPConnectionStatus: () => Promise<Record<string, boolean>>;
+  getMCPDetailedStatus: () => Promise<unknown>;
+  getConnectedMCPServerIds: () => Promise<string[]>;
 
   // Conversation file operations
-  saveConversationToFile: (conversationId: string, conversation: any) => Promise<boolean>;
-  saveConversationIndex: (conversationIndex: any[]) => Promise<boolean>;
-  loadConversationIndex: () => Promise<any[]>;
-  loadConversationFromFile: (conversationId: string) => Promise<any>;
+  saveConversationToFile: (conversationId: string, conversation: unknown) => Promise<boolean>;
+  saveConversationIndex: (conversationIndex: unknown[]) => Promise<boolean>;
+  loadConversationIndex: () => Promise<unknown[]>;
+  loadConversationFromFile: (conversationId: string) => Promise<unknown>;
   getAllConversationIds: () => Promise<string[]>;
 
   // Window operations
@@ -72,7 +77,7 @@ export interface ElectronAPI {
   readFile: (filePath: string) => Promise<{ name: string; content: string; type: string }>;
 
   // Event listeners
-  onSettingsChanged: (callback: (settings: any) => void) => void;
+  onSettingsChanged: (callback: (settings: unknown) => void) => void;
   onPromptReceived: (callback: (prompt: string) => void) => void;
   onThemeChanged: (callback: (themeId: string) => void) => void;
 }

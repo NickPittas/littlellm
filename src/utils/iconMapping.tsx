@@ -70,7 +70,6 @@ import {
   Meh,
   Bot,
   Brain,
-  Cloud,
   Globe,
   Layers,
   Repeat,
@@ -78,7 +77,7 @@ import {
 } from 'lucide-react';
 
 // Mapping of emoji/emoticon strings to Lucide React components
-export const iconMapping: Record<string, React.ComponentType<any>> = {
+export const iconMapping: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
   // Text and writing
   '📝': FileText,
   '✏️': Edit3,
@@ -202,7 +201,7 @@ export const iconMapping: Record<string, React.ComponentType<any>> = {
 };
 
 // Helper function to get Lucide icon component from emoji string
-export const getIconComponent = (emoji: string): React.ComponentType<any> => {
+export const getIconComponent = (emoji: string): React.ComponentType<React.SVGProps<SVGSVGElement>> => {
   return iconMapping[emoji] || FileText;
 };
 
@@ -213,7 +212,7 @@ export const renderIcon = (emoji: string, className: string = "h-4 w-4") => {
 };
 
 // Provider icons mapping
-export const providerIcons: Record<string, React.ComponentType<any>> = {
+export const providerIcons: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
   openai: Zap,        // Lightning bolt for OpenAI
   anthropic: Brain,   // Brain for Anthropic Claude
   gemini: Sparkles,   // Sparkles for Google Gemini
@@ -227,7 +226,7 @@ export const providerIcons: Record<string, React.ComponentType<any>> = {
 };
 
 // Helper function to get provider icon
-export const getProviderIcon = (providerId: string): React.ComponentType<any> => {
+export const getProviderIcon = (providerId: string): React.ComponentType<React.SVGProps<SVGSVGElement>> => {
   return providerIcons[providerId] || Bot; // Default to Bot icon
 };
 

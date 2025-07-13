@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, forwardRef } from 'react';
+import { useEffect, useRef, forwardRef, useCallback } from 'react';
 import { cn } from '../lib/utils';
 
 interface AutoResizeTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -15,39 +15,39 @@ export const AutoResizeTextarea = forwardRef<HTMLTextAreaElement, AutoResizeText
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const combinedRef = ref || textareaRef;
 
-    const adjustHeight = () => {
+    const adjustHeight = useCallback(() => {
       const textarea = typeof combinedRef === 'function' ? textareaRef.current : combinedRef?.current;
       if (!textarea) return;
 
       // Reset height to auto to get the correct scrollHeight
       textarea.style.height = 'auto';
-      
+
       // Calculate the line height
       const computedStyle = window.getComputedStyle(textarea);
       const lineHeight = parseInt(computedStyle.lineHeight) || 24;
-      
+
       // Calculate min and max heights
       const minHeight = lineHeight * minRows;
       const maxHeight = lineHeight * maxRows;
-      
+
       // Set the height based on content, but within min/max bounds
       const scrollHeight = textarea.scrollHeight;
       const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
-      
+
       textarea.style.height = `${newHeight}px`;
-      
+
       // Show scrollbar if content exceeds maxHeight
       textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
-    };
+    }, [combinedRef, minRows, maxRows]);
 
     useEffect(() => {
       adjustHeight();
-    }, [value]);
+    }, [value, adjustHeight]);
 
     useEffect(() => {
       // Adjust height on mount
       adjustHeight();
-    }, []);
+    }, [adjustHeight]);
 
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       onChange(e);
