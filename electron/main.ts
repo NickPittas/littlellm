@@ -438,11 +438,14 @@ const isProduction = app.isPackaged || process.env.NODE_ENV === 'production';
 
 // Function to get the correct icon path for different environments
 function getIconPath(): string {
+  // Use platform-appropriate icon format
+  const iconFile = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+
   const possiblePaths = [
-    path.join(__dirname, '../assets/icon.ico'),
-    path.join(__dirname, '../../assets/icon.ico'),
-    path.join(process.resourcesPath, 'assets/icon.ico'),
-    path.join(app.getAppPath(), 'assets/icon.ico'),
+    path.join(__dirname, '../assets', iconFile),
+    path.join(__dirname, '../../assets', iconFile),
+    path.join(process.resourcesPath, 'assets', iconFile),
+    path.join(app.getAppPath(), 'assets', iconFile),
   ];
 
   for (const iconPath of possiblePaths) {
@@ -453,7 +456,7 @@ function getIconPath(): string {
   }
 
   console.warn('Icon file not found, using default');
-  return path.join(__dirname, '../assets/icon.ico'); // fallback
+  return path.join(__dirname, '../assets', iconFile); // fallback
 }
 
 // Function to detect available Next.js port
@@ -949,17 +952,13 @@ async function createWindow() {
 
   // Handle window show/hide
   mainWindow.on('show', () => {
-    if (tray && process.platform === 'darwin') {
-      // setHighlightMode is macOS only
-      (tray as any).setHighlightMode('always');
-    }
+    // Note: setHighlightMode was removed in newer Electron versions
+    // Tray highlighting is now handled automatically by the system
   });
 
   mainWindow.on('hide', () => {
-    if (tray && process.platform === 'darwin') {
-      // setHighlightMode is macOS only
-      (tray as any).setHighlightMode('never');
-    }
+    // Note: setHighlightMode was removed in newer Electron versions
+    // Tray highlighting is now handled automatically by the system
   });
 }
 

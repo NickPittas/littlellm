@@ -72,10 +72,12 @@
   },
   "mac": {
     "target": "dmg",
-    "category": "public.app-category.productivity"
+    "category": "public.app-category.productivity",
+    "icon": "assets/icon.png"
   },
   "linux": {
     "target": "AppImage",
-    "category": "Office"
+    "category": "Office",
+    "icon": "assets/icon.png"
   }
 }
