@@ -52,7 +52,7 @@ class ConversationHistoryService {
     try {
       // Load conversation index from disk (contains metadata for ALL conversations)
       if (typeof window !== 'undefined' && window.electronAPI) {
-        const electronAPI = window.electronAPI as ElectronAPI;
+        const electronAPI = window.electronAPI as unknown as ElectronAPI;
         const conversationIndex = await electronAPI.loadConversationIndex();
 
         if (conversationIndex && Array.isArray(conversationIndex)) {
@@ -157,7 +157,7 @@ class ConversationHistoryService {
   async loadFullConversation(conversationId: string): Promise<Conversation | null> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
-        const electronAPI = window.electronAPI as ElectronAPI;
+        const electronAPI = window.electronAPI as unknown as ElectronAPI;
         const conversationData = await electronAPI.loadConversationFromFile(conversationId);
 
         if (conversationData) {
