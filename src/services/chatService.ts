@@ -56,63 +56,12 @@ export interface ChatSettings {
 export const chatService = {
   // Helper function to check if a model supports vision
   supportsVision(provider: string, model: string): boolean {
-    const visionModels: Record<string, string[]> = {
-      openai: [
-        'gpt-4o',
-        'gpt-4o-mini',
-        'gpt-4-turbo',
-        'gpt-4-vision-preview'
-      ],
-      openrouter: [
-        'openai/gpt-4o',
-        'openai/gpt-4o-mini',
-        'openai/gpt-4-turbo',
-        'openai/gpt-4-vision-preview',
-        'anthropic/claude-3.5-sonnet',
-        'anthropic/claude-3-opus',
-        'anthropic/claude-3-sonnet',
-        'anthropic/claude-3-haiku',
-        'google/gemini-pro-1.5',
-        'google/gemini-flash-1.5',
-        'google/gemini-pro-vision'
-      ],
-      requesty: [
-        'openai/gpt-4o',
-        'openai/gpt-4o-mini',
-        'openai/gpt-4-turbo',
-        'openai/gpt-4-vision-preview',
-        'anthropic/claude-3.5-sonnet',
-        'anthropic/claude-3-opus',
-        'anthropic/claude-3-sonnet',
-        'anthropic/claude-3-haiku',
-        'google/gemini-pro-1.5',
-        'google/gemini-flash-1.5',
-        'google/gemini-pro-vision'
-      ],
-      ollama: [] // Ollama vision support is detected by model name patterns
-    };
+    // Assume all models support vision by default
+    // Let the individual APIs return errors if they don't support vision
+    // This is more robust and future-proof than maintaining model lists
 
-    const supportedModels = visionModels[provider] || [];
-    let isSupported = supportedModels.includes(model);
-
-    // Special handling for Ollama - detect vision models by name patterns
-    if (provider === 'ollama' && !isSupported) {
-      const ollamaVisionPatterns = [
-        'vision',
-        'llava',
-        'bakllava',
-        'moondream',
-        'cogvlm',
-        'llama3.2-vision'
-      ];
-
-      isSupported = ollamaVisionPatterns.some(pattern =>
-        model.toLowerCase().includes(pattern.toLowerCase())
-      );
-    }
-
-    console.log(`Vision support check - Provider: ${provider}, Model: ${model}, Supported: ${isSupported}`);
-    return isSupported;
+    console.log(`Vision support check - Provider: ${provider}, Model: ${model}, Supported: true (assumed)`);
+    return true;
   },
 
   // Helper function to convert PDF pages to images
