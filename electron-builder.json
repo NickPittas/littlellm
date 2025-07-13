@@ -6,7 +6,6 @@
     "output": "dist",
     "buildResources": "assets"
   },
-  "icon": "assets/icon.ico",
 
   "files": [
     "dist/electron/**/*",
