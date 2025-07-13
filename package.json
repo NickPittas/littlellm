@@ -1,7 +1,7 @@
 {
   "name": "littlellm",
-  "version": "1.5.5",
-  "description": "A powerful desktop AI chat application with model persistence, thinking sections, and clipboard integration",
+  "version": "1.7.0",
+  "description": "A powerful desktop AI chat application with enhanced vision support, n8n integration, and advanced response parsing",
   "author": "LittleLLM Team",
   "private": true,
   "main": "dist/electron/main.js",
@@ -26,8 +26,8 @@
     "dist:linux": "npm run build && npm run build-electron && electron-builder --linux --publish=never"
   },
   "dependencies": {
-
     "@microsoft/fetch-event-source": "^2.0.1",
+    "@modelcontextprotocol/sdk": "^1.15.1",
     "@radix-ui/react-alert-dialog": "^1.0.5",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-icons": "^1.3.2",
@@ -41,9 +41,8 @@
     "@types/mime-types": "^3.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-
+    "cmdk": "^1.1.1",
     "electron-is-dev": "^3.0.1",
-
     "lucide-react": "^0.352.0",
     "mime-types": "^3.0.1",
     "next": "14.1.0",

@@ -67,6 +67,11 @@ class PromptsService {
     return [...this.prompts, ...this.customPrompts];
   }
 
+  getCustomPrompts(): Prompt[] {
+    this.ensureInitialized();
+    return [...this.customPrompts];
+  }
+
   getPromptsByCategory(category: string): Prompt[] {
     const allPrompts = this.getAllPrompts();
     return allPrompts.filter(prompt => prompt.category === category);

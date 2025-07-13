@@ -63,7 +63,7 @@ export function ElectronDropdown({
 
     // Calculate dropdown dimensions
     const dropdownWidth = 280
-    const dropdownHeight = Math.min(300, filteredOptions.length * 40 + 80) // Dynamic height
+    const dropdownHeight = Math.min(315, filteredOptions.length * 40 + 80 + 15) // Dynamic height + 15px for draggable header
 
     try {
       // Get trigger button position relative to the window (not viewport)
@@ -73,10 +73,16 @@ export function ElectronDropdown({
       const x = rect.left
       const y = rect.bottom + 4 // 4px gap below the button
 
+      console.log('🔍 ElectronDropdown position debug:', {
+        rect: { left: rect.left, top: rect.top, bottom: rect.bottom, right: rect.right },
+        calculated: { x, y },
+        dropdownSize: { width: dropdownWidth, height: dropdownHeight }
+      })
+
       // Generate HTML content for dropdown
       const content = generateOptionsDropdownHTML(filteredOptions, value, searchValue, displayTransform)
 
-      // Open dropdown at calculated position
+      // Open dropdown at calculated position (theme will be retrieved from main window)
       await window.electronAPI.openDropdown(x, y, dropdownWidth, dropdownHeight, content)
       setOpen(true)
     } catch (error) {
@@ -109,6 +115,14 @@ export function ElectronDropdown({
         console.log('🔥 ELECTRON DROPDOWN: Item selected:', selectedValue);
         console.log('🔥 ELECTRON DROPDOWN: Available options:', options);
         console.log('🔥 ELECTRON DROPDOWN: Is selected value in options?', options.includes(selectedValue));
+
+        // ONLY handle selections that are actually in our options list
+        // This prevents cross-dropdown contamination
+        if (!options.includes(selectedValue)) {
+          console.log('🔥 ELECTRON DROPDOWN: Ignoring selection not in our options:', selectedValue);
+          return;
+        }
+
         onValueChange?.(selectedValue);
         setOpen(false);
       };
@@ -116,11 +130,11 @@ export function ElectronDropdown({
       window.electronAPI.onDropdownItemSelected(handleSelection);
 
       return () => {
-        // Clean up listener
-        window.electronAPI?.removeAllListeners?.('dropdown-item-selected');
+        // Don't remove all listeners - just let this one be overridden
+        // The electron API will handle multiple listeners properly
       };
     }
-  }, [isElectron, onValueChange]);
+  }, [isElectron, onValueChange, options]);
 
   // Close dropdown when clicking outside (for non-Electron fallback)
   React.useEffect(() => {
@@ -169,10 +183,11 @@ export function ElectronDropdown({
 
           {/* Dropdown content - opens downward */}
           <div
-            className="absolute top-full mt-1 left-0 z-[99999] w-[350px] bg-card border shadow-lg rounded-md overflow-hidden"
+            className="absolute top-full mt-1 left-0 z-[99999] min-w-full max-w-[350px] bg-card border shadow-lg rounded-md"
             style={{
               WebkitAppRegion: 'no-drag',
-              maxHeight: '300px'
+              maxHeight: '315px', // Increased by 15px for draggable header
+              overflow: 'hidden'
             } as React.CSSProperties & { WebkitAppRegion?: string }}
           >
             <div className="flex flex-col h-full">
@@ -187,22 +202,11 @@ export function ElectronDropdown({
                 />
               </div>
               <div
-                className="overflow-y-scroll flex-1 min-h-0"
+                className="flex-1 min-h-0 overflow-y-auto scrollbar-hide"
                 style={{
                   WebkitAppRegion: 'no-drag',
-                  scrollbarWidth: 'auto',
-                  scrollBehavior: 'smooth',
-                  maxHeight: '220px' // Fixed height to ensure scrolling
+                  maxHeight: '265px' // Increased by 15px for draggable header
                 } as React.CSSProperties & { WebkitAppRegion?: string }}
-                onWheel={(e) => {
-                  // Ensure wheel events are handled properly and don't bubble up
-                  e.stopPropagation();
-                  e.preventDefault();
-
-                  // Manual scroll handling
-                  const target = e.currentTarget;
-                  target.scrollTop += e.deltaY;
-                }}
               >
                 <div className="p-1">
                   {filteredOptions.length === 0 ? (
@@ -235,7 +239,7 @@ export function ElectronDropdown({
                               value === option ? "opacity-100" : "opacity-0"
                             )}
                           />
-                          <span className="text-sm">{displayTransform ? displayTransform(option) : option}</span>
+                          <span className="text-sm truncate flex-1">{displayTransform ? displayTransform(option) : option}</span>
                         </div>
                       ))}
                     </>

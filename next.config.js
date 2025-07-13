@@ -13,6 +13,13 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Fix webpack caching issues on Windows
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.cache = false;
+    }
+    return config;
+  },
   // Only use export mode when building for production
   ...(process.env.NODE_ENV === 'production' && {
     output: 'export',

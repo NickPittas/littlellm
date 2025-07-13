@@ -35,6 +35,66 @@
     @apply border-border;
   }
 
+  /* Hide scrollbars but keep scrolling functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Smooth scrolling for chat messages */
+  .chat-messages {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
+    /* Hardware acceleration for smoother scrolling */
+    will-change: scroll-position;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    /* Optimize rendering */
+    contain: layout style paint;
+    /* Smooth scroll timing */
+    scroll-snap-type: none; /* Disable snap for continuous smooth scrolling */
+  }
+
+  /* Enhanced smooth scrolling for all scrollable elements */
+  .scrollable {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    /* Hardware acceleration */
+    will-change: scroll-position;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    /* Optimize rendering performance */
+    contain: layout style paint;
+    /* Smooth transitions */
+    transition: scroll-behavior 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Smooth scrolling for the entire document */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Optimize scrolling performance for all elements */
+  * {
+    /* Improve scroll performance on all elements */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Specific optimizations for scrollable containers */
+  .scrollable::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollable {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
   /* Solid backgrounds everywhere - no transparency */
   html {
     background: hsl(var(--background)) !important;

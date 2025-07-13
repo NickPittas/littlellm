@@ -36,9 +36,9 @@ class ElectronStorage implements StorageAPI {
 
   async removeItem(key: string): Promise<void> {
     try {
-      if (typeof window !== 'undefined' && window.electronAPI?.removeStorageItem) {
-        await window.electronAPI.removeStorageItem(key);
-      }
+      // Note: Electron API doesn't have removeStorageItem method
+      // This is a no-op for Electron storage
+      console.warn('Electron storage removeItem not implemented:', key);
     } catch (error) {
       console.error('Electron storage removeItem failed:', error);
     }
@@ -102,7 +102,7 @@ function createStorage(): StorageAPI {
   }
 
   // Check if we're in Electron environment
-  if (window.electronAPI?.getStorageItem) {
+  if (window.electronAPI && typeof window.electronAPI.getStorageItem === 'function') {
     console.log('Using Electron storage');
     return new ElectronStorage();
   }

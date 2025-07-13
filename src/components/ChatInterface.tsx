@@ -87,6 +87,7 @@ export function ChatInterface({
     temperature: 0.3,
     maxTokens: 8192,
     systemPrompt: '',
+    toolCallingEnabled: true,
     providers: {
       openai: { apiKey: '' },
       anthropic: { apiKey: '' },
@@ -188,16 +189,16 @@ export function ChatInterface({
   // Create ref for the textarea to enable auto-focus
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-focus chat input when component mounts or becomes visible
+  // Auto-focus chat input only when component first mounts (not on every change)
   useEffect(() => {
     if (!hideInput && textareaRef.current) {
       // Small delay to ensure the component is fully rendered
       setTimeout(() => {
         textareaRef.current?.focus();
-        console.log('ChatInterface input auto-focused');
+        console.log('ChatInterface input auto-focused on mount');
       }, 100);
     }
-  }, [hideInput]); // Re-focus when hideInput changes
+  }, []); // Empty dependency array - only focus on initial mount
 
   const handleSendMessage = async () => {
     if (!input.trim() && attachedFiles.length === 0) return;
@@ -376,7 +377,7 @@ export function ChatInterface({
   return (
     <div className="flex flex-col h-full relative">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar scrollable">
         {messages.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
             <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -409,6 +410,8 @@ export function ChatInterface({
                               ).join(' ')
                             : String(message.content)
                       }
+                      usage={message.usage}
+                      timing={message.timing}
                     />
                   ) : (
                     <UserMessage

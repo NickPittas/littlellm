@@ -1,12 +1,28 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, Brain, Copy, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Brain, Copy, Check, Wrench } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface MessageWithThinkingProps {
   content: string;
   className?: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  timing?: {
+    startTime: number;
+    endTime: number;
+    duration: number;
+    tokensPerSecond?: number;
+  };
+  toolCalls?: Array<{
+    id: string;
+    name: string;
+    arguments: any;
+  }>;
 }
 
 interface ParsedMessage {
@@ -14,9 +30,15 @@ interface ParsedMessage {
   response: string;
 }
 
-export function MessageWithThinking({ content, className = '' }: MessageWithThinkingProps) {
+export function MessageWithThinking({ content, className = '', usage, timing, toolCalls }: MessageWithThinkingProps) {
   const [showThinking, setShowThinking] = useState(false);
+  const [showTools, setShowTools] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Debug tool calls
+  if (toolCalls && toolCalls.length > 0) {
+    console.log('🔧 MessageWithThinking received toolCalls:', toolCalls);
+  }
 
   // Parse the message content to extract thinking sections and response
   const parseMessage = (text: string): ParsedMessage => {
@@ -113,6 +135,58 @@ export function MessageWithThinking({ content, className = '' }: MessageWithThin
         </div>
       )}
 
+      {/* Tool Usage Section - Only show if there are tool calls */}
+      {toolCalls && toolCalls.length > 0 && (
+        <div className="mb-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowTools(!showTools)}
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground p-1 h-auto"
+          >
+            {showTools ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            <Wrench className="h-3 w-3" />
+            <span>Tools Used ({toolCalls.length} tool{toolCalls.length !== 1 ? 's' : ''})</span>
+          </Button>
+
+          {showTools && (
+            <div className="mt-2 space-y-2">
+              {toolCalls.map((toolCall, index) => (
+                <div
+                  key={toolCall.id || index}
+                  className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-md p-3 text-sm"
+                >
+                  <div className="flex items-center gap-2 mb-2 text-xs text-blue-600 dark:text-blue-400">
+                    <Wrench className="h-3 w-3" />
+                    <span className="font-medium">{toolCall.name}</span>
+                    <span className="text-muted-foreground">#{toolCall.id}</span>
+                  </div>
+
+                  {/* Tool Arguments */}
+                  <div className="mb-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-1">Arguments:</div>
+                    <div
+                      className="bg-muted/50 rounded p-2 text-xs font-mono whitespace-pre-wrap text-muted-foreground select-text"
+                      style={{
+                        WebkitAppRegion: 'no-drag',
+                        userSelect: 'text',
+                        WebkitUserSelect: 'text'
+                      } as React.CSSProperties & { WebkitAppRegion?: string }}
+                    >
+                      {JSON.stringify(toolCall.arguments, null, 2)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Copy Button - positioned in top right */}
       <Button
         variant="ghost"
@@ -139,6 +213,32 @@ export function MessageWithThinking({ content, className = '' }: MessageWithThin
           } as React.CSSProperties & { WebkitAppRegion?: string }}
         >
           {parsed.response}
+        </div>
+      )}
+
+      {/* Token Usage and Performance Info */}
+      {(usage || timing) && (
+        <div className="mt-3 pt-2 border-t border-border/30">
+          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+            {timing?.tokensPerSecond && (
+              <div className="flex items-center gap-1">
+                <span className="font-medium">⚡</span>
+                <span>{timing.tokensPerSecond.toFixed(1)} tokens/sec</span>
+              </div>
+            )}
+            {usage && (
+              <div className="flex items-center gap-1">
+                <span className="font-medium">📊</span>
+                <span>{usage.totalTokens} tokens ({usage.promptTokens} in, {usage.completionTokens} out)</span>
+              </div>
+            )}
+            {timing && (
+              <div className="flex items-center gap-1">
+                <span className="font-medium">⏱️</span>
+                <span>{(timing.duration / 1000).toFixed(2)}s</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
