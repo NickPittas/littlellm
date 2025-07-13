@@ -63,7 +63,17 @@ export function ProviderDropdown({
 
     // Calculate dropdown dimensions
     const dropdownWidth = 280
-    const dropdownHeight = Math.min(300, filteredProviders.length * 40 + 80) // Dynamic height
+    const itemHeight = 40
+    const headerHeight = 32 // For provider count text
+    const padding = 16 // Top and bottom padding
+    const maxHeight = 415 // Increased by 15px for draggable header
+
+    // Calculate height based on number of providers, ensuring scrolling works
+    const calculatedHeight = Math.min(
+      maxHeight,
+      headerHeight + (filteredProviders.length * itemHeight) + padding
+    )
+    const dropdownHeight = Math.max(120, calculatedHeight) // Minimum height
 
     try {
       // Get trigger button position relative to the window (not viewport)
@@ -76,7 +86,7 @@ export function ProviderDropdown({
       // Generate HTML content for dropdown
       const content = generateProviderDropdownHTML(filteredProviders, value)
 
-      // Open dropdown at calculated position
+      // Open dropdown at calculated position (theme will be retrieved from main window)
       await window.electronAPI.openDropdown(x, y, dropdownWidth, dropdownHeight, content)
       setOpen(true)
     } catch (error) {
@@ -100,6 +110,19 @@ export function ProviderDropdown({
     if (isElectron && window.electronAPI?.onDropdownItemSelected) {
       const handleSelection = (value: string) => {
         console.log('🚀 ELECTRON DROPDOWN: Provider selected:', value);
+        console.log('🚀 ELECTRON DROPDOWN: Available providers:', providers);
+
+        // Check if the selected value is a valid provider ID
+        const isValidProvider = providers.some(provider => provider.id === value);
+        console.log('🚀 ELECTRON DROPDOWN: Is selected value a valid provider?', isValidProvider);
+
+        // ONLY handle selections that are actually valid providers
+        // This prevents cross-dropdown contamination from MCP servers
+        if (!isValidProvider) {
+          console.log('🚀 ELECTRON DROPDOWN: Ignoring selection not in our providers:', value);
+          return;
+        }
+
         console.log('🚀 ELECTRON DROPDOWN: Calling onValueChange with:', value);
         onValueChange?.(value);
         setOpen(false);
@@ -112,7 +135,7 @@ export function ProviderDropdown({
         window.electronAPI?.removeAllListeners?.('dropdown-item-selected');
       };
     }
-  }, [isElectron, onValueChange]);
+  }, [isElectron, onValueChange, providers]);
 
   // Close dropdown when clicking outside (for non-Electron fallback)
   React.useEffect(() => {
@@ -171,28 +194,22 @@ export function ProviderDropdown({
 
           {/* Dropdown content - only show for non-Electron fallback */}
           <div
-            className="absolute top-full mt-1 left-0 z-[99999] w-[280px] bg-card border shadow-lg rounded-md overflow-hidden"
+            className="absolute top-full mt-1 left-0 z-[99999] w-[280px] bg-card border shadow-lg rounded-md"
             style={{
               WebkitAppRegion: 'no-drag',
-              maxHeight: '300px',
-              overflowX: 'hidden'
+              maxHeight: '415px', // Increased by 15px for draggable header
+              overflow: 'hidden'
             } as React.CSSProperties & { WebkitAppRegion?: string }}
           >
             <div className="flex flex-col h-full">
               <div
-                className="overflow-y-auto flex-1 min-h-0"
+                className="flex-1 min-h-0 overflow-y-auto scrollbar-hide"
                 style={{
                   WebkitAppRegion: 'no-drag',
+                  maxHeight: '415px', // Increased by 15px for draggable header
                   scrollbarWidth: 'none',
-                  overflowX: 'hidden',
-                  maxHeight: '180px'
-                } as React.CSSProperties & { WebkitAppRegion?: string }}
-                onWheel={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  const target = e.currentTarget;
-                  target.scrollTop += e.deltaY;
-                }}
+                  msOverflowStyle: 'none'
+                } as React.CSSProperties & { WebkitAppRegion?: string; scrollbarWidth?: string; msOverflowStyle?: string }}
               >
                 <div className="p-1">
                   {filteredProviders.length === 0 ? (
@@ -285,11 +302,30 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
         color: hsl(0 0% 98%);
       }
       .dropdown-content {
-        overflow-x: hidden;
+        max-height: 415px; /* Increased by 15px for draggable header */
         overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .dropdown-content::-webkit-scrollbar {
+        display: none;
+      }
+      .dropdown-header {
+        padding: 8px 12px;
+        font-size: 12px;
+        color: hsl(240 3.7% 15.9%);
+        border-bottom: 1px solid hsl(240 3.7% 15.9%);
+        background: hsl(240 10% 3.9%);
+        position: sticky;
+        top: 0;
+        z-index: 1;
       }
     </style>
     <div class="dropdown-content">
+      <div class="dropdown-header">
+        ${providers.length} providers available
+      </div>
       ${providerItems}
     </div>
   `;

@@ -10,12 +10,13 @@ import { conversationHistoryService, type Conversation } from '../services/conve
 interface HistoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onLoadConversation: (conversation: Conversation) => void;
+  onLoadConversation: (conversation: Conversation) => Promise<void>;
 }
 
 export function HistoryDialog({ open, onOpenChange, onLoadConversation }: HistoryDialogProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingConversationId, setLoadingConversationId] = useState<string | null>(null);
 
   const loadConversations = async () => {
     setLoading(true);
@@ -56,9 +57,16 @@ export function HistoryDialog({ open, onOpenChange, onLoadConversation }: Histor
     }
   };
 
-  const handleLoadConversation = (conversation: Conversation) => {
-    onLoadConversation(conversation);
-    onOpenChange(false);
+  const handleLoadConversation = async (conversation: Conversation) => {
+    try {
+      setLoadingConversationId(conversation.id);
+      await onLoadConversation(conversation);
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    } finally {
+      setLoadingConversationId(null);
+    }
   };
 
   return (
@@ -99,7 +107,9 @@ export function HistoryDialog({ open, onOpenChange, onLoadConversation }: Histor
               {conversations.map((conversation) => (
                 <div
                   key={conversation.id}
-                  className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer group"
+                  className={`p-3 border rounded-lg hover:bg-muted/50 cursor-pointer group ${
+                    loadingConversationId === conversation.id ? 'opacity-50 pointer-events-none' : ''
+                  }`}
                   onClick={() => handleLoadConversation(conversation)}
                   style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
                 >

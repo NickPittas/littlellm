@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Minus, Send, Copy, Check, Paperclip, Camera } from 'lucide-react';
 import { Button } from './ui/button';
+import { ToolCallingToggle } from './ui/tool-calling-toggle';
 
 import { Card, CardContent } from './ui/card';
 import { ChatInterface } from './ChatInterface';
@@ -16,6 +17,8 @@ import { AutoResizeTextarea } from './AutoResizeTextarea';
 import { chatService, type ChatSettings } from '../services/chatService';
 import { settingsService, type AppSettings } from '../services/settingsService';
 import { conversationHistoryService } from '../services/conversationHistoryService';
+import { sessionService } from '../services/sessionService';
+import { stateService } from '../services/stateService';
 import { MessageWithThinking } from './MessageWithThinking';
 import { UserMessage } from './UserMessage';
 import { useTheme } from '../contexts/ThemeContext';
@@ -37,6 +40,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   const [showHistory, setShowHistory] = useState(false);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [windowExpanded, setWindowExpanded] = useState(false); // Track if window has been expanded
+  const [sessionStats, setSessionStats] = useState(sessionService.getSessionStats());
   const { themes, setTheme } = useTheme();
 
   // Ref for auto-resizing textarea
@@ -45,19 +49,72 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   const chatMessagesRef = useRef<HTMLDivElement>(null);
   // Track if user has manually scrolled up
   const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const [isAutoScrolling, setIsAutoScrolling] = useState(false);
+
+  // Calculate total tokens for current chat
+  const calculateChatTokens = () => {
+    let totalTokens = 0;
+    let promptTokens = 0;
+    let completionTokens = 0;
+
+    messages.forEach(message => {
+      if (message.usage) {
+        // Normalize token usage format (different providers use different field names)
+        const normalizedUsage = {
+          promptTokens: message.usage.promptTokens || message.usage.prompt_tokens || message.usage.input_tokens || 0,
+          completionTokens: message.usage.completionTokens || message.usage.completion_tokens || message.usage.output_tokens || 0,
+          totalTokens: message.usage.totalTokens || message.usage.total_tokens ||
+                      (message.usage.promptTokens || message.usage.prompt_tokens || message.usage.input_tokens || 0) +
+                      (message.usage.completionTokens || message.usage.completion_tokens || message.usage.output_tokens || 0)
+        };
+
+        totalTokens += normalizedUsage.totalTokens;
+        promptTokens += normalizedUsage.promptTokens;
+        completionTokens += normalizedUsage.completionTokens;
+      }
+    });
+
+    return { totalTokens, promptTokens, completionTokens };
+  };
+
+  // Update session stats when messages change
+  useEffect(() => {
+    setSessionStats(sessionService.getSessionStats());
+
+    // Debug: Log last message usage
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === 'assistant') {
+        console.log('🔍 Last assistant message usage:', lastMessage.usage);
+        console.log('🔍 Current session stats:', sessionService.getSessionStats());
+      }
+    }
+  }, [messages]);
+
+  // Reset chat function
+  const handleResetChat = async () => {
+    setMessages([]);
+    setShowChat(false);
+    setInput('');
+    setAttachedFiles([]);
+    await sessionService.resetSession();
+    setSessionStats(sessionService.getSessionStats());
+    console.log('Chat reset');
+  };
   const [settings, setSettings] = useState<ChatSettings>({
     provider: '',
     model: '',
     temperature: 0.3,
     maxTokens: 8192,
     systemPrompt: '',
+    toolCallingEnabled: true,
     providers: {
       openai: { apiKey: '', lastSelectedModel: '' },
       anthropic: { apiKey: '', lastSelectedModel: '' },
       gemini: { apiKey: '', lastSelectedModel: '' },
       mistral: { apiKey: '', lastSelectedModel: '' },
       deepseek: { apiKey: '', lastSelectedModel: '' },
-      lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
+      lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       openrouter: { apiKey: '', lastSelectedModel: '' },
       requesty: { apiKey: '', lastSelectedModel: '' },
@@ -71,25 +128,50 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   useEffect(() => {
     try {
       console.log('VoilaInterface: Loading app settings on mount...');
-      const appSettings = settingsService.getSettings();
-      console.log('VoilaInterface: Loaded app settings:', appSettings);
 
-      // Set both app settings and chat settings
-      setAppSettings(appSettings);
-      if (appSettings.chat) {
-        setSettings(appSettings.chat);
-      }
+      // Wait a bit for settings service to initialize
+      const loadSettings = () => {
+        const appSettings = settingsService.getSettings();
+        console.log('VoilaInterface: Loaded app settings:', appSettings);
 
+        // Only update if we have actual settings (not defaults from uninitialized service)
+        if (appSettings.chat && (appSettings.chat.provider || Object.keys(appSettings.chat.providers || {}).length > 0)) {
+          console.log('VoilaInterface: Settings appear to be loaded, updating state');
+          setAppSettings(appSettings);
+          setSettings(appSettings.chat);
+        } else {
+          console.log('VoilaInterface: Settings not yet loaded, will retry...');
+          // Retry after a short delay
+          setTimeout(loadSettings, 100);
+          return;
+        }
+      };
+
+      loadSettings();
       console.log('VoilaInterface: Settings loaded successfully');
 
-      // Subscribe to settings changes
+      // Load provider/model state from state service
+      const loadProviderState = async () => {
+        await stateService.waitForInitialization();
+        const providerState = stateService.getProviderState();
+        if (providerState.currentProvider || providerState.currentModel) {
+          console.log('VoilaInterface: Loading provider state:', providerState);
+          setSettings(prev => ({
+            ...prev,
+            provider: providerState.currentProvider,
+            model: providerState.currentModel
+          }));
+        }
+      };
+      loadProviderState();
+
+      // Subscribe to settings changes - but only for external changes (like settings overlay)
       const unsubscribe = settingsService.subscribe((newAppSettings) => {
         console.log('VoilaInterface: Settings changed via subscription:', newAppSettings);
+        // Only update if this is an external change (not from our own handleSettingsChange)
+        // We handle our own changes directly in handleSettingsChange to avoid loops
         setAppSettings(newAppSettings);
-        if (newAppSettings.chat) {
-          setSettings(newAppSettings.chat);
-          console.log('VoilaInterface: Chat settings updated via subscription:', newAppSettings.chat);
-        }
+        // Don't update chat settings here - handleSettingsChange handles that
       });
 
       // Cleanup subscription on unmount
@@ -116,7 +198,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
 
 
-  // Auto-focus chat input on app startup and window activation
+  // Auto-focus chat input on app startup and window activation (but not on every click)
   useEffect(() => {
     const focusInput = () => {
       if (textareaRef.current) {
@@ -137,10 +219,10 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       }
     };
 
-    // Focus immediately on mount
+    // Focus immediately on mount (when app is opened)
     focusInput();
 
-    // Focus when window becomes visible
+    // Focus when window becomes visible (e.g., when opened via shortcut)
     const handleWindowFocus = () => {
       focusInput();
     };
@@ -151,24 +233,16 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       }
     };
 
-    // Listen for various focus events
+    // Listen for window focus events (when app is activated)
     window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Also focus when clicking anywhere in the window (if not clicking on another input)
-    const handleWindowClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.matches('input, textarea, button, [contenteditable]')) {
-        focusInput();
-      }
-    };
-
-    document.addEventListener('click', handleWindowClick);
+    // REMOVED: The aggressive click handler that was preventing text selection
+    // Users can click in the input field manually if they want to type
 
     return () => {
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('visibilitychange', handleVisibilityChange);
-      document.removeEventListener('click', handleWindowClick);
     };
   }, []); // Empty dependency array - only run on mount
 
@@ -178,14 +252,29 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     return e.ctrlKey && e.shiftKey && e.key === ' ';
   };
 
-  const handleSettingsChange = (newSettings: Partial<ChatSettings>) => {
+  const handleSettingsChange = async (newSettings: Partial<ChatSettings>) => {
     console.log('VoilaInterface handleSettingsChange called with:', newSettings);
     console.log('Current settings before update:', settings);
 
-    // Update settings in memory only - will propagate to all components via subscription
+    // Update local React state immediately
+    const updatedSettings = { ...settings, ...newSettings };
+    setSettings(updatedSettings);
+    console.log('Local React state updated to:', updatedSettings);
+
+    // Update settings service in memory only - NO AUTO-SAVE
     settingsService.updateChatSettingsInMemory(newSettings);
 
-    console.log('Settings service updated, new settings should propagate');
+    // Save provider/model changes to state service for real-time updates
+    if (newSettings.provider !== undefined) {
+      await stateService.setCurrentProvider(newSettings.provider);
+      console.log('Provider saved to state service:', newSettings.provider);
+    }
+    if (newSettings.model !== undefined) {
+      await stateService.setCurrentModel(newSettings.model);
+      console.log('Model saved to state service:', newSettings.model);
+    }
+
+    console.log('Settings service updated in memory, state service updated for provider/model');
   };
 
   // REMOVED: Duplicate settings loading - now handled in combined useEffect above
@@ -370,7 +459,41 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   useEffect(() => {
     if (!isUserScrolling && chatMessagesRef.current) {
       const scrollContainer = chatMessagesRef.current;
-      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+
+      // Use requestAnimationFrame for smoother auto-scroll
+      requestAnimationFrame(() => {
+        const targetScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+        const currentScrollTop = scrollContainer.scrollTop;
+        const distance = targetScrollTop - currentScrollTop;
+
+        // If the distance is small, use instant scroll
+        if (Math.abs(distance) < 100) {
+          scrollContainer.scrollTop = targetScrollTop;
+        } else {
+          // For larger distances, use smooth animated scroll
+          setIsAutoScrolling(true);
+          const startTime = performance.now();
+          const duration = Math.min(400, Math.abs(distance) * 0.6); // Slightly longer for smoother feel
+
+          const animateScroll = (currentTime: number) => {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+
+            // Ultra-smooth easing function (ease-out-expo)
+            const easeOutExpo = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+
+            scrollContainer.scrollTop = currentScrollTop + distance * easeOutExpo;
+
+            if (progress < 1) {
+              requestAnimationFrame(animateScroll);
+            } else {
+              setIsAutoScrolling(false);
+            }
+          };
+
+          requestAnimationFrame(animateScroll);
+        }
+      });
     }
   }, [messages, isUserScrolling]);
 
@@ -483,14 +606,16 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 : msg
             )
           );
-        }
+        },
+        undefined, // signal
+        conversationHistoryService.getCurrentConversationId() || undefined
       );
 
       // Update final message with complete response
       setMessages(prev =>
         prev.map(msg =>
           msg.id === assistantMessage.id
-            ? { ...msg, content: response.content, usage: response.usage }
+            ? { ...msg, content: response.content, usage: response.usage, toolCalls: response.toolCalls }
             : msg
         )
       );
@@ -501,9 +626,9 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       // Save conversation to history
       const currentConversationId = conversationHistoryService.getCurrentConversationId();
       if (currentConversationId) {
-        await conversationHistoryService.updateConversation(currentConversationId, [...messages, userMessage, { ...assistantMessage, content: response.content, usage: response.usage }]);
+        await conversationHistoryService.updateConversation(currentConversationId, [...messages, userMessage, { ...assistantMessage, content: response.content, usage: response.usage, toolCalls: response.toolCalls }]);
       } else {
-        const newConversationId = await conversationHistoryService.createNewConversation([userMessage, { ...assistantMessage, content: response.content, usage: response.usage }]);
+        const newConversationId = await conversationHistoryService.createNewConversation([userMessage, { ...assistantMessage, content: response.content, usage: response.usage, toolCalls: response.toolCalls }]);
         conversationHistoryService.setCurrentConversationId(newConversationId);
       }
     } catch (error) {
@@ -588,17 +713,90 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     setShowChat(!showChat);
   };
 
-  const handleLoadConversation = (conversation: any) => {
-    // Load the conversation messages
-    setMessages(conversation.messages);
-    conversationHistoryService.setCurrentConversationId(conversation.id);
-    // Show the chat interface when loading a conversation
-    setShowChat(true);
-    // Clear any current input
-    setInput('');
-    // Clear any attached files
-    setAttachedFiles([]);
+  const handleLoadConversation = async (conversation: any) => {
+    try {
+      console.log('🔄 Loading conversation:', conversation.id);
+
+      // Get the full conversation data (including messages) from the service
+      const fullConversation = await conversationHistoryService.getConversation(conversation.id);
+
+      if (fullConversation && fullConversation.messages) {
+        console.log('✅ Loaded conversation with', fullConversation.messages.length, 'messages');
+        // Load the conversation messages
+        setMessages(fullConversation.messages);
+        conversationHistoryService.setCurrentConversationId(conversation.id);
+        // Show the chat interface when loading a conversation
+        setShowChat(true);
+        // Clear any current input
+        setInput('');
+        // Clear any attached files
+        setAttachedFiles([]);
+      } else {
+        console.error('❌ Failed to load conversation data');
+      }
+    } catch (error) {
+      console.error('❌ Error loading conversation:', error);
+    }
   };
+
+  // Add MCP connectivity test function to window for debugging
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).testMCPConnectivity = async () => {
+        console.log('🔍 Testing MCP Connectivity...');
+
+        try {
+          if (!window.electronAPI) {
+            console.error('❌ Electron API not available');
+            return;
+          }
+
+          // Get MCP connection status
+          const status = await window.electronAPI.getMCPDetailedStatus();
+          console.log('📊 MCP Detailed Status:', status);
+
+          // Get all available tools
+          const tools = await window.electronAPI.getAllMCPTools();
+          console.log('🔧 Available MCP Tools:', tools);
+
+          // Get all available resources
+          const resources = await window.electronAPI.getAllMCPResources();
+          console.log('📁 Available MCP Resources:', resources);
+
+          // Get all available prompts
+          const prompts = await window.electronAPI.getAllMCPPrompts();
+          console.log('💬 Available MCP Prompts:', prompts);
+
+          // Summary
+          console.log('📋 MCP CONNECTIVITY SUMMARY:');
+          console.log(`- Connected servers: ${Object.keys(status.servers || {}).filter(id => status.servers[id].connected).length}`);
+          console.log(`- Total tools: ${tools.length}`);
+          console.log(`- Total resources: ${resources.length}`);
+          console.log(`- Total prompts: ${prompts.length}`);
+
+          if (tools.length === 0) {
+            console.warn('⚠️ No MCP tools available! This is why the LLM cannot use tools.');
+          }
+
+          return {
+            status,
+            tools,
+            resources,
+            prompts,
+            summary: {
+              connectedServers: Object.keys(status.servers || {}).filter(id => status.servers[id].connected).length,
+              totalTools: tools.length,
+              totalResources: resources.length,
+              totalPrompts: prompts.length
+            }
+          };
+        } catch (error) {
+          console.error('❌ MCP Connectivity Test Failed:', error);
+          return { error: error instanceof Error ? error.message : String(error) };
+        }
+      };
+    }
+  }, []);
 
   return (
     <div
@@ -609,9 +807,16 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         overflow: 'visible'
       } as React.CSSProperties & { WebkitAppRegion?: string }}
     >
+      {/* Draggable Header Area */}
+      <div
+        className="h-2.5 w-full bg-background/30 cursor-move flex-none border-b border-border/10"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        title="Drag to move window"
+      />
+
       {/* Content wrapper - Fixed height container */}
       <div
-        className="h-full flex flex-col min-h-0"
+        className="flex-1 flex flex-col min-h-0"
         style={{
           overflow: 'visible',
           WebkitAppRegion: 'drag'
@@ -752,10 +957,22 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               <Camera className="h-4 w-4" />
             </Button>
 
+            <ToolCallingToggle
+              enabled={settings.toolCallingEnabled}
+              onToggle={(enabled) => {
+                const updatedSettings = { ...settings, toolCallingEnabled: enabled };
+                setSettings(updatedSettings);
+                settingsService.updateChatSettingsInMemory(updatedSettings);
+                settingsService.saveSettingsToDisk();
+              }}
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+              title={settings.toolCallingEnabled ? "Disable Tool Calling" : "Enable Tool Calling"}
+            />
+
             <Button
               onClick={handleSendMessage}
               disabled={!input.trim() && attachedFiles.length === 0}
-              className="h-10 w-10 cursor-pointer flex-shrink-0"
+              className="h-10 w-10 cursor-pointer flex-shrink-0 p-0"
               style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
             >
               <Send className="h-5 w-5" />
@@ -779,7 +996,17 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               className="flex-none flex items-center justify-between p-2 border-b border-border bg-background"
               style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
             >
-              <div className="text-sm font-medium text-muted-foreground">Chat</div>
+              <div className="flex items-center gap-3">
+                <div className="text-sm font-medium text-muted-foreground">Chat</div>
+                {(() => {
+                  const chatTokens = calculateChatTokens();
+                  return chatTokens.totalTokens > 0 ? (
+                    <div className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">
+                      📊 {chatTokens.totalTokens} tokens ({chatTokens.promptTokens} in, {chatTokens.completionTokens} out)
+                    </div>
+                  ) : null;
+                })()}
+              </div>
               <div className="flex items-center gap-1">
                 {/* Minimize Button */}
                 <Button
@@ -813,9 +1040,23 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 overflowX: 'hidden',
                 scrollbarWidth: 'none',
                 msOverflowStyle: 'none',
-                WebkitAppRegion: 'no-drag'
-              } as React.CSSProperties & { WebkitAppRegion?: string }}
+                scrollBehavior: 'smooth',
+                WebkitOverflowScrolling: 'touch', // iOS momentum scrolling
+                WebkitAppRegion: 'no-drag',
+                // Enhanced smoothness
+                willChange: 'scroll-position',
+                transform: 'translateZ(0)', // Force hardware acceleration
+                backfaceVisibility: 'hidden' // Reduce flickering
+              } as React.CSSProperties & {
+                WebkitAppRegion?: string,
+                WebkitOverflowScrolling?: string,
+                willChange?: string,
+                backfaceVisibility?: string
+              }}
               onScroll={(e) => {
+                // Don't interfere with auto-scrolling
+                if (isAutoScrolling) return;
+
                 const element = e.currentTarget;
                 const { scrollTop, scrollHeight, clientHeight } = element;
 
@@ -827,18 +1068,44 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 setIsUserScrolling(!isNearBottom);
               }}
               onWheel={(e) => {
-                // Ensure mouse wheel scrolling works smoothly
-                e.preventDefault();
-                e.stopPropagation();
-
                 const element = e.currentTarget;
-                const { deltaY } = e;
+                const { deltaY, deltaMode } = e;
 
-                // Smooth scrolling with proper speed
-                const scrollSpeed = 3; // Adjust scroll speed
-                const scrollAmount = deltaY * scrollSpeed;
+                // Handle different scroll modes (pixel, line, page)
+                let scrollAmount = deltaY;
+                if (deltaMode === 1) { // Line mode
+                  scrollAmount = deltaY * 16; // Convert lines to pixels
+                } else if (deltaMode === 2) { // Page mode
+                  scrollAmount = deltaY * element.clientHeight * 0.8;
+                }
 
-                element.scrollTop += scrollAmount;
+                // For smoother scrolling, use requestAnimationFrame
+                if (Math.abs(scrollAmount) > 50) {
+                  e.preventDefault();
+
+                  // Ultra-smooth animated scrolling
+                  const startTime = performance.now();
+                  const startScrollTop = element.scrollTop;
+                  const targetScrollTop = startScrollTop + scrollAmount * 0.5; // Reduce speed more
+                  const duration = 250; // Slightly longer for smoother feel
+
+                  const animateScroll = (currentTime: number) => {
+                    const elapsed = currentTime - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+
+                    // Ultra-smooth easing function (ease-out-expo)
+                    const easeOutExpo = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+
+                    element.scrollTop = startScrollTop + (targetScrollTop - startScrollTop) * easeOutExpo;
+
+                    if (progress < 1) {
+                      requestAnimationFrame(animateScroll);
+                    }
+                  };
+
+                  requestAnimationFrame(animateScroll);
+                }
+                // For small scrolls, let browser handle natively for best performance
               }}
             >
               {messages.map((message, index) => (
@@ -858,7 +1125,20 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                     style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
                   >
                     {message.role === 'assistant' ? (
-                      <MessageWithThinking content={message.content} />
+                      <>
+                        <MessageWithThinking
+                          content={message.content}
+                          usage={message.usage}
+                          timing={message.timing}
+                          toolCalls={message.toolCalls}
+                        />
+                        {/* Debug tool calls */}
+                        {message.toolCalls && console.log('🔍 UI received toolCalls for message:', {
+                          messageId: message.id,
+                          toolCallsCount: message.toolCalls.length,
+                          toolNames: message.toolCalls.map(tc => tc.name)
+                        })}
+                      </>
                     ) : (
                       <UserMessage content={message.content} />
                     )}
@@ -867,6 +1147,18 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               ))}
             </div>
           </Card>
+        </div>
+      )}
+
+      {/* Session Stats Display - Only show when there are messages */}
+      {messages.length > 0 && (
+        <div className="flex-none px-2 pb-1">
+          <div className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded text-center">
+            Session: {sessionStats.totalTokens} tokens • {sessionStats.messagesCount} messages • {sessionService.formatSessionDuration()}
+            {sessionStats.totalTokens === 0 && (
+              <span className="text-yellow-500 ml-2">[DEBUG: No tokens tracked yet]</span>
+            )}
+          </div>
         </div>
       )}
 
@@ -888,6 +1180,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               onFileUpload={handleFileUpload}
               onScreenshotCapture={handleScreenshotCapture}
               onPromptsClick={handlePromptsClick}
+              onResetChat={handleResetChat}
             />
           </Card>
         </div>

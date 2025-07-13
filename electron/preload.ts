@@ -19,9 +19,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getStorageItem: (key: string) => ipcRenderer.invoke('get-storage-item', key),
   setStorageItem: (key: string, value: any) => ipcRenderer.invoke('set-storage-item', key, value),
 
+  // State file operations (separate from settings)
+  getStateFile: (filename: string) => ipcRenderer.invoke('get-state-file', filename),
+  saveStateFile: (filename: string, data: any) => ipcRenderer.invoke('save-state-file', filename, data),
+
+  // MCP servers operations
+  getMCPServers: () => ipcRenderer.invoke('get-mcp-servers'),
+  saveMCPServers: (mcpData: any) => ipcRenderer.invoke('save-mcp-servers', mcpData),
+  addMCPServer: (server: any) => ipcRenderer.invoke('add-mcp-server', server),
+  updateMCPServer: (id: string, updates: any) => ipcRenderer.invoke('update-mcp-server', id, updates),
+  removeMCPServer: (id: string) => ipcRenderer.invoke('remove-mcp-server', id),
+  connectMCPServer: (serverId: string) => ipcRenderer.invoke('connect-mcp-server', serverId),
+  disconnectMCPServer: (serverId: string) => ipcRenderer.invoke('disconnect-mcp-server', serverId),
+  disconnectAllMCPServers: () => ipcRenderer.invoke('disconnect-all-mcp-servers'),
+  connectEnabledMCPServers: () => ipcRenderer.invoke('connect-enabled-mcp-servers'),
+  callMCPTool: (toolName: string, args: any) => ipcRenderer.invoke('call-mcp-tool', toolName, args),
+  readMCPResource: (uri: string) => ipcRenderer.invoke('read-mcp-resource', uri),
+  getMCPPrompt: (name: string, args: any) => ipcRenderer.invoke('get-mcp-prompt', name, args),
+  getAllMCPTools: () => ipcRenderer.invoke('get-all-mcp-tools'),
+  getAllMCPResources: () => ipcRenderer.invoke('get-all-mcp-resources'),
+  getAllMCPPrompts: () => ipcRenderer.invoke('get-all-mcp-prompts'),
+  getMCPConnectionStatus: () => ipcRenderer.invoke('get-mcp-connection-status'),
+  getMCPDetailedStatus: () => ipcRenderer.invoke('get-mcp-detailed-status'),
+  getConnectedMCPServerIds: () => ipcRenderer.invoke('get-connected-mcp-server-ids'),
+
   // Conversation file operations
   saveConversationToFile: (conversationId: string, conversation: any) => ipcRenderer.invoke('save-conversation-to-file', conversationId, conversation),
   saveConversationIndex: (conversationIndex: any[]) => ipcRenderer.invoke('save-conversation-index', conversationIndex),
+  loadConversationIndex: () => ipcRenderer.invoke('load-conversation-index'),
+  loadConversationFromFile: (conversationId: string) => ipcRenderer.invoke('load-conversation-from-file', conversationId),
+  getAllConversationIds: () => ipcRenderer.invoke('get-all-conversation-ids'),
 
   // Window operations
   hideWindow: () => ipcRenderer.invoke('hide-window'),
@@ -123,6 +150,26 @@ declare global {
       onThemeChanged: (callback: (themeId: string) => void) => void;
       onPromptSelected: (callback: (promptText: string) => void) => void;
       removeAllListeners: (channel: string) => void;
+
+      // MCP operations
+      getMCPServers: () => Promise<any>;
+      saveMCPServers: (mcpData: any) => Promise<boolean>;
+      addMCPServer: (server: any) => Promise<any>;
+      updateMCPServer: (id: string, updates: any) => Promise<boolean>;
+      removeMCPServer: (id: string) => Promise<boolean>;
+      connectMCPServer: (serverId: string) => Promise<boolean>;
+      disconnectMCPServer: (serverId: string) => Promise<void>;
+      disconnectAllMCPServers: () => Promise<void>;
+      connectEnabledMCPServers: () => Promise<void>;
+      callMCPTool: (toolName: string, args: any) => Promise<any>;
+      readMCPResource: (uri: string) => Promise<any>;
+      getMCPPrompt: (name: string, args: any) => Promise<any>;
+      getAllMCPTools: () => Promise<any[]>;
+      getAllMCPResources: () => Promise<any[]>;
+      getAllMCPPrompts: () => Promise<any[]>;
+      getMCPConnectionStatus: () => Promise<Record<string, boolean>>;
+      getMCPDetailedStatus: () => Promise<any>;
+      getConnectedMCPServerIds: () => Promise<string[]>;
     };
   }
 }

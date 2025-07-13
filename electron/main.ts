@@ -6,7 +6,430 @@ import * as os from 'os';
 import { pathToFileURL } from 'url';
 import * as http from 'http';
 import * as mime from 'mime-types';
-import Store from 'electron-store';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { spawn } from 'child_process';
+
+// MCP Connection Management
+interface MCPConnection {
+  client: Client;
+  transport: StdioClientTransport;
+  server: any;
+  tools: any[];
+  resources: any[];
+  prompts: any[];
+  connected: boolean;
+  process?: any;
+}
+
+const mcpConnections: Map<string, MCPConnection> = new Map();
+
+// MCP Server Management Functions
+async function connectMCPServer(serverId: string): Promise<boolean> {
+  try {
+    console.log(`🔌 Connecting to MCP server: ${serverId}`);
+
+    // Load server configuration
+    const mcpData = loadMCPServers();
+    const server = mcpData.servers.find((s: any) => s.id === serverId);
+
+    if (!server) {
+      console.error(`❌ Server ${serverId} not found in configuration`);
+      return false;
+    }
+
+    if (!server.enabled) {
+      console.log(`⏸️ Server ${serverId} is disabled, skipping connection`);
+      return false;
+    }
+
+    // Check if already connected
+    if (mcpConnections.has(serverId)) {
+      console.log(`✅ Server ${serverId} already connected`);
+      return true;
+    }
+
+    // Create transport
+    console.log(`🚀 Starting MCP server process: ${server.command} ${server.args.join(' ')}`);
+    console.log(`🔧 Server environment variables:`, server.env);
+    const mergedEnv = { ...process.env, ...server.env };
+    console.log(`🔧 Merged environment (showing only server env vars):`, Object.fromEntries(
+      Object.entries(mergedEnv).filter(([key]) => server.env && key in server.env)
+    ));
+
+    const transport = new StdioClientTransport({
+      command: server.command,
+      args: server.args,
+      env: mergedEnv
+    });
+
+    // Create client
+    const client = new Client({
+      name: 'littlellm-client',
+      version: '1.0.0'
+    }, {
+      capabilities: {
+        tools: {},
+        resources: {},
+        prompts: {}
+      }
+    });
+
+    // Connect with timeout
+    const connectPromise = client.connect(transport);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Connection timeout')), 10000)
+    );
+
+    await Promise.race([connectPromise, timeoutPromise]);
+    console.log(`✅ Connected to MCP server: ${serverId}`);
+
+    // Discover capabilities with error handling
+    let tools: any = { tools: [] };
+    let resources: any = { resources: [] };
+    let prompts: any = { prompts: [] };
+
+    try {
+      tools = await client.listTools();
+    } catch (error: any) {
+      if (error.code === -32601) {
+        console.log(`ℹ️ Server ${serverId} does not support tools (method not found)`);
+      } else {
+        console.warn(`⚠️ Failed to list tools for ${serverId}:`, error);
+      }
+    }
+
+    try {
+      resources = await client.listResources();
+    } catch (error: any) {
+      if (error.code === -32601) {
+        console.log(`ℹ️ Server ${serverId} does not support resources (method not found)`);
+      } else {
+        console.warn(`⚠️ Failed to list resources for ${serverId}:`, error);
+      }
+    }
+
+    try {
+      prompts = await client.listPrompts();
+    } catch (error: any) {
+      if (error.code === -32601) {
+        console.log(`ℹ️ Server ${serverId} does not support prompts (method not found)`);
+      } else {
+        console.warn(`⚠️ Failed to list prompts for ${serverId}:`, error);
+      }
+    }
+
+    const toolCount = tools.tools?.length || 0;
+    const resourceCount = resources.resources?.length || 0;
+    const promptCount = prompts.prompts?.length || 0;
+
+    const capabilities = [];
+    if (toolCount > 0) capabilities.push(`${toolCount} tools`);
+    if (resourceCount > 0) capabilities.push(`${resourceCount} resources`);
+    if (promptCount > 0) capabilities.push(`${promptCount} prompts`);
+
+    if (capabilities.length > 0) {
+      console.log(`📋 Server ${serverId} capabilities: ${capabilities.join(', ')}`);
+    } else {
+      console.log(`📋 Server ${serverId} connected but provides no capabilities`);
+    }
+
+    // Store connection with error handling
+    const connection: MCPConnection = {
+      client,
+      transport,
+      server,
+      tools: tools.tools || [],
+      resources: resources.resources || [],
+      prompts: prompts.prompts || [],
+      connected: true
+    };
+
+    // Monitor connection health
+    // Note: MCP SDK doesn't expose direct error/close events,
+    // so we'll rely on operation failures to detect disconnections
+
+    mcpConnections.set(serverId, connection);
+
+    return true;
+  } catch (error) {
+    console.error(`❌ Failed to connect to MCP server ${serverId}:`, error);
+    return false;
+  }
+}
+
+async function disconnectMCPServer(serverId: string): Promise<void> {
+  try {
+    console.log(`🔌 Disconnecting MCP server: ${serverId}`);
+
+    const connection = mcpConnections.get(serverId);
+    if (!connection) {
+      console.log(`⚠️ Server ${serverId} not connected`);
+      return;
+    }
+
+    // Close client connection
+    await connection.client.close();
+
+    // Remove from connections map
+    mcpConnections.delete(serverId);
+
+    console.log(`✅ Disconnected MCP server: ${serverId}`);
+  } catch (error) {
+    console.error(`❌ Failed to disconnect MCP server ${serverId}:`, error);
+  }
+}
+
+async function disconnectAllMCPServers(): Promise<void> {
+  console.log('🔌 Disconnecting all MCP servers...');
+
+  const serverIds = Array.from(mcpConnections.keys());
+  for (const serverId of serverIds) {
+    await disconnectMCPServer(serverId);
+  }
+
+  console.log('✅ All MCP servers disconnected');
+}
+
+async function connectEnabledMCPServers(): Promise<void> {
+  try {
+    console.log('🔌 Auto-connecting enabled MCP servers...');
+
+    const mcpData = loadMCPServers();
+    const enabledServers = mcpData.servers.filter((server: any) => server.enabled);
+
+    console.log(`📋 Found ${enabledServers.length} enabled servers`);
+
+    for (const server of enabledServers) {
+      await connectMCPServer(server.id);
+    }
+
+    console.log('✅ Auto-connection complete');
+  } catch (error) {
+    console.error('❌ Failed to auto-connect enabled MCP servers:', error);
+  }
+}
+
+// MCP Tool Management Functions
+async function callMCPTool(toolName: string, args: any): Promise<any> {
+  try {
+    console.log(`🔧 Calling MCP tool: ${toolName} with args:`, args);
+
+    // Find the tool in connected servers
+    let targetConnection: MCPConnection | null = null;
+    let targetTool: any = null;
+
+    for (const [serverId, connection] of mcpConnections) {
+      if (!connection.connected) continue;
+
+      const tool = connection.tools.find(t => t.name === toolName);
+      if (tool) {
+        targetConnection = connection;
+        targetTool = tool;
+        break;
+      }
+    }
+
+    if (!targetConnection || !targetTool) {
+      throw new Error(`Tool "${toolName}" not found in any connected MCP server`);
+    }
+
+    console.log(`🎯 Found tool "${toolName}" in server, executing...`);
+
+    // Execute the tool
+    const result = await targetConnection.client.callTool({
+      name: toolName,
+      arguments: args
+    });
+
+    console.log(`✅ Tool "${toolName}" executed successfully`);
+    return result;
+  } catch (error) {
+    console.error(`❌ Failed to call MCP tool "${toolName}":`, error);
+    throw error;
+  }
+}
+
+function getAllMCPTools(): any[] {
+  const allTools: any[] = [];
+
+  for (const [serverId, connection] of mcpConnections) {
+    if (!connection.connected) continue;
+
+    for (const tool of connection.tools) {
+      allTools.push({
+        ...tool,
+        serverId
+      });
+    }
+  }
+
+  console.log(`📋 Retrieved ${allTools.length} tools from ${mcpConnections.size} connected servers`);
+  console.log(`🔍 Tool details:`, allTools.map(tool => ({
+    name: tool.name,
+    description: tool.description,
+    hasInputSchema: !!tool.inputSchema,
+    inputSchema: tool.inputSchema,
+    serverId: tool.serverId
+  })));
+  return allTools;
+}
+
+function getMCPConnectionStatus(): Record<string, boolean> {
+  const status: Record<string, boolean> = {};
+
+  for (const [serverId, connection] of mcpConnections) {
+    status[serverId] = connection.connected;
+  }
+
+  return status;
+}
+
+function getMCPDetailedStatus(): any {
+  const status: any = {
+    totalServers: mcpConnections.size,
+    connectedServers: 0,
+    servers: []
+  };
+
+  for (const [serverId, connection] of mcpConnections) {
+    if (connection.connected) {
+      status.connectedServers++;
+    }
+
+    status.servers.push({
+      id: serverId,
+      connected: connection.connected,
+      toolCount: connection.tools.length,
+      resourceCount: connection.resources.length,
+      promptCount: connection.prompts.length,
+      tools: connection.tools.map(t => ({ name: t.name, description: t.description })),
+      hasProcess: !!connection.process
+    });
+  }
+
+  return status;
+}
+
+function getConnectedMCPServerIds(): string[] {
+  return Array.from(mcpConnections.keys()).filter(serverId =>
+    mcpConnections.get(serverId)?.connected
+  );
+}
+
+// MCP Resource Management Functions
+async function readMCPResource(uri: string): Promise<any> {
+  try {
+    console.log(`📄 Reading MCP resource: ${uri}`);
+
+    // Find the resource in connected servers
+    let targetConnection: MCPConnection | null = null;
+    let targetResource: any = null;
+
+    for (const [serverId, connection] of mcpConnections) {
+      if (!connection.connected) continue;
+
+      const resource = connection.resources.find(r => r.uri === uri);
+      if (resource) {
+        targetConnection = connection;
+        targetResource = resource;
+        break;
+      }
+    }
+
+    if (!targetConnection || !targetResource) {
+      throw new Error(`Resource "${uri}" not found in any connected MCP server`);
+    }
+
+    console.log(`🎯 Found resource "${uri}" in server, reading...`);
+
+    // Read the resource
+    const result = await targetConnection.client.readResource({ uri });
+
+    console.log(`✅ Resource "${uri}" read successfully`);
+    return result;
+  } catch (error) {
+    console.error(`❌ Failed to read MCP resource "${uri}":`, error);
+    throw error;
+  }
+}
+
+function getAllMCPResources(): any[] {
+  const allResources: any[] = [];
+
+  for (const [serverId, connection] of mcpConnections) {
+    if (!connection.connected) continue;
+
+    for (const resource of connection.resources) {
+      allResources.push({
+        ...resource,
+        serverId
+      });
+    }
+  }
+
+  console.log(`📋 Retrieved ${allResources.length} resources from ${mcpConnections.size} connected servers`);
+  return allResources;
+}
+
+// MCP Prompt Management Functions
+async function getMCPPrompt(name: string, args: any): Promise<any> {
+  try {
+    console.log(`📝 Getting MCP prompt: ${name} with args:`, args);
+
+    // Find the prompt in connected servers
+    let targetConnection: MCPConnection | null = null;
+    let targetPrompt: any = null;
+
+    for (const [serverId, connection] of mcpConnections) {
+      if (!connection.connected) continue;
+
+      const prompt = connection.prompts.find(p => p.name === name);
+      if (prompt) {
+        targetConnection = connection;
+        targetPrompt = prompt;
+        break;
+      }
+    }
+
+    if (!targetConnection || !targetPrompt) {
+      throw new Error(`Prompt "${name}" not found in any connected MCP server`);
+    }
+
+    console.log(`🎯 Found prompt "${name}" in server, getting...`);
+
+    // Get the prompt
+    const result = await targetConnection.client.getPrompt({
+      name,
+      arguments: args
+    });
+
+    console.log(`✅ Prompt "${name}" retrieved successfully`);
+    return result;
+  } catch (error) {
+    console.error(`❌ Failed to get MCP prompt "${name}":`, error);
+    throw error;
+  }
+}
+
+function getAllMCPPrompts(): any[] {
+  const allPrompts: any[] = [];
+
+  for (const [serverId, connection] of mcpConnections) {
+    if (!connection.connected) continue;
+
+    for (const prompt of connection.prompts) {
+      allPrompts.push({
+        ...prompt,
+        serverId
+      });
+    }
+  }
+
+  console.log(`📋 Retrieved ${allPrompts.length} prompts from ${mcpConnections.size} connected servers`);
+  return allPrompts;
+}
+
 
 // More reliable way to detect production vs development
 const isProduction = app.isPackaged || process.env.NODE_ENV === 'production';
@@ -206,7 +629,7 @@ async function openActionMenu() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: isProduction, // Disable web security in development for testing
+      webSecurity: false, // Allow localhost connections for LM Studio, Ollama, etc.
     },
   });
 
@@ -238,17 +661,84 @@ async function openActionMenu() {
 
 // Use simple JSON file storage instead of electron-store to avoid nesting issues
 const settingsPath = path.join(app.getPath('userData'), 'voila-settings.json');
+const mcpServersPath = path.join(app.getPath('userData'), 'mcp.json');
 
 function loadAppSettings() {
   try {
     if (fs.existsSync(settingsPath)) {
       const data = fs.readFileSync(settingsPath, 'utf8');
-      return JSON.parse(data);
+      const settings = JSON.parse(data);
+
+      // Ensure the settings have the expected structure
+      if (!settings.chat) {
+        settings.chat = {};
+      }
+      if (!settings.chat.providers) {
+        settings.chat.providers = {
+          openai: { apiKey: '', lastSelectedModel: '' },
+          anthropic: { apiKey: '', lastSelectedModel: '' },
+          gemini: { apiKey: '', lastSelectedModel: '' },
+          mistral: { apiKey: '', lastSelectedModel: '' },
+          deepseek: { apiKey: '', lastSelectedModel: '' },
+          lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
+          ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+          openrouter: { apiKey: '', lastSelectedModel: '' },
+          requesty: { apiKey: '', lastSelectedModel: '' },
+          replicate: { apiKey: '', lastSelectedModel: '' },
+          n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+        };
+      }
+
+      return settings;
     }
   } catch (error) {
     console.error('Failed to load settings:', error);
   }
-  return {};
+
+  // Return default structure when no settings file exists
+  return {
+    chat: {
+      provider: '',
+      model: '',
+      temperature: 0.3,
+      maxTokens: 8192,
+      systemPrompt: '',
+      providers: {
+        openai: { apiKey: '', lastSelectedModel: '' },
+        anthropic: { apiKey: '', lastSelectedModel: '' },
+        gemini: { apiKey: '', lastSelectedModel: '' },
+        mistral: { apiKey: '', lastSelectedModel: '' },
+        deepseek: { apiKey: '', lastSelectedModel: '' },
+        lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
+        ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+        openrouter: { apiKey: '', lastSelectedModel: '' },
+        requesty: { apiKey: '', lastSelectedModel: '' },
+        replicate: { apiKey: '', lastSelectedModel: '' },
+        n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+      },
+    },
+    ui: {
+      theme: 'system',
+      alwaysOnTop: true,
+      startMinimized: false,
+      opacity: 1.0,
+      fontSize: 'small',
+      windowBounds: {
+        width: 400,
+        height: 615, // Increased by 15px for draggable header
+      },
+    },
+    shortcuts: {
+      toggleWindow: 'CommandOrControl+Shift+L',
+      processClipboard: 'CommandOrControl+Shift+V',
+      actionMenu: 'CommandOrControl+Shift+Space',
+    },
+    general: {
+      autoStartWithSystem: false,
+      showNotifications: true,
+      saveConversationHistory: true,
+    },
+  };
 }
 
 function saveAppSettings(settings: any) {
@@ -261,17 +751,51 @@ function saveAppSettings(settings: any) {
   }
 }
 
+function loadMCPServers() {
+  try {
+    if (fs.existsSync(mcpServersPath)) {
+      const data = fs.readFileSync(mcpServersPath, 'utf8');
+      const mcpData = JSON.parse(data);
+
+      // Ensure the structure has the expected format
+      if (!mcpData.servers) {
+        mcpData.servers = [];
+      }
+
+      return mcpData;
+    }
+  } catch (error) {
+    console.error('Failed to load MCP servers:', error);
+  }
+
+  // Return default structure when no MCP file exists
+  return {
+    servers: [],
+    version: '1.0.0'
+  };
+}
+
+function saveMCPServers(mcpData: any) {
+  try {
+    fs.writeFileSync(mcpServersPath, JSON.stringify(mcpData, null, 2));
+    return true;
+  } catch (error) {
+    console.error('Failed to save MCP servers:', error);
+    return false;
+  }
+}
+
 
 
 async function createWindow() {
   const appSettings = loadAppSettings();
-  const bounds = appSettings.ui?.windowBounds || { width: 570, height: 142 };
+  const bounds = appSettings.ui?.windowBounds || { width: 570, height: 157 }; // Increased by 15px for draggable header
 
   mainWindow = new BrowserWindow({
     width: Math.max(bounds.width, 350), // Ensure minimum width for all UI elements
-    height: Math.max(bounds.height, 142), // Ensure minimum height for input + toolbar
+    height: Math.max(bounds.height, 157), // Increased by 15px for draggable header
     minWidth: 350, // Ensure all bottom toolbar buttons are visible (calculated from UI elements)
-    minHeight: 142, // Ensure input + full toolbar are always visible
+    minHeight: 157, // Increased by 15px for draggable header
     maxWidth: 1400,
     maxHeight: 1000,
     show: !appSettings.ui?.startMinimized,
@@ -286,8 +810,8 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: isProduction, // Disable web security in development for testing
-      allowRunningInsecureContent: !isProduction, // Allow insecure content in development
+      webSecurity: false, // Allow localhost connections for LM Studio, Ollama, etc.
+      allowRunningInsecureContent: true, // Allow localhost connections
       partition: 'persist:littlellm', // Enable localStorage and persistent storage
       zoomFactor: 1.0,
       disableBlinkFeatures: 'Auxclick',
@@ -599,6 +1123,15 @@ app.whenReady().then(async () => {
 
   // Set up IPC handlers
   setupIPC();
+
+  // Auto-connect enabled MCP servers
+  setTimeout(async () => {
+    try {
+      await connectEnabledMCPServers();
+    } catch (error) {
+      console.error('Failed to auto-connect MCP servers on startup:', error);
+    }
+  }, 2000); // Wait 2 seconds for app to fully initialize
 });
 
 function setupIPC() {
@@ -744,6 +1277,196 @@ function setupIPC() {
     }
   });
 
+  // Handle MCP servers operations
+  ipcMain.handle('get-mcp-servers', () => {
+    try {
+      const mcpData = loadMCPServers();
+      console.log('get-mcp-servers called, returning:', mcpData);
+      return mcpData;
+    } catch (error) {
+      console.error('Failed to get MCP servers:', error);
+      return { servers: [], version: '1.0.0' };
+    }
+  });
+
+  ipcMain.handle('save-mcp-servers', (_, mcpData: any) => {
+    try {
+      console.log('save-mcp-servers called, received:', mcpData);
+      const success = saveMCPServers(mcpData);
+      console.log('MCP servers saved:', success);
+      return success;
+    } catch (error) {
+      console.error('Failed to save MCP servers:', error);
+      return false;
+    }
+  });
+
+  // Additional MCP server operations
+  ipcMain.handle('add-mcp-server', (_, server: any) => {
+    try {
+      console.log('Add MCP server:', server);
+
+      // Load current MCP data
+      const mcpData = loadMCPServers();
+
+      // Create new server with ID
+      const newServer = {
+        ...server,
+        id: `mcp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      };
+
+      // Add to servers array
+      mcpData.servers.push(newServer);
+
+      // Save updated data
+      const success = saveMCPServers(mcpData);
+
+      if (success) {
+        console.log('MCP server added successfully:', newServer.id);
+        return newServer;
+      } else {
+        throw new Error('Failed to save MCP servers');
+      }
+    } catch (error) {
+      console.error('Failed to add MCP server:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('update-mcp-server', async (_, id: string, updates: any) => {
+    try {
+      console.log('Update MCP server:', id, updates);
+
+      // Load current MCP data
+      const mcpData = loadMCPServers();
+
+      // Find and update the server
+      const serverIndex = mcpData.servers.findIndex((server: any) => server.id === id);
+      if (serverIndex === -1) {
+        throw new Error(`Server with ID ${id} not found`);
+      }
+
+      const oldServer = mcpData.servers[serverIndex];
+      const wasConnected = mcpConnections.has(id);
+
+      // Update the server
+      mcpData.servers[serverIndex] = { ...mcpData.servers[serverIndex], ...updates };
+
+      // Save updated data
+      const success = saveMCPServers(mcpData);
+
+      if (success) {
+        console.log('MCP server updated successfully:', id);
+
+        // If the server was connected and environment variables changed, restart it
+        if (wasConnected && updates.env) {
+          console.log('🔄 Environment variables changed, restarting MCP server:', id);
+          await disconnectMCPServer(id);
+          if (mcpData.servers[serverIndex].enabled) {
+            await connectMCPServer(id);
+          }
+        }
+
+        return true;
+      } else {
+        throw new Error('Failed to save MCP servers');
+      }
+    } catch (error) {
+      console.error('Failed to update MCP server:', error);
+      return false;
+    }
+  });
+
+  ipcMain.handle('remove-mcp-server', (_, id: string) => {
+    try {
+      console.log('Remove MCP server:', id);
+
+      // Load current MCP data
+      const mcpData = loadMCPServers();
+
+      // Find and remove the server
+      const serverIndex = mcpData.servers.findIndex((server: any) => server.id === id);
+      if (serverIndex === -1) {
+        throw new Error(`Server with ID ${id} not found`);
+      }
+
+      // Remove the server
+      mcpData.servers.splice(serverIndex, 1);
+
+      // Save updated data
+      const success = saveMCPServers(mcpData);
+
+      if (success) {
+        console.log('MCP server removed successfully:', id);
+        return true;
+      } else {
+        throw new Error('Failed to save MCP servers');
+      }
+    } catch (error) {
+      console.error('Failed to remove MCP server:', error);
+      return false;
+    }
+  });
+
+  ipcMain.handle('connect-mcp-server', async (_, serverId: string) => {
+    return await connectMCPServer(serverId);
+  });
+
+  ipcMain.handle('disconnect-mcp-server', async (_, serverId: string) => {
+    await disconnectMCPServer(serverId);
+  });
+
+  ipcMain.handle('disconnect-all-mcp-servers', async () => {
+    await disconnectAllMCPServers();
+  });
+
+  ipcMain.handle('connect-enabled-mcp-servers', async () => {
+    await connectEnabledMCPServers();
+  });
+
+  ipcMain.handle('restart-mcp-servers', async () => {
+    console.log('🔄 Restarting all MCP servers to pick up environment changes...');
+    await disconnectAllMCPServers();
+    await connectEnabledMCPServers();
+    console.log('✅ All MCP servers restarted');
+  });
+
+  ipcMain.handle('call-mcp-tool', async (_, toolName: string, args: any) => {
+    return await callMCPTool(toolName, args);
+  });
+
+  ipcMain.handle('get-all-mcp-tools', () => {
+    return getAllMCPTools();
+  });
+
+  ipcMain.handle('get-mcp-connection-status', () => {
+    return getMCPConnectionStatus();
+  });
+
+  ipcMain.handle('get-mcp-detailed-status', () => {
+    return getMCPDetailedStatus();
+  });
+
+  ipcMain.handle('get-connected-mcp-server-ids', () => {
+    return getConnectedMCPServerIds();
+  });
+
+  ipcMain.handle('read-mcp-resource', async (_, uri: string) => {
+    return await readMCPResource(uri);
+  });
+
+  ipcMain.handle('get-mcp-prompt', async (_, name: string, args: any) => {
+    return await getMCPPrompt(name, args);
+  });
+
+  ipcMain.handle('get-all-mcp-resources', () => {
+    return getAllMCPResources();
+  });
+
+  ipcMain.handle('get-all-mcp-prompts', () => {
+    return getAllMCPPrompts();
+  });
+
   // Save individual conversation to JSON file
   ipcMain.handle('save-conversation-to-file', (_, conversationId: string, conversation: any) => {
     try {
@@ -777,6 +1500,58 @@ function setupIPC() {
     } catch (error) {
       console.error('Failed to save conversation index:', error);
       return false;
+    }
+  });
+
+  ipcMain.handle('load-conversation-index', () => {
+    try {
+      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      const indexPath = path.join(conversationsDir, 'index.json');
+
+      if (fs.existsSync(indexPath)) {
+        const data = fs.readFileSync(indexPath, 'utf8');
+        return JSON.parse(data);
+      }
+      return [];
+    } catch (error) {
+      console.error('Failed to load conversation index:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('load-conversation-from-file', (_, conversationId: string) => {
+    try {
+      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      const filePath = path.join(conversationsDir, `${conversationId}.json`);
+
+      if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, 'utf8');
+        return JSON.parse(data);
+      }
+      return null;
+    } catch (error) {
+      console.error(`Failed to load conversation ${conversationId}:`, error);
+      return null;
+    }
+  });
+
+  ipcMain.handle('get-all-conversation-ids', () => {
+    try {
+      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+
+      if (!fs.existsSync(conversationsDir)) {
+        return [];
+      }
+
+      const files = fs.readdirSync(conversationsDir);
+      const conversationIds = files
+        .filter(file => file.endsWith('.json') && file !== 'index.json')
+        .map(file => file.replace('.json', ''));
+
+      return conversationIds;
+    } catch (error) {
+      console.error('Failed to get conversation IDs:', error);
+      return [];
     }
   });
 
@@ -828,7 +1603,7 @@ function setupIPC() {
       const [width, height] = mainWindow.getSize();
       return { width, height };
     }
-    return { width: 570, height: 180 }; // Default size
+    return { width: 570, height: 195 }; // Default size (increased by 15px for draggable header)
   });
 
   ipcMain.handle('take-screenshot', async () => {
@@ -959,7 +1734,7 @@ function setupIPC() {
         nodeIntegration: false,
         contextIsolation: true,
         preload: path.join(__dirname, 'preload.js'),
-        webSecurity: isProduction, // Disable web security in development for testing
+        webSecurity: false, // Allow localhost connections for LM Studio, Ollama, etc.
       },
     });
 
@@ -989,6 +1764,41 @@ function setupIPC() {
     }
   });
 
+  // Handle state file operations (separate from settings)
+  ipcMain.handle('get-state-file', async (_, filename: string) => {
+    try {
+      const stateDir = path.join(app.getPath('userData'), 'state');
+      const filePath = path.join(stateDir, filename);
+
+      if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, 'utf8');
+        return JSON.parse(data);
+      }
+      return null;
+    } catch (error) {
+      console.error(`Failed to read state file ${filename}:`, error);
+      return null;
+    }
+  });
+
+  ipcMain.handle('save-state-file', async (_, filename: string, data: any) => {
+    try {
+      const stateDir = path.join(app.getPath('userData'), 'state');
+
+      // Ensure state directory exists
+      if (!fs.existsSync(stateDir)) {
+        fs.mkdirSync(stateDir, { recursive: true });
+      }
+
+      const filePath = path.join(stateDir, filename);
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+      return true;
+    } catch (error) {
+      console.error(`Failed to save state file ${filename}:`, error);
+      return false;
+    }
+  });
+
   // Handle theme change notifications from overlay to main window
   ipcMain.handle('notify-theme-change', (_, themeId: string) => {
     if (mainWindow) {
@@ -1006,30 +1816,60 @@ function setupIPC() {
       dropdownWindow = null;
     }
 
-    // Get main window position and calculate absolute position
-    const mainBounds = mainWindow.getBounds();
-    const contentBounds = mainWindow.getContentBounds();
+    // Get current CSS variables from main window
+    let cssVariables = '';
+    try {
+      cssVariables = await mainWindow.webContents.executeJavaScript(`
+        (() => {
+          const root = document.documentElement;
+          const style = getComputedStyle(root);
+          const variables = [
+            'background', 'foreground', 'card', 'card-foreground',
+            'primary', 'primary-foreground', 'secondary', 'secondary-foreground',
+            'accent', 'accent-foreground', 'muted', 'muted-foreground',
+            'border', 'input', 'ring', 'destructive', 'destructive-foreground'
+          ];
 
-    // Calculate the frame offset (difference between window bounds and content bounds)
-    const frameOffsetX = contentBounds.x - mainBounds.x;
-    const frameOffsetY = contentBounds.y - mainBounds.y;
+          return variables.map(name => {
+            const value = style.getPropertyValue('--' + name).trim();
+            return value ? '--' + name + ': ' + value + ';' : '';
+          }).filter(Boolean).join('\\n            ');
+        })()
+      `);
+      console.log('🎨 Retrieved CSS variables from main window:', cssVariables);
+    } catch (error) {
+      console.error('Failed to get CSS variables from main window:', error);
+      cssVariables = ''; // Will use fallback values
+    }
 
-    // Add frame offset to get correct absolute position
-    const absoluteX = contentBounds.x + x;
-    const absoluteY = contentBounds.y + y;
 
-    // Get screen dimensions to ensure dropdown stays on screen
+
+    // Use Electron's built-in cursor positioning instead of manual math
     const { screen } = require('electron');
+    const cursorPoint = screen.getCursorScreenPoint();
+
+    // Position dropdown at cursor with small offset
+    const dropdownX = cursorPoint.x;
+    const dropdownY = cursorPoint.y + 10; // Small offset below cursor
+
+    // Get screen dimensions for bounds checking
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
-    // Adjust position if dropdown would go off screen
-    const adjustedX = Math.max(0, Math.min(absoluteX, screenWidth - width));
-    const adjustedY = Math.max(0, Math.min(absoluteY, screenHeight - height));
+    // Ensure dropdown stays on screen
+    const adjustedX = Math.max(0, Math.min(dropdownX, screenWidth - width));
+    const adjustedY = Math.max(0, Math.min(dropdownY, screenHeight - height));
+
+    console.log('🔍 Dropdown cursor positioning:', {
+      cursorPoint,
+      calculated: { dropdownX, dropdownY },
+      adjusted: { adjustedX, adjustedY },
+      screenSize: { screenWidth, screenHeight }
+    });
 
     dropdownWindow = new BrowserWindow({
       width: width,
-      height: height,
+      height: height + 15, // Add 15px for draggable header accommodation
       x: adjustedX,
       y: adjustedY,
       show: false,
@@ -1037,8 +1877,10 @@ function setupIPC() {
       resizable: false,
       alwaysOnTop: true,
       skipTaskbar: true,
-      transparent: true,
+      transparent: false,
+      backgroundColor: '#1a1a1a', // Dark background
       focusable: true, // Enable focus to receive click events
+      parent: mainWindow, // Anchor to main window
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -1047,66 +1889,119 @@ function setupIPC() {
       },
     });
 
-    // Create HTML content for the dropdown with proper theme and interactivity
+
+
+    // Create HTML content for the dropdown using CSS variables (same as main window)
     const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <style>
+          /* Use CSS variables from main window, with fallback */
+          :root {
+            ${cssVariables || `
+            /* Default dark theme fallback - same as globals.css */
+            --background: 224 71% 4%;
+            --foreground: 213 31% 91%;
+            --card: 224 71% 10%;
+            --card-foreground: 213 31% 91%;
+            --primary: 217 91% 60%;
+            --primary-foreground: 222.2 84% 4.9%;
+            --secondary: 222.2 84% 11%;
+            --secondary-foreground: 210 40% 98%;
+            --accent: 216 34% 17%;
+            --accent-foreground: 210 40% 98%;
+            --muted: 223 47% 11%;
+            --muted-foreground: 215.4 16.3% 56.9%;
+            --border: 216 34% 17%;
+            --input: 216 34% 17%;
+            --ring: 216 34% 17%;
+            --destructive: 0 62.8% 30.6%;
+            --destructive-foreground: 210 40% 98%;`}
+          }
+
           body {
             margin: 0;
             padding: 0;
-            background: transparent;
+            background: hsl(var(--card));
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            color: white;
+            color: hsl(var(--card-foreground));
+            overflow: hidden; /* Prevent any scrollbars on body */
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE */
+          }
+          html {
+            overflow: hidden; /* Prevent any scrollbars on html */
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE */
           }
           .dropdown-container {
-            background: hsl(240 10% 3.9%);
-            border: 1px solid hsl(240 3.7% 15.9%);
+            background: hsl(var(--card));
+            border: 1px solid hsl(var(--border));
             border-radius: 6px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             overflow: hidden;
             min-width: 280px;
+            max-width: 280px;
+            width: 280px;
+            box-sizing: border-box;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+          .dropdown-container::-webkit-scrollbar {
+            display: none;
           }
           .search-section {
             display: flex;
             align-items: center;
-            border-bottom: 1px solid hsl(240 3.7% 15.9%);
+            border-bottom: 1px solid hsl(var(--border));
             padding: 8px 12px;
           }
           .search-input {
             background: transparent;
             border: none;
             outline: none;
-            color: hsl(0 0% 98%);
+            color: hsl(var(--card-foreground));
             width: 100%;
             font-size: 14px;
             padding: 4px 8px;
           }
           .search-input::placeholder {
-            color: hsl(240 5% 64.9%);
+            color: hsl(var(--muted-foreground));
           }
           .dropdown-content {
-            max-height: 200px;
+            max-height: 215px; /* Increased by 15px for draggable header */
             overflow-y: auto;
+            overflow-x: hidden;
             padding: 4px;
+            box-sizing: border-box;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+          .dropdown-content::-webkit-scrollbar {
+            display: none;
           }
           .dropdown-item {
             display: flex;
             align-items: center;
             padding: 8px 12px;
-            color: hsl(0 0% 98%);
+            color: hsl(var(--card-foreground));
             cursor: pointer;
             border-radius: 4px;
             margin: 1px 0;
             font-size: 14px;
             user-select: none;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            box-sizing: border-box;
+            min-width: 0;
           }
           .dropdown-item:hover {
-            background: hsl(240 3.7% 15.9%);
+            background: hsl(var(--accent));
           }
           .dropdown-item.selected {
-            background: hsl(240 3.7% 15.9%);
+            background: hsl(var(--accent));
           }
           .check-icon {
             margin-right: 8px;
@@ -1123,19 +2018,18 @@ function setupIPC() {
             height: 20px;
             flex-shrink: 0;
           }
-          /* Custom scrollbar */
+          /* Hide scrollbars completely */
           .dropdown-content::-webkit-scrollbar {
-            width: 6px;
+            display: none;
           }
-          .dropdown-content::-webkit-scrollbar-track {
-            background: transparent;
+          .dropdown-container::-webkit-scrollbar {
+            display: none;
           }
-          .dropdown-content::-webkit-scrollbar-thumb {
-            background: hsl(240 3.7% 15.9%);
-            border-radius: 3px;
+          body::-webkit-scrollbar {
+            display: none;
           }
-          .dropdown-content::-webkit-scrollbar-thumb:hover {
-            background: hsl(240 5% 26%);
+          html::-webkit-scrollbar {
+            display: none;
           }
         </style>
       </head>
@@ -1242,8 +2136,16 @@ app.on('window-all-closed', () => {
   // Only quit when explicitly requested
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', async () => {
   isQuitting = true;
+
+  // Disconnect all MCP servers before quitting
+  try {
+    console.log('🔌 Disconnecting all MCP servers before quit...');
+    await disconnectAllMCPServers();
+  } catch (error) {
+    console.error('❌ Failed to disconnect MCP servers on quit:', error);
+  }
 });
 
 app.on('activate', () => {

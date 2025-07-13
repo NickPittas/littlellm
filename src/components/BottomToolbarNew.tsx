@@ -4,10 +4,12 @@ import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { ElectronDropdown } from './ui/electron-dropdown';
 import { ProviderDropdown } from './ui/provider-dropdown';
+import { MCPDropdown } from './ui/mcp-dropdown';
 import {
   History,
   Settings,
-  Wand2
+  Wand2,
+  RotateCcw
 } from 'lucide-react';
 import { chatService } from '../services/chatService';
 import type { ChatSettings } from '../services/chatService';
@@ -17,6 +19,7 @@ interface BottomToolbarProps {
   onFileUpload?: (files: FileList) => void;
   onScreenshotCapture?: (file: File) => void;
   onPromptsClick?: () => void;
+  onResetChat?: () => void;
   settings: ChatSettings;
   onSettingsChange: (settings: Partial<ChatSettings>) => void;
   showHistory?: boolean;
@@ -27,6 +30,7 @@ export function BottomToolbar({
   onFileUpload,
   onScreenshotCapture,
   onPromptsClick,
+  onResetChat,
   settings,
   onSettingsChange,
   showHistory,
@@ -50,7 +54,16 @@ export function BottomToolbar({
     return provider?.name || id;
   };
 
-  // Initialize provider if none is set - ONLY RUN ONCE
+  // Debug: Log settings changes
+  useEffect(() => {
+    console.log('🔍 Settings changed in BottomToolbar:', {
+      provider: settings.provider,
+      model: settings.model,
+      settingsObject: settings
+    });
+  }, [settings]);
+
+  // Initialize provider if none is set - but wait for settings to load
   useEffect(() => {
     const providers = chatService.getProviders();
     console.log('Total providers found:', providers.length);
@@ -59,20 +72,18 @@ export function BottomToolbar({
     console.log('Current model:', settings.model);
     console.log('Settings object:', settings);
 
-    // Clean any corrupted data on startup
-    settingsService.forceCleanCorruptedData();
-
-    if (!settings.provider && providers.length > 0) {
-      console.log('No provider set, initializing with first provider:', providers[0].id);
-      onSettingsChange({ provider: providers[0].id });
-    }
-  }, []); // EMPTY DEPENDENCY ARRAY - ONLY RUN ONCE ON MOUNT
+    // Never auto-initialize provider - only use what the user has saved
+    // Let the user manually select their provider
+  }, [settings.provider, settings.model]); // Watch for settings changes
 
   // Fetch models when provider changes
   useEffect(() => {
+    console.log('🔄 Provider useEffect triggered! settings.provider:', settings.provider);
     if (settings.provider) {
       console.log('Fetching models for provider:', settings.provider);
       fetchModelsForProvider(settings.provider);
+    } else {
+      console.log('❌ No provider set, skipping model fetch');
     }
   }, [settings.provider]);
 
@@ -104,7 +115,12 @@ export function BottomToolbar({
 
       const baseUrl = providerSettings.baseUrl || '';
       const apiKey = providerSettings.apiKey || '';
-      console.log('Fetching models with API key:', { providerId, hasApiKey: !!apiKey, baseUrl });
+      console.log('🔍 BottomToolbar fetchModels:', {
+        providerId,
+        hasApiKey: !!apiKey,
+        baseUrl,
+        providerSettings: JSON.stringify(providerSettings, null, 2)
+      });
       const models = await chatService.fetchModels(providerId, apiKey, baseUrl);
       console.log('Models fetched:', models);
       setAvailableModels(models);
@@ -365,7 +381,7 @@ export function BottomToolbar({
                     model: '', // ALWAYS CLEAR - will be restored in fetchModelsForProvider
                     providers: updatedProviders // Include the updated providers object
                   });
-                  console.log('Settings updated with provider:', providerId, 'and model:', modelToSet);
+                  console.log('Settings updated with provider:', providerId, 'and model:', '');
                 } else {
                   console.error('Could not find provider ID for name:', providerName);
                 }
@@ -446,14 +462,7 @@ export function BottomToolbar({
                   }
                 }}
                 placeholder="Select model..."
-                options={availableModels}
                 className="h-8 w-full text-xs"
-                displayTransform={(modelName: string) => {
-                  // Remove provider prefix from model names for display
-                  // e.g., "openai/gpt-4o" -> "gpt-4o", "anthropic/claude-3.5-sonnet" -> "claude-3.5-sonnet"
-                  const parts = modelName.split('/');
-                  return parts.length > 1 ? parts[1] : modelName;
-                }}
               />
             )}
           </div>
@@ -479,6 +488,17 @@ export function BottomToolbar({
         <Button
           variant="ghost"
           size="sm"
+          onClick={onResetChat}
+          className="h-8 w-8 p-0"
+          title="Reset Chat"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        >
+          <RotateCcw className="h-4 w-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => onHistoryChange?.(!showHistory)}
           className="h-8 w-8 p-0"
           title="Chat History"
@@ -486,6 +506,10 @@ export function BottomToolbar({
         >
           <History className="h-4 w-4" />
         </Button>
+
+        <MCPDropdown
+          className="h-8 w-8"
+        />
 
         <Button
           variant="ghost"

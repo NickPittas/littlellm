@@ -21,10 +21,17 @@ import {
   Save,
   X,
   Palette,
-  Cog
+  Cog,
+  RefreshCw,
+  RotateCcw,
+  Server,
+  Play,
+  Square,
+  FileText
 } from 'lucide-react';
 import { settingsService, type AppSettings } from '../services/settingsService';
 import { promptsService, type Prompt } from '../services/promptsService';
+import { mcpService, type MCPServer } from '../services/mcpService';
 import { useTheme } from '../contexts/ThemeContext';
 
 export function SettingsOverlay() {
@@ -39,6 +46,21 @@ export function SettingsOverlay() {
     category: 'text',
     icon: '📝'
   });
+
+  // MCP state
+  const [mcpServers, setMcpServers] = useState<MCPServer[]>([]);
+  const [editingMcpServer, setEditingMcpServer] = useState<MCPServer | null>(null);
+  const [showAddMcpServer, setShowAddMcpServer] = useState(false);
+  const [newMcpServer, setNewMcpServer] = useState({
+    name: '',
+    description: '',
+    command: '',
+    args: [] as string[],
+    env: {} as Record<string, string>,
+    enabled: true
+  });
+  const [mcpConfigText, setMcpConfigText] = useState('');
+
   const { theme, setTheme, themes } = useTheme();
 
   // Load settings and prompts
@@ -47,6 +69,7 @@ export function SettingsOverlay() {
     console.log('Theme context available:', theme);
     loadSettings();
     loadCustomPrompts();
+    loadMcpServers();
   }, []);
 
   const loadSettings = async () => {
@@ -59,6 +82,25 @@ export function SettingsOverlay() {
         const electronSettings = await window.electronAPI.getAppSettings();
         console.log('Electron settings:', electronSettings);
         if (electronSettings) {
+          // Ensure providers object exists
+          if (!electronSettings.chat) {
+            electronSettings.chat = {};
+          }
+          if (!electronSettings.chat.providers) {
+            electronSettings.chat.providers = {
+              openai: { apiKey: '', lastSelectedModel: '' },
+              anthropic: { apiKey: '', lastSelectedModel: '' },
+              gemini: { apiKey: '', lastSelectedModel: '' },
+              mistral: { apiKey: '', lastSelectedModel: '' },
+              deepseek: { apiKey: '', lastSelectedModel: '' },
+              lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
+              ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+              openrouter: { apiKey: '', lastSelectedModel: '' },
+              requesty: { apiKey: '', lastSelectedModel: '' },
+              replicate: { apiKey: '', lastSelectedModel: '' },
+              n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+            };
+          }
           setSettings(electronSettings);
           return;
         }
@@ -72,7 +114,7 @@ export function SettingsOverlay() {
     } catch (error) {
       console.error('Failed to load settings:', error);
       // Set default settings if loading fails
-      const defaultSettings = {
+      const defaultSettings: AppSettings = {
         chat: {
           provider: '',
           model: '',
@@ -94,14 +136,14 @@ export function SettingsOverlay() {
           },
         },
         ui: {
-          theme: 'system',
+          theme: 'system' as const,
           alwaysOnTop: true,
           startMinimized: false,
           opacity: 1.0,
-          fontSize: 'small',
+          fontSize: 'small' as const,
           windowBounds: {
             width: 400,
-            height: 600,
+            height: 615, // Increased by 15px for draggable header
           },
         },
         shortcuts: {
@@ -144,6 +186,40 @@ export function SettingsOverlay() {
       handleClose();
     } catch (error) {
       console.error('Failed to save settings:', error);
+    }
+  };
+
+  const handleReloadSettings = async () => {
+    console.log('🔄 Reload Settings button clicked!');
+    try {
+      console.log('=== RELOADING SETTINGS FROM DISK ===');
+
+      // Force reload from disk
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const savedSettings = await window.electronAPI.getSettings();
+        if (savedSettings) {
+          console.log('Settings reloaded from disk:', savedSettings);
+
+          // Update the overlay UI
+          setSettings(savedSettings);
+
+          // IMPORTANT: Force update the settings service AND notify all subscribers
+          // This will update VoilaInterface and all other components
+          settingsService.forceUpdateSettings(savedSettings);
+
+          console.log('=== SETTINGS RELOADED SUCCESSFULLY ===');
+          alert('Settings reloaded successfully! All components updated.');
+        } else {
+          console.log('No settings found on disk');
+          alert('No settings found on disk');
+        }
+      } else {
+        console.log('Electron API not available');
+        alert('Electron API not available');
+      }
+    } catch (error) {
+      console.error('Failed to reload settings:', error);
+      alert(`Failed to reload settings: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -241,6 +317,157 @@ export function SettingsOverlay() {
     input.click();
   };
 
+  // MCP Server Management Functions
+  const loadMcpServers = async () => {
+    try {
+      const servers = await mcpService.getServers();
+      setMcpServers(servers);
+
+      // Load MCP config as text for editing
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const mcpData = await window.electronAPI.getMCPServers();
+        setMcpConfigText(JSON.stringify(mcpData, null, 2));
+      }
+    } catch (error) {
+      console.error('Failed to load MCP servers:', error);
+    }
+  };
+
+  const handleAddMcpServer = async () => {
+    try {
+      console.log('🔄 Adding new MCP server:', newMcpServer);
+
+      const server = await mcpService.addServer({
+        name: newMcpServer.name,
+        description: newMcpServer.description,
+        command: newMcpServer.command,
+        args: newMcpServer.args.filter(arg => arg.trim()), // Remove empty args
+        env: Object.fromEntries(
+          Object.entries(newMcpServer.env).filter(([key, value]) => key.trim() && value.trim())
+        ), // Remove empty env vars
+        enabled: newMcpServer.enabled
+      });
+
+      console.log('✅ MCP server added:', server);
+
+      // If enabled, try to connect the server immediately
+      if (server.enabled) {
+        console.log('🔌 Auto-connecting new MCP server:', server.id);
+        try {
+          const connected = await mcpService.connectServer(server.id);
+          console.log('🔌 Auto-connection result:', connected);
+        } catch (connectError) {
+          console.warn('⚠️ Failed to auto-connect new server:', connectError);
+        }
+      }
+
+      setMcpServers([...mcpServers, server]);
+      setShowAddMcpServer(false);
+      setNewMcpServer({
+        name: '',
+        description: '',
+        command: '',
+        args: [],
+        env: {},
+        enabled: true
+      });
+
+      // Reload config text and trigger settings reload
+      loadMcpServers();
+
+      // Trigger settings reload for MCP server change
+      await settingsService.reloadForMCPChange();
+
+      console.log('🎉 MCP server setup completed');
+    } catch (error) {
+      console.error('❌ Failed to add MCP server:', error);
+    }
+  };
+
+  const handleUpdateMcpServer = async (id: string, updates: Partial<MCPServer>) => {
+    try {
+      console.log('🔄 Updating MCP server:', id, updates);
+
+      const currentServer = mcpServers.find(s => s.id === id);
+      const wasEnabled = currentServer?.enabled;
+      const willBeEnabled = updates.enabled !== undefined ? updates.enabled : wasEnabled;
+
+      await mcpService.updateServer(id, updates);
+
+      // Handle connection changes
+      if (wasEnabled !== willBeEnabled) {
+        if (willBeEnabled) {
+          console.log('🔌 Connecting MCP server after enable:', id);
+          try {
+            await mcpService.connectServer(id);
+          } catch (connectError) {
+            console.warn('⚠️ Failed to connect server after enable:', connectError);
+          }
+        } else {
+          console.log('🔌 Disconnecting MCP server after disable:', id);
+          try {
+            await mcpService.disconnectServer(id);
+          } catch (disconnectError) {
+            console.warn('⚠️ Failed to disconnect server after disable:', disconnectError);
+          }
+        }
+      }
+
+      setMcpServers(mcpServers.map(server =>
+        server.id === id ? { ...server, ...updates } : server
+      ));
+
+      // Reload config text
+      loadMcpServers();
+
+      // If enabled state changed, trigger settings reload (explicit requirement)
+      if ('enabled' in updates) {
+        await settingsService.reloadForMCPChange();
+      }
+
+      console.log('✅ MCP server update completed');
+    } catch (error) {
+      console.error('❌ Failed to update MCP server:', error);
+    }
+  };
+
+  const handleDeleteMcpServer = async (id: string) => {
+    try {
+      await mcpService.removeServer(id);
+      setMcpServers(mcpServers.filter(server => server.id !== id));
+
+      // Reload config text
+      loadMcpServers();
+    } catch (error) {
+      console.error('Failed to delete MCP server:', error);
+    }
+  };
+
+  const handleSaveMcpConfig = async () => {
+    try {
+      const mcpData = JSON.parse(mcpConfigText);
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        await window.electronAPI.saveMCPServers(mcpData);
+        loadMcpServers(); // Reload to sync UI
+      }
+    } catch (error) {
+      console.error('Failed to save MCP config:', error);
+      alert('Invalid JSON format. Please check your configuration.');
+    }
+  };
+
+  const handleRestartMcpServers = async () => {
+    try {
+      console.log('🔄 Restarting all MCP servers...');
+      await mcpService.restartAllServers();
+      console.log('✅ All MCP servers restarted');
+      // Trigger settings reload for MCP server change
+      await settingsService.reloadForMCPChange();
+    } catch (error) {
+      console.error('❌ Failed to restart MCP servers:', error);
+    }
+  };
+
   return (
     <div className="h-full w-full bg-background border border-border rounded-lg shadow-2xl flex flex-col overflow-hidden">
       {/* Header */}
@@ -261,7 +488,7 @@ export function SettingsOverlay() {
 
       {/* Settings Content */}
       <div className="flex-1 overflow-y-auto hide-scrollbar p-6">
-        {!settings ? (
+        {!settings || !settings.chat || !settings.chat.providers ? (
           <div className="text-center space-y-4">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
             <p>Loading settings...</p>
@@ -277,10 +504,11 @@ export function SettingsOverlay() {
           </div>
         ) : (
           <Tabs defaultValue="api-keys" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="api-keys">API Keys</TabsTrigger>
               <TabsTrigger value="shortcuts">Shortcuts</TabsTrigger>
               <TabsTrigger value="prompts">Prompts</TabsTrigger>
+              <TabsTrigger value="mcp">MCP</TabsTrigger>
               <TabsTrigger value="appearance">Appearance</TabsTrigger>
               <TabsTrigger value="general">General</TabsTrigger>
             </TabsList>
@@ -299,14 +527,14 @@ export function SettingsOverlay() {
                   <Input
                     id="openai-key"
                     type="password"
-                    value={settings.chat.providers.openai.apiKey}
+                    value={settings.chat.providers?.openai?.apiKey || ''}
                     onChange={(e) => setSettings({
                       ...settings,
                       chat: {
                         ...settings.chat,
                         providers: {
                           ...settings.chat.providers,
-                          openai: { ...settings.chat.providers.openai, apiKey: e.target.value }
+                          openai: { ...(settings.chat.providers?.openai || {}), apiKey: e.target.value }
                         }
                       }
                     })}
@@ -362,14 +590,14 @@ export function SettingsOverlay() {
                   <Input
                     id="mistral-key"
                     type="password"
-                    value={settings.chat.providers.mistral?.apiKey || ''}
+                    value={settings.chat.providers?.mistral?.apiKey || ''}
                     onChange={(e) => setSettings({
                       ...settings,
                       chat: {
                         ...settings.chat,
                         providers: {
                           ...settings.chat.providers,
-                          mistral: { ...(settings.chat.providers.mistral || {}), apiKey: e.target.value }
+                          mistral: { ...(settings.chat.providers?.mistral || {}), apiKey: e.target.value }
                         }
                       }
                     })}
@@ -383,14 +611,14 @@ export function SettingsOverlay() {
                   <Input
                     id="deepseek-key"
                     type="password"
-                    value={settings.chat.providers.deepseek?.apiKey || ''}
+                    value={settings.chat.providers?.deepseek?.apiKey || ''}
                     onChange={(e) => setSettings({
                       ...settings,
                       chat: {
                         ...settings.chat,
                         providers: {
                           ...settings.chat.providers,
-                          deepseek: { ...(settings.chat.providers.deepseek || {}), apiKey: e.target.value }
+                          deepseek: { ...(settings.chat.providers?.deepseek || {}), apiKey: e.target.value }
                         }
                       }
                     })}
@@ -404,14 +632,14 @@ export function SettingsOverlay() {
                   <Input
                     id="openrouter-key"
                     type="password"
-                    value={settings.chat.providers.openrouter.apiKey}
+                    value={settings.chat.providers?.openrouter?.apiKey || ''}
                     onChange={(e) => setSettings({
                       ...settings,
                       chat: {
                         ...settings.chat,
                         providers: {
                           ...settings.chat.providers,
-                          openrouter: { ...settings.chat.providers.openrouter, apiKey: e.target.value }
+                          openrouter: { ...(settings.chat.providers?.openrouter || {}), apiKey: e.target.value }
                         }
                       }
                     })}
@@ -425,14 +653,14 @@ export function SettingsOverlay() {
                   <Input
                     id="requesty-key"
                     type="password"
-                    value={settings.chat.providers.requesty.apiKey}
+                    value={settings.chat.providers?.requesty?.apiKey || ''}
                     onChange={(e) => setSettings({
                       ...settings,
                       chat: {
                         ...settings.chat,
                         providers: {
                           ...settings.chat.providers,
-                          requesty: { ...settings.chat.providers.requesty, apiKey: e.target.value }
+                          requesty: { ...(settings.chat.providers?.requesty || {}), apiKey: e.target.value }
                         }
                       }
                     })}
@@ -446,14 +674,14 @@ export function SettingsOverlay() {
                   <Input
                     id="replicate-key"
                     type="password"
-                    value={settings.chat.providers.replicate.apiKey}
+                    value={settings.chat.providers?.replicate?.apiKey || ''}
                     onChange={(e) => setSettings({
                       ...settings,
                       chat: {
                         ...settings.chat,
                         providers: {
                           ...settings.chat.providers,
-                          replicate: { ...settings.chat.providers.replicate, apiKey: e.target.value }
+                          replicate: { ...(settings.chat.providers?.replicate || {}), apiKey: e.target.value }
                         }
                       }
                     })}
@@ -512,14 +740,14 @@ export function SettingsOverlay() {
                   <Label htmlFor="ollama-url">Ollama Base URL</Label>
                   <Input
                     id="ollama-url"
-                    value={settings.chat.providers.ollama.baseUrl || 'http://localhost:11434'}
+                    value={settings.chat.providers?.ollama?.baseUrl || 'http://localhost:11434'}
                     onChange={(e) => setSettings({
                       ...settings,
                       chat: {
                         ...settings.chat,
                         providers: {
                           ...settings.chat.providers,
-                          ollama: { ...settings.chat.providers.ollama, baseUrl: e.target.value }
+                          ollama: { ...(settings.chat.providers?.ollama || {}), baseUrl: e.target.value }
                         }
                       }
                     })}
@@ -986,15 +1214,385 @@ export function SettingsOverlay() {
               </div>
             </TabsContent>
 
-            {/* Save Button */}
-            <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
-              <Button variant="outline" onClick={handleClose}>
-                Cancel
+            {/* MCP Tab */}
+            <TabsContent value="mcp" className="space-y-4">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Server className="h-4 w-4" />
+                    <h3 className="text-lg font-medium">MCP Servers</h3>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleRestartMcpServers}
+                      size="sm"
+                      variant="outline"
+                      className="cursor-pointer"
+                    >
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      Restart All
+                    </Button>
+                    <Button
+                      onClick={() => setShowAddMcpServer(true)}
+                      size="sm"
+                      className="cursor-pointer"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Server
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="text-sm text-muted-foreground">
+                  Configure MCP (Model Context Protocol) servers to extend functionality with tools, resources, and prompts.
+                  <br />
+                  <span className="text-xs">💡 "Method not found" warnings are normal for servers that don't support all capabilities.</span>
+                </div>
+
+                {/* MCP Servers List */}
+                <div className="space-y-2">
+                  {mcpServers.map((server) => (
+                    <div key={server.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <Server className="h-4 w-4" />
+                            {/* Health indicator */}
+                            {server.enabled && (
+                              <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full"
+                                   title="Server enabled" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{server.name}</span>
+                              {server.enabled && (
+                                <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
+                                  Enabled
+                                </span>
+                              )}
+                            </div>
+                            {server.description && (
+                              <div className="text-sm text-muted-foreground">{server.description}</div>
+                            )}
+                            <div className="text-xs text-muted-foreground">
+                              {server.command} {server.args.join(' ')}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant={server.enabled ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleUpdateMcpServer(server.id, { enabled: !server.enabled })}
+                          className="cursor-pointer"
+                        >
+                          {server.enabled ? <Play className="h-3 w-3" /> : <Square className="h-3 w-3" />}
+                          {server.enabled ? 'Enabled' : 'Disabled'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditingMcpServer(server)}
+                          className="cursor-pointer"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteMcpServer(server.id)}
+                          className="cursor-pointer text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {mcpServers.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No MCP servers configured. Add one to get started.
+                    </div>
+                  )}
+                </div>
+
+                {/* Raw Config Editor */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="mcp-config">Raw Configuration (JSON)</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSaveMcpConfig}
+                      className="cursor-pointer"
+                    >
+                      <Save className="h-3 w-3 mr-2" />
+                      Save Config
+                    </Button>
+                  </div>
+                  <Textarea
+                    id="mcp-config"
+                    value={mcpConfigText}
+                    onChange={(e) => setMcpConfigText(e.target.value)}
+                    placeholder="MCP configuration in JSON format..."
+                    rows={10}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Advanced: Edit the raw MCP configuration. Changes will be applied when you click "Save Config".
+                  </p>
+                </div>
+
+                {/* Add/Edit MCP Server Modal */}
+                {(showAddMcpServer || editingMcpServer) && (
+                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-background border border-border rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto">
+                      <h3 className="text-lg font-medium mb-4">
+                        {editingMcpServer ? 'Edit MCP Server' : 'Add MCP Server'}
+                      </h3>
+
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="server-name">Server Name</Label>
+                          <Input
+                            id="server-name"
+                            value={editingMcpServer ? editingMcpServer.name : newMcpServer.name}
+                            onChange={(e) => {
+                              if (editingMcpServer) {
+                                setEditingMcpServer({ ...editingMcpServer, name: e.target.value });
+                              } else {
+                                setNewMcpServer({ ...newMcpServer, name: e.target.value });
+                              }
+                            }}
+                            placeholder="e.g., File System Server"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="server-description">Description (Optional)</Label>
+                          <Input
+                            id="server-description"
+                            value={editingMcpServer ? editingMcpServer.description || '' : newMcpServer.description}
+                            onChange={(e) => {
+                              if (editingMcpServer) {
+                                setEditingMcpServer({ ...editingMcpServer, description: e.target.value });
+                              } else {
+                                setNewMcpServer({ ...newMcpServer, description: e.target.value });
+                              }
+                            }}
+                            placeholder="Brief description of what this server does"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="server-command">Command</Label>
+                          <Input
+                            id="server-command"
+                            value={editingMcpServer ? editingMcpServer.command : newMcpServer.command}
+                            onChange={(e) => {
+                              if (editingMcpServer) {
+                                setEditingMcpServer({ ...editingMcpServer, command: e.target.value });
+                              } else {
+                                setNewMcpServer({ ...newMcpServer, command: e.target.value });
+                              }
+                            }}
+                            placeholder="e.g., npx, python, node"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Arguments</Label>
+                          <div className="space-y-2">
+                            {(editingMcpServer ? editingMcpServer.args : newMcpServer.args).map((arg, index) => (
+                              <div key={index} className="flex gap-2">
+                                <Input
+                                  value={arg}
+                                  onChange={(e) => {
+                                    const newArgs = [...(editingMcpServer ? editingMcpServer.args : newMcpServer.args)];
+                                    newArgs[index] = e.target.value;
+                                    if (editingMcpServer) {
+                                      setEditingMcpServer({ ...editingMcpServer, args: newArgs });
+                                    } else {
+                                      setNewMcpServer({ ...newMcpServer, args: newArgs });
+                                    }
+                                  }}
+                                  placeholder={`Argument ${index + 1}`}
+                                  className="flex-1"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const newArgs = (editingMcpServer ? editingMcpServer.args : newMcpServer.args).filter((_, i) => i !== index);
+                                    if (editingMcpServer) {
+                                      setEditingMcpServer({ ...editingMcpServer, args: newArgs });
+                                    } else {
+                                      setNewMcpServer({ ...newMcpServer, args: newArgs });
+                                    }
+                                  }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const newArgs = [...(editingMcpServer ? editingMcpServer.args : newMcpServer.args), ''];
+                                if (editingMcpServer) {
+                                  setEditingMcpServer({ ...editingMcpServer, args: newArgs });
+                                } else {
+                                  setNewMcpServer({ ...newMcpServer, args: newArgs });
+                                }
+                              }}
+                              className="w-full"
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Add Argument
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Environment Variables</Label>
+                          <div className="space-y-2">
+                            {Object.entries(editingMcpServer ? editingMcpServer.env || {} : newMcpServer.env).map(([key, value], index) => (
+                              <div key={index} className="flex gap-2">
+                                <Input
+                                  value={key}
+                                  onChange={(e) => {
+                                    const currentEnv = editingMcpServer ? editingMcpServer.env || {} : newMcpServer.env;
+                                    const newEnv = { ...currentEnv };
+                                    delete newEnv[key];
+                                    newEnv[e.target.value] = value;
+                                    if (editingMcpServer) {
+                                      setEditingMcpServer({ ...editingMcpServer, env: newEnv });
+                                    } else {
+                                      setNewMcpServer({ ...newMcpServer, env: newEnv });
+                                    }
+                                  }}
+                                  placeholder="Variable name"
+                                  className="flex-1"
+                                />
+                                <Input
+                                  value={value}
+                                  onChange={(e) => {
+                                    const currentEnv = editingMcpServer ? editingMcpServer.env || {} : newMcpServer.env;
+                                    const newEnv = { ...currentEnv, [key]: e.target.value };
+                                    if (editingMcpServer) {
+                                      setEditingMcpServer({ ...editingMcpServer, env: newEnv });
+                                    } else {
+                                      setNewMcpServer({ ...newMcpServer, env: newEnv });
+                                    }
+                                  }}
+                                  placeholder="Variable value"
+                                  className="flex-1"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    const currentEnv = editingMcpServer ? editingMcpServer.env || {} : newMcpServer.env;
+                                    const newEnv = { ...currentEnv };
+                                    delete newEnv[key];
+                                    if (editingMcpServer) {
+                                      setEditingMcpServer({ ...editingMcpServer, env: newEnv });
+                                    } else {
+                                      setNewMcpServer({ ...newMcpServer, env: newEnv });
+                                    }
+                                  }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const currentEnv = editingMcpServer ? editingMcpServer.env || {} : newMcpServer.env;
+                                const newEnv = { ...currentEnv, '': '' };
+                                if (editingMcpServer) {
+                                  setEditingMcpServer({ ...editingMcpServer, env: newEnv });
+                                } else {
+                                  setNewMcpServer({ ...newMcpServer, env: newEnv });
+                                }
+                              }}
+                              className="w-full"
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Add Environment Variable
+                            </Button>
+                          </div>
+                        </div>
+
+
+                      </div>
+
+                      <div className="flex justify-end gap-2 mt-6">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setShowAddMcpServer(false);
+                            setEditingMcpServer(null);
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={async () => {
+                            if (editingMcpServer) {
+                              await handleUpdateMcpServer(editingMcpServer.id, {
+                                name: editingMcpServer.name,
+                                description: editingMcpServer.description,
+                                command: editingMcpServer.command,
+                                args: editingMcpServer.args,
+                                env: Object.fromEntries(
+                                  Object.entries(editingMcpServer.env || {}).filter(([key, value]) => key.trim() && value.trim())
+                                )
+                              });
+                              setEditingMcpServer(null);
+                            } else {
+                              await handleAddMcpServer();
+                            }
+                          }}
+                        >
+                          {editingMcpServer ? 'Update' : 'Add'} Server
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* Action Buttons */}
+            <div className="flex justify-between gap-2 mt-6 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={handleReloadSettings}
+                className="cursor-pointer"
+                type="button"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Reload Settings
               </Button>
-              <Button onClick={handleSaveSettings}>
-                <Save className="h-4 w-4 mr-2" />
-                Save Settings
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleClose} type="button">
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveSettings} type="button">
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Settings
+                </Button>
+              </div>
             </div>
           </Tabs>
         )}

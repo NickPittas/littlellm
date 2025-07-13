@@ -1,4 +1,5 @@
 import { llmService, type LLMSettings } from './llmService';
+import { sessionService } from './sessionService';
 
 export interface Message {
   id: string;
@@ -16,6 +17,17 @@ export interface Message {
     completionTokens: number;
     totalTokens: number;
   };
+  timing?: {
+    startTime: number;
+    endTime: number;
+    duration: number; // in milliseconds
+    tokensPerSecond?: number;
+  };
+  toolCalls?: Array<{
+    id: string;
+    name: string;
+    arguments: any;
+  }>;
 }
 
 export interface ProviderSettings {
@@ -31,6 +43,7 @@ export interface ChatSettings {
   temperature: number;
   maxTokens: number;
   systemPrompt?: string;
+  toolCallingEnabled: boolean;
   providers: {
     [key: string]: ProviderSettings;
   };
@@ -76,11 +89,27 @@ export const chatService = {
         'google/gemini-flash-1.5',
         'google/gemini-pro-vision'
       ],
-      ollama: [] // Ollama vision support is detected differently
+      ollama: [] // Ollama vision support is detected by model name patterns
     };
 
     const supportedModels = visionModels[provider] || [];
-    const isSupported = supportedModels.includes(model);
+    let isSupported = supportedModels.includes(model);
+
+    // Special handling for Ollama - detect vision models by name patterns
+    if (provider === 'ollama' && !isSupported) {
+      const ollamaVisionPatterns = [
+        'vision',
+        'llava',
+        'bakllava',
+        'moondream',
+        'cogvlm',
+        'llama3.2-vision'
+      ];
+
+      isSupported = ollamaVisionPatterns.some(pattern =>
+        model.toLowerCase().includes(pattern.toLowerCase())
+      );
+    }
 
     console.log(`Vision support check - Provider: ${provider}, Model: ${model}, Supported: ${isSupported}`);
     return isSupported;
@@ -145,84 +174,22 @@ export const chatService = {
     }
   },
 
-  // Helper function to convert file to base64 with image optimization
+  // Helper function to convert file to base64 (no processing needed)
   fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
-      console.log('Converting file to base64:', file.name, file.type, file.size);
+      console.log('Reading file as base64:', file.name, file.type, file.size);
 
-      if (file.type.startsWith('image/')) {
-        // Optimize image size for vision models
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-
-        img.onload = () => {
-          try {
-            console.log('Image loaded, original dimensions:', img.width, 'x', img.height);
-
-            // Limit image dimensions to reduce token usage
-            const maxDimension = 1024; // Max width or height
-            let { width, height } = img;
-
-            if (width > maxDimension || height > maxDimension) {
-              if (width > height) {
-                height = (height * maxDimension) / width;
-                width = maxDimension;
-              } else {
-                width = (width * maxDimension) / height;
-                height = maxDimension;
-              }
-              console.log('Image resized to:', width, 'x', height);
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-
-            if (ctx) {
-              ctx.drawImage(img, 0, 0, width, height);
-
-              // Convert to JPEG with compression to reduce size
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.8); // 80% quality
-              console.log('Image converted to base64, length:', dataUrl.length);
-              resolve(dataUrl);
-            } else {
-              throw new Error('Could not get canvas context');
-            }
-          } catch (error) {
-            console.error('Error processing image:', error);
-            reject(error);
-          }
-        };
-
-        img.onerror = (error) => {
-          console.error('Failed to load image:', error);
-          reject(new Error('Failed to load image'));
-        };
-
-        const reader = new FileReader();
-        reader.onload = () => {
-          console.log('File read as data URL, setting image source');
-          img.src = reader.result as string;
-        };
-        reader.onerror = error => {
-          console.error('FileReader error:', error);
-          reject(error);
-        };
-        reader.readAsDataURL(file);
-      } else {
-        // For non-image files, use standard base64 conversion
-        console.log('Converting non-image file to base64');
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-          console.log('Non-image file converted to base64');
-          resolve(reader.result as string);
-        };
-        reader.onerror = error => {
-          console.error('FileReader error for non-image:', error);
-          reject(error);
-        };
-      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        console.log('File converted to base64, length:', result.length);
+        resolve(result);
+      };
+      reader.onerror = error => {
+        console.error('FileReader error:', error);
+        reject(error);
+      };
+      reader.readAsDataURL(file);
     });
   },
 
@@ -362,7 +329,8 @@ export const chatService = {
     settings: ChatSettings,
     conversationHistory: Message[] = [],
     onStream?: (chunk: string) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    conversationId?: string // Add conversation ID for tool optimization
   ): Promise<Message> {
     console.log('🚀 ChatService.sendMessage called with:', {
       message: message.substring(0, 100) + '...',
@@ -371,6 +339,17 @@ export const chatService = {
       hasApiKey: !!settings.providers[settings.provider]?.apiKey,
       filesCount: files?.length || 0
     });
+
+    // Also log to window for debugging
+    if (typeof window !== 'undefined') {
+      (window as any).lastChatServiceCall = {
+        message: message.substring(0, 100) + '...',
+        provider: settings.provider,
+        model: settings.model,
+        hasApiKey: !!settings.providers[settings.provider]?.apiKey,
+        timestamp: new Date().toISOString()
+      };
+    }
 
     try {
       // Handle file attachments with proper OpenRouter vision API format
@@ -512,6 +491,51 @@ export const chatService = {
               images: images
             };
             console.log('Final Ollama message format:', { textLength: textContent.length, imageCount: images.length });
+          } else if (provider === 'n8n' && hasVisualContent) {
+            // n8n webhook format with images
+            console.log('Using n8n webhook format with images');
+
+            let textContent = message || 'Please analyze the attached content.';
+            const images: string[] = [];
+
+            for (const file of files) {
+              if (file.type.startsWith('image/')) {
+                // Convert image to base64 data URL for n8n
+                console.log('Converting image for n8n:', file.name);
+                const base64 = await this.fileToBase64(file);
+                images.push(base64); // Keep full data URL for n8n
+                console.log('Added image to n8n format, base64 length:', base64.length);
+              } else if (file.type === 'application/pdf') {
+                // Convert PDF pages to images for n8n
+                console.log('Converting PDF to images for n8n:', file.name);
+                const pdfImages = await this.pdfToImages(file);
+
+                if (pdfImages.length > 0) {
+                  console.log(`PDF converted to ${pdfImages.length} images for n8n`);
+                  images.push(...pdfImages); // Add all PDF page images
+                  textContent += `\n\n[PDF Document: ${file.name} - ${pdfImages.length} pages converted to images for analysis]`;
+                } else {
+                  // Fallback to text extraction if image conversion fails
+                  console.log('PDF image conversion failed for n8n, falling back to text extraction...');
+                  const extractedText = await this.extractTextFromFile(file);
+                  textContent += `\n\n${extractedText}`;
+                  console.log('Added text content, total length:', textContent.length);
+                }
+              } else {
+                // Extract and include text content
+                console.log('Extracting text for n8n:', file.name);
+                const extractedText = await this.extractTextFromFile(file);
+                textContent += `\n\n${extractedText}`;
+                console.log('Added text content, total length:', textContent.length);
+              }
+            }
+
+            // n8n expects a message format with images array (similar to Ollama but with full data URLs)
+            messageContent = {
+              text: textContent,
+              images: images
+            };
+            console.log('Final n8n message format:', { textLength: textContent.length, imageCount: images.length });
           } else {
             // For other providers or models without vision support
             if (hasVisualContent && !modelSupportsVision) {
@@ -559,13 +583,15 @@ export const chatService = {
       }
 
       // Convert ChatSettings to LLMSettings
-      const providerSettings = settings.providers[settings.provider] || { apiKey: '' };
+      const providerSettings = settings.providers?.[settings.provider] || { apiKey: '' };
 
       // Check if API key is required and missing
-      // n8n uses webhooks (baseUrl), not API keys
-      if (settings.provider !== 'ollama' && settings.provider !== 'n8n' && !providerSettings.apiKey) {
+      // ollama, lmstudio, and n8n don't require API keys
+      if (settings.provider !== 'ollama' && settings.provider !== 'lmstudio' && settings.provider !== 'n8n' && !providerSettings.apiKey) {
         throw new Error(`API key is required for ${settings.provider}. Please configure it in Settings.`);
       }
+
+
 
       const llmSettings: LLMSettings = {
         provider: settings.provider,
@@ -575,6 +601,7 @@ export const chatService = {
         temperature: settings.temperature,
         maxTokens: settings.maxTokens,
         systemPrompt: settings.systemPrompt,
+        toolCallingEnabled: settings.toolCallingEnabled,
       };
 
       // Convert conversation history to LLM format
@@ -591,26 +618,106 @@ export const chatService = {
         baseUrl: llmSettings.baseUrl
       });
 
+      // Track timing for tokens per second calculation
+      const startTime = performance.now();
+
+      // Disable streaming for providers that don't support tool calls in streaming mode
+      // DeepSeek: disabled to get usage data
+      // Gemini: streaming handler doesn't support function calls yet
+      const mcpService = (global as any).mcpService;
+      const hasTools = settings.toolCallingEnabled && mcpService && await mcpService.isConnected() && (await mcpService.listTools()).length > 0;
+      const useStreaming = onStream &&
+        settings.provider !== 'deepseek' &&
+        !(settings.provider === 'gemini' && hasTools);
+
+      console.log(`🔄 Calling LLM with streaming: ${useStreaming}, hasTools: ${hasTools}, toolCallingEnabled: ${settings.toolCallingEnabled}, provider: ${settings.provider}`);
+      if (settings.provider === 'lmstudio' && hasTools) {
+        console.log(`✅ LM Studio will use streaming WITH tool support`);
+      }
+
       const response = await llmService.sendMessage(
         messageContent,
         llmSettings,
         llmHistory,
-        onStream,
-        signal
+        useStreaming ? onStream : undefined,
+        signal,
+        conversationId
       );
+
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+
+      // Calculate tokens per second if we have usage data
+      let tokensPerSecond: number | undefined;
+      if (response.usage?.completionTokens && duration > 0) {
+        tokensPerSecond = (response.usage.completionTokens / duration) * 1000; // Convert to tokens per second
+      }
 
       console.log('✅ LLM response received:', {
         contentLength: response.content?.length || 0,
-        hasUsage: !!response.usage
+        hasUsage: !!response.usage,
+        usage: response.usage,
+        duration: `${duration.toFixed(2)}ms`,
+        tokensPerSecond: tokensPerSecond ? `${tokensPerSecond.toFixed(2)} t/s` : 'N/A'
       });
 
-      return {
+      // Track token usage in session stats - normalize format
+      if (response.usage) {
+        // Use the already normalized usage format from llmService
+        const normalizedUsage = {
+          promptTokens: response.usage.promptTokens || 0,
+          completionTokens: response.usage.completionTokens || 0,
+          totalTokens: response.usage.totalTokens || (response.usage.promptTokens || 0) + (response.usage.completionTokens || 0)
+        };
+
+        console.log('📊 Adding token usage to session:', {
+          original: response.usage,
+          normalized: normalizedUsage
+        });
+        await sessionService.addTokenUsage(normalizedUsage);
+
+        // Also log to window for debugging
+        if (typeof window !== 'undefined') {
+          (window as any).lastTokenUsage = {
+            usage: response.usage,
+            timestamp: new Date().toISOString()
+          };
+        }
+      } else {
+        console.warn('⚠️ No usage data in response');
+
+        // Also log to window for debugging
+        if (typeof window !== 'undefined') {
+          (window as any).lastNoUsageResponse = {
+            hasResponse: !!response,
+            responseKeys: response ? Object.keys(response) : [],
+            timestamp: new Date().toISOString()
+          };
+        }
+      }
+
+      const assistantMessage = {
         id: Date.now().toString(),
         content: response.content,
-        role: 'assistant',
+        role: 'assistant' as const,
         timestamp: new Date(),
         usage: response.usage,
+        timing: {
+          startTime,
+          endTime,
+          duration,
+          tokensPerSecond
+        },
+        toolCalls: response.toolCalls // Include tool calls in the message
       };
+
+      console.log('📋 Created message with toolCalls:', {
+        hasToolCalls: !!response.toolCalls,
+        toolCallsCount: response.toolCalls?.length || 0,
+        toolNames: response.toolCalls?.map(tc => tc.name) || []
+      });
+
+      return assistantMessage;
     } catch (error) {
       console.error('❌ Chat service error:', error);
       throw new Error(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);

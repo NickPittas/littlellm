@@ -1,4 +1,4 @@
-import { getStorageItem, setStorageItem } from '../utils/storage';
+import { getStorageItem } from '../utils/storage';
 import type { Message } from './chatService';
 
 export interface Conversation {
@@ -7,6 +7,7 @@ export interface Conversation {
   messages: Message[];
   createdAt: Date;
   updatedAt: Date;
+  toolsHash?: string; // Hash of tools sent to track changes
 }
 
 class ConversationHistoryService {
@@ -16,25 +17,62 @@ class ConversationHistoryService {
 
   async initialize() {
     if (this.initialized) return;
-    
+
     try {
-      const stored = await getStorageItem('conversation-history');
-      if (stored && Array.isArray(stored)) {
-        this.conversations = stored.map(conv => ({
-          ...conv,
-          createdAt: new Date(conv.createdAt),
-          updatedAt: new Date(conv.updatedAt),
-          messages: conv.messages.map((msg: any) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp)
-          }))
-        }));
+      // Load conversation index from disk (contains metadata for ALL conversations)
+      if (typeof window !== 'undefined' && window.electronAPI?.loadConversationIndex) {
+        const conversationIndex = await window.electronAPI.loadConversationIndex();
+
+        if (conversationIndex && Array.isArray(conversationIndex)) {
+          // Convert index entries back to Conversation objects (without full messages)
+          this.conversations = conversationIndex.map(conv => ({
+            ...conv,
+            createdAt: new Date(conv.createdAt),
+            updatedAt: new Date(conv.updatedAt),
+            messages: [] // Messages will be loaded on-demand when conversation is opened
+          }));
+
+          console.log(`Loaded ${this.conversations.length} conversations from disk`);
+        } else {
+          // Fallback: try loading from old storage system
+          console.log('No conversation index found, trying legacy storage...');
+          const stored = await getStorageItem('conversation-history');
+          if (stored && Array.isArray(stored)) {
+            this.conversations = stored.map(conv => ({
+              ...conv,
+              createdAt: new Date(conv.createdAt),
+              updatedAt: new Date(conv.updatedAt),
+              messages: conv.messages.map((msg: any) => ({
+                ...msg,
+                timestamp: new Date(msg.timestamp)
+              }))
+            }));
+
+            // Migrate to new file-based system
+            console.log('Migrating conversations to new file-based system...');
+            await this.migrateToFileSystem();
+          }
+        }
+      } else {
+        // Fallback for environments without Electron API
+        const stored = await getStorageItem('conversation-history');
+        if (stored && Array.isArray(stored)) {
+          this.conversations = stored.map(conv => ({
+            ...conv,
+            createdAt: new Date(conv.createdAt),
+            updatedAt: new Date(conv.updatedAt),
+            messages: conv.messages.map((msg: any) => ({
+              ...msg,
+              timestamp: new Date(msg.timestamp)
+            }))
+          }));
+        }
       }
     } catch (error) {
       console.error('Failed to load conversation history:', error);
       this.conversations = [];
     }
-    
+
     this.initialized = true;
   }
 
@@ -64,6 +102,44 @@ class ConversationHistoryService {
     } catch (error) {
       console.error('Error saving conversation to file:', error);
       return false;
+    }
+  }
+
+  // Migrate conversations from old storage system to new file-based system
+  private async migrateToFileSystem() {
+    try {
+      for (const conversation of this.conversations) {
+        await this.saveConversationToFile(conversation);
+      }
+      await this.saveConversationIndex();
+      console.log('Migration to file-based system completed');
+    } catch (error) {
+      console.error('Failed to migrate conversations to file system:', error);
+    }
+  }
+
+  // Load full conversation data from file (including messages)
+  async loadFullConversation(conversationId: string): Promise<Conversation | null> {
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI?.loadConversationFromFile) {
+        const conversationData = await window.electronAPI.loadConversationFromFile(conversationId);
+
+        if (conversationData) {
+          return {
+            ...conversationData,
+            createdAt: new Date(conversationData.createdAt),
+            updatedAt: new Date(conversationData.updatedAt),
+            messages: conversationData.messages.map((msg: any) => ({
+              ...msg,
+              timestamp: new Date(msg.timestamp)
+            }))
+          };
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error(`Failed to load full conversation ${conversationId}:`, error);
+      return null;
     }
   }
 
@@ -155,12 +231,34 @@ class ConversationHistoryService {
 
   async getAllConversations(): Promise<Conversation[]> {
     await this.initialize();
+    // Return conversation metadata (without full messages for performance)
+    // Messages will be loaded on-demand when conversation is opened
     return [...this.conversations];
   }
 
   async getConversation(conversationId: string): Promise<Conversation | null> {
     await this.initialize();
-    return this.conversations.find(c => c.id === conversationId) || null;
+
+    // First check if we have the conversation in memory
+    const conversation = this.conversations.find(c => c.id === conversationId);
+    if (!conversation) {
+      return null;
+    }
+
+    // If conversation has no messages (loaded from index), load full data from file
+    if (conversation.messages.length === 0) {
+      const fullConversation = await this.loadFullConversation(conversationId);
+      if (fullConversation) {
+        // Update the in-memory conversation with full data
+        const index = this.conversations.findIndex(c => c.id === conversationId);
+        if (index !== -1) {
+          this.conversations[index] = fullConversation;
+        }
+        return fullConversation;
+      }
+    }
+
+    return conversation;
   }
 
   async deleteConversation(conversationId: string) {
@@ -186,6 +284,44 @@ class ConversationHistoryService {
 
   setCurrentConversationId(id: string | null) {
     this.currentConversationId = id;
+  }
+
+  // Tool state management for conversation-level optimization
+  async getToolsHashForConversation(conversationId: string): Promise<string | null> {
+    await this.initialize();
+    const conversation = this.conversations.find(c => c.id === conversationId);
+    return conversation?.toolsHash || null;
+  }
+
+  async setToolsHashForConversation(conversationId: string, toolsHash: string) {
+    await this.initialize();
+    const conversation = this.conversations.find(c => c.id === conversationId);
+    if (conversation) {
+      conversation.toolsHash = toolsHash;
+      conversation.updatedAt = new Date();
+
+      // Save updated conversation
+      await this.saveConversationToFile(conversation);
+      await this.saveConversationIndex();
+    }
+  }
+
+  // Helper to generate hash from tools array
+  generateToolsHash(tools: any[]): string {
+    const toolsString = JSON.stringify(tools.map(tool => ({
+      name: tool.name || tool.function?.name || 'unknown',
+      description: tool.description || tool.function?.description || '',
+      parameters: tool.parameters || tool.function?.parameters || {}
+    })).filter(tool => tool.name !== 'unknown').sort((a, b) => a.name.localeCompare(b.name)));
+
+    // Simple hash function
+    let hash = 0;
+    for (let i = 0; i < toolsString.length; i++) {
+      const char = toolsString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString();
   }
 }
 

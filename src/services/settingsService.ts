@@ -27,18 +27,20 @@ export interface AppSettings {
 
 const DEFAULT_SETTINGS: AppSettings = {
   chat: {
-    provider: '',
-    model: '',
+    // provider and model are managed by stateService, not saved in main settings
+    provider: '', // Will be loaded from stateService
+    model: '', // Will be loaded from stateService
     temperature: 0.3,
     maxTokens: 8192,
     systemPrompt: '',
+    toolCallingEnabled: true, // Enable tool calling by default
     providers: {
       openai: { apiKey: '', lastSelectedModel: '' },
       anthropic: { apiKey: '', lastSelectedModel: '' },
       gemini: { apiKey: '', lastSelectedModel: '' },
       mistral: { apiKey: '', lastSelectedModel: '' },
       deepseek: { apiKey: '', lastSelectedModel: '' },
-      lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
+      lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       openrouter: { apiKey: '', lastSelectedModel: '' },
       requesty: { apiKey: '', lastSelectedModel: '' },
@@ -54,7 +56,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     fontSize: 'small',
     windowBounds: {
       width: 400,
-      height: 600,
+      height: 615, // Increased by 15px for draggable header
     },
   },
   shortcuts: {
@@ -81,7 +83,7 @@ class SettingsService {
 
     // Load settings immediately if Electron is available
     this.loadSettingsSync();
-    this.initialized = true;
+    // Note: initialized will be set to true after settings are actually loaded
   }
 
   private loadSettingsSync() {
@@ -113,9 +115,11 @@ class SettingsService {
             }
 
             this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
+            this.initialized = true; // Mark as initialized after settings are loaded
             this.notifyListeners();
           } else {
             console.log('No saved settings found, using defaults');
+            this.initialized = true; // Mark as initialized even with defaults
           }
         }).catch((error) => {
           console.error('Failed to load settings from disk:', error);
@@ -133,19 +137,32 @@ class SettingsService {
   // Save settings to JSON file via Electron
   private async saveSettingsToFile() {
     try {
+      console.log('🔍 saveSettingsToFile called');
+      console.log('🔍 window available:', typeof window !== 'undefined');
+      console.log('🔍 electronAPI available:', typeof window !== 'undefined' && !!window.electronAPI);
+      console.log('🔍 updateAppSettings available:', typeof window !== 'undefined' && !!window.electronAPI?.updateAppSettings);
+      console.log('🔍 Settings to save:', JSON.stringify(this.settings, null, 2));
+
       if (typeof window !== 'undefined' && window.electronAPI?.updateAppSettings) {
+        console.log('🔍 Calling window.electronAPI.updateAppSettings...');
         const success = await window.electronAPI.updateAppSettings(this.settings);
+        console.log('🔍 updateAppSettings returned:', success);
+
         if (success) {
-          console.log('Settings saved to JSON file successfully');
+          console.log('✅ Settings saved to JSON file successfully');
           return true;
         } else {
-          console.error('Failed to save settings to JSON file');
+          console.error('❌ Failed to save settings to JSON file - updateAppSettings returned false');
           return false;
         }
+      } else {
+        console.error('❌ Electron API or updateAppSettings not available');
+        console.log('🔍 window:', typeof window);
+        console.log('🔍 electronAPI:', typeof window !== 'undefined' ? window.electronAPI : 'window undefined');
+        return false;
       }
-      return false;
     } catch (error) {
-      console.error('Error saving settings to file:', error);
+      console.error('❌ Error saving settings to file:', error);
       return false;
     }
   }
@@ -177,18 +194,23 @@ class SettingsService {
     const chatSettings = { ...this.settings.chat };
     if (!chatSettings.providers) {
       chatSettings.providers = {
-        openai: { apiKey: '' },
-        anthropic: { apiKey: '' },
-        gemini: { apiKey: '' },
-        mistral: { apiKey: '' },
-        deepseek: { apiKey: '' },
-        lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1' },
-        ollama: { apiKey: '', baseUrl: '' },
-        openrouter: { apiKey: '' },
-        requesty: { apiKey: '' },
-        replicate: { apiKey: '' },
-        n8n: { apiKey: '', baseUrl: '' },
+        openai: { apiKey: '', lastSelectedModel: '' },
+        anthropic: { apiKey: '', lastSelectedModel: '' },
+        gemini: { apiKey: '', lastSelectedModel: '' },
+        mistral: { apiKey: '', lastSelectedModel: '' },
+        deepseek: { apiKey: '', lastSelectedModel: '' },
+        lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+        ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+        openrouter: { apiKey: '', lastSelectedModel: '' },
+        requesty: { apiKey: '', lastSelectedModel: '' },
+        replicate: { apiKey: '', lastSelectedModel: '' },
+        n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       };
+    }
+
+    // Ensure toolCallingEnabled exists for backward compatibility
+    if (chatSettings.toolCallingEnabled === undefined) {
+      chatSettings.toolCallingEnabled = true; // Default to enabled
     }
 
     return chatSettings;
@@ -200,10 +222,31 @@ class SettingsService {
     // DO NOT NOTIFY LISTENERS - PREVENTS INFINITE LOOPS
   }
 
-  // Update chat settings in memory only - NO SAVE
-  updateChatSettingsInMemory(updates: Partial<ChatSettings>) {
-    this.settings.chat = { ...this.settings.chat, ...updates };
+  // Force update settings and notify all listeners (used by Reload Settings button)
+  forceUpdateSettings(newSettings: AppSettings) {
+    console.log('🔄 Force updating settings and notifying all listeners');
+    console.log('🔍 Old settings:', JSON.stringify(this.settings, null, 2));
+    console.log('🔍 New settings:', JSON.stringify(newSettings, null, 2));
+
+    this.settings = { ...DEFAULT_SETTINGS, ...newSettings };
+    console.log('🔍 Merged settings:', JSON.stringify(this.settings, null, 2));
+    console.log('🔍 Notifying', this.listeners.length, 'listeners');
+
     this.notifyListeners();
+    console.log('✅ Settings force updated and all listeners notified');
+  }
+
+  // Update chat settings in memory only - NO SAVE, NO NOTIFICATIONS
+  // Excludes provider/model which are managed by stateService
+  updateChatSettingsInMemory(updates: Partial<ChatSettings>) {
+    // Extract provider/model from updates since they're managed separately
+    const { provider, model, ...settingsUpdates } = updates;
+
+    // Only update non-provider/model settings in main settings
+    this.settings.chat = { ...this.settings.chat, ...settingsUpdates };
+
+    // DO NOT NOTIFY LISTENERS - PREVENTS INFINITE LOOPS
+    console.log('Settings updated in memory (excluding provider/model):', settingsUpdates);
   }
 
   // SAVE settings to JSON file - ONLY called when user clicks "Save Settings"
@@ -211,9 +254,7 @@ class SettingsService {
     // Clean settings before saving to prevent corruption
     this.cleanCorruptedData();
     const success = await this.saveSettings();
-    if (success) {
-      this.notifyListeners();
-    }
+    // DO NOT NOTIFY LISTENERS - Only explicit reload should trigger notifications
     return success;
   }
 
@@ -221,13 +262,7 @@ class SettingsService {
   private cleanCorruptedData(): void {
     const providerNames = ['OpenAI', 'Anthropic', 'Google Gemini', 'Mistral AI', 'DeepSeek', 'LM Studio', 'Ollama (Local)', 'OpenRouter', 'Requesty', 'Replicate'];
 
-    // Clean main model field
-    if (this.settings.chat?.model && providerNames.includes(this.settings.chat.model)) {
-      console.log('Cleaning corrupted model field:', this.settings.chat.model);
-      this.settings.chat.model = '';
-    }
-
-    // Clean provider lastSelectedModel fields
+    // Clean provider lastSelectedModel fields (provider/model are managed by stateService now)
     if (this.settings.chat?.providers) {
       Object.keys(this.settings.chat.providers).forEach(providerId => {
         const provider = this.settings.chat.providers[providerId];
@@ -243,40 +278,51 @@ class SettingsService {
   forceCleanCorruptedData(): void {
     console.log('Force cleaning all corrupted data...');
     this.cleanCorruptedData();
-    this.notifyListeners();
+    // DO NOT NOTIFY LISTENERS - Only explicit reload should trigger notifications
   }
 
-  // Method for SettingsOverlay - SAVE TO DISK and RELOAD after 1 second
+  // Method for SettingsOverlay - SAVE TO DISK ONLY (no auto-reload)
   async updateSettings(updates: Partial<AppSettings>): Promise<boolean> {
+    console.log('🔍 updateSettings called with:', JSON.stringify(updates, null, 2));
+
     // Update settings in memory
+    const oldSettings = { ...this.settings };
     this.settings = { ...this.settings, ...updates };
+    console.log('🔍 Settings updated in memory from:', JSON.stringify(oldSettings, null, 2));
+    console.log('🔍 Settings updated in memory to:', JSON.stringify(this.settings, null, 2));
 
     // Save to disk
+    console.log('🔍 Calling saveSettingsToFile...');
     const success = await this.saveSettingsToFile();
+    console.log('🔍 saveSettingsToFile returned:', success);
 
     if (success) {
-      // Reload settings from disk after 1 second
-      setTimeout(() => {
-        this.reloadSettingsFromDisk();
-      }, 1000);
+      console.log('🔍 Notifying listeners...');
+      // Notify listeners immediately (no auto-reload)
+      this.notifyListeners();
+      console.log('✅ Settings updated and listeners notified');
+    } else {
+      console.error('❌ Failed to save settings, not notifying listeners');
     }
 
     return success;
   }
 
-  // Reload settings from disk (called 1 second after save)
-  private async reloadSettingsFromDisk() {
+  // REMOVED: Automatic reload method - settings should only reload when explicitly requested
+
+  // Reload settings when MCP servers are enabled/disabled (explicit requirement)
+  async reloadForMCPChange(): Promise<void> {
     if (typeof window !== 'undefined' && window.electronAPI) {
       try {
-        console.log('Reloading settings from disk after save...');
+        console.log('🔄 Reloading settings due to MCP server change...');
         const savedSettings = await window.electronAPI.getSettings();
         if (savedSettings) {
-          console.log('Settings reloaded from disk:', savedSettings);
+          console.log('Settings reloaded for MCP change:', savedSettings);
           this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
           this.notifyListeners();
         }
       } catch (error) {
-        console.error('Failed to reload settings from disk:', error);
+        console.error('Failed to reload settings for MCP change:', error);
       }
     }
   }
