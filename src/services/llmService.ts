@@ -21,7 +21,56 @@ export interface LLMSettings {
 
 import { mcpService } from './mcpService';
 
-export type MessageContent = string | Array<any> | { text: string; images: string[] };
+// Type for content array items used in vision API
+interface ContentItem {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: {
+    url: string;
+  };
+}
+
+// Type for tool call arguments
+type ToolCallArguments = Record<string, unknown>;
+
+// Type for tool objects
+interface ToolObject {
+  name?: string;
+  description?: string;
+  parameters?: unknown;
+  function?: {
+    name?: string;
+    description?: string;
+    parameters?: unknown;
+  };
+}
+
+
+
+// Type for API response data
+interface APIResponseData {
+  data?: Array<{ id: string; name?: string }>;
+  models?: Array<{ id?: string; name: string }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+  choices?: Array<{
+    message?: {
+      content?: string;
+      tool_calls?: Array<{
+        id: string;
+        function: {
+          name: string;
+          arguments: string;
+        };
+      }>;
+    };
+  }>;
+}
+
+export type MessageContent = string | Array<ContentItem> | { text: string; images: string[] };
 
 // Response parser utility for cleaning up structured responses
 class ResponseParser {
@@ -32,7 +81,7 @@ class ResponseParser {
   }
 
   // Parse JSON arrays and extract meaningful content
-  static parseJSONArray(data: any[]): string {
+  static parseJSONArray(data: unknown[]): string {
     if (!Array.isArray(data)) return '';
 
     const results: string[] = [];
@@ -42,7 +91,8 @@ class ResponseParser {
         results.push(item);
       } else if (typeof item === 'object' && item !== null) {
         // Extract common fields
-        const content = item.output || item.response || item.message || item.content || item.text || item.result;
+        const obj = item as Record<string, unknown>;
+        const content = obj.output || obj.response || obj.message || obj.content || obj.text || obj.result;
         if (content) {
           results.push(typeof content === 'string' ? content : JSON.stringify(content));
         } else {
@@ -77,7 +127,7 @@ class ResponseParser {
         const contentStr = String(data);
         return this.parseXMLTags(contentStr);
       }
-    } catch (parseError) {
+    } catch {
       // If JSON parsing fails, try to clean up XML tags from raw text
       return this.parseXMLTags(responseText);
     }
@@ -117,7 +167,7 @@ export interface LLMResponse {
   toolCalls?: Array<{
     id: string;
     name: string;
-    arguments: any;
+    arguments: ToolCallArguments;
   }>;
 }
 
@@ -321,7 +371,7 @@ class LLMService {
 
 
   // Helper to determine if tools should be sent based on conversation state
-  private async shouldSendTools(conversationId: string | undefined, tools: any[]): Promise<boolean> {
+  private async shouldSendTools(conversationId: string | undefined, tools: ToolObject[]): Promise<boolean> {
     if (!conversationId || tools.length === 0) {
       return tools.length > 0; // Send tools if available and no conversation tracking
     }
@@ -356,7 +406,7 @@ class LLMService {
     }
   }
 
-  private extractArgumentsFromMalformedJson(jsonString: string): any {
+  private extractArgumentsFromMalformedJson(jsonString: string): Record<string, unknown> {
     try {
       console.log(`🔧 Attempting to extract arguments from malformed JSON:`, jsonString);
 
@@ -379,12 +429,12 @@ class LLMService {
       // Try parsing the fixed JSON
       try {
         return JSON.parse(fixedJson);
-      } catch (e) {
+      } catch {
         console.warn('Failed to parse fixed JSON, trying regex extraction');
       }
 
       // Fallback: extract key-value pairs using regex
-      const args: any = {};
+      const args: Record<string, unknown> = {};
 
       // Extract "key": "value" patterns
       const keyValueRegex = /"([^"]+)":\s*"([^"]*)"/g;
@@ -416,7 +466,7 @@ class LLMService {
 
 
 
-  private cleanSchemaForGemini(schema: any): any {
+  private cleanSchemaForGemini(schema: unknown): Record<string, unknown> {
     if (!schema || typeof schema !== 'object') {
       return {
         type: 'object',
@@ -425,43 +475,45 @@ class LLMService {
       };
     }
 
-    const cleanedSchema: any = {
-      type: schema.type || 'object'
+    const schemaObj = schema as Record<string, unknown>;
+    const cleanedSchema: Record<string, unknown> = {
+      type: schemaObj.type || 'object'
     };
 
     // Only include properties that Gemini supports
-    if (schema.properties) {
+    if (schemaObj.properties && typeof schemaObj.properties === 'object') {
       cleanedSchema.properties = {};
-      for (const [key, value] of Object.entries(schema.properties)) {
+      for (const [key, value] of Object.entries(schemaObj.properties)) {
         if (value && typeof value === 'object') {
-          const cleanedProperty: any = {};
+          const valueObj = value as Record<string, unknown>;
+          const cleanedProperty: Record<string, unknown> = {};
 
           // Copy basic properties that Gemini supports
-          if ((value as any).type) cleanedProperty.type = (value as any).type;
-          if ((value as any).description) cleanedProperty.description = (value as any).description;
-          if ((value as any).enum) cleanedProperty.enum = (value as any).enum;
-          if ((value as any).items) {
-            cleanedProperty.items = this.cleanSchemaForGemini((value as any).items);
+          if (valueObj.type) cleanedProperty.type = valueObj.type;
+          if (valueObj.description) cleanedProperty.description = valueObj.description;
+          if (valueObj.enum) cleanedProperty.enum = valueObj.enum;
+          if (valueObj.items) {
+            cleanedProperty.items = this.cleanSchemaForGemini(valueObj.items);
           }
-          if ((value as any).properties) {
+          if (valueObj.properties && typeof valueObj.properties === 'object') {
             cleanedProperty.properties = {};
-            for (const [nestedKey, nestedValue] of Object.entries((value as any).properties)) {
-              cleanedProperty.properties[nestedKey] = this.cleanSchemaForGemini(nestedValue);
+            for (const [nestedKey, nestedValue] of Object.entries(valueObj.properties)) {
+              (cleanedProperty.properties as Record<string, unknown>)[nestedKey] = this.cleanSchemaForGemini(nestedValue);
             }
           }
 
           // Handle minimum/maximum (but not exclusive versions)
-          if (typeof (value as any).minimum === 'number') cleanedProperty.minimum = (value as any).minimum;
-          if (typeof (value as any).maximum === 'number') cleanedProperty.maximum = (value as any).maximum;
+          if (typeof valueObj.minimum === 'number') cleanedProperty.minimum = valueObj.minimum;
+          if (typeof valueObj.maximum === 'number') cleanedProperty.maximum = valueObj.maximum;
 
-          cleanedSchema.properties[key] = cleanedProperty;
+          (cleanedSchema.properties as Record<string, unknown>)[key] = cleanedProperty;
         }
       }
     }
 
     // Include required array if it exists
-    if (Array.isArray(schema.required)) {
-      cleanedSchema.required = schema.required;
+    if (Array.isArray(schemaObj.required)) {
+      cleanedSchema.required = schemaObj.required;
     }
 
     return cleanedSchema;
@@ -488,25 +540,30 @@ class LLMService {
     return !isUnsupported;
   }
 
-  private generateToolInstructions(tools: any[], provider: string): string {
+  private generateToolInstructions(tools: unknown[], provider: string): string {
     if (tools.length === 0) return '';
 
-    // Group tools by functionality to identify redundant services
-    const searchTools = tools.filter(t =>
-      t.function?.name?.toLowerCase().includes('search') ||
-      t.function?.description?.toLowerCase().includes('search') ||
-      t.function?.name?.toLowerCase().includes('brave') ||
-      t.function?.name?.toLowerCase().includes('tavily') ||
-      t.function?.name?.toLowerCase().includes('searx')
-    );
+    // Type guard for tool objects
+    const isToolObject = (t: unknown): t is { function?: { name?: string; description?: string } } => {
+      return typeof t === 'object' && t !== null;
+    };
 
-    const fetchTools = tools.filter(t =>
-      t.function?.name?.toLowerCase().includes('fetch') ||
-      t.function?.name?.toLowerCase().includes('get') ||
-      t.function?.name?.toLowerCase().includes('request') ||
-      t.function?.description?.toLowerCase().includes('fetch') ||
-      t.function?.description?.toLowerCase().includes('retrieve')
-    );
+    // Group tools by functionality to identify redundant services
+    const searchTools = tools.filter(t => {
+      if (!isToolObject(t)) return false;
+      const name = t.function?.name?.toLowerCase() || '';
+      const desc = t.function?.description?.toLowerCase() || '';
+      return name.includes('search') || desc.includes('search') ||
+             name.includes('brave') || name.includes('tavily') || name.includes('searx');
+    });
+
+    const fetchTools = tools.filter(t => {
+      if (!isToolObject(t)) return false;
+      const name = t.function?.name?.toLowerCase() || '';
+      const desc = t.function?.description?.toLowerCase() || '';
+      return name.includes('fetch') || name.includes('get') || name.includes('request') ||
+             desc.includes('fetch') || desc.includes('retrieve');
+    });
 
     const otherTools = tools.filter(t =>
       !searchTools.includes(t) && !fetchTools.includes(t)
@@ -518,7 +575,7 @@ class LLMService {
     if (searchTools.length > 0) {
       instructions += `**Search Tools** (multiple services available for redundancy):\n`;
       searchTools.forEach(tool => {
-        if (tool.function && tool.function.name) {
+        if (isToolObject(tool) && tool.function && tool.function.name) {
           instructions += `- ${tool.function.name}: ${tool.function.description || 'No description available'}\n`;
         }
       });
@@ -532,7 +589,7 @@ class LLMService {
     if (fetchTools.length > 0) {
       instructions += `**Data Retrieval Tools** (multiple services available for redundancy):\n`;
       fetchTools.forEach(tool => {
-        if (tool.function && tool.function.name) {
+        if (isToolObject(tool) && tool.function && tool.function.name) {
           instructions += `- ${tool.function.name}: ${tool.function.description || 'No description available'}\n`;
         }
       });
@@ -546,7 +603,7 @@ class LLMService {
     if (otherTools.length > 0) {
       instructions += `**Other Tools**:\n`;
       otherTools.forEach(tool => {
-        if (tool.function && tool.function.name) {
+        if (isToolObject(tool) && tool.function && tool.function.name) {
           instructions += `- ${tool.function.name}: ${tool.function.description || 'No description available'}\n`;
         }
       });
@@ -587,7 +644,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     return instructions;
   }
 
-  private async getMCPToolsForProvider(provider: string, settings?: LLMSettings): Promise<any[]> {
+  private async getMCPToolsForProvider(provider: string, settings?: LLMSettings): Promise<unknown[]> {
     try {
       console.log(`🔍 Getting MCP tools for provider: ${provider}`);
       console.log(`🔍 MCP Service available:`, !!mcpService);
@@ -635,7 +692,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
         // Add a global test function for debugging
         if (typeof window !== 'undefined') {
-          (window as any).testMCPConnectivity = async () => {
+          (window as Window & { testMCPConnectivity?: () => Promise<unknown> }).testMCPConnectivity = async () => {
             console.log('🧪 Testing MCP connectivity...');
             try {
               const detailedStatus = await mcpService.getDetailedStatus();
@@ -659,7 +716,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return [];
       }
 
-      let formattedTools: any[] = [];
+      let formattedTools: unknown[] = [];
 
       // Format tools based on provider requirements
       if (provider === 'openai' || provider === 'openrouter' || provider === 'requesty' ||
@@ -689,7 +746,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
           }))
         }];
         console.log(`🔧 Formatted ${formattedTools.length} tools for Gemini:`, formattedTools);
-        console.log(`🔧 Gemini tool schemas sample:`, formattedTools[0]?.functionDeclarations?.slice(0, 2));
+        console.log(`🔧 Gemini tool schemas sample:`, (formattedTools[0] as { functionDeclarations?: unknown[] })?.functionDeclarations?.slice(0, 2));
       } else if (provider === 'anthropic') {
         // Anthropic format
         formattedTools = tools.map(tool => ({
@@ -720,14 +777,14 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
   }
 
-  private async executeMCPTool(toolName: string, args: any): Promise<string> {
+  private async executeMCPTool(toolName: string, args: Record<string, unknown>): Promise<string> {
     try {
       // Parse arguments if they're a JSON string
       let parsedArgs = args;
       if (typeof args === 'string') {
         try {
           parsedArgs = JSON.parse(args);
-        } catch (parseError) {
+        } catch {
           console.warn(`⚠️ Failed to parse tool arguments as JSON, using as-is:`, args);
         }
       }
@@ -771,7 +828,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
           models = await this.fetchOpenAIModels(apiKey);
           break;
         case 'anthropic':
-          models = await this.fetchAnthropicModels(apiKey);
+          models = await this.fetchAnthropicModels();
           break;
         case 'gemini':
           models = await this.fetchGeminiModels(apiKey);
@@ -851,10 +908,10 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return FALLBACK_MODELS.openai;
       }
 
-      const data = await response.json();
+      const data = await response.json() as { data: Array<{ id: string }> };
       const models = data.data
-        .filter((model: any) => model.id.includes('gpt'))
-        .map((model: any) => model.id)
+        .filter((model) => model.id.includes('gpt'))
+        .map((model) => model.id)
         .sort();
 
       return models.length > 0 ? models : FALLBACK_MODELS.openai;
@@ -877,8 +934,8 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         throw new Error(`Ollama API error: ${response.status}`);
       }
 
-      const data = await response.json();
-      const models = data.models?.map((model: any) => model.name) || [];
+      const data = await response.json() as { models?: Array<{ name: string }> };
+      const models = data.models?.map((model) => model.name) || [];
 
       return models.length > 0 ? models : FALLBACK_MODELS.ollama;
     } catch {
@@ -906,8 +963,8 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return FALLBACK_MODELS.openrouter;
       }
 
-      const data = await response.json();
-      const models = data.data?.map((model: any) => model.id) || [];
+      const data = await response.json() as APIResponseData;
+      const models = data.data?.map((model) => model.id) || [];
 
       return models.length > 0 ? models : FALLBACK_MODELS.openrouter;
     } catch (error) {
@@ -936,8 +993,8 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return FALLBACK_MODELS.requesty;
       }
 
-      const data = await response.json();
-      const models = data.data?.map((model: any) => model.id) || [];
+      const data = await response.json() as APIResponseData;
+      const models = data.data?.map((model) => model.id) || [];
 
       if (models.length > 0) {
         console.log(`Fetched ${models.length} models from Requesty API`);
@@ -970,7 +1027,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     return popularModels;
   }
 
-  private async fetchAnthropicModels(apiKey?: string): Promise<string[]> {
+  private async fetchAnthropicModels(): Promise<string[]> {
     // Anthropic doesn't have a public models API endpoint
     // We'll use the known available models from their documentation
     console.log('Using known Anthropic models (no public API endpoint available)');
@@ -992,10 +1049,10 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return FALLBACK_MODELS.gemini;
       }
 
-      const data = await response.json();
+      const data = await response.json() as { models?: Array<{ name: string; supportedGenerationMethods?: string[] }> };
       const models = data.models
-        ?.filter((model: any) => model.name.includes('gemini') && model.supportedGenerationMethods?.includes('generateContent'))
-        ?.map((model: any) => model.name.replace('models/', ''))
+        ?.filter((model) => model.name.includes('gemini') && model.supportedGenerationMethods?.includes('generateContent'))
+        ?.map((model) => model.name.replace('models/', ''))
         ?.sort() || [];
 
       return models.length > 0 ? models : FALLBACK_MODELS.gemini;
@@ -1025,11 +1082,11 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return FALLBACK_MODELS.mistral;
       }
 
-      const data = await response.json();
+      const data = await response.json() as APIResponseData;
       console.log('Mistral API response:', data);
 
       // Mistral API returns models in data array with id field
-      const models = data.data?.map((model: any) => model.id)?.sort() || [];
+      const models = data.data?.map((model) => model.id)?.sort() || [];
 
       console.log(`Fetched ${models.length} Mistral models:`, models);
       return models.length > 0 ? models : FALLBACK_MODELS.mistral;
@@ -1059,8 +1116,8 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return FALLBACK_MODELS.deepseek;
       }
 
-      const data = await response.json();
-      const models = data.data?.map((model: any) => model.id)?.sort() || [];
+      const data = await response.json() as APIResponseData;
+      const models = data.data?.map((model) => model.id)?.sort() || [];
 
       return models.length > 0 ? models : FALLBACK_MODELS.deepseek;
     } catch (error) {
@@ -1088,8 +1145,8 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return FALLBACK_MODELS.lmstudio;
       }
 
-      const data = await response.json();
-      const models = data.data?.map((model: any) => model.id)?.sort() || [];
+      const data = await response.json() as APIResponseData;
+      const models = data.data?.map((model) => model.id)?.sort() || [];
 
       return models.length > 0 ? models : FALLBACK_MODELS.lmstudio;
     } catch (error) {
@@ -1134,7 +1191,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       }
 
       return 'n8n-workflow';
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -1142,7 +1199,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
     signal?: AbortSignal,
     conversationId?: string // Add conversation ID for tool state tracking
@@ -1156,25 +1213,25 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       case 'openai':
         return this.sendOpenAIMessage(message, settings, provider, conversationHistory, onStream, signal, conversationId);
       case 'anthropic':
-        return this.sendAnthropicMessage(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+        return this.sendAnthropicMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'gemini':
-        return this.sendGeminiMessage(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+        return this.sendGeminiMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'mistral':
-        return this.sendMistralMessage(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+        return this.sendMistralMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'deepseek':
-        return this.sendDeepSeekMessage(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+        return this.sendDeepSeekMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'lmstudio':
-        return this.sendLMStudioMessage(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+        return this.sendLMStudioMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'ollama':
-        return this.sendOllamaMessage(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+        return this.sendOllamaMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'openrouter':
-        return this.sendOpenRouterMessage(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+        return this.sendOpenRouterMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'requesty':
-        return this.sendRequestyMessage(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+        return this.sendRequestyMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'replicate':
-        return this.sendReplicateMessage(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+        return this.sendReplicateMessage(message, settings, provider, conversationHistory, onStream);
       case 'n8n':
-        return this.sendN8nMessage(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+        return this.sendN8nMessage(message, settings, provider, conversationHistory, onStream, signal);
       default:
         throw new Error(`Provider ${settings.provider} not implemented`);
     }
@@ -1184,7 +1241,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
     _signal?: AbortSignal,
     conversationId?: string
@@ -1211,7 +1268,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     // Add current message (handle both string and array formats)
     messages.push({ role: 'user', content: message });
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       model: settings.model,
       messages,
       temperature: settings.temperature,
@@ -1220,7 +1277,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     };
 
     // Add tools if available and should be sent (conversation-level optimization)
-    const shouldSendTools = await this.shouldSendTools(conversationId, mcpTools);
+    const shouldSendTools = await this.shouldSendTools(conversationId, mcpTools as ToolObject[]);
     if (mcpTools.length > 0 && shouldSendTools) {
       requestBody.tools = mcpTools;
       requestBody.tool_choice = 'auto';
@@ -1288,7 +1345,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         const userMessages = messages.filter(msg => msg.role !== 'system');
 
         // Convert tool calls to OpenAI format for follow-up
-        const openaiToolCalls = streamResult.toolCalls.map((tc: any) => ({
+        const openaiToolCalls = streamResult.toolCalls.map((tc: { id: string; name: string; arguments: ToolCallArguments }) => ({
           id: tc.id,
           type: 'function',
           function: {
@@ -1378,7 +1435,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return {
           content,
           usage: data.usage,
-          toolCalls: message.tool_calls.map((tc: any) => ({
+          toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
             id: tc.id,
             name: tc.function.name,
             arguments: JSON.parse(tc.function.arguments)
@@ -1397,10 +1454,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
-    signal?: AbortSignal,
-    conversationId?: string
+    signal?: AbortSignal
   ): Promise<LLMResponse> {
     // Validate API key format
     if (!settings.apiKey || !settings.apiKey.startsWith('sk-ant-')) {
@@ -1430,7 +1486,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         content = historyMessage.content.trim();
       } else if (Array.isArray(historyMessage.content)) {
         // Extract text from array format
-        content = historyMessage.content.map((item: any) => {
+        content = historyMessage.content.map((item: ContentItem | string) => {
           if (typeof item === 'string') return item;
           if (item.type === 'text') return item.text;
           return '[Non-text content]';
@@ -1490,7 +1546,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       systemPrompt += toolInstructions;
     }
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       model: settings.model,
       max_tokens: maxTokens,
       temperature: settings.temperature,
@@ -1664,10 +1720,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
-    signal?: AbortSignal,
-    conversationId?: string
+    signal?: AbortSignal
   ): Promise<LLMResponse> {
     const contents = [];
 
@@ -1693,7 +1748,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     } else {
       // Handle vision format
       const messageWithImages = message as { text: string; images: string[] };
-      const parts = [{ text: messageWithImages.text }];
+      const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [{ text: messageWithImages.text }];
 
       // Add images in Gemini format
       for (const imageUrl of messageWithImages.images) {
@@ -1707,7 +1762,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
             mime_type: mimeType,
             data: imageUrl.split(',')[1] // Remove data:image/jpeg;base64, prefix
           }
-        } as any);
+        } as { inline_data: { mime_type: string; data: string } });
       }
       contents.push({ role: 'user', parts });
     }
@@ -1718,7 +1773,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     const endpoint = onStream ? 'streamGenerateContent?alt=sse' : 'generateContent';
     const url = `${provider.baseUrl}/models/${settings.model}:${endpoint}${onStream ? '' : '?key=' + settings.apiKey}`;
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       contents,
       generationConfig: {
         temperature: settings.temperature,
@@ -1831,10 +1886,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
-    signal?: AbortSignal,
-    conversationId?: string
+    signal?: AbortSignal
   ): Promise<LLMResponse> {
     // Mistral uses OpenAI-compatible API
     const messages = [];
@@ -1864,18 +1918,18 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     } else {
       // Handle vision format (convert to OpenAI format)
       const messageWithImages = message as { text: string; images: string[] };
-      const content = [{ type: 'text', text: messageWithImages.text }];
+      const content: ContentItem[] = [{ type: 'text', text: messageWithImages.text }];
 
       for (const imageUrl of messageWithImages.images) {
         content.push({
           type: 'image_url',
           image_url: { url: imageUrl }
-        } as any);
+        });
       }
       messages.push({ role: 'user', content });
     }
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       model: settings.model,
       messages: messages,
       temperature: settings.temperature,
@@ -1912,7 +1966,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     if (onStream) {
-      const streamResult = await this.handleMistralStreamResponse(response, onStream, settings, provider, messages, signal);
+      const streamResult = await this.handleMistralStreamResponse(response, onStream);
 
       // Check if there are tool calls that need follow-up processing
       if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
@@ -1941,14 +1995,14 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               role: 'tool',
               tool_call_id: toolCall.id,
               content: JSON.stringify(toolResult)
-            } as any);
+            } as { role: string; tool_call_id: string; content: string });
           } catch (error) {
             console.error(`❌ Tool execution failed in Mistral follow-up:`, error);
             toolConversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
               content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as any);
+            } as { role: string; tool_call_id: string; content: string });
           }
         }
 
@@ -2023,7 +2077,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               name: toolCall.function.name,
               content: JSON.stringify(toolResult),
               tool_call_id: toolCall.id
-            } as any);
+            } as { role: string; content: string; tool_call_id: string });
           } catch (error) {
             console.error(`❌ Mistral tool call failed:`, error);
             toolResults.push({
@@ -2031,7 +2085,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               name: toolCall.function.name,
               content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
               tool_call_id: toolCall.id
-            } as any);
+            } as { role: string; content: string; tool_call_id: string });
           }
         }
 
@@ -2082,7 +2136,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
             completionTokens: (data.usage?.completion_tokens || 0) + (secondData.usage?.completion_tokens || 0),
             totalTokens: (data.usage?.total_tokens || 0) + (secondData.usage?.total_tokens || 0)
           },
-          toolCalls: message.tool_calls.map((tc: any) => ({
+          toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
             id: tc.id,
             name: tc.function.name,
             arguments: JSON.parse(tc.function.arguments)
@@ -2094,7 +2148,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       const content = message.content || '';
       if (!content && mcpTools.length > 0) {
         console.warn(`⚠️ Mistral returned empty content but tools were available. This might indicate a tool calling issue.`);
-        console.log(`🔧 Available tools:`, mcpTools.map(t => t.function.name));
+        console.log(`🔧 Available tools:`, mcpTools.map(t => (t as ToolObject).function?.name).filter(Boolean));
         console.log(`🔍 Full message object:`, message);
       }
 
@@ -2113,10 +2167,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
-    signal?: AbortSignal,
-    conversationId?: string
+    signal?: AbortSignal
   ): Promise<LLMResponse> {
     // DeepSeek uses OpenAI-compatible API
     const messages = [];
@@ -2136,13 +2189,13 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     } else {
       // Handle vision format (convert to OpenAI format)
       const messageWithImages = message as { text: string; images: string[] };
-      const content = [{ type: 'text', text: messageWithImages.text }];
+      const content: ContentItem[] = [{ type: 'text', text: messageWithImages.text }];
 
       for (const imageUrl of messageWithImages.images) {
         content.push({
           type: 'image_url',
           image_url: { url: imageUrl }
-        } as any);
+        });
       }
       messages.push({ role: 'user', content });
     }
@@ -2150,7 +2203,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     // Get MCP tools for DeepSeek
     const mcpTools = await this.getMCPToolsForProvider('deepseek', settings);
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       model: settings.model,
       messages: messages,
       temperature: settings.temperature,
@@ -2222,7 +2275,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return {
           content,
           usage: data.usage,
-          toolCalls: message.tool_calls.map((tc: any) => ({
+          toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
             id: tc.id,
             name: tc.function.name,
             arguments: JSON.parse(tc.function.arguments)
@@ -2241,10 +2294,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
-    signal?: AbortSignal,
-    conversationId?: string
+    signal?: AbortSignal
   ): Promise<LLMResponse> {
     // LM Studio uses OpenAI-compatible API
     const baseUrl = settings.baseUrl || provider.baseUrl;
@@ -2276,20 +2328,20 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     } else {
       // Handle vision format (convert to OpenAI format)
       const messageWithImages = message as { text: string; images: string[] };
-      const content = [{ type: 'text', text: messageWithImages.text }];
+      const content: ContentItem[] = [{ type: 'text', text: messageWithImages.text }];
 
       for (const imageUrl of messageWithImages.images) {
         content.push({
           type: 'image_url',
           image_url: { url: imageUrl }
-        } as any);
+        });
       }
       messages.push({ role: 'user', content });
     }
 
     // MCP tools already retrieved above for system prompt
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       model: settings.model,
       messages: messages,
       temperature: settings.temperature,
@@ -2305,7 +2357,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       console.log(`🚀 LMStudio API call with ${mcpTools.length} tools:`, {
         model: settings.model,
         toolCount: mcpTools.length,
-        toolNames: mcpTools.map(t => t.function.name)
+        toolNames: mcpTools.map(t => (t as ToolObject).function?.name).filter(Boolean)
       });
       console.log(`🔧 LMStudio request body:`, JSON.stringify(requestBody, null, 2));
     } else {
@@ -2382,14 +2434,14 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               tool_call_id: toolCall.id,
               role: 'tool',
               content: JSON.stringify(toolResult)
-            } as any);
+            } as { tool_call_id: string; role: string; content: string });
           } catch (error) {
             console.error(`❌ LMStudio tool call failed:`, error);
             toolResults.push({
               tool_call_id: toolCall.id,
               role: 'tool',
               content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as any);
+            } as { tool_call_id: string; role: string; content: string });
           }
         }
 
@@ -2444,7 +2496,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
             completionTokens: (data.usage?.completion_tokens || 0) + (secondData.usage?.completion_tokens || 0),
             totalTokens: (data.usage?.total_tokens || 0) + (secondData.usage?.total_tokens || 0)
           },
-          toolCalls: data.choices[0].message.tool_calls.map((tc: any) => ({
+          toolCalls: data.choices[0].message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
             id: tc.id,
             name: tc.function.name,
             arguments: JSON.parse(tc.function.arguments)
@@ -2462,7 +2514,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
       if (isThinkingAboutTools && mcpTools.length > 0) {
         console.log(`⚠️ LMStudio model is thinking about tools but not using them. Response:`, content.substring(0, 200));
-        console.log(`🔧 Available tools:`, mcpTools.map(t => t.function.name));
+        console.log(`🔧 Available tools:`, mcpTools.map(t => (t as ToolObject).function?.name).filter(Boolean));
       }
 
       return {
@@ -2480,10 +2532,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
-    signal?: AbortSignal,
-    conversationId?: string
+    signal?: AbortSignal
   ): Promise<LLMResponse> {
     const baseUrl = settings.baseUrl || provider.baseUrl;
 
@@ -2526,7 +2577,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       });
     }
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       model: settings.model,
       messages: messages,
       temperature: settings.temperature,
@@ -2535,14 +2586,12 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     };
 
     // Add tools if available
-    let hasToolsInRequest = false;
     if (mcpTools.length > 0) {
       requestBody.tools = mcpTools;
-      hasToolsInRequest = true;
       console.log(`🚀 Ollama API call with ${mcpTools.length} tools:`, {
         model: settings.model,
         toolCount: mcpTools.length,
-        toolNames: mcpTools.map(t => t.function.name),
+        toolNames: mcpTools.map(t => (t as ToolObject).function?.name).filter(Boolean),
         baseUrl: baseUrl
       });
     } else {
@@ -2606,7 +2655,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     if (onStream) {
-      const streamResult = await this.handleOllamaChatStreamResponse(response, onStream, mcpTools);
+      const streamResult = await this.handleOllamaChatStreamResponse(response, onStream);
 
       // Check if there are tool calls that need follow-up processing
       if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
@@ -2635,14 +2684,14 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               role: 'tool',
               tool_call_id: toolCall.id,
               content: JSON.stringify(toolResult)
-            } as any);
+            } as { role: string; tool_call_id: string; content: string });
           } catch (error) {
             console.error(`❌ Tool execution failed in follow-up:`, error);
             toolConversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
               content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as any);
+            } as { role: string; tool_call_id: string; content: string });
           }
         }
 
@@ -2708,7 +2757,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       }
 
       // Get standard tool calls from response
-      let parsedToolCalls = responseMessage.tool_calls || [];
+      const parsedToolCalls = responseMessage.tool_calls || [];
 
 
 
@@ -2785,7 +2834,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return {
           content: secondMessage?.content || 'Tool execution completed.',
           usage: combinedUsage,
-          toolCalls: parsedToolCalls.map((tc: any) => ({
+          toolCalls: parsedToolCalls.map((tc: { id?: string; function: { name: string; arguments: ToolCallArguments } }) => ({
             id: tc.id || 'ollama-tool-call',
             name: tc.function.name,
             arguments: tc.function.arguments
@@ -2829,10 +2878,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
-    signal?: AbortSignal,
-    conversationId?: string
+    signal?: AbortSignal
   ): Promise<LLMResponse> {
     const messages = [];
 
@@ -2856,7 +2904,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     // Handle both string and array content formats for vision support
     messages.push({ role: 'user', content: message });
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       model: settings.model,
       messages,
       temperature: settings.temperature,
@@ -2875,7 +2923,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         console.log(`🚀 OpenRouter API call with ${mcpTools.length} tools:`, {
           model: settings.model,
           toolCount: mcpTools.length,
-          toolNames: mcpTools.map(t => t.function.name),
+          toolNames: mcpTools.map(t => (t as ToolObject).function?.name).filter(Boolean),
           baseUrl: provider.baseUrl || 'https://openrouter.ai/api/v1'
         });
         console.log(`🔧 OpenRouter tools sample:`, mcpTools.slice(0, 2));
@@ -2904,7 +2952,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     if (onStream) {
-      const streamResult = await this.handleOpenRouterStreamResponse(response, onStream, settings, provider, messages as any, signal);
+      const streamResult = await this.handleOpenRouterStreamResponse(response, onStream);
 
       // Check if there are tool calls that need follow-up processing
       if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
@@ -2933,14 +2981,14 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               role: 'tool',
               tool_call_id: toolCall.id,
               content: toolResult
-            } as any);
+            } as { role: string; tool_call_id: string; content: string });
           } catch (error) {
             console.error(`❌ Tool execution failed in OpenRouter follow-up:`, error);
             toolConversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
               content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as any);
+            } as { role: string; tool_call_id: string; content: string });
           }
         }
 
@@ -3013,7 +3061,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       console.log(`🔍 OpenRouter tool_calls:`, message.tool_calls);
 
       // Check for tool calls in standard format first
-      let detectedToolCalls = message.tool_calls || [];
+      const detectedToolCalls = message.tool_calls || [];
 
 
 
@@ -3029,7 +3077,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
             // Handle different tool call formats
             let toolName: string;
-            let toolArgs: any;
+            let toolArgs: Record<string, unknown>;
 
             if (toolCall.function) {
               // Standard OpenAI format
@@ -3051,7 +3099,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               tool_call_id: toolCall.id,
               name: toolName,
               content: JSON.stringify(toolResult)
-            } as any);
+            } as { tool_call_id: string; name: string; content: string });
           } catch (error) {
             console.error(`❌ OpenRouter tool call failed:`, error);
             const errorToolName = toolCall.function?.name || toolCall.name || 'unknown_tool';
@@ -3060,7 +3108,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               tool_call_id: toolCall.id,
               name: errorToolName,
               content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as any);
+            } as { tool_call_id: string; name: string; content: string });
           }
         }
 
@@ -3109,7 +3157,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
             completionTokens: (data.usage?.completion_tokens || 0) + (secondData.usage?.completion_tokens || 0),
             totalTokens: (data.usage?.total_tokens || 0) + (secondData.usage?.total_tokens || 0)
           },
-          toolCalls: message.tool_calls.map((tc: any) => ({
+          toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
             id: tc.id,
             name: tc.function.name,
             arguments: JSON.parse(tc.function.arguments)
@@ -3128,10 +3176,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
-    signal?: AbortSignal,
-    conversationId?: string
+    signal?: AbortSignal
   ): Promise<LLMResponse> {
     // Requesty uses OpenAI-compatible API
     const messages = [];
@@ -3157,7 +3204,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         content = historyMessage.content;
       } else if (Array.isArray(historyMessage.content)) {
         // Extract text from array format
-        content = historyMessage.content.map((item: any) => {
+        content = historyMessage.content.map((item: ContentItem | string) => {
           if (typeof item === 'string') return item;
           if (item.type === 'text') return item.text;
           return '[Non-text content]';
@@ -3178,7 +3225,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       messageContent = message.trim();
     } else if (Array.isArray(message)) {
       // Extract text from array format
-      messageContent = message.map((item: any) => {
+      messageContent = message.map((item: ContentItem | string) => {
         if (typeof item === 'string') return item;
         if (item.type === 'text') return item.text;
         return '[Non-text content]';
@@ -3206,7 +3253,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       maxTokens = Math.min(maxTokens, 4096);
     }
 
-    const requestBody: any = {
+    const requestBody: Record<string, unknown> = {
       model: settings.model,
       messages,
       temperature: settings.temperature,
@@ -3221,7 +3268,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       console.log(`🚀 Requesty API call with ${mcpTools.length} tools:`, {
         model: settings.model,
         toolCount: mcpTools.length,
-        toolNames: mcpTools.map(t => t.function.name),
+        toolNames: mcpTools.map(t => (t as ToolObject).function?.name).filter(Boolean),
         baseUrl: provider.baseUrl
       });
     } else {
@@ -3246,7 +3293,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     if (onStream) {
-      const streamResult = await this.handleRequestyStreamResponse(response, onStream, settings, provider, messages, signal);
+      const streamResult = await this.handleRequestyStreamResponse(response, onStream);
 
       // Check if there are tool calls that need follow-up processing
       if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
@@ -3274,14 +3321,14 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               role: 'tool',
               tool_call_id: toolCall.id,
               content: toolResult
-            } as any);
+            } as { role: string; tool_call_id: string; content: string });
           } catch (error) {
             console.error(`❌ Tool execution failed in Requesty follow-up:`, error);
             toolConversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
               content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as any);
+            } as { role: string; tool_call_id: string; content: string });
           }
         }
 
@@ -3362,7 +3409,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               tool_call_id: toolCall.id,
               name: toolCall.function.name,
               content: JSON.stringify(toolResult)
-            } as any);
+            } as { role: string; name: string; content: string });
           } catch (error) {
             console.error(`❌ Requesty tool call failed:`, error);
             toolResults.push({
@@ -3370,7 +3417,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               tool_call_id: toolCall.id,
               name: toolCall.function.name,
               content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as any);
+            } as { role: string; name: string; content: string });
           }
         }
 
@@ -3419,7 +3466,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
             completionTokens: (data.usage?.completion_tokens || 0) + (secondData.usage?.completion_tokens || 0),
             totalTokens: (data.usage?.total_tokens || 0) + (secondData.usage?.total_tokens || 0)
           },
-          toolCalls: message.tool_calls.map((tc: any) => ({
+          toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
             id: tc.id,
             name: tc.function.name,
             arguments: JSON.parse(tc.function.arguments)
@@ -3438,10 +3485,8 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
-    onStream?: (chunk: string) => void,
-    signal?: AbortSignal,
-    conversationId?: string
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
+    onStream?: (chunk: string) => void
   ): Promise<LLMResponse> {
     // Build conversation context for Replicate
     let prompt = '';
@@ -3464,7 +3509,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     if (typeof message === 'string') {
       messageText = message;
     } else if (Array.isArray(message)) {
-      messageText = message.map((item: any) => item.type === 'text' ? item.text : '[Image]').join(' ');
+      messageText = message.map((item: ContentItem) => item.type === 'text' ? item.text : '[Image]').join(' ');
     } else {
       // Object with text and images
       messageText = message.text;
@@ -3506,10 +3551,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     message: MessageContent,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
-    signal?: AbortSignal,
-    conversationId?: string
+    signal?: AbortSignal
   ): Promise<LLMResponse> {
     // For n8n, the baseUrl should be the webhook URL from settings
     const webhookUrl = settings.baseUrl;
@@ -3649,9 +3693,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     let fullContent = '';
-    let usage: any = undefined;
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
     let chunkCount = 0;
-    let toolCalls: any[] = [];
+    const toolCalls: Array<{ id?: string; type?: string; function?: { name?: string; arguments?: string } }> = [];
     const decoder = new TextDecoder();
 
     try {
@@ -3708,13 +3752,13 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
                   }
 
                   // Append arguments
-                  if (toolCall.function?.arguments) {
-                    toolCalls[index].function.arguments += toolCall.function.arguments;
+                  if (toolCall.function?.arguments && toolCalls[index].function) {
+                    toolCalls[index].function!.arguments += toolCall.function.arguments;
                   }
 
                   // Set name if provided
-                  if (toolCall.function?.name) {
-                    toolCalls[index].function.name = toolCall.function.name;
+                  if (toolCall.function?.name && toolCalls[index].function) {
+                    toolCalls[index].function!.name = toolCall.function.name;
                   }
 
                   // Set id if provided
@@ -3750,8 +3794,8 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
     if (validToolCalls.length > 0) {
       console.log(`🔧 Assembled ${validToolCalls.length} tool calls:`, validToolCalls.map(tc => ({
-        name: tc.function.name,
-        arguments: tc.function.arguments
+        name: tc.function?.name,
+        arguments: tc.function?.arguments
       })));
     }
 
@@ -3762,11 +3806,13 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         completionTokens: usage.completion_tokens || 0,
         totalTokens: usage.total_tokens || 0
       } : this.createEstimatedUsage('', fullContent, 'OpenAI estimated'),
-      toolCalls: validToolCalls.map(tc => ({
-        id: tc.id,
-        name: tc.function.name,
-        arguments: JSON.parse(tc.function.arguments || '{}')
-      }))
+      toolCalls: validToolCalls
+        .filter(tc => tc.id && tc.function?.name) // Only include tool calls with valid id and name
+        .map(tc => ({
+          id: tc.id!,
+          name: tc.function!.name!,
+          arguments: JSON.parse(tc.function!.arguments || '{}')
+        }))
     };
   }
 
@@ -3780,7 +3826,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     let fullContent = '';
-    let usage: any = undefined;
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
     const decoder = new TextDecoder();
 
     try {
@@ -3803,9 +3849,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
             // Ollama provides token counts in the final response
             if (parsed.done && parsed.prompt_eval_count && parsed.eval_count) {
               usage = {
-                promptTokens: parsed.prompt_eval_count,
-                completionTokens: parsed.eval_count,
-                totalTokens: parsed.prompt_eval_count + parsed.eval_count
+                prompt_tokens: parsed.prompt_eval_count,
+                completion_tokens: parsed.eval_count,
+                total_tokens: parsed.prompt_eval_count + parsed.eval_count
               };
             }
           } catch {
@@ -3819,17 +3865,17 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
     return {
       content: fullContent,
-      usage: usage
+      usage: usage ? {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0
+      } : undefined
     };
   }
 
   private async handleOpenRouterStreamResponse(
     response: Response,
-    onStream: (chunk: string) => void,
-    settings: LLMSettings,
-    provider: LLMProvider,
-    messages: Array<{role: string, content: string | Array<any>}>,
-    signal?: AbortSignal
+    onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
     const reader = response.body?.getReader();
     if (!reader) {
@@ -3837,10 +3883,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     let fullContent = '';
-    let usage: any = undefined;
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
     const decoder = new TextDecoder();
-    const toolCallsMap = new Map<string, any>(); // Use Map to accumulate tool calls by ID
-    const toolCallsArray: any[] = []; // For tool calls without IDs
+    const toolCallsMap = new Map<string, { id?: string; index?: number; type?: string; name?: string; function?: { name?: string; arguments?: string } }>(); // Use Map to accumulate tool calls by ID
 
     console.log('🔍 OpenRouter streaming response started');
 
@@ -3907,19 +3952,21 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
                   const accumulatedToolCall = toolCallsMap.get(toolCallKey);
 
-                  // Update ID if we get a real ID (prefer real IDs over fallback)
-                  if (toolCallDelta.id && !accumulatedToolCall.id.startsWith('tool_')) {
-                    accumulatedToolCall.id = toolCallDelta.id;
-                  }
+                  if (accumulatedToolCall) {
+                    // Update ID if we get a real ID (prefer real IDs over fallback)
+                    if (toolCallDelta.id && accumulatedToolCall.id && !accumulatedToolCall.id.startsWith('tool_')) {
+                      accumulatedToolCall.id = toolCallDelta.id;
+                    }
 
-                  // Accumulate function name
-                  if (toolCallDelta.function?.name) {
-                    accumulatedToolCall.function.name += toolCallDelta.function.name;
-                  }
+                    // Accumulate function name
+                    if (toolCallDelta.function?.name && accumulatedToolCall.function) {
+                      accumulatedToolCall.function.name += toolCallDelta.function.name;
+                    }
 
-                  // Accumulate function arguments
-                  if (toolCallDelta.function?.arguments) {
-                    accumulatedToolCall.function.arguments += toolCallDelta.function.arguments;
+                    // Accumulate function arguments
+                    if (toolCallDelta.function?.arguments && accumulatedToolCall.function) {
+                      accumulatedToolCall.function.arguments += toolCallDelta.function.arguments;
+                    }
                   }
 
                   console.log(`🔧 Accumulated tool call for ${toolCallKey}:`, accumulatedToolCall);
@@ -3929,9 +3976,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               // Handle finish reason and usage
               if (choice.finish_reason === 'stop' && parsed.usage) {
                 usage = {
-                  promptTokens: parsed.usage.prompt_tokens || 0,
-                  completionTokens: parsed.usage.completion_tokens || 0,
-                  totalTokens: parsed.usage.total_tokens || 0
+                  prompt_tokens: parsed.usage.prompt_tokens || 0,
+                  completion_tokens: parsed.usage.completion_tokens || 0,
+                  total_tokens: parsed.usage.total_tokens || 0
                 };
               }
             }
@@ -3978,7 +4025,11 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
 
     // Add token estimation fallback if no usage data
-    const finalUsage = usage || this.createEstimatedUsage(
+    const finalUsage = usage ? {
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0
+    } : this.createEstimatedUsage(
       // We don't have access to the original conversation here, so estimate based on content
       'Estimated conversation context',
       fullContent,
@@ -3994,7 +4045,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         content: fullContent,
         usage: finalUsage,
         toolCalls: assembledToolCalls
-          .map((tc: any) => {
+          .map((tc: { id?: string; name?: string; arguments?: string; function?: { name?: string; arguments?: string } }) => {
             try {
               let parsedArgs = {};
 
@@ -4032,7 +4083,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               return null;
             }
           })
-          .filter((tc: any) => tc !== null) as Array<{id: string, name: string, arguments: any}> // Remove null entries and cast type
+          .filter((tc: unknown) => tc !== null) as Array<{id: string, name: string, arguments: ToolCallArguments}> // Remove null entries and cast type
       };
     }
 
@@ -4044,11 +4095,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
   private async handleRequestyStreamResponse(
     response: Response,
-    onStream: (chunk: string) => void,
-    settings: LLMSettings,
-    provider: LLMProvider,
-    messages: Array<{role: string, content: string | Array<any>}>,
-    signal?: AbortSignal
+    onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
     const reader = response.body?.getReader();
     if (!reader) {
@@ -4056,9 +4103,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     let fullContent = '';
-    let usage: any = undefined;
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
     const decoder = new TextDecoder();
-    const toolCalls: any[] = [];
+    const toolCalls: Array<{ id?: string; function?: { name?: string; arguments?: string } }> = [];
 
     console.log('🔍 Requesty streaming response started');
 
@@ -4110,9 +4157,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               // Handle finish reason and usage
               if (choice.finish_reason === 'stop' && parsed.usage) {
                 usage = {
-                  promptTokens: parsed.usage.prompt_tokens || 0,
-                  completionTokens: parsed.usage.completion_tokens || 0,
-                  totalTokens: parsed.usage.total_tokens || 0
+                  prompt_tokens: parsed.usage.prompt_tokens || 0,
+                  completion_tokens: parsed.usage.completion_tokens || 0,
+                  total_tokens: parsed.usage.total_tokens || 0
                 };
               }
             }
@@ -4134,7 +4181,11 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     });
 
     // Add token estimation fallback if no usage data
-    const finalUsage = usage || this.createEstimatedUsage(
+    const finalUsage = usage ? {
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0
+    } : this.createEstimatedUsage(
       // We don't have access to the original conversation here, so estimate based on content
       'Estimated conversation context',
       fullContent,
@@ -4149,11 +4200,13 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       return {
         content: fullContent,
         usage: finalUsage,
-        toolCalls: toolCalls.map((tc: any) => ({
-          id: tc.id,
-          name: tc.function.name,
-          arguments: JSON.parse(tc.function.arguments)
-        }))
+        toolCalls: toolCalls
+          .filter(tc => tc.id && tc.function?.name)
+          .map((tc: { id?: string; function?: { name?: string; arguments?: string } }) => ({
+            id: tc.id!,
+            name: tc.function!.name!,
+            arguments: JSON.parse(tc.function!.arguments || '{}')
+          }))
       };
     }
 
@@ -4165,11 +4218,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
   private async handleMistralStreamResponse(
     response: Response,
-    onStream: (chunk: string) => void,
-    settings: LLMSettings,
-    provider: LLMProvider,
-    messages: Array<{role: string, content: string | Array<any>}>,
-    signal?: AbortSignal
+    onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
     const reader = response.body?.getReader();
     if (!reader) {
@@ -4177,9 +4226,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     let fullContent = '';
-    let usage: any = undefined;
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
     const decoder = new TextDecoder();
-    const toolCalls: any[] = [];
+    const toolCalls: Array<{ id?: string; function?: { name?: string; arguments?: string } }> = [];
 
     console.log('🔍 Mistral streaming response started');
 
@@ -4231,9 +4280,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               // Handle finish reason and usage
               if (choice.finish_reason === 'stop' && parsed.usage) {
                 usage = {
-                  promptTokens: parsed.usage.prompt_tokens || 0,
-                  completionTokens: parsed.usage.completion_tokens || 0,
-                  totalTokens: parsed.usage.total_tokens || 0
+                  prompt_tokens: parsed.usage.prompt_tokens || 0,
+                  completion_tokens: parsed.usage.completion_tokens || 0,
+                  total_tokens: parsed.usage.total_tokens || 0
                 };
               }
             }
@@ -4255,7 +4304,11 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     });
 
     // Add token estimation fallback if no usage data
-    const finalUsage = usage || this.createEstimatedUsage(
+    const finalUsage = usage ? {
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0
+    } : this.createEstimatedUsage(
       // We don't have access to the original conversation here, so estimate based on content
       'Estimated conversation context',
       fullContent,
@@ -4270,11 +4323,13 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       return {
         content: fullContent,
         usage: finalUsage,
-        toolCalls: toolCalls.map((tc: any) => ({
-          id: tc.id,
-          name: tc.function.name,
-          arguments: JSON.parse(tc.function.arguments)
-        }))
+        toolCalls: toolCalls
+          .filter(tc => tc.id && tc.function?.name)
+          .map((tc: { id?: string; function?: { name?: string; arguments?: string } }) => ({
+            id: tc.id!,
+            name: tc.function!.name!,
+            arguments: JSON.parse(tc.function!.arguments || '{}')
+          }))
       };
     }
 
@@ -4286,8 +4341,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
   private async handleOllamaChatStreamResponse(
     response: Response,
-    onStream: (chunk: string) => void,
-    mcpTools: any[] = []
+    onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
     const reader = response.body?.getReader();
     if (!reader) {
@@ -4295,9 +4349,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     let fullContent = '';
-    let usage: any = undefined;
+    let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined = undefined;
     const decoder = new TextDecoder();
-    const toolCalls: any[] = [];
+    const toolCalls: Array<{ id?: string; function?: { name?: string; arguments?: string } }> = [];
 
     console.log('🔍 Ollama streaming response started');
 
@@ -4421,11 +4475,13 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       return {
         content: fullContent,
         usage: finalUsage,
-        toolCalls: toolCalls.map((tc: any) => ({
-          id: tc.id,
-          name: tc.function.name,
-          arguments: JSON.parse(tc.function.arguments)
-        })),
+        toolCalls: toolCalls
+          .filter(tc => tc.id && tc.function?.name)
+          .map((tc: { id?: string; function?: { name?: string; arguments?: string } }) => ({
+            id: tc.id!,
+            name: tc.function!.name!,
+            arguments: JSON.parse(tc.function!.arguments || '{}')
+          })),
 
       };
     }
@@ -4488,7 +4544,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     onStream: (chunk: string) => void,
     settings?: LLMSettings,
     provider?: LLMProvider,
-    conversationHistory?: Array<{role: string, content: string | Array<any>}>,
+    conversationHistory?: Array<{role: string, content: string | Array<ContentItem>}>,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
     const reader = response.body?.getReader();
@@ -4497,14 +4553,15 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     let fullContent = '';
-    let usage: any = undefined;
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
     const decoder = new TextDecoder();
-    const toolCalls: any[] = [];
+    const toolCalls: Array<{ id?: string; name?: string; arguments?: unknown; result?: string; isError?: boolean }> = [];
     const toolInputBuffers: { [index: number]: string } = {};
-    let currentToolBlocks: { [index: number]: any } = {};
-    let assistantContent: any[] = [];
+    const currentToolBlocks: { [index: number]: Record<string, unknown> } = {};
+    const assistantContent: Array<Record<string, unknown>> = [];
 
     try {
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -4589,7 +4646,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
                   onStream(executingMessage);
 
                   // Execute the tool
-                  const toolResult = await this.executeMCPTool(toolBlock.name, toolInput);
+                  const toolResult = await this.executeMCPTool(toolBlock.name as string, toolInput as Record<string, unknown>);
 
                   // Show tool completion in chat
                   const completedMessage = `✅ Tool ${toolBlock.name} completed\n`;
@@ -4602,8 +4659,8 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
                   }
 
                   toolCalls.push({
-                    id: toolBlock.id,
-                    name: toolBlock.name,
+                    id: toolBlock.id as string,
+                    name: toolBlock.name as string,
                     arguments: toolInput,
                     result: toolResult
                   });
@@ -4616,8 +4673,8 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
                   onStream(errorMessage);
 
                   toolCalls.push({
-                    id: toolBlock.id,
-                    name: toolBlock.name,
+                    id: toolBlock.id as string,
+                    name: toolBlock.name as string,
                     arguments: JSON.parse(inputJson),
                     result: `Error: ${error instanceof Error ? error.message : String(error)}`,
                     isError: true
@@ -4632,9 +4689,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               // Handle message_delta events with usage data
               if (parsed.type === 'message_delta' && parsed.usage) {
                 usage = {
-                  promptTokens: parsed.usage.input_tokens,
-                  completionTokens: parsed.usage.output_tokens,
-                  totalTokens: parsed.usage.input_tokens + parsed.usage.output_tokens
+                  prompt_tokens: parsed.usage.input_tokens,
+                  completion_tokens: parsed.usage.output_tokens,
+                  total_tokens: parsed.usage.input_tokens + parsed.usage.output_tokens
                 };
               }
             } catch (e) {
@@ -4658,7 +4715,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       // Add the assistant's message with tool calls
       messages.push({
         role: 'assistant',
-        content: assistantContent
+        content: JSON.stringify(assistantContent)
       });
 
       // Add tool results as user message
@@ -4671,7 +4728,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
       messages.push({
         role: 'user',
-        content: toolResults
+        content: JSON.stringify(toolResults)
       });
 
       // Make follow-up streaming call
@@ -4707,11 +4764,21 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return {
           content: fullContent + followUpResult.content,
           usage: followUpResult.usage ? {
-            promptTokens: (usage?.promptTokens || 0) + (followUpResult.usage?.promptTokens || 0),
-            completionTokens: (usage?.completionTokens || 0) + (followUpResult.usage?.completionTokens || 0),
-            totalTokens: (usage?.totalTokens || 0) + (followUpResult.usage?.totalTokens || 0)
-          } : usage,
+            promptTokens: (usage?.prompt_tokens || 0) + (followUpResult.usage?.promptTokens || 0),
+            completionTokens: (usage?.completion_tokens || 0) + (followUpResult.usage?.completionTokens || 0),
+            totalTokens: (usage?.total_tokens || 0) + (followUpResult.usage?.totalTokens || 0)
+          } : usage ? {
+            promptTokens: usage.prompt_tokens || 0,
+            completionTokens: usage.completion_tokens || 0,
+            totalTokens: usage.total_tokens || 0
+          } : undefined,
           toolCalls: toolCalls
+            .filter(tc => tc.id && tc.name)
+            .map(tc => ({
+              id: tc.id!,
+              name: tc.name!,
+              arguments: tc.arguments as ToolCallArguments
+            }))
         };
       } else {
         console.error(`❌ Anthropic follow-up streaming call failed:`, await followUpResponse.text());
@@ -4720,8 +4787,18 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
     return {
       content: fullContent,
-      usage: usage,
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+      usage: usage ? {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0
+      } : undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls
+        .filter(tc => tc.id && tc.name)
+        .map(tc => ({
+          id: tc.id!,
+          name: tc.name!,
+          arguments: tc.arguments as ToolCallArguments
+        })) : undefined
     };
   }
 
@@ -4737,11 +4814,12 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     let fullContent = '';
-    let usage: any = undefined;
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
     const decoder = new TextDecoder();
-    const toolCalls: any[] = [];
+    const toolCalls: Array<{ id?: string; name?: string; arguments?: unknown; result?: string; isError?: boolean; function?: { name?: string; arguments?: string } }> = [];
 
     try {
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -4832,9 +4910,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               // Gemini provides usage metadata in streaming responses
               if (parsed.usageMetadata) {
                 usage = {
-                  promptTokens: parsed.usageMetadata.promptTokenCount,
-                  completionTokens: parsed.usageMetadata.candidatesTokenCount,
-                  totalTokens: parsed.usageMetadata.totalTokenCount
+                  prompt_tokens: parsed.usageMetadata.promptTokenCount,
+                  completion_tokens: parsed.usageMetadata.candidatesTokenCount,
+                  total_tokens: parsed.usageMetadata.totalTokenCount
                 };
               }
             } catch (e) {
@@ -4913,6 +4991,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
             const followupDecoder = new TextDecoder();
 
             try {
+              // eslint-disable-next-line no-constant-condition
               while (true) {
                 const { done, value } = await followupReader.read();
                 if (done) break;
@@ -4965,8 +5044,18 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
     return {
       content: fullContent,
-      usage: usage,
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+      usage: usage ? {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0
+      } : undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls
+        .filter(tc => tc.id && tc.name)
+        .map(tc => ({
+          id: tc.id!,
+          name: tc.name!,
+          arguments: tc.arguments as ToolCallArguments
+        })) : undefined
     };
   }
 
@@ -4975,7 +5064,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     onStream: (chunk: string) => void,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<any>}> = [],
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     signal?: AbortSignal,
     originalMessage?: MessageContent
   ): Promise<LLMResponse> {
@@ -4985,9 +5074,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     let fullContent = '';
-    let usage: any = undefined;
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
     const decoder = new TextDecoder();
-    const toolCalls: any[] = [];
+    const toolCalls: Array<{ id?: string; type?: string; function?: { name?: string; arguments?: string } }> = [];
 
     try {
       // eslint-disable-next-line no-constant-condition
@@ -5028,8 +5117,8 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
                   // Accumulate tool call data
                   const toolCall = toolCalls[tc.index];
                   if (tc.id) toolCall.id += tc.id;
-                  if (tc.function?.name) toolCall.function.name += tc.function.name;
-                  if (tc.function?.arguments) toolCall.function.arguments += tc.function.arguments;
+                  if (tc.function?.name && toolCall.function) toolCall.function.name += tc.function.name;
+                  if (tc.function?.arguments && toolCall.function) toolCall.function.arguments += tc.function.arguments;
                 }
               }
 
@@ -5065,7 +5154,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       console.log(`🔧 LMStudio streaming found ${toolCalls.length} tool calls:`, toolCalls);
 
       // Show tool usage in the stream (without markdown formatting)
-      const toolNames = toolCalls.map(tc => tc.function.name).join(', ');
+      const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').join(', ');
       const toolMessage = `\n\n🔧 Executing tools: ${toolNames}\n`;
       fullContent += toolMessage;
       onStream(toolMessage);
@@ -5076,22 +5165,22 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         try {
           console.log(`🔧 Executing LMStudio streaming tool call:`, toolCall);
           const toolResult = await this.executeMCPTool(
-            toolCall.function.name,
-            JSON.parse(toolCall.function.arguments)
+            toolCall.function?.name || 'unknown',
+            JSON.parse(toolCall.function?.arguments || '{}')
           );
-          console.log(`✅ LMStudio tool result for ${toolCall.function.name}:`, toolResult);
+          console.log(`✅ LMStudio tool result for ${toolCall.function?.name || 'unknown'}:`, toolResult);
           toolResults.push({
             tool_call_id: toolCall.id,
             role: 'tool',
             content: JSON.stringify(toolResult)
-          } as any);
+          } as { tool_call_id: string; role: string; content: string });
         } catch (error) {
           console.error(`❌ LMStudio streaming tool call failed:`, error);
           toolResults.push({
             tool_call_id: toolCall.id,
             role: 'tool',
             content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-          } as any);
+          } as { tool_call_id: string; role: string; content: string });
         }
       }
 
@@ -5167,11 +5256,13 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
             'LM Studio estimated (with tools)'
           );
         })(),
-        toolCalls: toolCalls.map((tc: any) => {
+        toolCalls: toolCalls
+          .filter(tc => tc.id && tc.function?.name)
+          .map((tc: { id?: string; function?: { name?: string; arguments?: string } }) => {
           const mappedTool = {
-            id: tc.id,
-            name: tc.function.name,
-            arguments: JSON.parse(tc.function.arguments)
+            id: tc.id!,
+            name: tc.function!.name!,
+            arguments: JSON.parse(tc.function!.arguments || '{}')
           };
           console.log('🔧 Mapped tool call:', mappedTool);
           return mappedTool;

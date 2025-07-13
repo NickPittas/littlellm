@@ -1,15 +1,71 @@
 import { llmService, type LLMSettings } from './llmService';
 import { sessionService } from './sessionService';
 
+// Type definitions for PDF.js
+interface PDFDocumentProxy {
+  numPages: number;
+  getPage(pageNumber: number): Promise<PDFPageProxy>;
+}
+
+interface PDFPageProxy {
+  getTextContent(): Promise<TextContent>;
+  render(params: RenderParameters): RenderTask;
+  getViewport(params: { scale: number }): PageViewport;
+}
+
+interface TextContent {
+  items: (TextItem | TextMarkedContent)[];
+}
+
+interface TextItem {
+  str: string;
+  dir?: string;
+  width?: number;
+  height?: number;
+  transform?: number[];
+  fontName?: string;
+}
+
+interface TextMarkedContent {
+  type: string;
+}
+
+interface RenderParameters {
+  canvasContext: CanvasRenderingContext2D;
+  viewport: PageViewport;
+}
+
+interface RenderTask {
+  promise: Promise<void>;
+}
+
+interface PageViewport {
+  width: number;
+  height: number;
+  scale: number;
+}
+
+// Type for PDF.js getDocument parameters
+interface PDFDocumentInitParameters {
+  data: ArrayBuffer;
+  verbosity?: number;
+}
+
+// Type for content array items used in vision API
+interface ContentItem {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: {
+    url: string;
+  };
+}
+
+// Type for tool call arguments - can be any valid JSON value
+type ToolCallArguments = Record<string, unknown>;
+
 export interface Message {
   id: string;
-  content: string | Array<{
-    type: 'text' | 'image_url';
-    text?: string;
-    image_url?: {
-      url: string;
-    };
-  }>;
+  content: string | Array<ContentItem>;
   role: 'user' | 'assistant';
   timestamp: Date;
   usage?: {
@@ -26,7 +82,7 @@ export interface Message {
   toolCalls?: Array<{
     id: string;
     name: string;
-    arguments: any;
+    arguments: ToolCallArguments;
   }>;
 }
 
@@ -78,9 +134,9 @@ export const chatService = {
       const loadingTask = pdfjsLib.getDocument({
         data: arrayBuffer,
         verbosity: 0
-      } as any);
+      } as PDFDocumentInitParameters);
 
-      const pdf = await loadingTask.promise;
+      const pdf: PDFDocumentProxy = await loadingTask.promise;
       console.log('PDF loaded for image conversion, pages:', pdf.numPages);
 
       const images: string[] = [];
@@ -144,132 +200,127 @@ export const chatService = {
 
   // Helper function to extract text from files
   async extractTextFromFile(file: File): Promise<string> {
-    return new Promise(async (resolve, reject) => {
+    if (file.type === 'text/plain') {
+      // For text files, return content directly
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+        reader.readAsText(file);
+      });
+    } else if (file.type === 'application/pdf') {
+      // For PDFs, try to extract text using PDF.js (browser-compatible)
       try {
-        if (file.type === 'text/plain') {
-          // For text files, return content directly
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = error => reject(error);
-          reader.readAsText(file);
-        } else if (file.type === 'application/pdf') {
-          // For PDFs, try to extract text using PDF.js (browser-compatible)
+        console.log('Starting PDF text extraction for:', file.name);
+
+        // Use PDF.js for client-side PDF parsing
+        const arrayBuffer = await file.arrayBuffer();
+        console.log('PDF arrayBuffer size:', arrayBuffer.byteLength);
+
+        // Import PDF.js dynamically for browser compatibility
+        const pdfjsLib = await import('pdfjs-dist');
+
+        // Use local worker to avoid CORS issues
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '/js/pdf.worker.min.js';
+
+        console.log('PDF.js configured with local worker:', pdfjsLib.GlobalWorkerOptions.workerSrc);
+
+        const loadingTask = pdfjsLib.getDocument({
+          data: arrayBuffer,
+          verbosity: 0 // Reduce console noise
+        } as PDFDocumentInitParameters);
+
+        const pdf: PDFDocumentProxy = await loadingTask.promise;
+        console.log('PDF loaded successfully, pages:', pdf.numPages);
+
+        let fullText = '';
+        const maxPages = Math.min(pdf.numPages, 10); // Limit to first 10 pages
+
+        // Extract text from each page
+        for (let i = 1; i <= maxPages; i++) {
           try {
-            console.log('Starting PDF text extraction for:', file.name);
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+              .map((item: TextItem | TextMarkedContent) => ('str' in item ? item.str : '') || '')
+              .filter(str => str.trim().length > 0)
+              .join(' ');
 
-            // Use PDF.js for client-side PDF parsing
-            const arrayBuffer = await file.arrayBuffer();
-            console.log('PDF arrayBuffer size:', arrayBuffer.byteLength);
+            if (pageText.trim()) {
+              fullText += `Page ${i}:\n${pageText.trim()}\n\n`;
+            }
+            console.log(`Extracted text from page ${i}, length:`, pageText.length);
+          } catch (pageError) {
+            console.error(`Error extracting text from page ${i}:`, pageError);
+            fullText += `Page ${i}: [Error extracting text from this page]\n\n`;
+          }
+        }
 
-            // Import PDF.js dynamically for browser compatibility
+        if (fullText.trim()) {
+          console.log('PDF text extraction successful, total length:', fullText.length);
+          return `[PDF Document: ${file.name}]\n\n${fullText.trim()}`;
+        } else {
+          console.log('No text extracted from PDF');
+          return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Could not extract text from this PDF. It may contain only images, be password protected, or be a scanned document.`;
+        }
+      } catch (pdfError) {
+        console.error('PDF parsing error:', pdfError);
+
+        // Try fallback without worker if worker-related error
+        if (pdfError instanceof Error && pdfError.message && pdfError.message.includes('worker')) {
+          try {
+            console.log('Retrying PDF parsing without worker...');
             const pdfjsLib = await import('pdfjs-dist');
 
-            // Use local worker to avoid CORS issues
-            pdfjsLib.GlobalWorkerOptions.workerSrc = '/js/pdf.worker.min.js';
+            // Disable worker completely
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '';
 
-            console.log('PDF.js configured with local worker:', pdfjsLib.GlobalWorkerOptions.workerSrc);
+            const fallbackArrayBuffer = await file.arrayBuffer();
+            const fallbackLoadingTask = pdfjsLib.getDocument({
+              data: fallbackArrayBuffer,
+              verbosity: 0
+            } as PDFDocumentInitParameters);
 
-            const loadingTask = pdfjsLib.getDocument({
-              data: arrayBuffer,
-              verbosity: 0 // Reduce console noise
-            } as any);
+            const fallbackPdf: PDFDocumentProxy = await fallbackLoadingTask.promise;
+            console.log('PDF loaded successfully without worker, pages:', fallbackPdf.numPages);
 
-            const pdf = await loadingTask.promise;
-            console.log('PDF loaded successfully, pages:', pdf.numPages);
+            let fallbackText = '';
+            const maxPages = Math.min(fallbackPdf.numPages, 10);
 
-            let fullText = '';
-            const maxPages = Math.min(pdf.numPages, 10); // Limit to first 10 pages
-
-            // Extract text from each page
             for (let i = 1; i <= maxPages; i++) {
               try {
-                const page = await pdf.getPage(i);
+                const page = await fallbackPdf.getPage(i);
                 const textContent = await page.getTextContent();
                 const pageText = textContent.items
-                  .map((item: any) => item.str || '')
+                  .map((item: TextItem | TextMarkedContent) => ('str' in item ? item.str : '') || '')
                   .filter(str => str.trim().length > 0)
                   .join(' ');
 
                 if (pageText.trim()) {
-                  fullText += `Page ${i}:\n${pageText.trim()}\n\n`;
+                  fallbackText += `Page ${i}:\n${pageText.trim()}\n\n`;
                 }
-                console.log(`Extracted text from page ${i}, length:`, pageText.length);
               } catch (pageError) {
-                console.error(`Error extracting text from page ${i}:`, pageError);
-                fullText += `Page ${i}: [Error extracting text from this page]\n\n`;
+                console.error(`Error extracting text from page ${i} (fallback):`, pageError);
               }
             }
 
-            if (fullText.trim()) {
-              console.log('PDF text extraction successful, total length:', fullText.length);
-              resolve(`[PDF Document: ${file.name}]\n\n${fullText.trim()}`);
-            } else {
-              console.log('No text extracted from PDF');
-              resolve(`[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Could not extract text from this PDF. It may contain only images, be password protected, or be a scanned document.`);
+            if (fallbackText.trim()) {
+              console.log('PDF text extraction successful (fallback), total length:', fallbackText.length);
+              return `[PDF Document: ${file.name}]\n\n${fallbackText.trim()}`;
             }
-          } catch (pdfError) {
-            console.error('PDF parsing error:', pdfError);
-
-            // Try fallback without worker if worker-related error
-            if (pdfError instanceof Error && pdfError.message && pdfError.message.includes('worker')) {
-              try {
-                console.log('Retrying PDF parsing without worker...');
-                const pdfjsLib = await import('pdfjs-dist');
-
-                // Disable worker completely
-                pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-
-                const fallbackArrayBuffer = await file.arrayBuffer();
-                const fallbackLoadingTask = pdfjsLib.getDocument({
-                  data: fallbackArrayBuffer,
-                  verbosity: 0
-                } as any);
-
-                const fallbackPdf = await fallbackLoadingTask.promise;
-                console.log('PDF loaded successfully without worker, pages:', fallbackPdf.numPages);
-
-                let fallbackText = '';
-                const maxPages = Math.min(fallbackPdf.numPages, 10);
-
-                for (let i = 1; i <= maxPages; i++) {
-                  try {
-                    const page = await fallbackPdf.getPage(i);
-                    const textContent = await page.getTextContent();
-                    const pageText = textContent.items
-                      .map((item: any) => item.str || '')
-                      .filter(str => str.trim().length > 0)
-                      .join(' ');
-
-                    if (pageText.trim()) {
-                      fallbackText += `Page ${i}:\n${pageText.trim()}\n\n`;
-                    }
-                  } catch (pageError) {
-                    console.error(`Error extracting text from page ${i} (fallback):`, pageError);
-                  }
-                }
-
-                if (fallbackText.trim()) {
-                  console.log('PDF text extraction successful (fallback), total length:', fallbackText.length);
-                  resolve(`[PDF Document: ${file.name}]\n\n${fallbackText.trim()}`);
-                  return;
-                }
-              } catch (fallbackError) {
-                console.error('PDF fallback parsing also failed:', fallbackError);
-              }
-            }
-
-            resolve(`[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Could not extract text from this PDF due to an error: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}. Please describe the content you'd like me to analyze.`);
+          } catch (fallbackError) {
+            console.error('PDF fallback parsing also failed:', fallbackError);
           }
-        } else if (file.type.includes('word') || file.type.includes('document')) {
-          // For Word documents, provide placeholder
-          resolve(`[Word Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Word document text extraction not yet implemented. Please describe the content you'd like me to analyze.`);
-        } else {
-          resolve(`[File: ${file.name} - ${Math.round(file.size / 1024)}KB]\nFile type: ${file.type}\nNote: Text extraction not supported for this file type.`);
         }
-      } catch (error) {
-        reject(error);
+
+        return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Could not extract text from this PDF due to an error: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}. Please describe the content you'd like me to analyze.`;
       }
-    });
+    } else if (file.type.includes('word') || file.type.includes('document')) {
+      // For Word documents, provide placeholder
+      return `[Word Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Word document text extraction not yet implemented. Please describe the content you'd like me to analyze.`;
+    } else {
+      return `[File: ${file.name} - ${Math.round(file.size / 1024)}KB]\nFile type: ${file.type}\nNote: Text extraction not supported for this file type.`;
+    }
   },
 
   async sendMessage(
@@ -291,7 +342,7 @@ export const chatService = {
 
     // Also log to window for debugging
     if (typeof window !== 'undefined') {
-      (window as any).lastChatServiceCall = {
+      (window as Window & { lastChatServiceCall?: unknown }).lastChatServiceCall = {
         message: message.substring(0, 100) + '...',
         provider: settings.provider,
         model: settings.model,
@@ -302,7 +353,7 @@ export const chatService = {
 
     try {
       // Handle file attachments with proper OpenRouter vision API format
-      let messageContent: string | Array<any> | any = message;
+      let messageContent: string | Array<ContentItem> | { text: string; images: string[] } = message;
 
       if (files && files.length > 0) {
         console.log('Processing files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
@@ -319,7 +370,7 @@ export const chatService = {
           // Use vision API format for providers that support it
           console.log('Using vision API format for provider:', provider);
 
-          const contentArray: Array<any> = [
+          const contentArray: Array<ContentItem> = [
             {
               type: 'text',
               text: message || 'Please analyze the attached content.'
@@ -573,8 +624,8 @@ export const chatService = {
       // Disable streaming for providers that don't support tool calls in streaming mode
       // DeepSeek: disabled to get usage data
       // Gemini: streaming handler doesn't support function calls yet
-      const mcpService = (global as any).mcpService;
-      const hasTools = settings.toolCallingEnabled && mcpService && await mcpService.isConnected() && (await mcpService.listTools()).length > 0;
+      const mcpService = (global as typeof globalThis & { mcpService?: { getConnectedServerIds(): Promise<string[]>; getAvailableTools(): Promise<unknown[]> } }).mcpService;
+      const hasTools = settings.toolCallingEnabled && mcpService && (await mcpService.getConnectedServerIds()).length > 0 && (await mcpService.getAvailableTools()).length > 0;
       const useStreaming = onStream &&
         settings.provider !== 'deepseek' &&
         !(settings.provider === 'gemini' && hasTools);
@@ -627,7 +678,7 @@ export const chatService = {
 
         // Also log to window for debugging
         if (typeof window !== 'undefined') {
-          (window as any).lastTokenUsage = {
+          (window as Window & { lastTokenUsage?: unknown }).lastTokenUsage = {
             usage: response.usage,
             timestamp: new Date().toISOString()
           };
@@ -637,7 +688,7 @@ export const chatService = {
 
         // Also log to window for debugging
         if (typeof window !== 'undefined') {
-          (window as any).lastNoUsageResponse = {
+          (window as Window & { lastNoUsageResponse?: unknown }).lastNoUsageResponse = {
             hasResponse: !!response,
             responseKeys: response ? Object.keys(response) : [],
             timestamp: new Date().toISOString()

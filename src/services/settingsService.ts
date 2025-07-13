@@ -95,18 +95,24 @@ class SettingsService {
         window.electronAPI.getSettings().then((savedSettings) => {
           if (savedSettings) {
             console.log('Settings loaded from disk:', savedSettings);
+            const settings = savedSettings as {
+              chat?: {
+                model?: string;
+                providers?: Record<string, { lastSelectedModel?: string }>
+              }
+            };
 
             // Migration fix: Check if model is set to a provider name and clear it
             const providerNames = ['OpenAI', 'Anthropic', 'Google Gemini', 'Mistral AI', 'DeepSeek', 'LM Studio', 'Ollama (Local)', 'OpenRouter', 'Requesty', 'Replicate'];
-            if (savedSettings.chat?.model && providerNames.includes(savedSettings.chat.model)) {
-              console.log('Migration: Detected model set to provider name, clearing it:', savedSettings.chat.model);
-              savedSettings.chat.model = '';
+            if (settings.chat?.model && providerNames.includes(settings.chat.model)) {
+              console.log('Migration: Detected model set to provider name, clearing it:', settings.chat.model);
+              settings.chat.model = '';
             }
 
             // Also clean up any corrupted lastSelectedModel values in providers
-            if (savedSettings.chat?.providers) {
-              Object.keys(savedSettings.chat.providers).forEach(providerId => {
-                const provider = savedSettings.chat.providers[providerId];
+            if (settings.chat?.providers) {
+              Object.keys(settings.chat.providers).forEach(providerId => {
+                const provider = settings.chat!.providers![providerId];
                 if (provider.lastSelectedModel && providerNames.includes(provider.lastSelectedModel)) {
                   console.log('Migration: Detected corrupted lastSelectedModel for provider', providerId, ':', provider.lastSelectedModel);
                   provider.lastSelectedModel = '';
@@ -240,6 +246,7 @@ class SettingsService {
   // Excludes provider/model which are managed by stateService
   updateChatSettingsInMemory(updates: Partial<ChatSettings>) {
     // Extract provider/model from updates since they're managed separately
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { provider, model, ...settingsUpdates } = updates;
 
     // Only update non-provider/model settings in main settings

@@ -10,7 +10,7 @@ import {
 export interface Theme {
   id: string;
   name: string;
-  icon: React.ComponentType<any>;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>> | string;
   colors: {
     background: string;
     foreground: string;
@@ -32,8 +32,13 @@ export interface Theme {
   };
 }
 
+// Type for themes before card colors are added
+type ThemeInput = Omit<Theme, 'colors'> & {
+  colors: Omit<Theme['colors'], 'card' | 'cardForeground'> & Partial<Pick<Theme['colors'], 'card' | 'cardForeground'>>;
+};
+
 // Helper function to add card colors to themes
-const addCardColors = (theme: any): Theme => {
+const addCardColors = (theme: ThemeInput): Theme => {
   // If card colors are missing, generate them based on background
   if (!theme.colors.card) {
     const isDark = theme.id.includes('dark') ||
@@ -54,7 +59,13 @@ const addCardColors = (theme: any): Theme => {
       theme.colors.cardForeground = theme.colors.foreground;
     }
   }
-  return theme;
+
+  // Ensure cardForeground is always set
+  if (!theme.colors.cardForeground) {
+    theme.colors.cardForeground = theme.colors.foreground;
+  }
+
+  return theme as Theme;
 };
 
 export const themes: Theme[] = [
@@ -739,9 +750,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const appSettings = settingsService.getSettings();
         if (appSettings.ui && appSettings.ui.theme) {
           // Handle both old string format and new object format
-          let themeId = appSettings.ui.theme;
+          let themeId: string = appSettings.ui.theme;
           if (typeof themeId === 'object' && themeId && 'id' in themeId) {
-            themeId = (themeId as any).id;
+            themeId = (themeId as { id: string }).id;
           }
 
           const savedTheme = themes.find(t => t.id === themeId);
@@ -787,7 +798,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         ...currentSettings,
         ui: {
           ...currentSettings.ui,
-          theme: newTheme.id as any // Type assertion to handle the theme ID
+          theme: newTheme.id as 'light' | 'dark' | 'system' // Type assertion to match settings interface
         }
       });
     } catch (error) {

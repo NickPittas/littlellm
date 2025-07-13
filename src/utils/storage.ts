@@ -85,6 +85,7 @@ class NoOpStorage implements StorageAPI {
     return null;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async setItem(key: string, _value: string): Promise<void> {
     console.warn('No storage available for setItem:', key);
   }

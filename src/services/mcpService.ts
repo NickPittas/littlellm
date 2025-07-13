@@ -15,7 +15,7 @@ export interface MCPServer {
 export interface MCPTool {
   name: string;
   description: string;
-  inputSchema: any;
+  inputSchema: Record<string, unknown>;
   serverId: string;
 }
 
@@ -48,7 +48,7 @@ class MCPService {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
         const mcpData = await window.electronAPI.getMCPServers();
-        return mcpData.servers || [];
+        return (mcpData.servers as MCPServer[]) || [];
       }
     } catch (error) {
       console.warn('Failed to load MCP servers:', error);
@@ -59,7 +59,7 @@ class MCPService {
   public async addServer(server: Omit<MCPServer, 'id'>): Promise<MCPServer> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
-        return await window.electronAPI.addMCPServer(server);
+        return (await window.electronAPI.addMCPServer(server)) as MCPServer;
       }
     } catch (error) {
       console.error('Failed to add MCP server:', error);
@@ -125,7 +125,7 @@ class MCPService {
   public async getAvailableTools(): Promise<MCPTool[]> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
-        return await window.electronAPI.getAllMCPTools();
+        return (await window.electronAPI.getAllMCPTools()) as MCPTool[];
       }
     } catch (error) {
       console.warn('Failed to get available MCP tools:', error);
@@ -133,7 +133,7 @@ class MCPService {
     return [];
   }
 
-  public async callTool(toolName: string, args: any): Promise<any> {
+  public async callTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
         return await window.electronAPI.callMCPTool(toolName, args);
@@ -149,7 +149,7 @@ class MCPService {
   public async getAvailableResources(): Promise<MCPResource[]> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
-        return await window.electronAPI.getAllMCPResources();
+        return (await window.electronAPI.getAllMCPResources()) as MCPResource[];
       }
     } catch (error) {
       console.warn('Failed to get available MCP resources:', error);
@@ -157,7 +157,7 @@ class MCPService {
     return [];
   }
 
-  public async readResource(uri: string): Promise<any> {
+  public async readResource(uri: string): Promise<unknown> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
         return await window.electronAPI.readMCPResource(uri);
@@ -173,7 +173,7 @@ class MCPService {
   public async getAvailablePrompts(): Promise<MCPPrompt[]> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
-        return await window.electronAPI.getAllMCPPrompts();
+        return (await window.electronAPI.getAllMCPPrompts()) as MCPPrompt[];
       }
     } catch (error) {
       console.warn('Failed to get available MCP prompts:', error);
@@ -181,7 +181,7 @@ class MCPService {
     return [];
   }
 
-  public async getPrompt(name: string, args: any): Promise<any> {
+  public async getPrompt(name: string, args: Record<string, unknown>): Promise<unknown> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
         return await window.electronAPI.getMCPPrompt(name, args);
@@ -241,14 +241,16 @@ class MCPService {
   public async restartAllServers(): Promise<void> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
-        await window.electronAPI.restartMCPServers();
+        // Disconnect all servers first, then reconnect them
+        await window.electronAPI.disconnectAllMCPServers();
+        await window.electronAPI.connectEnabledMCPServers();
       }
     } catch (error) {
       console.error('Failed to restart MCP servers:', error);
     }
   }
 
-  public async getDetailedStatus(): Promise<any> {
+  public async getDetailedStatus(): Promise<unknown> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
         return await window.electronAPI.getMCPDetailedStatus();

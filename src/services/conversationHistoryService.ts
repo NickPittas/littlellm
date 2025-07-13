@@ -1,5 +1,36 @@
 import { getStorageItem } from '../utils/storage';
 import type { Message } from './chatService';
+import type { ElectronAPI } from '../types/electron';
+
+// Type for conversation data from storage
+interface ConversationData {
+  id: string;
+  title: string;
+  messages: Array<{
+    id: string;
+    content: string;
+    role: string;
+    timestamp: string | Date;
+    usage?: unknown;
+    timing?: unknown;
+    toolCalls?: unknown;
+  }>;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+  toolsHash?: string;
+}
+
+// Type for tool objects
+interface ToolObject {
+  name?: string;
+  description?: string;
+  parameters?: unknown;
+  function?: {
+    name?: string;
+    description?: string;
+    parameters?: unknown;
+  };
+}
 
 export interface Conversation {
   id: string;
@@ -20,17 +51,21 @@ class ConversationHistoryService {
 
     try {
       // Load conversation index from disk (contains metadata for ALL conversations)
-      if (typeof window !== 'undefined' && window.electronAPI?.loadConversationIndex) {
-        const conversationIndex = await window.electronAPI.loadConversationIndex();
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const electronAPI = window.electronAPI as ElectronAPI;
+        const conversationIndex = await electronAPI.loadConversationIndex();
 
         if (conversationIndex && Array.isArray(conversationIndex)) {
           // Convert index entries back to Conversation objects (without full messages)
-          this.conversations = conversationIndex.map(conv => ({
-            ...conv,
-            createdAt: new Date(conv.createdAt),
-            updatedAt: new Date(conv.updatedAt),
-            messages: [] // Messages will be loaded on-demand when conversation is opened
-          }));
+          this.conversations = conversationIndex.map((conv: unknown) => {
+            const convData = conv as ConversationData;
+            return {
+              ...convData,
+              createdAt: new Date(convData.createdAt),
+              updatedAt: new Date(convData.updatedAt),
+              messages: [] // Messages will be loaded on-demand when conversation is opened
+            };
+          });
 
           console.log(`Loaded ${this.conversations.length} conversations from disk`);
         } else {
@@ -42,7 +77,7 @@ class ConversationHistoryService {
               ...conv,
               createdAt: new Date(conv.createdAt),
               updatedAt: new Date(conv.updatedAt),
-              messages: conv.messages.map((msg: any) => ({
+              messages: conv.messages.map((msg: ConversationData['messages'][0]) => ({
                 ...msg,
                 timestamp: new Date(msg.timestamp)
               }))
@@ -61,7 +96,7 @@ class ConversationHistoryService {
             ...conv,
             createdAt: new Date(conv.createdAt),
             updatedAt: new Date(conv.updatedAt),
-            messages: conv.messages.map((msg: any) => ({
+            messages: conv.messages.map((msg: ConversationData['messages'][0]) => ({
               ...msg,
               timestamp: new Date(msg.timestamp)
             }))
@@ -121,18 +156,21 @@ class ConversationHistoryService {
   // Load full conversation data from file (including messages)
   async loadFullConversation(conversationId: string): Promise<Conversation | null> {
     try {
-      if (typeof window !== 'undefined' && window.electronAPI?.loadConversationFromFile) {
-        const conversationData = await window.electronAPI.loadConversationFromFile(conversationId);
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const electronAPI = window.electronAPI as ElectronAPI;
+        const conversationData = await electronAPI.loadConversationFromFile(conversationId);
 
         if (conversationData) {
+          const data = conversationData as ConversationData;
           return {
-            ...conversationData,
-            createdAt: new Date(conversationData.createdAt),
-            updatedAt: new Date(conversationData.updatedAt),
-            messages: conversationData.messages.map((msg: any) => ({
+            ...data,
+            createdAt: new Date(data.createdAt),
+            updatedAt: new Date(data.updatedAt),
+            messages: data.messages.map((msg: ConversationData['messages'][0]) => ({
               ...msg,
+              role: msg.role as 'user' | 'assistant',
               timestamp: new Date(msg.timestamp)
-            }))
+            } as Message))
           };
         }
       }
@@ -307,7 +345,7 @@ class ConversationHistoryService {
   }
 
   // Helper to generate hash from tools array
-  generateToolsHash(tools: any[]): string {
+  generateToolsHash(tools: ToolObject[]): string {
     const toolsString = JSON.stringify(tools.map(tool => ({
       name: tool.name || tool.function?.name || 'unknown',
       description: tool.description || tool.function?.description || '',
