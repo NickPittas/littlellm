@@ -260,6 +260,112 @@ async function callMCPTool(toolName: string, args: any): Promise<any> {
   }
 }
 
+// Enhanced concurrent tool execution
+async function callMultipleMCPTools(toolCalls: Array<{
+  name: string;
+  args: any;
+  id?: string;
+}>): Promise<Array<{
+  id?: string;
+  name: string;
+  result: any;
+  success: boolean;
+  error?: string;
+  executionTime: number;
+}>> {
+  console.log(`🚀 Executing ${toolCalls.length} MCP tools concurrently`);
+
+  const startTime = Date.now();
+
+  // Create a map of tools to their target connections for optimization
+  const toolConnectionMap = new Map<string, MCPConnection>();
+
+  // Pre-resolve all tool connections
+  for (const toolCall of toolCalls) {
+    let targetConnection: MCPConnection | null = null;
+
+    for (const [serverId, connection] of mcpConnections) {
+      if (!connection.connected) continue;
+
+      const tool = connection.tools.find(t => t.name === toolCall.name);
+      if (tool) {
+        targetConnection = connection;
+        break;
+      }
+    }
+
+    if (targetConnection) {
+      toolConnectionMap.set(toolCall.name, targetConnection);
+    }
+  }
+
+  // Execute all tools in parallel
+  const toolPromises = toolCalls.map(async (toolCall) => {
+    const toolStartTime = Date.now();
+
+    try {
+      const connection = toolConnectionMap.get(toolCall.name);
+      if (!connection) {
+        throw new Error(`Tool "${toolCall.name}" not found in any connected MCP server`);
+      }
+
+      console.log(`🔧 [Concurrent] Executing ${toolCall.name}`);
+
+      const result = await connection.client.callTool({
+        name: toolCall.name,
+        arguments: toolCall.args
+      });
+
+      const executionTime = Date.now() - toolStartTime;
+      console.log(`✅ [Concurrent] ${toolCall.name} completed in ${executionTime}ms`);
+
+      return {
+        id: toolCall.id,
+        name: toolCall.name,
+        result,
+        success: true,
+        executionTime
+      };
+    } catch (error) {
+      const executionTime = Date.now() - toolStartTime;
+      console.error(`❌ [Concurrent] ${toolCall.name} failed after ${executionTime}ms:`, error);
+
+      return {
+        id: toolCall.id,
+        name: toolCall.name,
+        result: null,
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        executionTime
+      };
+    }
+  });
+
+  const results = await Promise.allSettled(toolPromises);
+  const totalTime = Date.now() - startTime;
+
+  // Process results
+  const processedResults = results.map((result, index) => {
+    if (result.status === 'fulfilled') {
+      return result.value;
+    } else {
+      return {
+        id: toolCalls[index].id,
+        name: toolCalls[index].name,
+        result: null,
+        success: false,
+        error: `Promise execution failed: ${result.reason}`,
+        executionTime: 0
+      };
+    }
+  });
+
+  const successCount = processedResults.filter(r => r.success).length;
+  console.log(`🏁 Concurrent MCP execution completed in ${totalTime}ms: ${successCount}/${toolCalls.length} successful`);
+
+  return processedResults;
+}
+
 function getAllMCPTools(): any[] {
   const allTools: any[] = [];
 
@@ -1449,6 +1555,14 @@ function setupIPC() {
 
   ipcMain.handle('call-mcp-tool', async (_, toolName: string, args: any) => {
     return await callMCPTool(toolName, args);
+  });
+
+  ipcMain.handle('call-multiple-mcp-tools', async (_, toolCalls: Array<{
+    name: string;
+    args: any;
+    id?: string;
+  }>) => {
+    return await callMultipleMCPTools(toolCalls);
   });
 
   ipcMain.handle('get-all-mcp-tools', () => {

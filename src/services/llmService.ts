@@ -644,102 +644,261 @@ class LLMService {
     if (tools.length === 0) return '';
 
     // Type guard for tool objects
-    const isToolObject = (t: unknown): t is { function?: { name?: string; description?: string } } => {
+    const isToolObject = (t: unknown): t is { function?: { name?: string; description?: string; parameters?: any } } => {
       return typeof t === 'object' && t !== null;
     };
 
-    // Group tools by functionality to identify redundant services
+    // Enhanced tool categorization
     const searchTools = tools.filter(t => {
       if (!isToolObject(t)) return false;
       const name = t.function?.name?.toLowerCase() || '';
       const desc = t.function?.description?.toLowerCase() || '';
       return name.includes('search') || desc.includes('search') ||
-             name.includes('brave') || name.includes('tavily') || name.includes('searx');
+             name.includes('brave') || name.includes('tavily') || name.includes('searx') ||
+             name.includes('web') || name.includes('internet');
     });
 
-    const fetchTools = tools.filter(t => {
+    const memoryTools = tools.filter(t => {
+      if (!isToolObject(t)) return false;
+      const name = t.function?.name?.toLowerCase() || '';
+      return name.includes('memory');
+    });
+
+    const fileTools = tools.filter(t => {
       if (!isToolObject(t)) return false;
       const name = t.function?.name?.toLowerCase() || '';
       const desc = t.function?.description?.toLowerCase() || '';
-      return name.includes('fetch') || name.includes('get') || name.includes('request') ||
-             desc.includes('fetch') || desc.includes('retrieve');
+      return name.includes('file') || name.includes('read') || name.includes('write') ||
+             desc.includes('file') || desc.includes('document');
     });
 
-    const otherTools = tools.filter(t =>
-      !searchTools.includes(t) && !fetchTools.includes(t)
-    );
+    const dataTools = tools.filter(t => {
+      if (!isToolObject(t)) return false;
+      const name = t.function?.name?.toLowerCase() || '';
+      const desc = t.function?.description?.toLowerCase() || '';
+      return name.includes('data') || name.includes('database') || name.includes('sql') ||
+             desc.includes('data') || desc.includes('database');
+    });
 
-    let instructions = `\n\nYou have access to the following tools. Use them when appropriate to help answer the user's question:\n\n`;
+    const apiTools = tools.filter(t => {
+      if (!isToolObject(t)) return false;
+      const name = t.function?.name?.toLowerCase() || '';
+      const desc = t.function?.description?.toLowerCase() || '';
+      return name.includes('api') || name.includes('http') || name.includes('request') ||
+             desc.includes('api') || desc.includes('endpoint') ||
+             name.includes('fetch') || name.includes('get') || desc.includes('fetch') || desc.includes('retrieve');
+    });
 
-    // Add search tools with redundancy information
+    const otherTools = tools.filter(t => {
+      if (!isToolObject(t)) return false;
+      return !searchTools.includes(t) && !memoryTools.includes(t) &&
+             !fileTools.includes(t) && !dataTools.includes(t) && !apiTools.includes(t);
+    });
+
+    let instructions = `
+
+# Universal Agentic AI Assistant System Prompt
+
+You are an advanced AI assistant with extensive capabilities across multiple domains including analysis, research, problem-solving, creative tasks, technical work, and general assistance. You have access to a comprehensive set of ${tools.length} tools that enable you to accomplish complex, multi-step tasks effectively.
+
+====
+
+## CORE PRINCIPLES
+
+**Systematic Approach**: Break down complex tasks into clear, manageable steps and work through them methodically using available tools.
+
+**Tool-First Methodology**: Leverage your available tools strategically to gather information, perform actions, and accomplish objectives rather than relying solely on pre-trained knowledge.
+
+**Iterative Problem Solving**: Work step-by-step, using multiple tools when needed to gather comprehensive information.
+
+**Adaptive Intelligence**: Adjust your approach based on the specific domain, context, and requirements of each task.
+
+====
+
+## TOOL USE FRAMEWORK
+
+### General Tool Use Guidelines
+
+1. **Assessment**: Analyze what information you have and what you need to proceed
+2. **Tool Selection**: Choose the most appropriate tools based on task requirements
+3. **Multi-Tool Execution**: Use multiple tools when needed to gather comprehensive information
+4. **Result Integration**: Incorporate tool results into your decision-making and responses
+5. **Complete Responses**: Provide comprehensive answers that address all aspects of user requests
+
+### Available Tool Categories\n\n`;
+
+    // Add categorized tools with enhanced descriptions
     if (searchTools.length > 0) {
-      instructions += `**Search Tools** (multiple services available for redundancy):\n`;
+      instructions += `### 🔍 **SEARCH & WEB TOOLS** (${searchTools.length} available)\n`;
+      instructions += `*Use for: Real-time information, current events, research, fact-checking*\n\n`;
       searchTools.forEach(tool => {
         if (isToolObject(tool) && tool.function && tool.function.name) {
-          instructions += `- ${tool.function.name}: ${tool.function.description || 'No description available'}\n`;
+          instructions += `**${tool.function.name}**\n`;
+          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
+          if (tool.function.parameters?.properties) {
+            const params = Object.keys(tool.function.parameters.properties);
+            instructions += `  └ Key parameters: ${params.slice(0, 3).join(', ')}${params.length > 3 ? '...' : ''}\n`;
+          }
+          instructions += `\n`;
         }
       });
       if (searchTools.length > 1) {
-        instructions += `  → If one search service fails, try another search tool as they provide similar functionality.\n`;
+        instructions += `💡 **Multi-Search Strategy**: Use multiple search tools for comprehensive coverage. If one fails, try another.\n\n`;
       }
-      instructions += `\n`;
     }
 
-    // Add fetch tools with redundancy information
-    if (fetchTools.length > 0) {
-      instructions += `**Data Retrieval Tools** (multiple services available for redundancy):\n`;
-      fetchTools.forEach(tool => {
+    if (memoryTools.length > 0) {
+      instructions += `### 🧠 **MEMORY & CONTEXT TOOLS** (${memoryTools.length} available)\n`;
+      instructions += `*Use for: Storing important information, retrieving past context, maintaining conversation state*\n\n`;
+      memoryTools.forEach(tool => {
         if (isToolObject(tool) && tool.function && tool.function.name) {
-          instructions += `- ${tool.function.name}: ${tool.function.description || 'No description available'}\n`;
+          instructions += `**${tool.function.name}**\n`;
+          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
+          instructions += `\n`;
         }
       });
-      if (fetchTools.length > 1) {
-        instructions += `  → If one fetch service fails, try another retrieval tool as they provide similar functionality.\n`;
-      }
-      instructions += `\n`;
+      instructions += `💡 **Memory Strategy**: Always search memory first for relevant context, then store new important information.\n\n`;
     }
 
-    // Add other tools
+    if (fileTools.length > 0) {
+      instructions += `### 📁 **FILE & DOCUMENT TOOLS** (${fileTools.length} available)\n`;
+      instructions += `*Use for: Reading files, processing documents, data extraction*\n\n`;
+      fileTools.forEach(tool => {
+        if (isToolObject(tool) && tool.function && tool.function.name) {
+          instructions += `**${tool.function.name}**\n`;
+          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
+          instructions += `\n`;
+        }
+      });
+    }
+
+    if (dataTools.length > 0) {
+      instructions += `### 💾 **DATA & DATABASE TOOLS** (${dataTools.length} available)\n`;
+      instructions += `*Use for: Database queries, data analysis, structured data operations*\n\n`;
+      dataTools.forEach(tool => {
+        if (isToolObject(tool) && tool.function && tool.function.name) {
+          instructions += `**${tool.function.name}**\n`;
+          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
+          instructions += `\n`;
+        }
+      });
+    }
+
+    if (apiTools.length > 0) {
+      instructions += `### 🌐 **API & INTEGRATION TOOLS** (${apiTools.length} available)\n`;
+      instructions += `*Use for: External service integration, API calls, data synchronization*\n\n`;
+      apiTools.forEach(tool => {
+        if (isToolObject(tool) && tool.function && tool.function.name) {
+          instructions += `**${tool.function.name}**\n`;
+          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
+          instructions += `\n`;
+        }
+      });
+    }
+
     if (otherTools.length > 0) {
-      instructions += `**Other Tools**:\n`;
+      instructions += `### ⚡ **SPECIALIZED TOOLS** (${otherTools.length} available)\n`;
+      instructions += `*Use for: Specific domain tasks, custom operations*\n\n`;
       otherTools.forEach(tool => {
         if (isToolObject(tool) && tool.function && tool.function.name) {
-          instructions += `- ${tool.function.name}: ${tool.function.description || 'No description available'}\n`;
+          instructions += `**${tool.function.name}**\n`;
+          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
+          instructions += `\n`;
         }
       });
-      instructions += `\n`;
     }
 
-    // Add provider-specific instructions
-    if (provider === 'ollama') {
-      instructions += `
-**CRITICAL: Tool Calling Instructions for Ollama**
-When you need to use a tool, you MUST respond with a proper tool call. Do NOT just talk about using tools.
+    // Add enhanced execution methodology
+    instructions += `
 
-Example of correct tool calling format:
-If you need to search for weather, you must make an actual tool call like this:
+====
 
-\`\`\`json
-{
-  "tool": "tavily-search",
-  "query": "weather in athens greece today",
-  "search_depth": "basic",
-  "topic": "general"
-}
-\`\`\`
+## TASK EXECUTION METHODOLOGY
 
-IMPORTANT: Use the exact tool names with hyphens (tavily-search, brave-search, etc.), not underscores.
+### 1. Initial Analysis
+- Understand the user's request and objectives completely
+- Identify required information and capabilities needed
+- Plan the optimal tool sequence and approach
+- Consider multi-tool strategies for comprehensive results
 
-OR use the standard OpenAI format if your model supports it.
+### 2. Information Gathering
+- Use appropriate tools to collect necessary information
+- Leverage multiple sources when beneficial for completeness
+- Verify information quality and relevance
+- Organize findings for effective synthesis
 
-DO NOT just say "I'll search for weather" - you must actually call the tool!`;
-    } else {
-      instructions += `**Tool Usage Guidelines:**
-- Use tools when they can help provide better, more accurate, or more current information
-- If a tool fails, try an alternative tool with similar functionality when available
-- Multiple search and fetch tools are provided for redundancy - use them as backups
-- Always explain what tools you're using and why`;
-    }
+### 3. Execution & Synthesis
+- Execute planned actions using appropriate tools
+- Integrate results from multiple tools naturally
+- Provide comprehensive, well-structured responses
+- Address ALL aspects of the user's request
+
+====
+
+## MULTI-TOOL STRATEGIES
+
+### Parallel Information Gathering
+- Use multiple tools when users request multiple pieces of information
+- Example: For "weather, date, and news" → use get_datetime + web_search (weather) + web_search (news)
+- Cross-reference data for accuracy and completeness
+
+### Sequential Tool Chaining
+- Use results from one tool as input for subsequent tools
+- Build complex workflows by chaining tool outputs
+- Maintain context across multiple tool interactions
+
+### Error Recovery & Redundancy
+- If one tool fails, try alternative tools
+- Use multiple search services for better coverage
+- Always provide useful responses even if some tools fail
+
+====
+
+## QUALITY STANDARDS
+
+### Accuracy & Reliability
+- Use tools to get current, accurate information
+- Verify information from multiple sources when possible
+- Acknowledge limitations clearly
+- Provide confidence levels for recommendations
+
+### Efficiency & Effectiveness
+- Choose the most appropriate tools for each task
+- Use multiple tools when needed for comprehensive coverage
+- Focus on actionable, useful outcomes
+- Address all parts of complex requests
+
+### Communication & Clarity
+- Provide clear explanations of actions and reasoning
+- Structure information logically and accessibly
+- Integrate tool results naturally into responses
+- Offer relevant context and background
+
+====
+
+## CRITICAL SUCCESS FACTORS
+
+**For Multi-Part Requests**: When users ask for multiple pieces of information (like weather + date + news), you MUST:
+1. **Identify ALL required information** in the request
+2. **Use multiple tools** to gather each piece of information
+3. **Provide comprehensive responses** that address every part
+4. **Synthesize results naturally** into a cohesive answer
+
+**Tool Utilization**: Always prefer tool results over pre-trained knowledge for:
+- Current information (weather, news, dates)
+- Real-time data and facts
+- User-specific context and preferences
+- External system interactions
+
+**Response Quality**: Every response should be:
+- Complete (addressing all user requests)
+- Current (using fresh tool data)
+- Comprehensive (well-researched and thorough)
+- Actionable (providing useful, practical information)
+
+====
+
+Remember: You are an advanced AI assistant with powerful tool capabilities. Use them strategically and comprehensively to provide the best possible assistance. When users ask for multiple pieces of information, use multiple tools to gather all requested data and provide complete, well-synthesized responses.`;
 
     return instructions;
   }
@@ -882,16 +1041,27 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         console.log(`🔧 Formatted ${formattedTools.length} tools for Gemini:`, formattedTools);
         console.log(`🔧 Gemini tool schemas sample:`, (formattedTools[0] as { functionDeclarations?: unknown[] })?.functionDeclarations?.slice(0, 2));
       } else if (provider === 'anthropic') {
-        // Anthropic format
-        formattedTools = allTools.map(tool => ({
-          name: isMCPTool(tool) ? tool.name : tool.function.name,
-          description: isMCPTool(tool) ? tool.description : tool.function.description,
-          input_schema: isMCPTool(tool) ? tool.inputSchema : tool.function.parameters || {
-            type: 'object',
-            properties: {},
-            required: []
+        // Anthropic format with name length validation (max 64 characters)
+        formattedTools = allTools.map(tool => {
+          const originalName = isMCPTool(tool) ? tool.name : tool.function.name;
+          const truncatedName = originalName.length > 64
+            ? this.truncateToolNameForAnthropic(originalName)
+            : originalName;
+
+          if (originalName !== truncatedName) {
+            console.warn(`⚠️ Truncated tool name for Anthropic: "${originalName}" -> "${truncatedName}"`);
           }
-        }));
+
+          return {
+            name: truncatedName,
+            description: isMCPTool(tool) ? tool.description : tool.function.description,
+            input_schema: isMCPTool(tool) ? tool.inputSchema : tool.function.parameters || {
+              type: 'object',
+              properties: {},
+              required: []
+            }
+          };
+        });
         console.log(`🔧 Formatted ${formattedTools.length} tools for Anthropic:`, formattedTools);
       } else {
         console.log(`⚠️ No tool formatting implemented for provider: ${provider}`);
@@ -942,6 +1112,1134 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       console.error(`❌ Failed to execute tool ${toolName}:`, error);
       return `Error executing tool ${toolName}: ${error instanceof Error ? error.message : String(error)}`;
     }
+  }
+
+  /**
+   * Detect if a request is incomplete based on user message and executed tools
+   */
+  private detectIncompleteRequest(
+    userMessage: string | any,
+    executedResults: Array<{ name: string; success: boolean }>
+  ): { incomplete: boolean; missing: string[] } {
+    if (!userMessage || typeof userMessage !== 'string') {
+      return { incomplete: false, missing: [] };
+    }
+
+    const message = userMessage.toLowerCase();
+    const executedToolNames = executedResults.map(r => r.name.toLowerCase());
+    const missing: string[] = [];
+
+    // Check for common multi-part requests with more aggressive detection
+    const requestPatterns = [
+      { keywords: ['weather', 'forecast', 'temperature'], requirement: 'weather information', tools: ['web_search', 'weather'] },
+      { keywords: ['date', 'time', 'today', 'current date'], requirement: 'current date/time', tools: ['get_datetime', 'datetime'] },
+      { keywords: ['news', 'latest news', 'current events'], requirement: 'latest news', tools: ['web_search', 'news'] },
+      { keywords: ['search', 'find', 'look up'], requirement: 'search results', tools: ['web_search', 'search'] }
+    ];
+
+    let foundRequirements = 0;
+    let metRequirements = 0;
+
+    for (const pattern of requestPatterns) {
+      const hasKeywords = pattern.keywords.some(keyword => message.includes(keyword));
+      if (hasKeywords) {
+        foundRequirements++;
+        const hasMatchingTool = pattern.tools.some(tool =>
+          executedToolNames.some(executed => executed.includes(tool))
+        );
+
+        if (hasMatchingTool) {
+          metRequirements++;
+        } else {
+          missing.push(pattern.requirement);
+        }
+      }
+    }
+
+    // More aggressive detection for multi-part requests
+    const multiPartIndicators = [
+      ' and ', ', ', ' also ', ' plus ', ' as well as ', ' tell me ', ' find ', ' get '
+    ];
+    const hasMultipleRequests = multiPartIndicators.some(indicator => message.includes(indicator));
+
+    // If we found multiple requirements but only met some, it's incomplete
+    if (foundRequirements > 1 && metRequirements < foundRequirements) {
+      return { incomplete: true, missing };
+    }
+
+    // If user asks for multiple things with connectors and only 1 tool executed
+    if (hasMultipleRequests && executedResults.length === 1) {
+      // Add generic missing items if we couldn't identify specific ones
+      if (missing.length === 0) {
+        missing.push('remaining requested information');
+      }
+      return { incomplete: true, missing };
+    }
+
+    return { incomplete: missing.length > 0, missing };
+  }
+
+  /**
+   * Truncate tool names for Anthropic's 64-character limit while preserving meaning
+   */
+  private truncateToolNameForAnthropic(toolName: string): string {
+    if (toolName.length <= 64) {
+      return toolName;
+    }
+
+    // Strategy: Keep the most important parts and use abbreviations
+    let truncated = toolName;
+
+    // Common abbreviations to reduce length
+    const abbreviations = {
+      'OPENWEATHER_API': 'WEATHER',
+      'GET-WEATHER-FORECAST-BY-LOCATION': 'GET-FORECAST',
+      'FORECAST': 'FC',
+      'LOCATION': 'LOC',
+      'SEARCH': 'SRCH',
+      'BROWSER': 'BRWS',
+      'MEMORY': 'MEM',
+      'DATETIME': 'DT',
+      'ANALYSIS': 'ANLYS',
+      'FUNCTION': 'FN'
+    };
+
+    // Apply abbreviations
+    for (const [full, abbrev] of Object.entries(abbreviations)) {
+      truncated = truncated.replace(new RegExp(full, 'gi'), abbrev);
+    }
+
+    // If still too long, truncate from the end but keep meaningful prefix
+    if (truncated.length > 64) {
+      truncated = truncated.substring(0, 61) + '...';
+    }
+
+    return truncated;
+  }
+
+  /**
+   * Validate tool calls for provider-specific requirements
+   */
+  private validateToolCallsForProvider(
+    toolCalls: Array<{ id?: string; name: string; arguments: any }>,
+    provider: string
+  ): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    for (const toolCall of toolCalls) {
+      // Common validation
+      if (!toolCall.name || typeof toolCall.name !== 'string') {
+        errors.push(`Tool call missing or invalid name: ${JSON.stringify(toolCall)}`);
+        continue;
+      }
+
+      // Provider-specific validation
+      switch (provider.toLowerCase()) {
+        case 'openai':
+          if (!toolCall.id) {
+            errors.push(`OpenAI tool call missing required id: ${toolCall.name}`);
+          }
+          break;
+
+        case 'anthropic':
+          // Anthropic uses tool_use blocks with specific format
+          if (toolCall.arguments && typeof toolCall.arguments !== 'object') {
+            errors.push(`Anthropic tool call arguments must be object: ${toolCall.name}`);
+          }
+          break;
+
+        case 'ollama':
+          // Ollama can use both native and OpenAI-compatible formats
+          if (toolCall.arguments && typeof toolCall.arguments === 'string') {
+            try {
+              JSON.parse(toolCall.arguments);
+            } catch {
+              errors.push(`Ollama tool call has invalid JSON arguments: ${toolCall.name}`);
+            }
+          }
+          break;
+
+        case 'mistral':
+          // Mistral follows OpenAI-compatible format
+          if (!toolCall.id) {
+            errors.push(`Mistral tool call missing required id: ${toolCall.name}`);
+          }
+          break;
+      }
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * Execute multiple MCP tools in parallel with optimized performance and proper error handling
+   */
+  private async executeMultipleToolsParallel(
+    toolCalls: Array<{
+      id?: string;
+      name: string;
+      arguments: any;
+    }>,
+    provider: string = 'unknown'
+  ): Promise<Array<{
+    id?: string;
+    name: string;
+    result: string;
+    success: boolean;
+    executionTime: number;
+  }>> {
+    console.log(`🚀 Executing ${toolCalls.length} tools in parallel (optimized) for ${provider}:`, toolCalls.map(tc => tc.name));
+
+    // Validate tool calls for provider-specific requirements
+    const validation = this.validateToolCallsForProvider(toolCalls, provider);
+    if (!validation.valid) {
+      console.warn(`⚠️ Tool call validation failed for ${provider}:`, validation.errors);
+      // Continue execution but log warnings
+    }
+
+    const startTime = Date.now();
+
+    try {
+      // Try to use optimized concurrent execution via MCP service
+      const optimizedToolCalls = toolCalls.map(tc => ({
+        id: tc.id,
+        name: tc.name,
+        args: tc.arguments
+      }));
+
+      const mcpResults = await mcpService.callToolsOptimized(optimizedToolCalls);
+      const totalTime = Date.now() - startTime;
+
+      // Convert MCP results to expected format
+      const processedResults = mcpResults.map(mcpResult => ({
+        id: mcpResult.id,
+        name: mcpResult.name,
+        result: mcpResult.success ? JSON.stringify(mcpResult.result) : (mcpResult.error || 'Unknown error'),
+        success: mcpResult.success,
+        executionTime: mcpResult.executionTime
+      }));
+
+      const successCount = processedResults.filter(r => r.success).length;
+      const failureCount = processedResults.length - successCount;
+
+      console.log(`🏁 Optimized parallel execution completed in ${totalTime}ms: ${successCount} successful, ${failureCount} failed`);
+
+      return processedResults;
+
+    } catch (error) {
+      console.warn(`⚠️ Optimized execution failed, falling back to legacy parallel execution:`, error);
+
+      // Fallback to legacy parallel execution
+      return await this.executeMultipleToolsLegacy(toolCalls);
+    }
+  }
+
+  /**
+   * Legacy parallel execution method (fallback)
+   */
+  private async executeMultipleToolsLegacy(toolCalls: Array<{
+    id?: string;
+    name: string;
+    arguments: any;
+  }>): Promise<Array<{
+    id?: string;
+    name: string;
+    result: string;
+    success: boolean;
+    executionTime: number;
+  }>> {
+    console.log(`🔄 Using legacy parallel execution for ${toolCalls.length} tools`);
+
+    const startTime = Date.now();
+
+    // Execute all tools in parallel using Promise.allSettled for proper error handling
+    const toolPromises = toolCalls.map(async (toolCall, index) => {
+      const toolStartTime = Date.now();
+      try {
+        console.log(`🔧 [${index}] Starting legacy parallel execution of ${toolCall.name}`);
+        const result = await this.executeMCPTool(toolCall.name, toolCall.arguments);
+        const executionTime = Date.now() - toolStartTime;
+        console.log(`✅ [${index}] Tool ${toolCall.name} completed in ${executionTime}ms`);
+
+        return {
+          id: toolCall.id,
+          name: toolCall.name,
+          result,
+          success: true,
+          executionTime
+        };
+      } catch (error) {
+        const executionTime = Date.now() - toolStartTime;
+        console.error(`❌ [${index}] Tool ${toolCall.name} failed after ${executionTime}ms:`, error);
+
+        return {
+          id: toolCall.id,
+          name: toolCall.name,
+          result: JSON.stringify({
+            error: `Legacy parallel execution failed: ${error instanceof Error ? error.message : String(error)}`,
+            toolName: toolCall.name,
+            args: toolCall.arguments
+          }),
+          success: false,
+          executionTime
+        };
+      }
+    });
+
+    // Wait for all tools to complete (successful or failed)
+    const results = await Promise.allSettled(toolPromises);
+    const totalTime = Date.now() - startTime;
+
+    // Process results and extract values
+    const processedResults = results.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      } else {
+        console.error(`❌ Promise rejected for tool ${toolCalls[index].name}:`, result.reason);
+        return {
+          id: toolCalls[index].id,
+          name: toolCalls[index].name,
+          result: JSON.stringify({
+            error: `Promise execution failed: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+            toolName: toolCalls[index].name,
+            args: toolCalls[index].arguments
+          }),
+          success: false,
+          executionTime: 0
+        };
+      }
+    });
+
+    const successCount = processedResults.filter(r => r.success).length;
+    const failureCount = processedResults.length - successCount;
+
+    console.log(`🏁 Legacy parallel execution completed in ${totalTime}ms: ${successCount} successful, ${failureCount} failed`);
+
+    return processedResults;
+  }
+
+  /**
+   * Create user-friendly summary of tool execution results (for model context)
+   */
+  private summarizeToolResultsForModel(results: Array<{
+    id?: string;
+    name: string;
+    result: string;
+    success: boolean;
+    executionTime: number;
+  }>): string {
+    const successfulResults = results.filter(r => r.success);
+    const failedResults = results.filter(r => !r.success);
+
+    let summary = '';
+
+    // Add collapsible tool execution details (similar to <think> blocks)
+    summary += `<tool_execution>\n`;
+    summary += `**Tool Execution Summary:** ${successfulResults.length}/${results.length} tools completed successfully.\n\n`;
+
+    // Add formatted results for the model to work with
+    successfulResults.forEach((result) => {
+      summary += `**${result.name} Result:**\n`;
+
+      try {
+        const parsedResult = JSON.parse(result.result);
+        const formattedResult = this.formatToolResult(result.name, parsedResult);
+        summary += `${formattedResult}\n\n`;
+      } catch {
+        // If not JSON, add as plain text
+        const cleanResult = result.result.replace(/^"|"$/g, '');
+        summary += `${cleanResult}\n\n`;
+      }
+    });
+
+    // Add failed results if any
+    if (failedResults.length > 0) {
+      summary += `**Failed Tools:**\n`;
+      failedResults.forEach((result) => {
+        summary += `- ${result.name}: ${result.result}\n`;
+      });
+    }
+
+    summary += `</tool_execution>\n\n`;
+
+    return summary;
+  }
+
+  /**
+   * Enhanced aggregation and formatting of results from multiple tool executions (for debugging)
+   */
+  private aggregateToolResults(results: Array<{
+    id?: string;
+    name: string;
+    result: string;
+    success: boolean;
+    executionTime: number;
+  }>): string {
+    const successfulResults = results.filter(r => r.success);
+    const failedResults = results.filter(r => !r.success);
+
+    let aggregatedContent = '';
+
+    // Add execution summary with enhanced formatting
+    aggregatedContent += `## 🛠️ Multi-Tool Execution Results\n`;
+    aggregatedContent += `**Executed:** ${results.length} tools | **✅ Success:** ${successfulResults.length} | **❌ Failed:** ${failedResults.length}\n\n`;
+
+    // Add successful results with intelligent formatting
+    if (successfulResults.length > 0) {
+      aggregatedContent += `### ✅ Successful Results\n\n`;
+      successfulResults.forEach((result) => {
+        aggregatedContent += `#### 🔧 **${result.name}** \`${result.executionTime}ms\`\n`;
+
+        try {
+          const parsedResult = JSON.parse(result.result);
+          const formattedResult = this.formatToolResult(result.name, parsedResult);
+          aggregatedContent += `${formattedResult}\n\n`;
+        } catch {
+          // If not JSON, add as plain text with basic formatting
+          const cleanResult = result.result.replace(/^"|"$/g, ''); // Remove surrounding quotes
+          aggregatedContent += `${cleanResult}\n\n`;
+        }
+      });
+    }
+
+    // Add failed results with error details
+    if (failedResults.length > 0) {
+      aggregatedContent += `### ❌ Failed Results\n\n`;
+      failedResults.forEach((result) => {
+        aggregatedContent += `#### 🚫 **${result.name}** \`${result.executionTime}ms\`\n`;
+        try {
+          const parsedError = JSON.parse(result.result);
+          if (parsedError.error) {
+            aggregatedContent += `**Error:** ${parsedError.error}\n\n`;
+          } else {
+            aggregatedContent += `**Error:** ${result.result}\n\n`;
+          }
+        } catch {
+          aggregatedContent += `**Error:** ${result.result}\n\n`;
+        }
+      });
+    }
+
+    // Add performance insights
+    const totalTime = Math.max(...results.map(r => r.executionTime));
+    const avgTime = results.reduce((sum, r) => sum + r.executionTime, 0) / results.length;
+    const successRate = Math.round((successfulResults.length / results.length) * 100);
+
+    aggregatedContent += `### 📊 Execution Metrics\n`;
+    aggregatedContent += `- **Parallel Execution Time:** ${totalTime}ms\n`;
+    aggregatedContent += `- **Average Tool Time:** ${Math.round(avgTime)}ms\n`;
+    aggregatedContent += `- **Success Rate:** ${successRate}%\n`;
+
+    if (successRate < 100) {
+      aggregatedContent += `- **Reliability:** ${failedResults.length} tool(s) failed - consider using alternative tools\n`;
+    }
+
+    return aggregatedContent;
+  }
+
+  /**
+   * Format individual tool results based on tool type and content
+   */
+  private formatToolResult(toolName: string, result: any): string {
+    const toolType = this.identifyToolType(toolName);
+
+    switch (toolType) {
+      case 'search':
+        return this.formatSearchResult(result);
+      case 'memory':
+        return this.formatMemoryResult(result);
+      case 'file':
+        return this.formatFileResult(result);
+      case 'api':
+        return this.formatApiResult(result);
+      case 'datetime':
+        return this.formatDateTimeResult(result);
+      case 'weather':
+        return this.formatWeatherResult(result);
+      default:
+        return this.formatGenericResult(result);
+    }
+  }
+
+  /**
+   * Identify tool type based on tool name
+   */
+  private identifyToolType(toolName: string): string {
+    const name = toolName.toLowerCase();
+
+    if (name.includes('search') || name.includes('brave') || name.includes('tavily') || name.includes('web_search')) {
+      return 'search';
+    } else if (name.includes('memory')) {
+      return 'memory';
+    } else if (name.includes('file') || name.includes('read') || name.includes('write')) {
+      return 'file';
+    } else if (name.includes('api') || name.includes('http') || name.includes('fetch')) {
+      return 'api';
+    } else if (name.includes('datetime') || name.includes('date') || name.includes('time')) {
+      return 'datetime';
+    } else if (name.includes('weather')) {
+      return 'weather';
+    }
+
+    return 'generic';
+  }
+
+  /**
+   * Format search tool results
+   */
+  private formatSearchResult(result: any): string {
+    if (result.results && Array.isArray(result.results)) {
+      let formatted = `**Found ${result.results.length} results:**\n\n`;
+      result.results.slice(0, 5).forEach((item: any, index: number) => {
+        formatted += `${index + 1}. **${item.title || 'No title'}**\n`;
+        if (item.url) formatted += `   🔗 ${item.url}\n`;
+        if (item.content || item.snippet) {
+          const content = (item.content || item.snippet).substring(0, 200);
+          formatted += `   ${content}${content.length >= 200 ? '...' : ''}\n\n`;
+        }
+      });
+      if (result.results.length > 5) {
+        formatted += `... and ${result.results.length - 5} more results\n`;
+      }
+      return formatted;
+    }
+
+    return this.formatGenericResult(result);
+  }
+
+  /**
+   * Format memory tool results
+   */
+  private formatMemoryResult(result: any): string {
+    if (result.success && result.memories && Array.isArray(result.memories)) {
+      let formatted = `**Retrieved ${result.memories.length} memory entries:**\n\n`;
+      result.memories.forEach((memory: any, index: number) => {
+        formatted += `${index + 1}. **${memory.title || 'Untitled'}**\n`;
+        formatted += `   ${memory.content?.substring(0, 150)}${memory.content?.length > 150 ? '...' : ''}\n\n`;
+      });
+      return formatted;
+    } else if (result.success && result.id) {
+      return `**Memory stored successfully** (ID: ${result.id})\n`;
+    }
+
+    return this.formatGenericResult(result);
+  }
+
+  /**
+   * Format file tool results
+   */
+  private formatFileResult(result: any): string {
+    if (result.content) {
+      const content = result.content.substring(0, 500);
+      return `**File content:**\n\`\`\`\n${content}${content.length >= 500 ? '\n... (truncated)' : ''}\n\`\`\`\n`;
+    }
+
+    return this.formatGenericResult(result);
+  }
+
+  /**
+   * Format API tool results
+   */
+  private formatApiResult(result: any): string {
+    if (result.status && result.data) {
+      return `**API Response (${result.status}):**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\`\n`;
+    }
+
+    return this.formatGenericResult(result);
+  }
+
+  /**
+   * Format datetime tool results
+   */
+  private formatDateTimeResult(result: any): string {
+    if (typeof result === 'string') {
+      return `📅 **${result}**`;
+    } else if (result.content && Array.isArray(result.content)) {
+      // Handle MCP tool response format
+      const content = result.content[0];
+      if (content && content.text) {
+        return `📅 **${content.text}**`;
+      }
+    } else if (result.date || result.time || result.datetime) {
+      return `📅 **${result.date || result.time || result.datetime}**`;
+    }
+
+    return this.formatGenericResult(result);
+  }
+
+  /**
+   * Format weather tool results
+   */
+  private formatWeatherResult(result: any): string {
+    if (typeof result === 'string') {
+      return `🌤️ **Weather:** ${result}`;
+    } else if (result.weather) {
+      return `🌤️ **Weather:** ${result.weather}`;
+    } else if (result.temperature && result.condition) {
+      return `🌤️ **Weather:** ${result.temperature}, ${result.condition}`;
+    }
+
+    return this.formatGenericResult(result);
+  }
+
+  /**
+   * Format generic tool results
+   */
+  private formatGenericResult(result: any): string {
+    if (typeof result === 'string') {
+      return result;
+    } else if (typeof result === 'object' && result !== null) {
+      // Handle MCP tool response format first
+      if (result.content && Array.isArray(result.content)) {
+        const content = result.content[0];
+        if (content && content.text) {
+          return content.text;
+        }
+      }
+
+      // Try to extract meaningful content
+      if (result.content) {
+        return result.content;
+      } else if (result.message) {
+        return result.message;
+      } else if (result.data) {
+        return `\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
+      } else {
+        return `\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
+      }
+    }
+
+    return String(result);
+  }
+
+  /**
+   * Execute tools with error recovery and fallback mechanisms
+   */
+  private async executeToolsWithRecovery(toolCalls: Array<{
+    id?: string;
+    name: string;
+    arguments: any;
+  }>, availableTools: unknown[] = []): Promise<Array<{
+    id?: string;
+    name: string;
+    result: string;
+    success: boolean;
+    executionTime: number;
+    retryCount?: number;
+    fallbackUsed?: string;
+  }>> {
+    console.log(`🔄 Executing ${toolCalls.length} tools with recovery mechanisms`);
+
+    // First attempt: parallel execution
+    let results = await this.executeMultipleToolsParallel(toolCalls);
+
+    // Identify failed tools for retry/fallback
+    const failedTools = results.filter(r => !r.success);
+
+    if (failedTools.length > 0) {
+      console.log(`🔄 ${failedTools.length} tools failed, attempting recovery...`);
+
+      // Attempt recovery for each failed tool
+      for (const failedResult of failedTools) {
+        const originalToolCall = toolCalls.find(tc => tc.id === failedResult.id || tc.name === failedResult.name);
+        if (!originalToolCall) continue;
+
+        // Try to find alternative tools
+        const alternativeTools = this.findAlternativeTools(originalToolCall.name, availableTools);
+
+        for (const altTool of alternativeTools) {
+          console.log(`🔄 Retrying with alternative tool: ${altTool} for ${originalToolCall.name}`);
+
+          try {
+            const retryStartTime = Date.now();
+            const retryResult = await this.executeMCPTool(altTool, originalToolCall.arguments);
+            const retryTime = Date.now() - retryStartTime;
+
+            // Update the failed result with successful retry
+            const resultIndex = results.findIndex(r => r.id === failedResult.id || r.name === failedResult.name);
+            if (resultIndex !== -1) {
+              results[resultIndex] = {
+                ...failedResult,
+                result: retryResult,
+                success: true,
+                executionTime: retryTime,
+                retryCount: 1,
+                fallbackUsed: altTool
+              };
+              console.log(`✅ Recovery successful using ${altTool}`);
+              break; // Success, no need to try more alternatives
+            }
+          } catch (error) {
+            console.log(`❌ Alternative tool ${altTool} also failed:`, error);
+            continue; // Try next alternative
+          }
+        }
+      }
+    }
+
+    const finalSuccessCount = results.filter(r => r.success).length;
+    const finalFailureCount = results.length - finalSuccessCount;
+
+    console.log(`🏁 Tool execution with recovery completed: ${finalSuccessCount} successful, ${finalFailureCount} failed`);
+
+    return results;
+  }
+
+  /**
+   * Find alternative tools that can perform similar functions
+   */
+  private findAlternativeTools(failedToolName: string, availableTools: unknown[]): string[] {
+    const alternatives: string[] = [];
+    const failedToolLower = failedToolName.toLowerCase();
+
+    // Type guard for tool objects
+    const isToolObject = (t: unknown): t is { function?: { name?: string; description?: string } } => {
+      return typeof t === 'object' && t !== null;
+    };
+
+    // Search for similar tools based on name patterns
+    for (const tool of availableTools) {
+      if (!isToolObject(tool) || !tool.function?.name) continue;
+
+      const toolName = tool.function.name;
+      const toolNameLower = toolName.toLowerCase();
+
+      // Skip the same tool
+      if (toolName === failedToolName) continue;
+
+      // Find tools with similar functionality
+      if (failedToolLower.includes('search')) {
+        if (toolNameLower.includes('search') || toolNameLower.includes('brave') ||
+            toolNameLower.includes('tavily') || toolNameLower.includes('searx')) {
+          alternatives.push(toolName);
+        }
+      } else if (failedToolLower.includes('memory')) {
+        if (toolNameLower.includes('memory')) {
+          alternatives.push(toolName);
+        }
+      } else if (failedToolLower.includes('file') || failedToolLower.includes('read')) {
+        if (toolNameLower.includes('file') || toolNameLower.includes('read') ||
+            toolNameLower.includes('fetch')) {
+          alternatives.push(toolName);
+        }
+      } else if (failedToolLower.includes('api') || failedToolLower.includes('http')) {
+        if (toolNameLower.includes('api') || toolNameLower.includes('http') ||
+            toolNameLower.includes('fetch') || toolNameLower.includes('request')) {
+          alternatives.push(toolName);
+        }
+      }
+    }
+
+    // Limit to top 3 alternatives to avoid excessive retries
+    return alternatives.slice(0, 3);
+  }
+
+  /**
+   * Advanced agentic workflow engine for multi-step tool execution
+   */
+  private async executeAgenticWorkflow(
+    initialToolCalls: Array<{
+      id?: string;
+      name: string;
+      arguments: any;
+    }>,
+    availableTools: unknown[],
+    maxIterations: number = 3
+  ): Promise<{
+    results: Array<{
+      id?: string;
+      name: string;
+      result: string;
+      success: boolean;
+      executionTime: number;
+      iteration: number;
+      chainedFrom?: string;
+    }>;
+    workflow: Array<{
+      iteration: number;
+      toolsExecuted: string[];
+      chainedTools: string[];
+      totalTime: number;
+    }>;
+    summary: string;
+  }> {
+    console.log(`🤖 Starting agentic workflow with ${initialToolCalls.length} initial tools, max ${maxIterations} iterations`);
+
+    const allResults: Array<{
+      id?: string;
+      name: string;
+      result: string;
+      success: boolean;
+      executionTime: number;
+      iteration: number;
+      chainedFrom?: string;
+    }> = [];
+
+    const workflowSteps: Array<{
+      iteration: number;
+      toolsExecuted: string[];
+      chainedTools: string[];
+      totalTime: number;
+    }> = [];
+
+    let currentToolCalls = initialToolCalls;
+    let iteration = 0;
+
+    while (iteration < maxIterations && currentToolCalls.length > 0) {
+      iteration++;
+      const iterationStartTime = Date.now();
+
+      console.log(`🔄 Workflow iteration ${iteration}: executing ${currentToolCalls.length} tools`);
+
+      // Execute current batch of tools with recovery
+      const iterationResults = await this.executeToolsWithRecovery(currentToolCalls, availableTools);
+
+      // Add iteration info to results
+      const enhancedResults = iterationResults.map(result => ({
+        ...result,
+        iteration
+      }));
+
+      allResults.push(...enhancedResults);
+
+      // Analyze results for potential chaining opportunities
+      const chainedTools = this.analyzeForToolChaining(enhancedResults, availableTools);
+
+      const iterationTime = Date.now() - iterationStartTime;
+      workflowSteps.push({
+        iteration,
+        toolsExecuted: currentToolCalls.map(tc => tc.name),
+        chainedTools: chainedTools.map(ct => ct.name),
+        totalTime: iterationTime
+      });
+
+      // Prepare next iteration with chained tools
+      currentToolCalls = chainedTools.map(ct => ({
+        id: `chain_${iteration}_${ct.name}`,
+        name: ct.name,
+        arguments: ct.arguments
+      }));
+
+      // Add chaining information to results
+      currentToolCalls.forEach((tc, index) => {
+        const chainedTool = chainedTools[index];
+        if (chainedTool) {
+          const chainedResult = allResults.find(r => r.name === chainedTool.chainedFrom);
+          if (chainedResult) {
+            tc.arguments.chainedFrom = chainedTool.chainedFrom;
+          }
+        }
+      });
+
+      console.log(`✅ Iteration ${iteration} completed: ${enhancedResults.filter(r => r.success).length}/${enhancedResults.length} successful, ${chainedTools.length} tools chained for next iteration`);
+
+      // Break if no new tools to chain
+      if (chainedTools.length === 0) {
+        console.log(`🏁 Workflow completed: no more tools to chain after iteration ${iteration}`);
+        break;
+      }
+    }
+
+    const summary = this.generateWorkflowSummary(allResults, workflowSteps);
+
+    return {
+      results: allResults,
+      workflow: workflowSteps,
+      summary
+    };
+  }
+
+  /**
+   * Analyze tool results for potential chaining opportunities
+   */
+  private analyzeForToolChaining(
+    results: Array<{
+      id?: string;
+      name: string;
+      result: string;
+      success: boolean;
+      executionTime: number;
+    }>,
+    availableTools: unknown[]
+  ): Array<{
+    name: string;
+    arguments: any;
+    chainedFrom: string;
+  }> {
+    const chainedTools: Array<{
+      name: string;
+      arguments: any;
+      chainedFrom: string;
+    }> = [];
+
+    // Type guard for tool objects
+    const isToolObject = (t: unknown): t is { function?: { name?: string; description?: string } } => {
+      return typeof t === 'object' && t !== null;
+    };
+
+    for (const result of results) {
+      if (!result.success) continue;
+
+      try {
+        const parsedResult = JSON.parse(result.result);
+
+        // Analyze search results for follow-up actions
+        if (result.name.toLowerCase().includes('search')) {
+          const searchChains = this.analyzeSearchForChaining(parsedResult, availableTools);
+          chainedTools.push(...searchChains.map(chain => ({
+            ...chain,
+            chainedFrom: result.name
+          })));
+        }
+
+        // Analyze memory results for follow-up actions
+        if (result.name.toLowerCase().includes('memory')) {
+          const memoryChains = this.analyzeMemoryForChaining(parsedResult, availableTools);
+          chainedTools.push(...memoryChains.map(chain => ({
+            ...chain,
+            chainedFrom: result.name
+          })));
+        }
+
+        // Analyze file results for follow-up actions
+        if (result.name.toLowerCase().includes('file') || result.name.toLowerCase().includes('read')) {
+          const fileChains = this.analyzeFileForChaining(parsedResult, availableTools);
+          chainedTools.push(...fileChains.map(chain => ({
+            ...chain,
+            chainedFrom: result.name
+          })));
+        }
+
+        // Generic analysis for API results
+        if (result.name.toLowerCase().includes('api') || result.name.toLowerCase().includes('http')) {
+          const apiChains = this.analyzeApiForChaining(parsedResult, availableTools);
+          chainedTools.push(...apiChains.map(chain => ({
+            ...chain,
+            chainedFrom: result.name
+          })));
+        }
+
+      } catch (error) {
+        // If result is not JSON, skip chaining analysis
+        continue;
+      }
+    }
+
+    // Remove duplicates and limit chaining to prevent infinite loops
+    const uniqueChains = chainedTools.filter((chain, index, self) =>
+      index === self.findIndex(c => c.name === chain.name && JSON.stringify(c.arguments) === JSON.stringify(chain.arguments))
+    );
+
+    return uniqueChains.slice(0, 5); // Limit to 5 chained tools per iteration
+  }
+
+  /**
+   * Analyze search results for potential tool chaining
+   */
+  private analyzeSearchForChaining(searchResult: any, availableTools: unknown[]): Array<{
+    name: string;
+    arguments: any;
+  }> {
+    const chains: Array<{ name: string; arguments: any }> = [];
+
+    // If search found relevant information, consider storing it in memory
+    if (searchResult.results && Array.isArray(searchResult.results) && searchResult.results.length > 0) {
+      const hasMemoryTool = availableTools.some((tool: any) =>
+        tool.function?.name?.toLowerCase().includes('memory-store')
+      );
+
+      if (hasMemoryTool) {
+        const topResult = searchResult.results[0];
+        chains.push({
+          name: 'memory-store',
+          arguments: {
+            type: 'search_result',
+            title: `Search: ${topResult.title || 'Search Result'}`,
+            content: `${topResult.content || topResult.snippet || ''}\nSource: ${topResult.url || ''}`,
+            tags: ['search', 'web', 'research']
+          }
+        });
+      }
+    }
+
+    return chains;
+  }
+
+  /**
+   * Analyze memory results for potential tool chaining
+   */
+  private analyzeMemoryForChaining(memoryResult: any, availableTools: unknown[]): Array<{
+    name: string;
+    arguments: any;
+  }> {
+    const chains: Array<{ name: string; arguments: any }> = [];
+
+    // If memory search found relevant context, consider searching for more current information
+    if (memoryResult.memories && Array.isArray(memoryResult.memories) && memoryResult.memories.length > 0) {
+      const hasSearchTool = availableTools.some((tool: any) =>
+        tool.function?.name?.toLowerCase().includes('search')
+      );
+
+      if (hasSearchTool) {
+        const memory = memoryResult.memories[0];
+        if (memory.content) {
+          // Extract key terms for follow-up search
+          const keyTerms = this.extractKeyTermsFromText(memory.content);
+          if (keyTerms.length > 0) {
+            chains.push({
+              name: 'tavily-search', // Default to tavily, could be made configurable
+              arguments: {
+                query: keyTerms.slice(0, 3).join(' '), // Use top 3 key terms
+                search_depth: 'basic',
+                topic: 'general'
+              }
+            });
+          }
+        }
+      }
+    }
+
+    return chains;
+  }
+
+  /**
+   * Analyze file results for potential tool chaining
+   */
+  private analyzeFileForChaining(fileResult: any, availableTools: unknown[]): Array<{
+    name: string;
+    arguments: any;
+  }> {
+    const chains: Array<{ name: string; arguments: any }> = [];
+
+    // If file content was read, consider storing important parts in memory
+    if (fileResult.content && typeof fileResult.content === 'string') {
+      const hasMemoryTool = availableTools.some((tool: any) =>
+        tool.function?.name?.toLowerCase().includes('memory-store')
+      );
+
+      if (hasMemoryTool && fileResult.content.length > 100) {
+        chains.push({
+          name: 'memory-store',
+          arguments: {
+            type: 'file_content',
+            title: `File: ${fileResult.filename || 'Document'}`,
+            content: fileResult.content.substring(0, 1000), // Store first 1000 chars
+            tags: ['file', 'document', 'content']
+          }
+        });
+      }
+    }
+
+    return chains;
+  }
+
+  /**
+   * Analyze API results for potential tool chaining
+   */
+  private analyzeApiForChaining(apiResult: any, availableTools: unknown[]): Array<{
+    name: string;
+    arguments: any;
+  }> {
+    const chains: Array<{ name: string; arguments: any }> = [];
+
+    // If API returned structured data, consider storing it in memory
+    if (apiResult.data && typeof apiResult.data === 'object') {
+      const hasMemoryTool = availableTools.some((tool: any) =>
+        tool.function?.name?.toLowerCase().includes('memory-store')
+      );
+
+      if (hasMemoryTool) {
+        chains.push({
+          name: 'memory-store',
+          arguments: {
+            type: 'api_data',
+            title: `API Response: ${apiResult.endpoint || 'External API'}`,
+            content: JSON.stringify(apiResult.data, null, 2),
+            tags: ['api', 'data', 'external']
+          }
+        });
+      }
+    }
+
+    return chains;
+  }
+
+  /**
+   * Extract key terms from text for follow-up searches
+   */
+  private extractKeyTermsFromText(text: string): string[] {
+    // Simple keyword extraction - could be enhanced with NLP
+    const words = text.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(word => word.length > 3)
+      .filter(word => !['this', 'that', 'with', 'from', 'they', 'have', 'been', 'were', 'said', 'each', 'which', 'their', 'time', 'will', 'about', 'would', 'there', 'could', 'other', 'more', 'very', 'what', 'know', 'just', 'first', 'into', 'over', 'think', 'also', 'your', 'work', 'life', 'only', 'can', 'still', 'should', 'after', 'being', 'now', 'made', 'before', 'here', 'through', 'when', 'where', 'much', 'some', 'these', 'many', 'then', 'them', 'well', 'were'].includes(word));
+
+    // Count word frequency
+    const wordCount: { [key: string]: number } = {};
+    words.forEach(word => {
+      wordCount[word] = (wordCount[word] || 0) + 1;
+    });
+
+    // Return top words by frequency
+    return Object.entries(wordCount)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5)
+      .map(([word]) => word);
+  }
+
+  /**
+   * Generate workflow summary
+   */
+  private generateWorkflowSummary(
+    results: Array<{
+      id?: string;
+      name: string;
+      result: string;
+      success: boolean;
+      executionTime: number;
+      iteration: number;
+      chainedFrom?: string;
+    }>,
+    workflowSteps: Array<{
+      iteration: number;
+      toolsExecuted: string[];
+      chainedTools: string[];
+      totalTime: number;
+    }>
+  ): string {
+    const totalTools = results.length;
+    const successfulTools = results.filter(r => r.success).length;
+    const totalTime = workflowSteps.reduce((sum, step) => sum + step.totalTime, 0);
+    const iterations = workflowSteps.length;
+
+    let summary = `## 🤖 Agentic Workflow Summary\n\n`;
+    summary += `**Execution Overview:**\n`;
+    summary += `- **Total Iterations:** ${iterations}\n`;
+    summary += `- **Tools Executed:** ${totalTools}\n`;
+    summary += `- **Success Rate:** ${Math.round((successfulTools / totalTools) * 100)}%\n`;
+    summary += `- **Total Time:** ${totalTime}ms\n\n`;
+
+    summary += `**Workflow Steps:**\n`;
+    workflowSteps.forEach(step => {
+      summary += `**Iteration ${step.iteration}** (${step.totalTime}ms):\n`;
+      summary += `  - Executed: ${step.toolsExecuted.join(', ')}\n`;
+      if (step.chainedTools.length > 0) {
+        summary += `  - Chained: ${step.chainedTools.join(', ')}\n`;
+      }
+      summary += `\n`;
+    });
+
+    const chainedResults = results.filter(r => r.chainedFrom);
+    if (chainedResults.length > 0) {
+      summary += `**Tool Chaining:**\n`;
+      chainedResults.forEach(result => {
+        summary += `- ${result.name} ← chained from ${result.chainedFrom}\n`;
+      });
+      summary += `\n`;
+    }
+
+    return summary;
   }
 
   getProviders(): LLMProvider[] {
@@ -1727,25 +3025,40 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       const choice = data.choices[0];
       const message = choice.message;
 
-      // Handle tool calls
+      // Handle tool calls with enhanced parallel execution
       if (message.tool_calls && message.tool_calls.length > 0) {
         console.log(`🔧 OpenAI response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
         let content = message.content || '';
 
-        // Execute each tool call
-        for (const toolCall of message.tool_calls) {
+        // Prepare tool calls for parallel execution
+        const toolCallsForExecution = message.tool_calls.map((toolCall: any) => {
+          let parsedArguments;
           try {
-            console.log(`🔧 Executing tool call:`, toolCall);
-            const toolResult = await this.executeMCPTool(
-              toolCall.function.name,
-              JSON.parse(toolCall.function.arguments)
-            );
-            content += `\n\n**Tool: ${toolCall.function.name}**\n${toolResult}`;
+            parsedArguments = typeof toolCall.function.arguments === 'string'
+              ? JSON.parse(toolCall.function.arguments)
+              : toolCall.function.arguments;
           } catch (error) {
-            console.error(`❌ Tool call failed:`, error);
-            content += `\n\n**Tool Error: ${toolCall.function.name}**\n${error instanceof Error ? error.message : String(error)}`;
+            console.warn(`⚠️ Failed to parse OpenAI tool arguments:`, toolCall.function.arguments, error);
+            parsedArguments = {};
           }
-        }
+
+          return {
+            id: toolCall.id,
+            name: toolCall.function.name,
+            arguments: parsedArguments
+          };
+        });
+
+        // Always use parallel execution for consistency and performance
+        console.log(`🚀 Executing ${toolCallsForExecution.length} OpenAI tools in parallel`);
+        const parallelResults = await this.executeMultipleToolsParallel(toolCallsForExecution, 'openai');
+
+        // Use clean summary for user-facing content
+        content += '\n\n' + this.summarizeToolResultsForModel(parallelResults);
+
+        // Log execution summary
+        const successCount = parallelResults.filter(r => r.success).length;
+        console.log(`✅ OpenAI tool execution completed: ${successCount}/${parallelResults.length} successful`);
 
         // Create memory from conversation if appropriate
         await this.createMemoryFromConversation(
@@ -1882,13 +3195,64 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     // Get MCP tools for Anthropic
+    console.log('🔍 [DEBUG] Getting MCP tools for Anthropic...');
     const mcpTools = await this.getMCPToolsForProvider('anthropic', settings);
+    console.log('🔍 [DEBUG] MCP tools result:', { count: mcpTools.length, tools: mcpTools });
 
     // Build enhanced system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || '';
     if (mcpTools.length > 0) {
       const toolInstructions = this.generateToolInstructions(mcpTools, 'anthropic');
       systemPrompt += toolInstructions;
+
+      // Add comprehensive tool execution strategy for Anthropic
+      systemPrompt += `\n\n🎯 **CRITICAL: COMPLETE REQUEST FULFILLMENT STRATEGY**
+
+When a user asks for multiple pieces of information, you MUST:
+
+1. **ANALYZE THE FULL REQUEST** - Identify ALL information needed
+2. **PLAN YOUR TOOLS** - Determine which tools are required
+3. **EXECUTE ALL TOOLS** - Call ALL necessary tools before responding
+4. **COMPILE COMPLETE ANSWER** - Only respond when you have ALL information
+
+**EXAMPLE REQUEST:** "search for weather in Athens Greece, tell me the date, and find latest news"
+
+**STEP 1: ANALYZE** - User wants: weather + date + news (3 pieces of information)
+
+**STEP 2: PLAN** - Need: web_search (weather) + get_datetime + web_search (news)
+
+**STEP 3: EXECUTE ALL TOOLS** - Use multiple tool_use blocks:
+\`\`\`
+<tool_use>
+<tool_name>web_search</tool_name>
+<parameters>{"query": "weather forecast Athens Greece today"}</parameters>
+</tool_use>
+<tool_use>
+<tool_name>get_datetime</tool_name>
+<parameters>{"format": "date"}</parameters>
+</tool_use>
+<tool_use>
+<tool_name>web_search</tool_name>
+<parameters>{"query": "latest news today"}</parameters>
+</tool_use>
+\`\`\`
+
+**STEP 4: COMPILE** - Only after ALL tools complete, provide comprehensive answer covering weather, date, AND news.
+
+**CRITICAL RULES:**
+- NEVER respond with partial information
+- NEVER call just one tool when multiple are needed
+- ALWAYS complete the ENTIRE request before responding
+- If you call only some tools, you MUST continue calling the remaining tools
+- When user asks for "A, B, and C" you MUST provide ALL THREE items
+- Do NOT ask "would you like me to search for B and C?" - just DO IT
+
+**EXAMPLE OF WRONG BEHAVIOR:**
+User: "weather, date, and news"
+❌ WRONG: Call weather tool → respond with weather → ask if user wants date/news
+✅ CORRECT: Call weather + date + news tools → respond with ALL information
+
+This ensures complete, efficient responses that fully satisfy user requests.`;
     }
 
     // Memory enhancement is now handled at the sendMessageWithAutoMemory level
@@ -1950,46 +3314,57 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       const data = await response.json();
       console.log('🔍 Anthropic raw response:', JSON.stringify(data, null, 2));
 
-      // Handle tool calls in Anthropic format
+      // Handle tool calls in Anthropic format with parallel execution
       let content = '';
-      const toolCalls = [];
-      const toolResults = [];
+      const toolUseBlocks = [];
 
+      // First pass: collect text content and tool use blocks
       for (const contentBlock of data.content) {
         if (contentBlock.type === 'text') {
           content += contentBlock.text;
         } else if (contentBlock.type === 'tool_use') {
-          console.log(`🔧 Anthropic response contains tool use:`, contentBlock);
-          try {
-            const toolResult = await this.executeMCPTool(
-              contentBlock.name,
-              contentBlock.input
-            );
-
-            // Store tool result for follow-up call
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: contentBlock.id,
-              content: toolResult
-            });
-
-            toolCalls.push({
-              id: contentBlock.id,
-              name: contentBlock.name,
-              arguments: contentBlock.input
-            });
-          } catch (error) {
-            console.error(`❌ Anthropic tool call failed:`, error);
-            // Store error result for follow-up call
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: contentBlock.id,
-              content: `Error: ${error instanceof Error ? error.message : String(error)}`,
-              is_error: true
-            });
-          }
+          toolUseBlocks.push(contentBlock);
         }
       }
+
+      // Execute tools in parallel if any are present
+      let toolResults: any[] = [];
+      if (toolUseBlocks.length > 0) {
+        console.log(`🔧 Anthropic response contains ${toolUseBlocks.length} tool use blocks:`, toolUseBlocks);
+
+        // Prepare tool calls for parallel execution
+        const toolCallsForExecution = toolUseBlocks.map(block => ({
+          id: block.id,
+          name: block.name,
+          arguments: block.input || {}
+        }));
+
+        // Execute tools in parallel
+        console.log(`🚀 Executing ${toolCallsForExecution.length} Anthropic tools in parallel`);
+        const parallelResults = await this.executeMultipleToolsParallel(toolCallsForExecution, 'anthropic');
+
+        // Use clean summary for user-facing content
+        content += '\n\n' + this.summarizeToolResultsForModel(parallelResults);
+
+        // Log execution summary
+        const successCount = parallelResults.filter(r => r.success).length;
+        console.log(`✅ Anthropic tool execution completed: ${successCount}/${parallelResults.length} successful`);
+
+        // Prepare tool results for potential follow-up call (Anthropic's two-call pattern)
+        toolResults = parallelResults.map(result => ({
+          type: 'tool_result',
+          tool_use_id: result.id,
+          content: result.result,
+          is_error: !result.success
+        }));
+      }
+
+      // Create toolCalls array for compatibility
+      const toolCalls = toolUseBlocks.map(block => ({
+        id: block.id,
+        name: block.name,
+        arguments: block.input || {}
+      }));
 
       // If we have tool results, make a follow-up call to get the final response
       if (toolResults.length > 0) {
@@ -2378,25 +3753,31 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
           })) }
         ];
 
-        // Execute tool calls and add results to conversation
-        for (const toolCall of streamResult.toolCalls) {
-          try {
-            console.log(`🔧 Executing tool for Mistral follow-up:`, toolCall);
-            const toolResult = await this.executeMCPTool(toolCall.name, toolCall.arguments);
-            toolConversationHistory.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: JSON.stringify(toolResult)
-            } as { role: string; tool_call_id: string; content: string });
-          } catch (error) {
-            console.error(`❌ Tool execution failed in Mistral follow-up:`, error);
-            toolConversationHistory.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as { role: string; tool_call_id: string; content: string });
-          }
+        // Execute tool calls in parallel and add results to conversation
+        console.log(`🚀 Executing ${streamResult.toolCalls.length} Mistral tools in parallel for follow-up`);
+
+        // Prepare tool calls for parallel execution
+        const toolCallsForExecution = streamResult.toolCalls.map(tc => ({
+          id: tc.id,
+          name: tc.name,
+          arguments: tc.arguments
+        }));
+
+        // Execute tools in parallel
+        const parallelResults = await this.executeMultipleToolsParallel(toolCallsForExecution, 'mistral');
+
+        // Add tool results to conversation history
+        for (const result of parallelResults) {
+          toolConversationHistory.push({
+            role: 'tool',
+            tool_call_id: result.id || '',
+            content: result.result
+          } as { role: string; tool_call_id: string; content: string });
         }
+
+        // Log execution summary
+        const successCount = parallelResults.filter(r => r.success).length;
+        console.log(`✅ Mistral tool execution completed: ${successCount}/${parallelResults.length} successful`);
 
         // Make follow-up call to get LLM's processed response
         console.log(`🔄 Making follow-up Mistral call after streaming to process tool results...`);
@@ -2454,32 +3835,20 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       if (message.tool_calls && message.tool_calls.length > 0) {
         console.log(`🔧 Mistral response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
-        // Execute each tool call and collect results
-        const toolResults = [];
-        for (const toolCall of message.tool_calls) {
-          try {
-            console.log(`🔧 Executing Mistral tool call:`, toolCall);
-            const toolResult = await this.executeMCPTool(
-              toolCall.function.name,
-              JSON.parse(toolCall.function.arguments)
-            );
-            console.log(`✅ Mistral tool result:`, toolResult);
-            toolResults.push({
-              role: 'tool',
-              name: toolCall.function.name,
-              content: JSON.stringify(toolResult),
-              tool_call_id: toolCall.id
-            } as { role: string; content: string; tool_call_id: string });
-          } catch (error) {
-            console.error(`❌ Mistral tool call failed:`, error);
-            toolResults.push({
-              role: 'tool',
-              name: toolCall.function.name,
-              content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-              tool_call_id: toolCall.id
-            } as { role: string; content: string; tool_call_id: string });
-          }
-        }
+        // Execute tools in parallel and collect results
+        const toolCallsForExecution = message.tool_calls.map((toolCall: any) => ({
+          id: toolCall.id,
+          name: toolCall.function.name,
+          arguments: JSON.parse(toolCall.function.arguments)
+        }));
+
+        const parallelResults = await this.executeMultipleToolsParallel(toolCallsForExecution);
+        const toolResults = parallelResults.map(result => ({
+          role: 'tool',
+          name: result.name,
+          content: result.result,
+          tool_call_id: result.id || ''
+        } as { role: string; content: string; tool_call_id: string }));
 
         // Build conversation history with tool calls and results
         // Get the original user message from the messages array
@@ -3140,39 +4509,48 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
         console.log(`🔄 Ollama streaming: Processing ${streamResult.toolCalls.length} tool calls for follow-up`);
 
-        // Build conversation history with tool calls and results
-        // Ollama: Use only tool_calls without content to avoid conflicts
+        // Build conversation history following Ollama's correct agentic workflow
+        // Step 1: Add the assistant message with tool calls (following Ollama best practices)
         const toolConversationHistory = [
           ...messages,
-          { role: 'assistant', tool_calls: streamResult.toolCalls.map(tc => ({
-            id: tc.id,
-            type: 'function',
-            function: {
-              name: tc.name,
-              arguments: useNativeAPI ? tc.arguments : JSON.stringify(tc.arguments) // Native API expects object, OpenAI expects string
-            }
-          })) }
+          {
+            role: 'assistant',
+            tool_calls: streamResult.toolCalls.map(tc => ({
+              id: tc.id,
+              type: 'function',
+              function: {
+                name: tc.name,
+                arguments: useNativeAPI ? tc.arguments : JSON.stringify(tc.arguments)
+              }
+            }))
+          }
         ];
 
-        // Execute tool calls and add results to conversation
-        for (const toolCall of streamResult.toolCalls) {
-          try {
-            console.log(`🔧 Executing tool for follow-up:`, toolCall);
-            const toolResult = await this.executeMCPTool(toolCall.name, toolCall.arguments);
-            toolConversationHistory.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: JSON.stringify(toolResult)
-            } as { role: string; tool_call_id: string; content: string });
-          } catch (error) {
-            console.error(`❌ Tool execution failed in follow-up:`, error);
-            toolConversationHistory.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as { role: string; tool_call_id: string; content: string });
-          }
+        // Execute tool calls in parallel and add results to conversation
+        console.log(`🚀 Executing ${streamResult.toolCalls.length} Ollama tools in parallel for follow-up`);
+
+        // Prepare tool calls for parallel execution
+        const toolCallsForExecution = streamResult.toolCalls.map(tc => ({
+          id: tc.id,
+          name: tc.name,
+          arguments: tc.arguments
+        }));
+
+        // Execute tools in parallel
+        const parallelResults = await this.executeMultipleToolsParallel(toolCallsForExecution, 'ollama');
+
+        // Step 2: Add each tool result as a separate 'tool' role message (Ollama standard)
+        for (const result of parallelResults) {
+          toolConversationHistory.push({
+            role: 'tool',
+            content: result.result,
+            tool_call_id: result.id || ''
+          } as any); // Cast to any to handle tool message type
         }
+
+        // Log execution summary
+        const successCount = parallelResults.filter(r => r.success).length;
+        console.log(`✅ Ollama tool execution completed: ${successCount}/${parallelResults.length} successful`);
 
         // Make follow-up call to get LLM's processed response
         console.log(`🔄 Making follow-up Ollama call after streaming to process tool results...`);
@@ -3255,31 +4633,30 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
 
 
-      // Handle tool calls using two-call pattern
+      // Handle tool calls using two-call pattern with parallel execution
       if (parsedToolCalls.length > 0) {
         console.log(`🔧 Ollama response contains ${parsedToolCalls.length} tool calls:`, parsedToolCalls);
 
-        // Execute each tool call and collect results
-        const toolResults = [];
-        for (const toolCall of parsedToolCalls) {
-          try {
-            console.log(`🔧 Executing Ollama tool call:`, toolCall);
-            const toolResult = await this.executeMCPTool(
-              toolCall.function.name,
-              toolCall.function.arguments
-            );
-            toolResults.push({
-              role: 'tool',
-              content: JSON.stringify(toolResult)
-            });
-          } catch (error) {
-            console.error(`❌ Ollama tool call failed:`, error);
-            toolResults.push({
-              role: 'tool',
-              content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            });
-          }
-        }
+        // Prepare tool calls for parallel execution
+        const toolCallsForExecution = parsedToolCalls.map((toolCall: any) => ({
+          id: toolCall.id || `ollama-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          name: toolCall.function.name,
+          arguments: toolCall.function.arguments
+        }));
+
+        // Execute tools in parallel
+        console.log(`🚀 Executing ${toolCallsForExecution.length} Ollama tools in parallel`);
+        const parallelResults = await this.executeMultipleToolsParallel(toolCallsForExecution, 'ollama');
+
+        // Convert parallel results to tool results format
+        const toolResults = parallelResults.map(result => ({
+          role: 'tool',
+          content: result.result
+        }));
+
+        // Log execution summary
+        const successCount = parallelResults.filter(r => r.success).length;
+        console.log(`✅ Ollama tool execution completed: ${successCount}/${parallelResults.length} successful`);
 
         // Build conversation history with tool calls and results
         const toolConversationHistory = [
@@ -3677,14 +5054,44 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     // Requesty uses OpenAI-compatible API
     const messages = [];
 
-    // Get MCP tools for Requesty first
-    const mcpTools = await this.getMCPToolsForProvider('requesty', settings);
+    // Detect the underlying provider from the model name and get appropriate tools
+    let targetProvider = 'requesty'; // default to OpenAI format
+    if (settings.model?.startsWith('google/')) {
+      targetProvider = 'gemini';
+    } else if (settings.model?.startsWith('anthropic/')) {
+      targetProvider = 'anthropic';
+    }
+
+    console.log(`🔍 Requesty routing detected: model=${settings.model} → targetProvider=${targetProvider}`);
+    const mcpTools = await this.getMCPToolsForProvider(targetProvider, settings);
 
     // Build enhanced system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || '';
     if (mcpTools.length > 0) {
-      const toolInstructions = this.generateToolInstructions(mcpTools, 'requesty');
+      const toolInstructions = this.generateToolInstructions(mcpTools, targetProvider);
       systemPrompt += toolInstructions;
+
+      // Add specific multi-tool execution instructions for OpenAI models
+      if (settings.model?.startsWith('openai/')) {
+        systemPrompt += `\n\n🎯 **CRITICAL: MULTI-TOOL EXECUTION STRATEGY FOR COMPLEX REQUESTS**
+
+When a user asks for multiple pieces of information (like weather + date + news), you MUST:
+
+1. **IDENTIFY ALL REQUIRED TOOLS**: Break down the request into individual tasks
+2. **CALL ALL NECESSARY TOOLS**: Use multiple tool calls in your response
+3. **DON'T STOP AFTER ONE TOOL**: Continue calling tools until all parts of the request are fulfilled
+
+**Example Request**: "Get weather, date, and news"
+**Correct Response**: Call get_datetime(), web_search("weather"), web_search("news") - ALL in one response
+
+**IMPORTANT**: You have access to web_search and other tools. Do NOT say you cannot search the web or access real-time information. Use the tools provided.
+
+**Available Search Tools**: web_search, fetch
+**Available Utility Tools**: get_datetime, sequentialthinking
+**Available Memory Tools**: memory-store, memory-search, memory-retrieve
+
+USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
+      }
     }
 
     if (systemPrompt) {
@@ -4351,15 +5758,18 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
             // Handle tool calls in native API format
             if (parsed.message && parsed.message.tool_calls) {
               console.log('🔧 Native Ollama tool calls detected:', parsed.message.tool_calls);
-              // Convert native Ollama format to internal format
-              toolCalls = parsed.message.tool_calls.map((tc: any) => ({
+              // Convert native Ollama format to internal format and APPEND to existing tool calls
+              const newToolCalls = parsed.message.tool_calls.map((tc: any) => ({
                 id: tc.id || `call_${Math.random().toString(36).substr(2, 9)}`,
                 function: {
                   name: tc.function?.name,
                   arguments: JSON.stringify(tc.function?.arguments || {})
                 }
               }));
-              console.log('🔧 Converted tool calls:', toolCalls);
+
+              // Append new tool calls instead of overwriting
+              toolCalls.push(...newToolCalls);
+              console.log('🔧 Accumulated tool calls:', toolCalls.length, 'total');
             } else if (!parsed.message?.content) {
               console.log('🔍 Native Ollama chunk with no content:', Object.keys(parsed));
             }
@@ -4629,6 +6039,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
     const decoder = new TextDecoder();
     const toolCalls: Array<{ id?: string; function?: { name?: string; arguments?: string } }> = [];
+    const toolCallsBuffer: { [index: number]: { id?: string; function?: { name?: string; arguments?: string } } } = {};
 
     console.log('🔍 Requesty streaming response started');
 
@@ -4664,15 +6075,29 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
                 onStream(delta.content);
               }
 
-              // Handle tool calls
+              // Handle tool calls (accumulate by index)
               if (delta?.tool_calls) {
-                for (const toolCall of delta.tool_calls) {
-                  if (toolCall.function) {
-                    toolCalls.push(toolCall);
-                    // Show tool usage in stream
-                    const toolMessage = `\n\n🔧 Executing tools: ${toolCall.function.name}\n`;
+                for (const toolCallDelta of delta.tool_calls) {
+                  const index = toolCallDelta.index || 0;
+
+                  // Initialize tool call buffer for this index if not exists
+                  if (!toolCallsBuffer[index]) {
+                    toolCallsBuffer[index] = { id: '', function: { name: '', arguments: '' } };
+                  }
+
+                  // Accumulate tool call data
+                  if (toolCallDelta.id) {
+                    toolCallsBuffer[index].id = toolCallDelta.id;
+                  }
+                  if (toolCallDelta.function?.name) {
+                    toolCallsBuffer[index].function!.name = toolCallDelta.function.name;
+                    // Show tool usage in stream when we first get the name
+                    const toolMessage = `\n\n🔧 Executing tools: ${toolCallDelta.function.name}\n`;
                     fullContent += toolMessage;
                     onStream(toolMessage);
+                  }
+                  if (toolCallDelta.function?.arguments) {
+                    toolCallsBuffer[index].function!.arguments += toolCallDelta.function.arguments;
                   }
                 }
               }
@@ -4696,11 +6121,20 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       reader.releaseLock();
     }
 
+    // Convert buffered tool calls to final array
+    for (const index in toolCallsBuffer) {
+      const bufferedCall = toolCallsBuffer[index];
+      if (bufferedCall.id && bufferedCall.function?.name) {
+        toolCalls.push(bufferedCall);
+      }
+    }
+
     console.log('🔍 Requesty streaming completed:', {
       contentLength: fullContent.length,
       hasUsage: !!usage,
       usage: usage,
-      toolCallsCount: toolCalls.length
+      toolCallsCount: toolCalls.length,
+      bufferedToolCalls: Object.keys(toolCallsBuffer).length
     });
 
     // Add token estimation fallback if no usage data
@@ -5161,46 +6595,39 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
                 try {
                   const toolInput = JSON.parse(inputJson);
-                  console.log(`🔧 Executing streaming tool:`, toolBlock.name, toolInput);
-
-                  // Show tool execution in chat
-                  const executingMessage = `⚙️ Executing ${toolBlock.name}...\n`;
-                  fullContent += executingMessage;
-                  onStream(executingMessage);
-
-                  // Execute the tool
-                  const toolResult = await this.executeMCPTool(toolBlock.name as string, toolInput as Record<string, unknown>);
-
-                  // Show tool completion in chat
-                  const completedMessage = `✅ Tool ${toolBlock.name} completed\n`;
-                  fullContent += completedMessage;
-                  onStream(completedMessage);
+                  console.log(`🔧 Collected streaming tool for parallel execution:`, toolBlock.name, toolInput);
 
                   // Update assistant content with final input
                   if (assistantContent[index] && assistantContent[index].type === 'tool_use') {
                     assistantContent[index].input = toolInput;
                   }
 
+                  // Collect tool for parallel execution (don't execute yet)
                   toolCalls.push({
                     id: toolBlock.id as string,
                     name: toolBlock.name as string,
-                    arguments: toolInput,
-                    result: toolResult
+                    arguments: toolInput
                   });
-                } catch (error) {
-                  console.error(`❌ Anthropic streaming tool call failed:`, error);
 
-                  // Show tool error in chat
-                  const errorMessage = `❌ Tool ${toolBlock.name} failed: ${error instanceof Error ? error.message : String(error)}\n`;
+                  // Show that we're preparing the tool (don't execute yet)
+                  const preparingMessage = `⚙️ Preparing ${toolBlock.name}...\n`;
+                  fullContent += preparingMessage;
+                  onStream(preparingMessage);
+
+                } catch (error) {
+                  console.error(`❌ Anthropic streaming tool input parsing failed:`, error);
+
+                  // Show parsing error in chat
+                  const errorMessage = `❌ Tool ${toolBlock.name} input parsing failed: ${error instanceof Error ? error.message : String(error)}\n`;
                   fullContent += errorMessage;
                   onStream(errorMessage);
 
+                  // Still collect the tool call for potential execution
                   toolCalls.push({
                     id: toolBlock.id as string,
                     name: toolBlock.name as string,
-                    arguments: JSON.parse(inputJson),
-                    result: `Error: ${error instanceof Error ? error.message : String(error)}`,
-                    isError: true
+                    arguments: {},
+                    parseError: error instanceof Error ? error.message : String(error)
                   });
                 }
 
@@ -5228,9 +6655,60 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       reader.releaseLock();
     }
 
-    // If we have tool calls, make a follow-up streaming call to get the final response
+    // If we have tool calls, execute them in parallel and make a follow-up streaming call
     if (toolCalls.length > 0 && settings && provider) {
-      console.log(`🔄 Making follow-up Anthropic streaming call with ${toolCalls.length} tool results`);
+      console.log(`🚀 Executing ${toolCalls.length} Anthropic tools in parallel before follow-up`);
+
+      // Show parallel execution message
+      const parallelMessage = `\n🚀 Executing ${toolCalls.length} tools in parallel...\n`;
+      fullContent += parallelMessage;
+      onStream(parallelMessage);
+
+      // Filter and prepare tool calls for parallel execution
+      const validToolCalls = toolCalls
+        .filter(tc => tc.id && tc.name && tc.arguments !== undefined)
+        .map(tc => ({
+          id: tc.id!,
+          name: tc.name!,
+          arguments: tc.arguments
+        }));
+
+      // Execute all tools in parallel
+      const parallelResults = await this.executeMultipleToolsParallel(validToolCalls, 'anthropic');
+
+      // Show completion message
+      const successCount = parallelResults.filter(r => r.success).length;
+      const completionMessage = `✅ Parallel execution completed: ${successCount}/${parallelResults.length} successful\n\n`;
+      fullContent += completionMessage;
+      onStream(completionMessage);
+
+      // Add user-friendly summary for the model to work with (not the detailed debug output)
+      const toolSummary = this.summarizeToolResultsForModel(parallelResults);
+
+      // Log detailed results for debugging (not shown to user)
+      console.log('🔧 Detailed tool execution results:', this.aggregateToolResults(parallelResults));
+
+      // Only add the clean summary to the content stream
+      fullContent += toolSummary;
+      onStream(toolSummary);
+
+      // Check if this might be an incomplete request that needs more tools
+      const originalUserMessage = conversationHistory?.[conversationHistory.length - 1]?.content;
+      console.log(`🔍 Checking for incomplete request. Original message:`, originalUserMessage);
+      console.log(`🔍 Executed tools:`, parallelResults.map(r => r.name));
+
+      const needsMoreTools = this.detectIncompleteRequest(originalUserMessage, parallelResults);
+      console.log(`🔍 Incomplete request detection result:`, needsMoreTools);
+
+      if (needsMoreTools.incomplete) {
+        console.log(`🔄 Detected incomplete request. Missing: ${needsMoreTools.missing.join(', ')}`);
+        // Add a strong prompt to continue with remaining tools
+        const continuationPrompt = `\n\n**🚨 CRITICAL: INCOMPLETE REQUEST DETECTED**\n\nYou have only provided ${parallelResults.length} piece(s) of information, but the user requested multiple items. You MUST continue and provide: ${needsMoreTools.missing.join(', ')}.\n\nCall the necessary tools NOW to complete the full request. Do not respond until you have ALL the requested information.`;
+        fullContent += continuationPrompt;
+        onStream(continuationPrompt);
+      }
+
+      console.log(`🔄 Making follow-up Anthropic streaming call with ${parallelResults.length} tool results`);
 
       // Reconstruct the conversation with tool results
       const messages = conversationHistory ? [...conversationHistory] : [];
@@ -5241,12 +6719,12 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         content: JSON.stringify(assistantContent)
       });
 
-      // Add tool results as user message
-      const toolResults = toolCalls.map(tc => ({
+      // Add tool results as user message using parallel execution results
+      const toolResults = parallelResults.map(result => ({
         type: 'tool_result',
-        tool_use_id: tc.id,
-        content: tc.result,
-        is_error: tc.isError || false
+        tool_use_id: result.id || '',
+        content: result.result,
+        is_error: !result.success
       }));
 
       messages.push({
