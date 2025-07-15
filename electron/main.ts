@@ -151,6 +151,11 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
 
     mcpConnections.set(serverId, connection);
 
+    // Notify main window of MCP server connection change
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('mcp-server-connected', serverId);
+    }
+
     return true;
   } catch (error) {
     console.error(`❌ Failed to connect to MCP server ${serverId}:`, error);
@@ -173,6 +178,11 @@ async function disconnectMCPServer(serverId: string): Promise<void> {
 
     // Remove from connections map
     mcpConnections.delete(serverId);
+
+    // Notify main window of MCP server disconnection
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('mcp-server-disconnected', serverId);
+    }
 
     console.log(`✅ Disconnected MCP server: ${serverId}`);
   } catch (error) {
@@ -621,13 +631,15 @@ async function openActionMenu() {
     x: x,
     y: y,
     show: false,
-    frame: true, // Enable frame for dragging
+    frame: false, // Remove native frame completely
     resizable: true, // Allow resizing
     alwaysOnTop: true,
     skipTaskbar: true,
     transparent: false,
-    titleBarStyle: 'default', // Show title bar for dragging
-    title: 'Prompts',
+    titleBarStyle: 'hidden', // Hide title bar completely
+    title: 'LittleLLM - Quick Actions',
+    autoHideMenuBar: true, // Hide menu bar
+    backgroundColor: '#1a1a1a',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -1123,14 +1135,12 @@ app.whenReady().then(async () => {
   // Set up IPC handlers
   setupIPC();
 
-  // Auto-connect enabled MCP servers
-  setTimeout(async () => {
-    try {
-      await connectEnabledMCPServers();
-    } catch (error) {
-      console.error('Failed to auto-connect MCP servers on startup:', error);
-    }
-  }, 2000); // Wait 2 seconds for app to fully initialize
+  // Auto-connect enabled MCP servers immediately
+  try {
+    await connectEnabledMCPServers();
+  } catch (error) {
+    console.error('Failed to auto-connect MCP servers on startup:', error);
+  }
 });
 
 function setupIPC() {
@@ -1357,8 +1367,14 @@ function setupIPC() {
       if (success) {
         console.log('MCP server updated successfully:', id);
 
-        // If the server was connected and environment variables changed, restart it
-        if (wasConnected && updates.env) {
+        // Handle immediate connection changes based on updates
+        if (wasConnected && updates.enabled === false) {
+          console.log('🔌 Disconnecting MCP server after disable:', id);
+          await disconnectMCPServer(id);
+        } else if (!wasConnected && updates.enabled === true) {
+          console.log('🔌 Connecting MCP server after enable:', id);
+          await connectMCPServer(id);
+        } else if (wasConnected && updates.env) {
           console.log('🔄 Environment variables changed, restarting MCP server:', id);
           await disconnectMCPServer(id);
           if (mcpData.servers[serverIndex].enabled) {
@@ -1720,15 +1736,17 @@ function setupIPC() {
       x: x,
       y: y,
       show: false,
-      frame: true, // Enable frame for dragging
+      frame: false, // Remove native frame completely
       resizable: true,
       alwaysOnTop: true,
       skipTaskbar: true,
       transparent: false,
-      titleBarStyle: 'default', // Show title bar for dragging
-      title: 'Settings',
+      titleBarStyle: 'hidden', // Hide title bar completely
+      title: 'LittleLLM - Settings',
       minWidth: 600,
       minHeight: 400,
+      autoHideMenuBar: true, // Hide menu bar
+      backgroundColor: '#1a1a1a',
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,

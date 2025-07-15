@@ -828,7 +828,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
           models = await this.fetchOpenAIModels(apiKey);
           break;
         case 'anthropic':
-          models = await this.fetchAnthropicModels();
+          console.log('🔍 Fetching models for Anthropic provider');
+          models = await this.fetchAnthropicModels(apiKey);
+          console.log('🔍 Anthropic models fetched:', models);
           break;
         case 'gemini':
           models = await this.fetchGeminiModels(apiKey);
@@ -1027,11 +1029,36 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     return popularModels;
   }
 
-  private async fetchAnthropicModels(): Promise<string[]> {
-    // Anthropic doesn't have a public models API endpoint
-    // We'll use the known available models from their documentation
-    console.log('Using known Anthropic models (no public API endpoint available)');
-    return FALLBACK_MODELS.anthropic;
+  private async fetchAnthropicModels(apiKey?: string): Promise<string[]> {
+    if (!apiKey) {
+      console.log('🔍 No Anthropic API key provided, using fallback models');
+      return FALLBACK_MODELS.anthropic;
+    }
+
+    try {
+      console.log('🔍 Fetching Anthropic models from API...');
+      const response = await fetch('https://api.anthropic.com/v1/models', {
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.warn(`Anthropic API error: ${response.status} ${response.statusText}, using fallback models`);
+        return FALLBACK_MODELS.anthropic;
+      }
+
+      const data = await response.json() as { data: Array<{ id: string; display_name: string }> };
+      const models = data.data?.map((model) => model.id)?.sort() || [];
+
+      console.log(`🔍 Fetched ${models.length} Anthropic models from API:`, models);
+      return models.length > 0 ? models : FALLBACK_MODELS.anthropic;
+    } catch (error) {
+      console.warn('Failed to fetch Anthropic models from API, using fallback:', error);
+      return FALLBACK_MODELS.anthropic;
+    }
   }
 
   private async fetchGeminiModels(apiKey?: string): Promise<string[]> {
@@ -1458,8 +1485,22 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     onStream?: (chunk: string) => void,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
+    // Debug API key details
+    console.log('🔍 Anthropic API key debug:', {
+      hasApiKey: !!settings.apiKey,
+      keyLength: settings.apiKey?.length || 0,
+      keyStart: settings.apiKey?.substring(0, 10) || 'undefined',
+      keyType: typeof settings.apiKey,
+      startsWithSkAnt: settings.apiKey?.startsWith('sk-ant-') || false
+    });
+
     // Validate API key format
     if (!settings.apiKey || !settings.apiKey.startsWith('sk-ant-')) {
+      console.error('❌ Anthropic API key validation failed:', {
+        apiKey: settings.apiKey,
+        hasApiKey: !!settings.apiKey,
+        startsWithSkAnt: settings.apiKey?.startsWith('sk-ant-')
+      });
       throw new Error('Invalid Anthropic API key format. Key should start with "sk-ant-"');
     }
 

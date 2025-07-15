@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Minus, Send, Copy, Check, Paperclip, Camera } from 'lucide-react';
 import { Button } from './ui/button';
 import { ToolCallingToggle } from './ui/tool-calling-toggle';
+import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag';
 
 import { Card, CardContent } from './ui/card';
 import { ChatInterface } from './ChatInterface';
@@ -42,6 +43,9 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   const [windowExpanded, setWindowExpanded] = useState(false); // Track if window has been expanded
   const [sessionStats, setSessionStats] = useState(sessionService.getSessionStats());
   const { themes, setTheme } = useTheme();
+
+  // Initialize enhanced window dragging
+  const { isDragging } = useEnhancedWindowDrag();
 
   // Ref for auto-resizing textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -800,45 +804,33 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
   return (
     <div
-      className="h-screen w-full bg-background flex flex-col text-foreground"
+      className={`h-screen w-full bg-background flex flex-col text-foreground ${isDragging ? 'cursor-grabbing' : ''}`}
       style={{
-        userSelect: 'none',
-        WebkitAppRegion: 'drag',
+        userSelect: isDragging ? 'none' : 'auto',
         overflow: 'visible'
-      } as React.CSSProperties & { WebkitAppRegion?: string }}
+      }}
     >
-      {/* Draggable Header Area */}
+      {/* Minimal visual header for window identification */}
       <div
-        className="h-2.5 w-full bg-background/30 cursor-move flex-none border-b border-border/10"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-        title="Drag to move window"
+        className="h-1 w-full bg-primary/20 flex-none"
+        title="LittleLLM Chat Window"
       />
 
       {/* Content wrapper - Fixed height container */}
-      <div
-        className="flex-1 flex flex-col min-h-0"
-        style={{
-          overflow: 'visible',
-          WebkitAppRegion: 'drag'
-        } as React.CSSProperties & { WebkitAppRegion?: string }}
-      >
+      <div className="flex-1 flex flex-col min-h-0" style={{ overflow: 'visible' }}>
 
         {/* Input Area with Attachment Preview */}
       <div
         id="input-area"
         className="flex-none p-2"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
-        <Card
-          className="p-2"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-        >
+        <Card className="p-2">
           {/* Attachment Preview */}
           {attachedFiles.length > 0 && (
             <div
               id="attachment-preview"
               className="mb-3 p-3 bg-muted rounded-lg"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+              data-interactive="true"
             >
               <div className="flex flex-wrap gap-2">
                 {attachedFiles.map((file, index) => (
@@ -872,7 +864,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                       size="sm"
                       onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
                       className="h-6 w-6 p-0 hover:bg-destructive/20"
-                      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+                      data-interactive="true"
                     >
                       <X className="h-3 w-3" />
                     </Button>
@@ -905,7 +897,8 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               onKeyDown={handleKeyDown}
               placeholder="Type your message..."
               className="flex-1 min-h-[40px] p-2 border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground cursor-text overflow-y-auto"
-              style={{ WebkitAppRegion: 'no-drag', lineHeight: '1.5' } as React.CSSProperties & { WebkitAppRegion?: string }}
+              style={{ lineHeight: '1.5' }}
+              data-interactive="true"
             />
 
             {/* Attachment and Screenshot buttons - moved to left of Send button */}
@@ -926,8 +919,8 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 input.click();
               }}
               className="h-10 w-10 cursor-pointer flex-shrink-0"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
               title="Attach File"
+              data-interactive="true"
             >
               <Paperclip className="h-4 w-4" />
             </Button>
@@ -951,8 +944,8 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 }
               }}
               className="h-10 w-10 cursor-pointer flex-shrink-0"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
               title="Take Screenshot"
+              data-interactive="true"
             >
               <Camera className="h-4 w-4" />
             </Button>
@@ -965,15 +958,15 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 settingsService.updateChatSettingsInMemory(updatedSettings);
                 settingsService.saveSettingsToDisk();
               }}
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
               title={settings.toolCallingEnabled ? "Disable Tool Calling" : "Enable Tool Calling"}
+              data-interactive="true"
             />
 
             <Button
               onClick={handleSendMessage}
               disabled={!input.trim() && attachedFiles.length === 0}
               className="h-10 w-10 cursor-pointer flex-shrink-0 p-0"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+              data-interactive="true"
             >
               <Send className="h-5 w-5" />
             </Button>
@@ -983,19 +976,10 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
       {/* Chat Interface - Only show after first message - Positioned between input and bottom toolbar */}
       {messages.length > 0 && showChat && (
-        <div
-          className="flex-1 flex flex-col p-2 overflow-hidden"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-        >
-          <Card
-            className="flex-1 flex flex-col overflow-hidden"
-            style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-          >
+        <div className="flex-1 flex flex-col p-2 overflow-hidden">
+          <Card className="flex-1 flex flex-col overflow-hidden">
             {/* Chat Header with Controls - FIXED POSITION */}
-            <div
-              className="flex-none flex items-center justify-between p-2 border-b border-border bg-background"
-              style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-            >
+            <div className="flex-none flex items-center justify-between p-2 border-b border-border bg-background">
               <div className="flex items-center gap-3">
                 <div className="text-sm font-medium text-muted-foreground">Chat</div>
                 {(() => {
@@ -1014,7 +998,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                   size="sm"
                   onClick={handleMinimizeChat}
                   className="h-6 w-6 p-0 hover:bg-muted"
-                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+                  data-interactive="true"
                 >
                   <Minus className="h-3 w-3" />
                 </Button>
@@ -1024,7 +1008,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                   size="sm"
                   onClick={handleClearChat}
                   className="h-6 w-6 p-0 hover:bg-destructive/20"
-                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+                  data-interactive="true"
                 >
                   <X className="h-3 w-3" />
                 </Button>
@@ -1034,25 +1018,9 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
             {/* Chat Messages */}
             <div
               ref={chatMessagesRef}
-              className="flex-1 p-4 space-y-4 hide-scrollbar scrollable chat-messages"
-              style={{
-                overflowY: 'auto',
-                overflowX: 'hidden',
-                scrollbarWidth: 'none',
-                msOverflowStyle: 'none',
-                scrollBehavior: 'smooth',
-                WebkitOverflowScrolling: 'touch', // iOS momentum scrolling
-                WebkitAppRegion: 'no-drag',
-                // Enhanced smoothness
-                willChange: 'scroll-position',
-                transform: 'translateZ(0)', // Force hardware acceleration
-                backfaceVisibility: 'hidden' // Reduce flickering
-              } as React.CSSProperties & {
-                WebkitAppRegion?: string,
-                WebkitOverflowScrolling?: string,
-                willChange?: string,
-                backfaceVisibility?: string
-              }}
+              className="flex-1 p-4 space-y-4 hide-scrollbar overlay-scroll chat-messages"
+
+              data-interactive="true"
               onScroll={(e) => {
                 // Don't interfere with auto-scrolling
                 if (isAutoScrolling) return;
@@ -1067,46 +1035,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 // If user scrolled back to bottom, re-enable auto-scroll
                 setIsUserScrolling(!isNearBottom);
               }}
-              onWheel={(e) => {
-                const element = e.currentTarget;
-                const { deltaY, deltaMode } = e;
 
-                // Handle different scroll modes (pixel, line, page)
-                let scrollAmount = deltaY;
-                if (deltaMode === 1) { // Line mode
-                  scrollAmount = deltaY * 16; // Convert lines to pixels
-                } else if (deltaMode === 2) { // Page mode
-                  scrollAmount = deltaY * element.clientHeight * 0.8;
-                }
-
-                // For smoother scrolling, use requestAnimationFrame
-                if (Math.abs(scrollAmount) > 50) {
-                  e.preventDefault();
-
-                  // Ultra-smooth animated scrolling
-                  const startTime = performance.now();
-                  const startScrollTop = element.scrollTop;
-                  const targetScrollTop = startScrollTop + scrollAmount * 0.5; // Reduce speed more
-                  const duration = 250; // Slightly longer for smoother feel
-
-                  const animateScroll = (currentTime: number) => {
-                    const elapsed = currentTime - startTime;
-                    const progress = Math.min(elapsed / duration, 1);
-
-                    // Ultra-smooth easing function (ease-out-expo)
-                    const easeOutExpo = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
-
-                    element.scrollTop = startScrollTop + (targetScrollTop - startScrollTop) * easeOutExpo;
-
-                    if (progress < 1) {
-                      requestAnimationFrame(animateScroll);
-                    }
-                  };
-
-                  requestAnimationFrame(animateScroll);
-                }
-                // For small scrolls, let browser handle natively for best performance
-              }}
             >
               {messages.map((message, index) => (
                 <div
@@ -1114,7 +1043,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                   className={`flex ${
                     message.role === 'user' ? 'justify-end' : 'justify-start'
                   }`}
-                  style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+                  data-interactive="true"
                 >
                   <div
                     className={`max-w-[80%] p-3 rounded-lg ${
@@ -1122,7 +1051,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted'
                     }`}
-                    style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+                    data-interactive="true"
                   >
                     {message.role === 'assistant' ? (
                       <>
@@ -1166,12 +1095,8 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       <div
         id="bottom-toolbar"
         className="flex-none cursor-default p-2"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
-        <Card
-          className="rounded-lg border border-border"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-        >
+        <Card className="rounded-lg border border-border">
             <BottomToolbar
               settings={settings}
               onSettingsChange={handleSettingsChange}

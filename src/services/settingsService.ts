@@ -193,12 +193,14 @@ class SettingsService {
   getChatSettings(): ChatSettings {
     if (!this.initialized) {
       // Return defaults if not initialized yet
+      console.log('🔍 getChatSettings: Not initialized, returning defaults');
       return { ...DEFAULT_SETTINGS.chat };
     }
 
     // Ensure providers object exists for backward compatibility
     const chatSettings = { ...this.settings.chat };
     if (!chatSettings.providers) {
+      console.log('🔍 getChatSettings: No providers found, creating defaults');
       chatSettings.providers = {
         openai: { apiKey: '', lastSelectedModel: '' },
         anthropic: { apiKey: '', lastSelectedModel: '' },
@@ -212,6 +214,19 @@ class SettingsService {
         replicate: { apiKey: '', lastSelectedModel: '' },
         n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       };
+    } else {
+      // Debug loaded API keys
+      Object.entries(chatSettings.providers).forEach(([provider, config]) => {
+        if (config.apiKey) {
+          console.log(`🔍 getChatSettings: Loaded API key for ${provider}:`, {
+            hasKey: !!config.apiKey,
+            keyLength: config.apiKey.length,
+            keyStart: config.apiKey.substring(0, 10),
+            keyType: typeof config.apiKey,
+            startsWithSkAnt: provider === 'anthropic' ? config.apiKey.startsWith('sk-ant-') : 'N/A'
+          });
+        }
+      });
     }
 
     // Ensure toolCallingEnabled exists for backward compatibility
@@ -292,6 +307,21 @@ class SettingsService {
   async updateSettings(updates: Partial<AppSettings>): Promise<boolean> {
     console.log('🔍 updateSettings called with:', JSON.stringify(updates, null, 2));
 
+    // Debug API keys in the updates
+    if (updates.chat?.providers) {
+      Object.entries(updates.chat.providers).forEach(([provider, config]) => {
+        if (config.apiKey) {
+          console.log(`🔍 Updating API key for ${provider}:`, {
+            hasKey: !!config.apiKey,
+            keyLength: config.apiKey.length,
+            keyStart: config.apiKey.substring(0, 10),
+            keyType: typeof config.apiKey,
+            startsWithSkAnt: provider === 'anthropic' ? config.apiKey.startsWith('sk-ant-') : 'N/A'
+          });
+        }
+      });
+    }
+
     // Update settings in memory
     const oldSettings = { ...this.settings };
     this.settings = { ...this.settings, ...updates };
@@ -305,9 +335,26 @@ class SettingsService {
 
     if (success) {
       console.log('🔍 Notifying listeners...');
-      // Notify listeners immediately (no auto-reload)
+      // Notify listeners immediately after successful save
       this.notifyListeners();
       console.log('✅ Settings updated and listeners notified');
+
+      // Also trigger a reload from disk to ensure all components get the latest settings
+      setTimeout(async () => {
+        try {
+          console.log('🔄 Auto-reloading settings from disk after save...');
+          if (typeof window !== 'undefined' && window.electronAPI) {
+            const savedSettings = await window.electronAPI.getSettings();
+            if (savedSettings) {
+              this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
+              this.notifyListeners();
+              console.log('✅ Settings auto-reloaded from disk successfully');
+            }
+          }
+        } catch (error) {
+          console.error('❌ Failed to auto-reload settings from disk:', error);
+        }
+      }, 100); // Small delay to ensure file is written
     } else {
       console.error('❌ Failed to save settings, not notifying listeners');
     }
