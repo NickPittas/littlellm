@@ -22,6 +22,7 @@ export interface AppSettings {
     autoStartWithSystem: boolean;
     showNotifications: boolean;
     saveConversationHistory: boolean;
+    conversationHistoryLength: number; // Number of previous messages to include in context
   };
 }
 
@@ -68,6 +69,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     autoStartWithSystem: false,
     showNotifications: true,
     saveConversationHistory: true,
+    conversationHistoryLength: 10, // Default to last 10 messages
   },
 };
 
@@ -120,7 +122,7 @@ class SettingsService {
               });
             }
 
-            this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
+            this.settings = { ...DEFAULT_SETTINGS, ...(savedSettings as AppSettings) };
             this.initialized = true; // Mark as initialized after settings are loaded
             this.notifyListeners();
           } else {
@@ -346,7 +348,7 @@ class SettingsService {
           if (typeof window !== 'undefined' && window.electronAPI) {
             const savedSettings = await window.electronAPI.getSettings();
             if (savedSettings) {
-              this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
+              this.settings = { ...DEFAULT_SETTINGS, ...(savedSettings as AppSettings) };
               this.notifyListeners();
               console.log('✅ Settings auto-reloaded from disk successfully');
             }
@@ -372,7 +374,7 @@ class SettingsService {
         const savedSettings = await window.electronAPI.getSettings();
         if (savedSettings) {
           console.log('Settings reloaded for MCP change:', savedSettings);
-          this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
+          this.settings = { ...DEFAULT_SETTINGS, ...(savedSettings as AppSettings) };
           this.notifyListeners();
         }
       } catch (error) {

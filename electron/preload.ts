@@ -50,6 +50,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadConversationFromFile: (conversationId: string) => ipcRenderer.invoke('load-conversation-from-file', conversationId),
   getAllConversationIds: () => ipcRenderer.invoke('get-all-conversation-ids'),
 
+  // Memory operations
+  saveMemoryIndex: (memoryIndex: any) => ipcRenderer.invoke('save-memory-index', memoryIndex),
+  loadMemoryIndex: () => ipcRenderer.invoke('load-memory-index'),
+  saveMemoryEntry: (memoryEntry: any) => ipcRenderer.invoke('save-memory-entry', memoryEntry),
+  loadMemoryEntry: (memoryId: string) => ipcRenderer.invoke('load-memory-entry', memoryId),
+  deleteMemoryEntry: (memoryId: string) => ipcRenderer.invoke('delete-memory-entry', memoryId),
+  getMemoryStats: () => ipcRenderer.invoke('get-memory-stats'),
+
+  // Memory export/import operations
+  saveMemoryExport: (exportData: any, filename: string) => ipcRenderer.invoke('save-memory-export', exportData, filename),
+  loadMemoryExport: () => ipcRenderer.invoke('load-memory-export'),
+
   // Window operations
   hideWindow: () => ipcRenderer.invoke('hide-window'),
   showWindow: () => ipcRenderer.invoke('show-window'),

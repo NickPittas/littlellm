@@ -80,6 +80,14 @@ export interface ElectronAPI {
   onSettingsChanged: (callback: (settings: unknown) => void) => void;
   onPromptReceived: (callback: (prompt: string) => void) => void;
   onThemeChanged: (callback: (themeId: string) => void) => void;
+
+  // Memory operations
+  loadMemoryIndex: () => Promise<any>;
+  saveMemoryIndex: (index: any) => Promise<boolean>;
+  loadMemoryEntry: (id: string) => Promise<any>;
+  saveMemoryEntry: (entry: any) => Promise<boolean>;
+  deleteMemoryEntry: (id: string) => Promise<boolean>;
+  getMemoryStats: () => Promise<{ totalSize: number; entryCount: number }>;
 }
 
 declare global {
