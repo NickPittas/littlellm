@@ -27,11 +27,13 @@ interface MessageWithThinkingProps {
 
 interface ParsedMessage {
   thinking: string[];
+  toolExecution: string[];
   response: string;
 }
 
 export function MessageWithThinking({ content, className = '', usage, timing, toolCalls }: MessageWithThinkingProps) {
   const [showThinking, setShowThinking] = useState(false);
+  const [showToolExecution, setShowToolExecution] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -40,27 +42,37 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
     console.log('🔧 MessageWithThinking received toolCalls:', toolCalls);
   }
 
-  // Parse the message content to extract thinking sections and response
+  // Parse the message content to extract thinking sections, tool execution, and response
   const parseMessage = (text: string): ParsedMessage => {
     const thinking: string[] = [];
+    const toolExecution: string[] = [];
     let response = text;
 
     // Find all <think>...</think> blocks
     const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
-    let match;
+    let thinkMatch;
 
-    while ((match = thinkRegex.exec(text)) !== null) {
-      thinking.push(match[1].trim());
+    while ((thinkMatch = thinkRegex.exec(text)) !== null) {
+      thinking.push(thinkMatch[1].trim());
     }
 
-    // Remove all thinking blocks from the response
-    response = text.replace(thinkRegex, '').trim();
+    // Find all <tool_execution>...</tool_execution> blocks
+    const toolRegex = /<tool_execution>([\s\S]*?)<\/tool_execution>/gi;
+    let toolMatch;
 
-    return { thinking, response };
+    while ((toolMatch = toolRegex.exec(text)) !== null) {
+      toolExecution.push(toolMatch[1].trim());
+    }
+
+    // Remove all thinking and tool execution blocks from the response
+    response = text.replace(thinkRegex, '').replace(toolRegex, '').trim();
+
+    return { thinking, toolExecution, response };
   };
 
   const parsed = parseMessage(content);
   const hasThinking = parsed.thinking.length > 0;
+  const hasToolExecution = parsed.toolExecution.length > 0;
 
   // Copy function for the entire message content
   const handleCopy = async () => {
@@ -127,6 +139,52 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                     } as React.CSSProperties & { WebkitAppRegion?: string }}
                   >
                     {thinkingText}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tool Execution Section - Only show if there are tool execution blocks */}
+      {hasToolExecution && (
+        <div className="mb-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowToolExecution(!showToolExecution)}
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground p-1 h-auto"
+          >
+            {showToolExecution ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            <Wrench className="h-3 w-3" />
+            <span>Tool Execution ({parsed.toolExecution.length} section{parsed.toolExecution.length !== 1 ? 's' : ''})</span>
+          </Button>
+
+          {showToolExecution && (
+            <div className="mt-2 space-y-2">
+              {parsed.toolExecution.map((toolText, index) => (
+                <div
+                  key={index}
+                  className="bg-muted/50 border border-border/50 rounded-md p-3 text-sm"
+                >
+                  <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
+                    <Wrench className="h-3 w-3" />
+                    <span>Tool Execution {parsed.toolExecution.length > 1 ? `${index + 1}` : ''}</span>
+                  </div>
+                  <div
+                    className="whitespace-pre-wrap text-muted-foreground select-text"
+                    style={{
+                      WebkitAppRegion: 'no-drag',
+                      userSelect: 'text',
+                      WebkitUserSelect: 'text'
+                    } as React.CSSProperties & { WebkitAppRegion?: string }}
+                  >
+                    {toolText}
                   </div>
                 </div>
               ))}

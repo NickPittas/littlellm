@@ -145,6 +145,149 @@ class MCPService {
     throw new Error(`Tool ${toolName} not found in any connected MCP server`);
   }
 
+  /**
+   * Execute multiple MCP tools concurrently with optimized performance
+   */
+  public async callMultipleTools(toolCalls: Array<{
+    name: string;
+    args: Record<string, unknown>;
+    id?: string;
+  }>): Promise<Array<{
+    id?: string;
+    name: string;
+    result: unknown;
+    success: boolean;
+    error?: string;
+    executionTime: number;
+  }>> {
+    console.log(`🚀 MCP Service: Executing ${toolCalls.length} tools concurrently`);
+
+    const startTime = Date.now();
+
+    // Execute all tools in parallel using Promise.allSettled for proper error handling
+    const toolPromises = toolCalls.map(async (toolCall) => {
+      const toolStartTime = Date.now();
+      try {
+        const result = await this.callTool(toolCall.name, toolCall.args);
+        const executionTime = Date.now() - toolStartTime;
+
+        return {
+          id: toolCall.id,
+          name: toolCall.name,
+          result,
+          success: true,
+          executionTime
+        };
+      } catch (error) {
+        const executionTime = Date.now() - toolStartTime;
+
+        return {
+          id: toolCall.id,
+          name: toolCall.name,
+          result: null,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+          executionTime
+        };
+      }
+    });
+
+    const results = await Promise.allSettled(toolPromises);
+    const totalTime = Date.now() - startTime;
+
+    // Process results and handle any promise rejections
+    const processedResults = results.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      } else {
+        return {
+          id: toolCalls[index].id,
+          name: toolCalls[index].name,
+          result: null,
+          success: false,
+          error: `Promise execution failed: ${result.reason}`,
+          executionTime: 0
+        };
+      }
+    });
+
+    const successCount = processedResults.filter(r => r.success).length;
+    console.log(`✅ MCP Service: Concurrent execution completed in ${totalTime}ms: ${successCount}/${toolCalls.length} successful`);
+
+    return processedResults;
+  }
+
+  /**
+   * Enhanced tool execution with performance monitoring and optimization
+   */
+  public async callToolsOptimized(toolCalls: Array<{
+    name: string;
+    args: Record<string, unknown>;
+    id?: string;
+  }>): Promise<Array<{
+    id?: string;
+    name: string;
+    result: unknown;
+    success: boolean;
+    error?: string;
+    executionTime: number;
+    serverUsed?: string;
+  }>> {
+    // For now, use sequential execution directly to avoid console errors
+    // TODO: Implement parallel execution when Electron API is available
+    console.log(`🔄 Executing ${toolCalls.length} tools sequentially`);
+    return await this.callMultipleToolsSequential(toolCalls);
+  }
+
+  /**
+   * Fallback sequential execution for when concurrent execution fails
+   */
+  private async callMultipleToolsSequential(toolCalls: Array<{
+    name: string;
+    args: Record<string, unknown>;
+    id?: string;
+  }>): Promise<Array<{
+    id?: string;
+    name: string;
+    result: unknown;
+    success: boolean;
+    error?: string;
+    executionTime: number;
+  }>> {
+    console.log(`🔄 Sequential execution for ${toolCalls.length} tools`);
+
+    const results = [];
+
+    for (const toolCall of toolCalls) {
+      const startTime = Date.now();
+      try {
+        const result = await this.callTool(toolCall.name, toolCall.args);
+        const executionTime = Date.now() - startTime;
+
+        results.push({
+          id: toolCall.id,
+          name: toolCall.name,
+          result,
+          success: true,
+          executionTime
+        });
+      } catch (error) {
+        const executionTime = Date.now() - startTime;
+
+        results.push({
+          id: toolCall.id,
+          name: toolCall.name,
+          result: null,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+          executionTime
+        });
+      }
+    }
+
+    return results;
+  }
+
   // Resource Operations - delegates to main process
   public async getAvailableResources(): Promise<MCPResource[]> {
     try {
