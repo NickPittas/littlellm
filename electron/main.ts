@@ -752,6 +752,7 @@ function loadAppSettings() {
       autoStartWithSystem: false,
       showNotifications: true,
       saveConversationHistory: true,
+      conversationHistoryLength: 10,
     },
   };
 }
@@ -1567,6 +1568,201 @@ function setupIPC() {
     } catch (error) {
       console.error('Failed to get conversation IDs:', error);
       return [];
+    }
+  });
+
+  // Memory System IPC Handlers
+
+  // Save memory index to JSON file
+  ipcMain.handle('save-memory-index', (_, memoryIndex: any) => {
+    try {
+      const memoryDir = path.join(app.getPath('userData'), 'memory');
+      if (!fs.existsSync(memoryDir)) {
+        fs.mkdirSync(memoryDir, { recursive: true });
+      }
+
+      const indexPath = path.join(memoryDir, 'index.json');
+      fs.writeFileSync(indexPath, JSON.stringify(memoryIndex, null, 2));
+      console.log(`Memory index saved to file: ${indexPath}`);
+      return true;
+    } catch (error) {
+      console.error('Failed to save memory index:', error);
+      return false;
+    }
+  });
+
+  // Load memory index from JSON file
+  ipcMain.handle('load-memory-index', () => {
+    try {
+      const memoryDir = path.join(app.getPath('userData'), 'memory');
+      const indexPath = path.join(memoryDir, 'index.json');
+
+      if (fs.existsSync(indexPath)) {
+        const data = fs.readFileSync(indexPath, 'utf8');
+        return JSON.parse(data);
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to load memory index:', error);
+      return null;
+    }
+  });
+
+  // Save individual memory entry to JSON file
+  ipcMain.handle('save-memory-entry', (_, memoryEntry: any) => {
+    try {
+      const memoryDir = path.join(app.getPath('userData'), 'memory');
+      const entriesDir = path.join(memoryDir, 'entries');
+
+      if (!fs.existsSync(entriesDir)) {
+        fs.mkdirSync(entriesDir, { recursive: true });
+      }
+
+      const filePath = path.join(entriesDir, `${memoryEntry.id}.json`);
+      fs.writeFileSync(filePath, JSON.stringify(memoryEntry, null, 2));
+      console.log(`Memory entry ${memoryEntry.id} saved to file: ${filePath}`);
+      return true;
+    } catch (error) {
+      console.error(`Failed to save memory entry ${memoryEntry?.id}:`, error);
+      return false;
+    }
+  });
+
+  // Load memory entry from JSON file
+  ipcMain.handle('load-memory-entry', (_, memoryId: string) => {
+    try {
+      const memoryDir = path.join(app.getPath('userData'), 'memory');
+      const entriesDir = path.join(memoryDir, 'entries');
+      const filePath = path.join(entriesDir, `${memoryId}.json`);
+
+      if (fs.existsSync(filePath)) {
+        const data = fs.readFileSync(filePath, 'utf8');
+        return JSON.parse(data);
+      }
+      return null;
+    } catch (error) {
+      console.error(`Failed to load memory entry ${memoryId}:`, error);
+      return null;
+    }
+  });
+
+  // Delete memory entry file
+  ipcMain.handle('delete-memory-entry', (_, memoryId: string) => {
+    try {
+      const memoryDir = path.join(app.getPath('userData'), 'memory');
+      const entriesDir = path.join(memoryDir, 'entries');
+      const filePath = path.join(entriesDir, `${memoryId}.json`);
+
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log(`Memory entry ${memoryId} deleted from file: ${filePath}`);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error(`Failed to delete memory entry ${memoryId}:`, error);
+      return false;
+    }
+  });
+
+  // Get memory storage statistics
+  ipcMain.handle('get-memory-stats', () => {
+    try {
+      const memoryDir = path.join(app.getPath('userData'), 'memory');
+      const entriesDir = path.join(memoryDir, 'entries');
+
+      if (!fs.existsSync(entriesDir)) {
+        return { totalSize: 0, entryCount: 0 };
+      }
+
+      const files = fs.readdirSync(entriesDir);
+      const jsonFiles = files.filter(file => file.endsWith('.json'));
+
+      let totalSize = 0;
+      for (const file of jsonFiles) {
+        const filePath = path.join(entriesDir, file);
+        const stats = fs.statSync(filePath);
+        totalSize += stats.size;
+      }
+
+      return {
+        totalSize,
+        entryCount: jsonFiles.length
+      };
+    } catch (error) {
+      console.error('Failed to get memory stats:', error);
+      return { totalSize: 0, entryCount: 0 };
+    }
+  });
+
+  // Memory Export/Import IPC Handlers
+
+  // Save memory export to file
+  ipcMain.handle('save-memory-export', async (_, exportData: any, filename: string) => {
+    try {
+      const { dialog } = require('electron');
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: 'Save Memory Export',
+        defaultPath: filename,
+        filters: [
+          { name: 'JSON Files', extensions: ['json'] },
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      });
+
+      if (result.canceled || !result.filePath) {
+        return { success: false, error: 'Save canceled by user' };
+      }
+
+      fs.writeFileSync(result.filePath, JSON.stringify(exportData, null, 2));
+      console.log(`Memory export saved to: ${result.filePath}`);
+
+      return {
+        success: true,
+        filename: path.basename(result.filePath)
+      };
+    } catch (error) {
+      console.error('Failed to save memory export:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  });
+
+  // Load memory export from file
+  ipcMain.handle('load-memory-export', async () => {
+    try {
+      const { dialog } = require('electron');
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Load Memory Export',
+        filters: [
+          { name: 'JSON Files', extensions: ['json'] },
+          { name: 'All Files', extensions: ['*'] }
+        ],
+        properties: ['openFile']
+      });
+
+      if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+        return { success: false, error: 'Load canceled by user' };
+      }
+
+      const filePath = result.filePaths[0];
+      const data = fs.readFileSync(filePath, 'utf8');
+      const exportData = JSON.parse(data);
+
+      console.log(`Memory export loaded from: ${filePath}`);
+
+      return {
+        success: true,
+        data: exportData
+      };
+    } catch (error) {
+      console.error('Failed to load memory export:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
     }
   });
 

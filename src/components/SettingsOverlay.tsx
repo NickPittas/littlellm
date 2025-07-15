@@ -27,12 +27,14 @@ import {
   Server,
   Play,
   Square,
-  FileText
+  FileText,
+  Brain
 } from 'lucide-react';
 import { settingsService, type AppSettings } from '../services/settingsService';
 import { promptsService, type Prompt } from '../services/promptsService';
 import { mcpService, type MCPServer } from '../services/mcpService';
 import { useTheme } from '../contexts/ThemeContext';
+import { MemoryManagement } from './MemoryManagement';
 
 export function SettingsOverlay() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -577,11 +579,12 @@ export function SettingsOverlay() {
           </div>
         ) : (
           <Tabs defaultValue="api-keys" className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="api-keys">API Keys</TabsTrigger>
               <TabsTrigger value="shortcuts">Shortcuts</TabsTrigger>
               <TabsTrigger value="prompts">Prompts</TabsTrigger>
               <TabsTrigger value="mcp">MCP</TabsTrigger>
+              <TabsTrigger value="memory">Memory</TabsTrigger>
               <TabsTrigger value="appearance">Appearance</TabsTrigger>
               <TabsTrigger value="general">General</TabsTrigger>
             </TabsList>
@@ -925,6 +928,17 @@ export function SettingsOverlay() {
               </div>
             </TabsContent>
 
+            {/* Memory Tab */}
+            <TabsContent value="memory" className="space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <Brain className="h-4 w-4" />
+                  <h3 className="text-lg font-medium">Memory System</h3>
+                </div>
+                <MemoryManagement />
+              </div>
+            </TabsContent>
+
             {/* Appearance Tab */}
             <TabsContent value="appearance" className="space-y-6">
               <div className="space-y-4">
@@ -1105,6 +1119,23 @@ export function SettingsOverlay() {
                       <SelectItem value="false">No</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Conversation History Length</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={settings.general.conversationHistoryLength || 10}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      general: { ...settings.general, conversationHistoryLength: parseInt(e.target.value) }
+                    })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Number of previous messages to include in AI context (1-50). Higher values provide more context but use more tokens.
+                  </p>
                 </div>
               </div>
             </TabsContent>

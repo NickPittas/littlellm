@@ -593,7 +593,12 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       setMessages(prev => [...prev, assistantMessage]);
 
       // Get conversation history (exclude the current user message we just added)
-      const conversationHistory = messages;
+      const conversationHistory = updatedMessages.slice(0, -1); // Exclude the current user message
+      console.log('🧠 VoilaInterface conversation history debug:', {
+        updatedMessagesLength: updatedMessages.length,
+        conversationHistoryLength: conversationHistory.length,
+        lastMessage: updatedMessages[updatedMessages.length - 1]?.content?.substring(0, 50)
+      });
 
       const response = await chatService.sendMessage(
         messageContent,

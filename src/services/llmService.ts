@@ -17,9 +17,40 @@ export interface LLMSettings {
   maxTokens: number;
   systemPrompt?: string;
   toolCallingEnabled?: boolean;
+  memoryContext?: any; // Memory context for provider-specific integration
 }
 
 import { mcpService } from './mcpService';
+import { getMemoryMCPTools, executeMemoryTool, isMemoryTool } from './memoryMCPTools';
+import { memoryContextService } from './memoryContextService';
+import { automaticMemoryService } from './automaticMemoryService';
+
+// Type guards for tool types
+interface MCPTool {
+  name: string;
+  description: string;
+  inputSchema?: any;
+  serverId?: string;
+}
+
+interface MemoryTool {
+  type: string;
+  function: {
+    name: string;
+    description: string;
+    parameters: any;
+  };
+}
+
+type CombinedTool = MCPTool | MemoryTool;
+
+function isMCPTool(tool: CombinedTool): tool is MCPTool {
+  return 'name' in tool && !('function' in tool);
+}
+
+function isMemoryToolType(tool: CombinedTool): tool is MemoryTool {
+  return 'function' in tool && 'type' in tool;
+}
 
 // Type for content array items used in vision API
 interface ContentItem {
@@ -460,6 +491,75 @@ class LLMService {
     }
   }
 
+  /**
+   * Enhance system prompt with relevant memory context
+   */
+  private async enhancePromptWithMemory(
+    originalPrompt: string,
+    userMessage: string,
+    conversationHistory: Array<{role: string, content: string}> = [],
+    conversationId?: string,
+    projectId?: string
+  ): Promise<string> {
+    try {
+      // Get memory context for the current conversation
+      const memoryContext = await memoryContextService.getMemoryContext(
+        userMessage,
+        conversationId,
+        projectId,
+        conversationHistory
+      );
+
+      // If no relevant memories found, return original prompt
+      if (memoryContext.relevantMemories.length === 0) {
+        return originalPrompt;
+      }
+
+      // Build enhanced prompt with memory context
+      const enhancedPrompt = memoryContextService.buildMemoryEnhancedPrompt(
+        originalPrompt,
+        memoryContext
+      );
+
+      console.log(`🧠 Enhanced prompt with ${memoryContext.relevantMemories.length} relevant memories`);
+      return enhancedPrompt;
+    } catch (error) {
+      console.error('Error enhancing prompt with memory:', error);
+      return originalPrompt;
+    }
+  }
+
+  /**
+   * Create memory from conversation if appropriate
+   */
+  private async createMemoryFromConversation(
+    userMessage: string,
+    aiResponse: string,
+    conversationHistory: Array<{role: string, content: string}> = [],
+    conversationId?: string,
+    projectId?: string
+  ): Promise<void> {
+    try {
+      // Analyze the conversation to determine if memory should be created
+      const analysis = memoryContextService.analyzeMessage(userMessage, conversationHistory);
+
+      if (analysis.shouldCreateMemory) {
+        const success = await memoryContextService.createMemoryFromConversation(
+          userMessage,
+          aiResponse,
+          analysis,
+          conversationId,
+          projectId
+        );
+
+        if (success) {
+          console.log(`🧠 Auto-created memory from conversation (type: ${analysis.suggestedMemoryType})`);
+        }
+      }
+    } catch (error) {
+      console.error('Error creating memory from conversation:', error);
+    }
+  }
 
 
 
@@ -656,19 +756,43 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         return [];
       }
 
-      const tools = await mcpService.getAvailableTools();
-      console.log(`📋 Raw MCP tools discovered (${tools.length} tools):`, tools);
+      const mcpTools = await mcpService.getAvailableTools();
+      console.log(`📋 Raw MCP tools discovered (${mcpTools.length} tools):`, mcpTools);
 
-      if (tools.length > 0) {
-        console.log(`📋 Tool details:`, tools.map(t => ({
-          name: t.name,
-          description: t.description,
-          serverId: t.serverId,
-          hasInputSchema: !!t.inputSchema,
-          inputSchemaType: t.inputSchema?.type,
-          inputSchemaProps: t.inputSchema?.properties ? Object.keys(t.inputSchema.properties) : [],
-          fullInputSchema: t.inputSchema
-        })));
+      // Add memory tools to the available tools
+      const memoryTools = getMemoryMCPTools();
+      console.log(`🧠 Memory tools available (${memoryTools.length} tools):`, memoryTools.map(t => t.function.name));
+
+      // Combine MCP tools and memory tools
+      const allTools: CombinedTool[] = [...mcpTools, ...memoryTools];
+      console.log(`📋 Total tools available (${allTools.length} tools):`, allTools.map(t =>
+        isMCPTool(t) ? t.name : t.function.name
+      ));
+
+      if (allTools.length > 0) {
+        console.log(`📋 Tool details:`, allTools.map(t => {
+          if (isMCPTool(t)) {
+            return {
+              name: t.name,
+              description: t.description,
+              serverId: t.serverId || 'mcp-server',
+              hasInputSchema: !!t.inputSchema,
+              inputSchemaType: t.inputSchema?.type,
+              inputSchemaProps: t.inputSchema?.properties ? Object.keys(t.inputSchema.properties) : [],
+              fullInputSchema: t.inputSchema
+            };
+          } else {
+            return {
+              name: t.function.name,
+              description: t.function.description,
+              serverId: 'memory-system',
+              hasInputSchema: !!t.function.parameters,
+              inputSchemaType: t.function.parameters?.type,
+              inputSchemaProps: t.function.parameters?.properties ? Object.keys(t.function.parameters.properties) : [],
+              fullInputSchema: t.function.parameters
+            };
+          }
+        }));
       } else {
         console.warn(`⚠️ No MCP tools discovered! Checking MCP service status...`);
         // Try to get server status
@@ -687,7 +811,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         }
       }
 
-      if (!tools || tools.length === 0) {
+      if (!allTools || allTools.length === 0) {
         console.log(`⚠️ No MCP tools available for provider: ${provider}`);
 
         // Add a global test function for debugging
@@ -701,10 +825,12 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
               const servers = await mcpService.getServers();
               console.log('📋 MCP Servers:', servers);
 
-              const tools = await mcpService.getAvailableTools();
-              console.log('🛠️ Available Tools:', tools);
+              const mcpTools = await mcpService.getAvailableTools();
+              const memoryTools = getMemoryMCPTools();
+              const allTools = [...mcpTools, ...memoryTools];
+              console.log('🛠️ Available Tools:', allTools);
 
-              return { detailedStatus, servers, tools };
+              return { detailedStatus, servers, tools: allTools };
             } catch (error) {
               console.error('❌ MCP connectivity test failed:', error);
               return { error: error instanceof Error ? error.message : String(error) };
@@ -723,36 +849,44 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
           provider === 'mistral' || provider === 'deepseek' ||
           provider === 'lmstudio' || provider === 'ollama' || provider === 'replicate') {
         // OpenAI-compatible format (most providers use this)
-        formattedTools = tools.map(tool => ({
-          type: 'function',
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.inputSchema || {
-              type: 'object',
-              properties: {},
-              required: []
-            }
+        formattedTools = allTools.map(tool => {
+          if (isMemoryToolType(tool)) {
+            // Memory tool format (already in OpenAI format)
+            return tool;
+          } else {
+            // MCP tool format (needs conversion)
+            return {
+              type: 'function',
+              function: {
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.inputSchema || {
+                  type: 'object',
+                  properties: {},
+                  required: []
+                }
+              }
+            };
           }
-        }));
+        });
         console.log(`🔧 Formatted ${formattedTools.length} tools for OpenAI-compatible provider (${provider}):`, formattedTools);
       } else if (provider === 'gemini') {
         // Gemini format - single array of function declarations with cleaned schemas
         formattedTools = [{
-          functionDeclarations: tools.map(tool => ({
-            name: tool.name,
-            description: tool.description,
-            parameters: this.cleanSchemaForGemini(tool.inputSchema)
+          functionDeclarations: allTools.map(tool => ({
+            name: isMCPTool(tool) ? tool.name : tool.function.name,
+            description: isMCPTool(tool) ? tool.description : tool.function.description,
+            parameters: this.cleanSchemaForGemini(isMCPTool(tool) ? tool.inputSchema : tool.function.parameters)
           }))
         }];
         console.log(`🔧 Formatted ${formattedTools.length} tools for Gemini:`, formattedTools);
         console.log(`🔧 Gemini tool schemas sample:`, (formattedTools[0] as { functionDeclarations?: unknown[] })?.functionDeclarations?.slice(0, 2));
       } else if (provider === 'anthropic') {
         // Anthropic format
-        formattedTools = tools.map(tool => ({
-          name: tool.name,
-          description: tool.description,
-          input_schema: tool.inputSchema || {
+        formattedTools = allTools.map(tool => ({
+          name: isMCPTool(tool) ? tool.name : tool.function.name,
+          description: isMCPTool(tool) ? tool.description : tool.function.description,
+          input_schema: isMCPTool(tool) ? tool.inputSchema : tool.function.parameters || {
             type: 'object',
             properties: {},
             required: []
@@ -763,9 +897,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         console.log(`⚠️ No tool formatting implemented for provider: ${provider}`);
       }
 
-      if (formattedTools.length === 0 && tools.length > 0) {
+      if (formattedTools.length === 0 && allTools.length > 0) {
         console.error(`❌ Tool formatting failed! Raw tools exist but formatted tools is empty.`);
-        console.log(`🔍 Raw tools that failed formatting:`, tools);
+        console.log(`🔍 Raw tools that failed formatting:`, allTools);
         console.log(`🔍 Provider:`, provider);
       }
 
@@ -789,12 +923,23 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         }
       }
 
-      console.log(`🔧 Executing MCP tool: ${toolName} with args:`, parsedArgs);
-      const result = await mcpService.callTool(toolName, parsedArgs);
-      console.log(`✅ MCP tool ${toolName} executed successfully:`, result);
-      return JSON.stringify(result);
+      console.log(`🔧 Executing tool: ${toolName} with args:`, parsedArgs);
+
+      // Check if this is a memory tool
+      if (isMemoryTool(toolName)) {
+        console.log(`🧠 Executing memory tool: ${toolName}`);
+        const result = await executeMemoryTool(toolName, parsedArgs);
+        console.log(`✅ Memory tool ${toolName} executed successfully:`, result);
+        return JSON.stringify(result);
+      } else {
+        // Execute as MCP tool
+        console.log(`🔧 Executing MCP tool: ${toolName}`);
+        const result = await mcpService.callTool(toolName, parsedArgs);
+        console.log(`✅ MCP tool ${toolName} executed successfully:`, result);
+        return JSON.stringify(result);
+      }
     } catch (error) {
-      console.error(`❌ Failed to execute MCP tool ${toolName}:`, error);
+      console.error(`❌ Failed to execute tool ${toolName}:`, error);
       return `Error executing tool ${toolName}: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
@@ -1229,12 +1374,146 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
     signal?: AbortSignal,
-    conversationId?: string // Add conversation ID for tool state tracking
+    conversationId?: string, // Add conversation ID for tool state tracking
+    projectId?: string // Add project ID for memory context
+  ): Promise<LLMResponse> {
+    console.log('🧠🧠🧠 LLMService.sendMessage called - routing to automatic memory integration');
+    console.log('🧠🧠🧠 Message:', typeof message === 'string' ? message.substring(0, 100) : 'complex message');
+    console.log('🧠🧠🧠 ConversationId:', conversationId);
+    console.log('🧠🧠🧠 ProjectId:', projectId);
+
+    // Automatically enhance with memory and handle auto-save
+    return this.sendMessageWithAutoMemory(
+      message,
+      settings,
+      conversationHistory,
+      onStream,
+      signal,
+      conversationId,
+      projectId
+    );
+  }
+
+  /**
+   * Send message with automatic memory integration
+   */
+  private async sendMessageWithAutoMemory(
+    message: MessageContent,
+    settings: LLMSettings,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal,
+    conversationId?: string,
+    projectId?: string
+  ): Promise<LLMResponse> {
+    console.log('🧠🧠🧠 sendMessageWithAutoMemory called - AUTOMATIC MEMORY ACTIVE');
+    const userMessage = typeof message === 'string' ? message :
+      Array.isArray(message) ? message.map(item =>
+        typeof item === 'string' ? item : item.text || ''
+      ).join(' ') : '';
+
+    try {
+      console.log('🧠 Starting automatic memory integration...');
+
+      // 1. Automatically enhance system prompt with relevant memories
+      const originalSystemPrompt = settings.systemPrompt || '';
+      console.log('🧠 Original system prompt length:', originalSystemPrompt.length);
+
+      // Convert conversation history to simple string format for memory service
+      const simpleHistory = conversationHistory.map(msg => ({
+        role: msg.role,
+        content: typeof msg.content === 'string' ? msg.content :
+          Array.isArray(msg.content) ? msg.content.map(item =>
+            typeof item === 'string' ? item : item.text || ''
+          ).join(' ') : ''
+      }));
+      console.log('🧠 Converted conversation history:', simpleHistory.length, 'messages');
+
+      console.log('🧠 Getting memory context for provider-specific integration...');
+      const memoryContext = await memoryContextService.getMemoryContext(
+        userMessage,
+        conversationId,
+        projectId,
+        simpleHistory
+      );
+
+      console.log('🧠 Memory context retrieved:', {
+        relevantMemoriesCount: memoryContext.relevantMemories.length,
+        contextSummary: memoryContext.contextSummary.substring(0, 100)
+      });
+
+      // Pass memory context to provider-specific function (not enhanced prompt)
+      const enhancedSettings = {
+        ...settings,
+        memoryContext // Add memory context for provider-specific integration
+      };
+
+      console.log(`🧠 Passing ${memoryContext.relevantMemories.length} memories to provider`);
+
+      // 2. Send the message with enhanced context
+      const response = await this.sendMessageInternal(
+        message,
+        enhancedSettings,
+        conversationHistory,
+        onStream,
+        signal,
+        conversationId
+      );
+
+      // 3. Automatically analyze and save useful information
+      if (response.content) {
+        console.log('🧠 Calling automaticMemoryService.autoSaveFromConversation...');
+        const autoSaveResult = await automaticMemoryService.autoSaveFromConversation(
+          userMessage,
+          response.content,
+          simpleHistory,
+          conversationId,
+          projectId
+        );
+        console.log('🧠 Auto-save result:', autoSaveResult);
+
+        if (autoSaveResult.saved > 0) {
+          console.log(`🧠 Auto-saved ${autoSaveResult.saved} memories from conversation`);
+        } else {
+          console.log('🧠 No memories auto-saved. Candidates:', autoSaveResult.candidates.length);
+        }
+      } else {
+        console.log('🧠 No response content to analyze for auto-save');
+      }
+
+      return response;
+    } catch (error) {
+      console.error('Error in auto-memory integration:', error);
+      // Fallback to normal message sending if memory integration fails
+      return this.sendMessageInternal(
+        message,
+        settings,
+        conversationHistory,
+        onStream,
+        signal,
+        conversationId
+      );
+    }
+  }
+
+  /**
+   * Internal message sending without memory integration
+   */
+  private async sendMessageInternal(
+    message: MessageContent,
+    settings: LLMSettings,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal,
+    conversationId?: string
   ): Promise<LLMResponse> {
     const provider = this.getProvider(settings.provider);
     if (!provider) {
       throw new Error(`Provider ${settings.provider} not found`);
     }
+
+    console.log(`🔍 ROUTING DEBUG: Provider is "${settings.provider}", conversation history length: ${conversationHistory.length}`);
+    console.log(`🔍 ROUTING DEBUG: Provider object:`, { name: provider.name, baseUrl: provider.baseUrl });
 
     switch (settings.provider) {
       case 'openai':
@@ -1250,6 +1529,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       case 'lmstudio':
         return this.sendLMStudioMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'ollama':
+        console.log(`🔍 ROUTING: Calling sendOllamaMessage with native API`);
         return this.sendOllamaMessage(message, settings, provider, conversationHistory, onStream, signal);
       case 'openrouter':
         return this.sendOpenRouterMessage(message, settings, provider, conversationHistory, onStream, signal);
@@ -1284,6 +1564,14 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       const toolInstructions = this.generateToolInstructions(mcpTools, 'openai');
       systemPrompt += toolInstructions;
     }
+
+    // Memory enhancement is now handled at the sendMessageWithAutoMemory level
+    // No need to enhance here as it's already been done automatically
+
+    // Extract user message text for memory operations
+    const userMessageText = typeof message === 'string' ? message :
+      (Array.isArray(message) ? JSON.stringify(message) :
+      (message as any).text || JSON.stringify(message));
 
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
@@ -1459,6 +1747,14 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
           }
         }
 
+        // Create memory from conversation if appropriate
+        await this.createMemoryFromConversation(
+          userMessageText,
+          content,
+          conversationHistory.map(h => ({ role: h.role, content: typeof h.content === 'string' ? h.content : JSON.stringify(h.content) })),
+          conversationId
+        );
+
         return {
           content,
           usage: data.usage,
@@ -1469,6 +1765,14 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
           }))
         };
       }
+
+      // Create memory from conversation if appropriate
+      await this.createMemoryFromConversation(
+        userMessageText,
+        message.content,
+        conversationHistory.map(h => ({ role: h.role, content: typeof h.content === 'string' ? h.content : JSON.stringify(h.content) })),
+        conversationId
+      );
 
       return {
         content: message.content,
@@ -1586,6 +1890,14 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       const toolInstructions = this.generateToolInstructions(mcpTools, 'anthropic');
       systemPrompt += toolInstructions;
     }
+
+    // Memory enhancement is now handled at the sendMessageWithAutoMemory level
+    // No need to enhance here as it's already been done automatically
+
+    // Extract user message text for memory operations
+    const userMessageText = typeof message === 'string' ? message :
+      (Array.isArray(message) ? JSON.stringify(message) :
+      (message as any).text || JSON.stringify(message));
 
     const requestBody: Record<string, unknown> = {
       model: settings.model,
@@ -1745,6 +2057,13 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
       console.log('🔍 Anthropic raw usage data:', data.usage);
 
+      // Create memory from conversation if appropriate
+      await this.createMemoryFromConversation(
+        userMessageText,
+        content,
+        conversationHistory.map(h => ({ role: h.role, content: typeof h.content === 'string' ? h.content : JSON.stringify(h.content) }))
+      );
+
       return {
         content,
         usage: data.usage ? {
@@ -1765,7 +2084,39 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     onStream?: (chunk: string) => void,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
+    console.log('🧠 Gemini: Integrating memory context');
+
+    // Build system prompt with memory context (Gemini-specific integration)
+    let systemPrompt = settings.systemPrompt || '';
+    console.log('🧠 Gemini original system prompt length:', systemPrompt.length);
+
+    // Add memory context if available (Gemini-specific format)
+    if (settings.memoryContext && settings.memoryContext.relevantMemories && settings.memoryContext.relevantMemories.length > 0) {
+      console.log('🧠 Gemini integrating memory context with', settings.memoryContext.relevantMemories.length, 'memories');
+      const memorySection = memoryContextService.buildMemoryEnhancedPrompt(
+        systemPrompt,
+        settings.memoryContext
+      );
+      systemPrompt = memorySection;
+      console.log('🧠 Gemini system prompt enhanced with memory:', systemPrompt.length, 'characters');
+      console.log('🧠 Gemini using', settings.memoryContext.relevantMemories.length, 'memories');
+    } else {
+      console.log('🧠 Gemini: No memory context to integrate');
+    }
+
     const contents = [];
+
+    // Add system prompt as first user message (Gemini doesn't have system role)
+    if (systemPrompt) {
+      contents.push({
+        role: 'user',
+        parts: [{ text: systemPrompt }]
+      });
+      contents.push({
+        role: 'model',
+        parts: [{ text: 'I understand. I will follow these instructions and use the memory context provided.' }]
+      });
+    }
 
     // Add conversation history
     for (const msg of conversationHistory) {
@@ -2577,6 +2928,9 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     onStream?: (chunk: string) => void,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
+    const callId = Math.random().toString(36).substr(2, 9);
+    console.log(`🧠 [${callId}] Ollama function called with message:`, typeof message === 'string' ? message.substring(0, 50) : 'complex');
+    console.log(`🧠 [${callId}] Has memory context:`, !!settings.memoryContext?.relevantMemories?.length);
     const baseUrl = settings.baseUrl || provider.baseUrl;
 
     // Get MCP tools for Ollama
@@ -2588,20 +2942,57 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     // Use Ollama's chat API (supports both vision and tools)
     const messages = [];
 
-    // Build system prompt with tool instructions if tools are available
+    // Build system prompt with memory context (Ollama-specific integration)
     let systemPrompt = settings.systemPrompt || '';
+    console.log('🧠 Ollama original system prompt length:', systemPrompt.length);
+
+    // Add memory context if available (Ollama-specific format)
+    console.log('🧠 Ollama checking memory context:', {
+      hasMemoryContext: !!settings.memoryContext,
+      memoryContextType: typeof settings.memoryContext,
+      memoryContextKeys: settings.memoryContext ? Object.keys(settings.memoryContext) : 'none'
+    });
+
+    if (settings.memoryContext && settings.memoryContext.relevantMemories && settings.memoryContext.relevantMemories.length > 0) {
+      console.log('🧠 Ollama integrating memory context with', settings.memoryContext.relevantMemories.length, 'memories');
+      const memorySection = memoryContextService.buildMemoryEnhancedPrompt(
+        systemPrompt,
+        settings.memoryContext
+      );
+      systemPrompt = memorySection;
+      console.log('🧠 Ollama system prompt enhanced with memory:', systemPrompt.length, 'characters');
+      console.log('🧠 Ollama using', settings.memoryContext.relevantMemories.length, 'memories');
+      console.log('🧠 Ollama enhanced system prompt preview:', systemPrompt.substring(0, 500) + '...');
+    } else {
+      console.log('🧠 Ollama: No memory context to integrate');
+    }
+
+    // Add tool instructions if tools are available
     if (mcpTools.length > 0) {
       const toolInstructions = this.generateToolInstructions(mcpTools, 'ollama');
       systemPrompt += toolInstructions;
       systemPrompt += `\n\nIMPORTANT: Only use the tools listed above. Do not use any other tools like 'get_weather' or similar tools that are not in the list. If you need weather information, use the search tools provided.`;
+      console.log('🧠 Ollama system prompt after adding tools:', systemPrompt.length);
     }
 
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
+      console.log('🧠 Ollama added system message, messages array length:', messages.length);
+    } else {
+      console.log('🧠 Ollama: No system prompt to add');
     }
 
     // Add conversation history
+    console.log('🧠 Ollama adding conversation history:', conversationHistory.length, 'messages');
+    conversationHistory.forEach((msg, index) => {
+      console.log(`🧠 Ollama history[${index}]:`, {
+        role: msg.role,
+        contentLength: typeof msg.content === 'string' ? msg.content.length : 'complex',
+        contentPreview: typeof msg.content === 'string' ? msg.content.substring(0, 50) + '...' : 'complex content'
+      });
+    });
     messages.push(...conversationHistory);
+    console.log('🧠 Ollama after adding conversation history, messages array length:', messages.length);
 
     // Add current message
     if (hasImages) {
@@ -2617,19 +3008,57 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         content: typeof message === 'string' ? message : JSON.stringify(message)
       });
     }
+    console.log('🧠 Ollama after adding current message, messages array length:', messages.length);
 
-    const requestBody: Record<string, unknown> = {
-      model: settings.model,
-      messages: messages,
-      temperature: settings.temperature,
-      max_tokens: settings.maxTokens,
-      stream: !!onStream
-    };
+    // Debug: Show complete message structure being sent to Ollama
+    console.log(`🧠 [${callId}] COMPLETE Ollama message structure being sent:`, messages.length, 'messages');
+    if (messages.length > 0) {
+      messages.forEach((msg, index) => {
+        console.log(`🧠 [${callId}] Message[${index}]:`, {
+          role: msg.role,
+          contentType: typeof msg.content,
+          contentPreview: typeof msg.content === 'string' ?
+            msg.content.substring(0, 100) + (msg.content.length > 100 ? '...' : '') :
+            'complex content'
+        });
+      });
+    } else {
+      console.log(`🧠 [${callId}] ERROR: Messages array is empty! This should not happen.`);
+    }
 
-    // Add tools if available
+    // Always use native Ollama API (supports both conversation state and tools)
+    const useNativeAPI = true; // Native API supports tools according to official documentation
+    console.log(`🔍 [${callId}] OLLAMA API CHOICE: useNativeAPI = ${useNativeAPI}`);
+
+    // Build request body based on API type
+    let requestBody: Record<string, unknown>;
+
+    if (useNativeAPI) {
+      // Native Ollama API format
+      requestBody = {
+        model: settings.model,
+        messages: messages,
+        stream: !!onStream,
+        options: {
+          temperature: settings.temperature,
+          num_predict: settings.maxTokens
+        }
+      };
+    } else {
+      // OpenAI-compatible API format
+      requestBody = {
+        model: settings.model,
+        messages: messages,
+        temperature: settings.temperature,
+        max_tokens: settings.maxTokens,
+        stream: !!onStream
+      };
+    }
+
+    // Add tools if available (native API supports tools!)
     if (mcpTools.length > 0) {
       requestBody.tools = mcpTools;
-      console.log(`🚀 Ollama API call with ${mcpTools.length} tools:`, {
+      console.log(`🚀 Ollama ${useNativeAPI ? 'native' : 'OpenAI-compatible'} API call with ${mcpTools.length} tools:`, {
         model: settings.model,
         toolCount: mcpTools.length,
         toolNames: mcpTools.map(t => (t as ToolObject).function?.name).filter(Boolean),
@@ -2639,8 +3068,6 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
       console.log(`🚀 Ollama API call without tools (no MCP tools available)`);
     }
 
-    // Use native Ollama API for vision models, OpenAI-compatible for others
-    const useNativeAPI = hasImages;
     const apiUrl = useNativeAPI ? `${baseUrl}/api/chat` : `${baseUrl}/v1/chat/completions`;
     console.log(`🔗 Ollama request URL: ${apiUrl} (${useNativeAPI ? 'native' : 'OpenAI-compatible'} API)`);
 
@@ -2656,7 +3083,15 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
           num_predict: settings.maxTokens
         }
       };
-      console.log(`🔗 Using Ollama native API format for vision model`);
+
+      // Add tools if available for native API
+      if (mcpTools.length > 0) {
+        finalRequestBody.tools = mcpTools;
+        console.log(`🔗 Native API: Added ${mcpTools.length} tools to request`);
+      }
+
+      console.log(`🔗 Using Ollama native API format`);
+      console.log(`🔗 Full request body:`, JSON.stringify(finalRequestBody, null, 2));
     }
 
     let response;
@@ -2696,7 +3131,10 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     if (onStream) {
-      const streamResult = await this.handleOllamaChatStreamResponse(response, onStream);
+      // Use the correct streaming handler based on API type
+      const streamResult = useNativeAPI ?
+        await this.handleOllamaStreamResponse(response, onStream) :
+        await this.handleOllamaChatStreamResponse(response, onStream);
 
       // Check if there are tool calls that need follow-up processing
       if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
@@ -2711,7 +3149,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
             type: 'function',
             function: {
               name: tc.name,
-              arguments: JSON.stringify(tc.arguments)
+              arguments: useNativeAPI ? tc.arguments : JSON.stringify(tc.arguments) // Native API expects object, OpenAI expects string
             }
           })) }
         ];
@@ -2738,7 +3176,15 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
         // Make follow-up call to get LLM's processed response
         console.log(`🔄 Making follow-up Ollama call after streaming to process tool results...`);
-        const followUpRequestBody = {
+        const followUpRequestBody = useNativeAPI ? {
+          model: settings.model,
+          messages: toolConversationHistory,
+          stream: false, // Use non-streaming for follow-up
+          options: {
+            temperature: settings.temperature,
+            num_predict: settings.maxTokens
+          }
+        } : {
           model: settings.model,
           messages: toolConversationHistory,
           temperature: settings.temperature,
@@ -2746,7 +3192,10 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
           stream: false // Use non-streaming for follow-up
         };
 
-        const followUpResponse = await fetch(`${baseUrl}/v1/chat/completions`, {
+        const followUpApiUrl = useNativeAPI ? `${baseUrl}/api/chat` : `${baseUrl}/v1/chat/completions`;
+        console.log(`🔄 Follow-up call using ${useNativeAPI ? 'native' : 'OpenAI-compatible'} API: ${followUpApiUrl}`);
+
+        const followUpResponse = await fetch(followUpApiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -2764,7 +3213,11 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
         const followUpData = await followUpResponse.json();
         console.log(`🔍 Ollama follow-up response:`, JSON.stringify(followUpData, null, 2));
-        const followUpMessage = followUpData.choices[0]?.message;
+
+        // Handle both native and OpenAI-compatible response formats
+        const followUpMessage = useNativeAPI ?
+          followUpData.message :
+          followUpData.choices?.[0]?.message;
         console.log(`🔍 Ollama follow-up message:`, followUpMessage);
 
         // Combine the original response with the follow-up
@@ -3579,7 +4032,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
     }
 
     const data = await response.json();
-    
+
     // Replicate returns a prediction that we need to poll
     if (onStream) {
       return this.pollReplicatePrediction(data.id, settings.apiKey, onStream);
@@ -3868,6 +4321,7 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
 
     let fullContent = '';
     let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
+    let toolCalls: any[] = [];
     const decoder = new TextDecoder();
 
     try {
@@ -3882,9 +4336,32 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         for (const line of lines) {
           try {
             const parsed = JSON.parse(line);
-            if (parsed.response) {
+            console.log('🔍 Native Ollama streaming chunk:', JSON.stringify(parsed, null, 2));
+
+            // Native Ollama API uses message.content format
+            if (parsed.message && parsed.message.content) {
+              fullContent += parsed.message.content;
+              onStream(parsed.message.content);
+            } else if (parsed.response) {
+              // Fallback for generate API format
               fullContent += parsed.response;
               onStream(parsed.response);
+            }
+
+            // Handle tool calls in native API format
+            if (parsed.message && parsed.message.tool_calls) {
+              console.log('🔧 Native Ollama tool calls detected:', parsed.message.tool_calls);
+              // Convert native Ollama format to internal format
+              toolCalls = parsed.message.tool_calls.map((tc: any) => ({
+                id: tc.id || `call_${Math.random().toString(36).substr(2, 9)}`,
+                function: {
+                  name: tc.function?.name,
+                  arguments: JSON.stringify(tc.function?.arguments || {})
+                }
+              }));
+              console.log('🔧 Converted tool calls:', toolCalls);
+            } else if (!parsed.message?.content) {
+              console.log('🔍 Native Ollama chunk with no content:', Object.keys(parsed));
             }
 
             // Ollama provides token counts in the final response
@@ -3910,7 +4387,12 @@ DO NOT just say "I'll search for weather" - you must actually call the tool!`;
         promptTokens: usage.prompt_tokens || 0,
         completionTokens: usage.completion_tokens || 0,
         totalTokens: usage.total_tokens || 0
-      } : undefined
+      } : undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls.map(tc => ({
+        id: tc.id,
+        name: tc.function?.name,
+        arguments: JSON.parse(tc.function?.arguments || '{}')
+      })) : undefined
     };
   }
 

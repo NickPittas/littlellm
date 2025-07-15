@@ -1,5 +1,6 @@
 import { llmService, type LLMSettings } from './llmService';
 import { sessionService } from './sessionService';
+import { settingsService } from './settingsService';
 
 // Type definitions for PDF.js
 interface PDFDocumentProxy {
@@ -330,7 +331,8 @@ export const chatService = {
     conversationHistory: Message[] = [],
     onStream?: (chunk: string) => void,
     signal?: AbortSignal,
-    conversationId?: string // Add conversation ID for tool optimization
+    conversationId?: string, // Add conversation ID for tool optimization
+    projectId?: string // Add project ID for memory context
   ): Promise<Message> {
     console.log('🚀 ChatService.sendMessage called with:', {
       message: message.substring(0, 100) + '...',
@@ -613,8 +615,16 @@ export const chatService = {
         toolCallingEnabled: settings.toolCallingEnabled,
       };
 
+      // Get conversation history length setting
+      const appSettings = settingsService.getSettings();
+      const historyLength = appSettings.general.conversationHistoryLength || 10;
+
+      // Limit conversation history to the specified number of messages
+      const limitedHistory = conversationHistory.slice(-historyLength);
+      console.log(`🧠 Conversation history limited to ${historyLength} messages (${conversationHistory.length} → ${limitedHistory.length})`);
+
       // Convert conversation history to LLM format
-      const llmHistory = conversationHistory.map(msg => ({
+      const llmHistory = limitedHistory.map(msg => ({
         role: msg.role,
         content: msg.content
       }));
@@ -650,7 +660,8 @@ export const chatService = {
         llmHistory,
         useStreaming ? onStream : undefined,
         signal,
-        conversationId
+        conversationId,
+        projectId
       );
 
       const endTime = performance.now();
