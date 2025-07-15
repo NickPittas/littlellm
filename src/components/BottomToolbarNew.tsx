@@ -303,24 +303,12 @@ export function BottomToolbar({
   };
 
   return (
-    <div
-      className="flex items-center justify-between px-4 py-2"
-      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-    >
+    <div className="flex items-center justify-between px-4 py-2">
       {/* Left side - Provider Selection */}
-      <div
-        className="flex items-center gap-2"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-      >
+      <div className="flex items-center gap-2">
         {/* Provider Dropdown */}
-        <div
-          className="flex items-center gap-1"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-        >
-          <div
-            className="relative"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-          >
+        <div className="flex items-center gap-1">
+          <div className="relative" data-interactive="true">
             <ProviderDropdown
               value={getProviderNameFromId(settings.provider)}
               onValueChange={(value: string) => {
@@ -395,15 +383,9 @@ export function BottomToolbar({
       </div>
 
       {/* Center - Model Selection */}
-      <div
-        className="flex items-center gap-2"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-      >
+      <div className="flex items-center gap-2" data-interactive="true">
         {settings.provider && (
-          <div
-            className="w-[200px]"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-          >
+          <div className="w-[200px]" data-interactive="true">
             {isLoadingModels ? (
               <div className="h-8 px-3 flex items-center justify-center text-xs text-muted-foreground border rounded-md">
                 Loading...
@@ -470,17 +452,14 @@ export function BottomToolbar({
       </div>
 
       {/* Right side - Action buttons */}
-      <div
-        className="flex items-center gap-2"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-      >
+      <div className="flex items-center gap-2">
         <Button
           variant="ghost"
           size="sm"
           onClick={onPromptsClick}
           className="h-8 w-8 p-0"
           title="Prompts"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          data-interactive="true"
         >
           <Wand2 className="h-4 w-4" />
         </Button>
@@ -491,7 +470,7 @@ export function BottomToolbar({
           onClick={onResetChat}
           className="h-8 w-8 p-0"
           title="Reset Chat"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          data-interactive="true"
         >
           <RotateCcw className="h-4 w-4" />
         </Button>
@@ -502,7 +481,7 @@ export function BottomToolbar({
           onClick={() => onHistoryChange?.(!showHistory)}
           className="h-8 w-8 p-0"
           title="Chat History"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          data-interactive="true"
         >
           <History className="h-4 w-4" />
         </Button>
@@ -521,7 +500,7 @@ export function BottomToolbar({
           }}
           className="h-8 w-8 p-0"
           title="Settings"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          data-interactive="true"
         >
           <Settings className="h-4 w-4" />
         </Button>

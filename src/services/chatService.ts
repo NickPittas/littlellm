@@ -585,6 +585,15 @@ export const chatService = {
       // Convert ChatSettings to LLMSettings
       const providerSettings = settings.providers?.[settings.provider] || { apiKey: '' };
 
+      // Debug provider settings
+      console.log('🔍 ChatService provider settings debug:', {
+        provider: settings.provider,
+        hasProviderSettings: !!providerSettings,
+        hasApiKey: !!providerSettings.apiKey,
+        apiKeyLength: providerSettings.apiKey?.length || 0,
+        apiKeyStart: providerSettings.apiKey?.substring(0, 10) || 'undefined'
+      });
+
       // Check if API key is required and missing
       // ollama, lmstudio, and n8n don't require API keys
       if (settings.provider !== 'ollama' && settings.provider !== 'lmstudio' && settings.provider !== 'n8n' && !providerSettings.apiKey) {

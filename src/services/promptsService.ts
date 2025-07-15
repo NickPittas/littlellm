@@ -134,6 +134,28 @@ class PromptsService {
     return this.customPrompts.some(prompt => prompt.id === id);
   }
 
+  /**
+   * Find existing custom copy of a built-in prompt
+   * This helps prevent duplicate custom prompts when editing built-in ones
+   */
+  findCustomCopyOfBuiltinPrompt(builtinPrompt: Prompt): Prompt | undefined {
+    if (this.isCustomPrompt(builtinPrompt.id)) {
+      return undefined; // Already a custom prompt
+    }
+
+    // Look for custom prompts that might be copies of this built-in prompt
+    // We'll match based on the original name (removing " (Custom)" suffix if present)
+    const originalName = builtinPrompt.name;
+    const customCopyName = `${originalName} (Custom)`;
+
+    return this.customPrompts.find(customPrompt =>
+      customPrompt.name === customCopyName ||
+      customPrompt.name === originalName ||
+      // Also check if the prompt content is very similar (in case user renamed it)
+      (customPrompt.prompt === builtinPrompt.prompt && customPrompt.category === builtinPrompt.category)
+    );
+  }
+
   exportPrompts(): string {
     return JSON.stringify({
       prompts: this.customPrompts

@@ -57,7 +57,7 @@ export interface ElectronAPI {
   takeScreenshot: () => Promise<string>;
 
   // Window dragging
-  startDrag: () => Promise<void>;
+  startDrag: () => Promise<{ offsetX: number; offsetY: number } | null>;
   dragWindow: (x: number, y: number, offsetX: number, offsetY: number) => Promise<void>;
 
   // Overlay windows

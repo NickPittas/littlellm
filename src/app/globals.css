@@ -49,28 +49,12 @@
   .chat-messages {
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch; /* iOS momentum scrolling */
-    /* Hardware acceleration for smoother scrolling */
-    will-change: scroll-position;
-    transform: translateZ(0);
-    backface-visibility: hidden;
-    /* Optimize rendering */
-    contain: layout style paint;
-    /* Smooth scroll timing */
-    scroll-snap-type: none; /* Disable snap for continuous smooth scrolling */
   }
 
   /* Enhanced smooth scrolling for all scrollable elements */
   .scrollable {
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
-    /* Hardware acceleration */
-    will-change: scroll-position;
-    transform: translateZ(0);
-    backface-visibility: hidden;
-    /* Optimize rendering performance */
-    contain: layout style paint;
-    /* Smooth transitions */
-    transition: scroll-behavior 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   /* Smooth scrolling for the entire document */
@@ -78,21 +62,10 @@
     scroll-behavior: smooth;
   }
 
-  /* Optimize scrolling performance for all elements */
+  /* Optimize font rendering */
   * {
-    /* Improve scroll performance on all elements */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-  }
-
-  /* Specific optimizations for scrollable containers */
-  .scrollable::-webkit-scrollbar {
-    display: none;
-  }
-
-  .scrollable {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
   }
 
   /* Solid backgrounds everywhere - no transparency */
@@ -182,6 +155,9 @@
     /* Ensure scrolling still works */
     overflow-y: auto;
     overflow-x: hidden;
+    /* Smooth scrolling performance */
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
   }
 
   .hide-scrollbar::-webkit-scrollbar {
@@ -199,11 +175,17 @@
     display: none !important;
   }
 
-  /* Ensure mouse wheel scrolling still works */
-  .scrollable {
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
+  /* Optimize scrolling for overlay windows */
+  .overlay-scroll {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    /* Remove any conflicting properties */
+    will-change: auto;
+    transform: none;
+    contain: none;
   }
+
+
 
   /* Force hide all scrollbars in chat areas */
   .chat-messages {

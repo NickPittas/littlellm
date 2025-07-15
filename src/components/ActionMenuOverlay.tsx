@@ -191,19 +191,21 @@ export function ActionMenuOverlay() {
   }, [searchQuery]);
 
   return (
-    <div className="h-full w-full bg-background border border-border rounded-lg shadow-2xl flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Quick Actions</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleClose}
-          className="h-8 w-8 p-0"
-        >
-          <X className="h-4 w-4" />
-        </Button>
+    <div className="h-full w-full bg-background flex flex-col overflow-hidden">
+      {/* Custom Title Bar - macOS style */}
+      <div
+        className="h-8 w-full bg-background/80 backdrop-blur-md border-b border-border/50 flex items-center justify-center relative flex-none cursor-move"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+      >
+        <div className="absolute left-4 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}>
+          <div className="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 cursor-pointer" onClick={handleClose} />
+          <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+          <div className="w-3 h-3 rounded-full bg-green-500/80" />
+        </div>
+        <div className="text-sm font-medium text-foreground/80">Quick Actions</div>
       </div>
+
+
 
       {/* Search */}
       <div className="p-4 border-b border-border">
@@ -221,7 +223,7 @@ export function ActionMenuOverlay() {
       </div>
 
       {/* Results */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar">
+      <div className="flex-1 overflow-y-auto hide-scrollbar overlay-scroll">
         <div className="p-2">
           {filteredItems.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">

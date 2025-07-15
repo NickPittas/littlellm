@@ -70,6 +70,30 @@ export function SettingsOverlay() {
     loadSettings();
     loadCustomPrompts();
     loadMcpServers();
+
+    // Listen for MCP server connection events for immediate UI updates
+    const handleMcpServerConnected = (serverId: string) => {
+      console.log('🔌 MCP server connected:', serverId);
+      loadMcpServers(); // Refresh the server list immediately
+    };
+
+    const handleMcpServerDisconnected = (serverId: string) => {
+      console.log('🔌 MCP server disconnected:', serverId);
+      loadMcpServers(); // Refresh the server list immediately
+    };
+
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      // Add event listeners for immediate MCP server updates
+      window.electronAPI.onMcpServerConnected?.(handleMcpServerConnected);
+      window.electronAPI.onMcpServerDisconnected?.(handleMcpServerDisconnected);
+    }
+
+    return () => {
+      // Cleanup event listeners
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        window.electronAPI.removeMcpServerListeners?.();
+      }
+    };
   }, []);
 
   const loadSettings = async () => {
@@ -249,20 +273,53 @@ export function SettingsOverlay() {
   };
 
   const handleEditPrompt = (prompt: Prompt) => {
-    setEditingPrompt(prompt);
-    setNewPrompt({
-      name: prompt.name,
-      description: prompt.description,
-      prompt: prompt.prompt,
-      category: prompt.category,
-      icon: prompt.icon
-    });
+    const isCustom = promptsService.isCustomPrompt(prompt.id);
+
+    if (!isCustom) {
+      // For built-in prompts, check if a custom copy already exists
+      const existingCustomCopy = promptsService.findCustomCopyOfBuiltinPrompt(prompt);
+
+      if (existingCustomCopy) {
+        // Edit the existing custom copy instead of the built-in prompt
+        setEditingPrompt(existingCustomCopy);
+        setNewPrompt({
+          name: existingCustomCopy.name,
+          description: existingCustomCopy.description,
+          prompt: existingCustomCopy.prompt,
+          category: existingCustomCopy.category,
+          icon: existingCustomCopy.icon
+        });
+      } else {
+        // No custom copy exists, prepare to create one
+        setEditingPrompt(prompt);
+        setNewPrompt({
+          name: `${prompt.name} (Custom)`,
+          description: prompt.description,
+          prompt: prompt.prompt,
+          category: prompt.category,
+          icon: prompt.icon
+        });
+      }
+    } else {
+      // Editing an existing custom prompt
+      setEditingPrompt(prompt);
+      setNewPrompt({
+        name: prompt.name,
+        description: prompt.description,
+        prompt: prompt.prompt,
+        category: prompt.category,
+        icon: prompt.icon
+      });
+    }
+
     setShowAddPrompt(true);
   };
 
-  const handleUpdatePrompt = () => {
+  const handleUpdatePrompt = async () => {
     if (editingPrompt && newPrompt.name && newPrompt.prompt) {
-      const updates = {
+      const isCustom = promptsService.isCustomPrompt(editingPrompt.id);
+
+      const promptData = {
         name: newPrompt.name,
         description: newPrompt.description,
         prompt: newPrompt.prompt,
@@ -270,7 +327,24 @@ export function SettingsOverlay() {
         icon: newPrompt.icon
       };
 
-      promptsService.updateCustomPrompt(editingPrompt.id, updates);
+      if (isCustom) {
+        // Update existing custom prompt
+        await promptsService.updateCustomPrompt(editingPrompt.id, promptData);
+      } else {
+        // Check if a custom copy of this built-in prompt already exists
+        const existingCustomCopy = promptsService.findCustomCopyOfBuiltinPrompt(editingPrompt);
+
+        if (existingCustomCopy) {
+          // Update the existing custom copy instead of creating a duplicate
+          await promptsService.updateCustomPrompt(existingCustomCopy.id, promptData);
+          console.log('Updated existing custom copy of built-in prompt:', existingCustomCopy.id);
+        } else {
+          // Create new custom prompt from built-in prompt
+          await promptsService.addCustomPrompt(promptData);
+          console.log('Created new custom copy of built-in prompt');
+        }
+      }
+
       loadCustomPrompts();
       setEditingPrompt(null);
       setNewPrompt({ name: '', description: '', prompt: '', category: 'text', icon: '📝' });
@@ -469,25 +543,24 @@ export function SettingsOverlay() {
   };
 
   return (
-    <div className="h-full w-full bg-background border border-border rounded-lg shadow-2xl flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Settings className="h-5 w-5" />
-          <h2 className="text-lg font-semibold">Settings</h2>
+    <div className="h-full w-full bg-background flex flex-col overflow-hidden">
+      {/* Custom Title Bar - macOS style */}
+      <div
+        className="h-8 w-full bg-background/80 backdrop-blur-md border-b border-border/50 flex items-center justify-center relative flex-none cursor-move"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+      >
+        <div className="absolute left-4 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}>
+          <div className="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 cursor-pointer" onClick={handleClose} />
+          <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+          <div className="w-3 h-3 rounded-full bg-green-500/80" />
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleClose}
-          className="h-8 w-8 p-0"
-        >
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="text-sm font-medium text-foreground/80">Settings</div>
       </div>
 
+
+
       {/* Settings Content */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar p-6">
+      <div className="flex-1 overflow-y-auto hide-scrollbar overlay-scroll p-6">
         {!settings || !settings.chat || !settings.chat.providers ? (
           <div className="text-center space-y-4">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
@@ -1061,7 +1134,7 @@ export function SettingsOverlay() {
                 </div>
 
                 {/* All Prompts List */}
-                <div className="space-y-2 max-h-64 overflow-y-auto hide-scrollbar">
+                <div className="space-y-2 max-h-64 overflow-y-auto hide-scrollbar overlay-scroll">
                   {customPrompts.map((prompt) => {
                     const isCustom = promptsService.isCustomPrompt(prompt.id);
                     return (
@@ -1093,24 +1166,26 @@ export function SettingsOverlay() {
                             </div>
                           </div>
                         </div>
-                        {isCustom && (
-                          <div className="flex gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditPrompt(prompt)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditPrompt(prompt)}
+                            title={isCustom ? "Edit prompt" : "Edit prompt (will create a custom copy)"}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          {isCustom && (
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleDeletePrompt(prompt.id)}
+                              title="Delete custom prompt"
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -1121,8 +1196,24 @@ export function SettingsOverlay() {
                   <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-background border rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
                       <h3 className="text-lg font-medium mb-4">
-                        {editingPrompt ? 'Edit Prompt' : 'Add New Prompt'}
+                        {editingPrompt
+                          ? (promptsService.isCustomPrompt(editingPrompt.id)
+                              ? 'Edit Custom Prompt'
+                              : 'Edit Built-in Prompt (Custom Copy)')
+                          : 'Add New Prompt'}
                       </h3>
+
+                      {editingPrompt && !promptsService.isCustomPrompt(editingPrompt.id) && (
+                        <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4">
+                          <p className="text-sm text-blue-800 dark:text-blue-200">
+                            <strong>Note:</strong> You're editing a built-in prompt. {
+                              promptsService.findCustomCopyOfBuiltinPrompt(editingPrompt)
+                                ? 'This will update your existing custom copy of this prompt.'
+                                : 'This will create a new custom copy that you can modify. The original built-in prompt will remain unchanged.'
+                            }
+                          </p>
+                        </div>
+                      )}
 
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
@@ -1205,7 +1296,13 @@ export function SettingsOverlay() {
                           onClick={editingPrompt ? handleUpdatePrompt : handleAddPrompt}
                           disabled={!newPrompt.name || !newPrompt.prompt}
                         >
-                          {editingPrompt ? 'Update' : 'Add'} Prompt
+                          {editingPrompt
+                            ? (promptsService.isCustomPrompt(editingPrompt.id)
+                                ? 'Update Prompt'
+                                : (promptsService.findCustomCopyOfBuiltinPrompt(editingPrompt)
+                                    ? 'Update Custom Copy'
+                                    : 'Create Custom Copy'))
+                            : 'Add Prompt'}
                         </Button>
                       </div>
                     </div>
