@@ -6,28 +6,35 @@
 @layer base {
   :root {
     /* Static CSS variables - no dynamic theming */
-    --radius: 0.8rem;
+    --radius: 5.8rem;
 
-    /* Fixed dark theme colors */
-    --background: #1a1a1a;
-    --foreground: #ffffff;
-    --card: #2a2a2a;
-    --card-foreground: #ffffff;
-    --primary: #3b82f6;
+    /* VS Code theme colors - Direct hex values */
+    --background: #181829;
+    --foreground: #d4d4d4;
+    --card: #181829;
+    --card-foreground: #eba5a5;
+    --primary: #569cd6;
     --primary-foreground: #ffffff;
-    --secondary: #374151;
-    --secondary-foreground: #ffffff;
-    --accent: #4b5563;
+    --secondary: #4fc1ff;
+    --secondary-foreground: #adadad;
+    --accent: #e04539;
     --accent-foreground: #ffffff;
-    --muted: #333333;
+    --muted: #201e31;
     --muted-foreground: #9ca3af;
-    --border: #444444;
-    --input: #444444;
-    --ring: #444444;
-    --destructive: #ef4444;
+    --border: #3b3b68;
+    --input: #949494;
+    --ring: #569cd6;
+    --destructive: #f44747;
     --destructive-foreground: #ffffff;
-    --popover: #2a2a2a;
-    --popover-foreground: #ffffff;
+    --popover: #8f8f8f;
+    --popover-foreground: #d4d4d4;
+
+    /* Additional VS Code colors for enhanced theming */
+    --success: #4ec9b0;
+    --warning: #dcdcaa;
+    --info: #4fc1ff;
+    --code-background: #1e1e1e;
+    --code-border: #464647;
   }
 }
 
@@ -71,7 +78,7 @@
 
   /* More rounded corners implementation */
   html {
-    background: #1a1a1a !important;
+    background: var(--background) !important;
     margin: 0 !important;
     padding: 0 !important;
     border-radius: 20px !important;
@@ -83,8 +90,8 @@
   }
 
   body {
-    background: #1a1a1a !important;
-    color: #ffffff !important;
+    background: var(--background) !important;
+    color: var(--foreground) !important;
     margin: 0 !important;
     padding: 0 !important;
     border-radius: 20px !important;
@@ -104,7 +111,7 @@
   }
 
   #__next {
-    background: #1a1a1a !important;
+    background: var(--background) !important;
     border-radius: 20px !important;
     -electron-corner-smoothing: 80% !important; /* More rounded squircle corners */
     overflow: hidden !important;
@@ -112,6 +119,18 @@
     height: 100% !important;
     position: relative !important;
     min-height: 100vh !important;
+  }
+
+  /* Force main app container background */
+  .h-screen.w-full {
+    background: var(--background) !important;
+    color: var(--foreground) !important;
+  }
+
+  /* Force all main containers */
+  html, body, #__next, [class*="h-screen"], [class*="w-full"] {
+    background-color: var(--background) !important;
+    color: var(--foreground) !important;
   }
 
   /* Force rounded corners on all elements */
@@ -159,37 +178,7 @@
   .thinking-dot:nth-child(2) { animation-delay: -0.16s; }
   .thinking-dot:nth-child(3) { animation-delay: 0s; }
 
-  /* Override chat bubble colors - targeting the actual classes used */
-  .bg-primary {
-    background-color: rgb(59, 130, 246) !important; /* Blue for user messages */
-  }
-
-  .text-primary-foreground {
-    color: white !important;
-  }
-
-  .bg-muted {
-    background-color: rgb(55, 65, 81) !important; /* Dark gray for assistant messages */
-  }
-
-  .text-foreground {
-    color: white !important;
-  }
-
-  /* Force chat bubble colors for both interfaces */
-  .user-message,
-  .bg-primary {
-    background: rgb(59, 130, 246) !important;
-    border-color: rgb(96, 165, 250) !important;
-    color: white !important;
-  }
-
-  .assistant-message,
-  .bg-muted {
-    background: rgb(55, 65, 81) !important;
-    border-color: rgb(75, 85, 99) !important;
-    color: white !important;
-  }
+  /* Chat bubble colors use Tailwind classes - no overrides needed */
 
   /* Ensure card content inherits colors */
   .user-message .card-content,

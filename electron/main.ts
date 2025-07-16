@@ -1006,7 +1006,7 @@ async function createWindow() {
     autoHideMenuBar: true, // Hide menu bar
     titleBarStyle: 'hidden', // Hide title bar completely
     transparent: false, // Keep solid background for better compatibility
-    backgroundColor: '#1a1a1a', // Solid background
+    backgroundColor: '#1e1e1e', // VS Code background
     roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
     hasShadow: false, // Disable shadow to help with rounded corners
     webPreferences: {
@@ -2151,7 +2151,7 @@ function setupIPC() {
       minWidth: 600,
       minHeight: 400,
       autoHideMenuBar: true, // Hide menu bar
-      backgroundColor: '#1a1a1a',
+      backgroundColor: '#1e1e1e',
       roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
       webPreferences: {
         nodeIntegration: false,
@@ -2230,7 +2230,7 @@ function setupIPC() {
   });
 
   // Generate HTML content for history window
-  function generateHistoryHTML(conversations: Conversation[], cssVariables: string): string {
+  function generateHistoryHTML(conversations: Conversation[]): string {
     const conversationItems = conversations.map(conversation => {
       const date = new Date(conversation.updatedAt).toLocaleDateString();
       const messageCount = conversation.messages?.length || 0;
@@ -2269,24 +2269,24 @@ function setupIPC() {
       <head>
         <style>
           :root {
-            ${cssVariables || `
-            --background: #1a1a1a;
-            --foreground: #ffffff;
-            --card: #2a2a2a;
-            --card-foreground: #ffffff;
-            --primary: #3b82f6;
+            /* Custom theme colors - matching globals.css */
+            --background: #181829;
+            --foreground: #d4d4d4;
+            --card: #181829;
+            --card-foreground: #eba5a5;
+            --primary: #569cd6;
             --primary-foreground: #ffffff;
-            --secondary: #374151;
-            --secondary-foreground: #ffffff;
-            --accent: #4b5563;
+            --secondary: #4fc1ff;
+            --secondary-foreground: #adadad;
+            --accent: #e04539;
             --accent-foreground: #ffffff;
-            --muted: #333333;
+            --muted: #201e31;
             --muted-foreground: #9ca3af;
-            --border: #444444;
-            --input: #444444;
-            --ring: #444444;
-            --destructive: #ef4444;
-            --destructive-foreground: #ffffff;`}
+            --border: #3b3b68;
+            --input: #949494;
+            --ring: #569cd6;
+            --destructive: #f44747;
+            --destructive-foreground: #ffffff;
           }
 
           body {
@@ -2583,27 +2583,25 @@ function setupIPC() {
       <html>
       <head>
         <style>
-          /* Use CSS variables from main window, with fallback */
+          /* Custom theme colors - matching globals.css */
           :root {
-            ${cssVariables || `
-            /* Fixed dark theme colors - matching globals.css */
-            --background: #1a1a1a;
-            --foreground: #ffffff;
-            --card: #2a2a2a;
-            --card-foreground: #ffffff;
-            --primary: #3b82f6;
+            --background: #181829;
+            --foreground: #d4d4d4;
+            --card: #181829;
+            --card-foreground: #eba5a5;
+            --primary: #569cd6;
             --primary-foreground: #ffffff;
-            --secondary: #374151;
-            --secondary-foreground: #ffffff;
-            --accent: #4b5563;
+            --secondary: #4fc1ff;
+            --secondary-foreground: #adadad;
+            --accent: #e04539;
             --accent-foreground: #ffffff;
-            --muted: #333333;
+            --muted: #201e31;
             --muted-foreground: #9ca3af;
-            --border: #444444;
-            --input: #444444;
-            --ring: #444444;
-            --destructive: #ef4444;
-            --destructive-foreground: #ffffff;`}
+            --border: #3b3b68;
+            --input: #949494;
+            --ring: #569cd6;
+            --destructive: #f44747;
+            --destructive-foreground: #ffffff;
           }
 
           body {
@@ -2941,7 +2939,7 @@ function setupIPC() {
     });
 
     // Generate HTML content for history
-    const htmlContent = generateHistoryHTML(conversations, cssVariables);
+    const htmlContent = generateHistoryHTML(conversations);
 
     historyWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
 

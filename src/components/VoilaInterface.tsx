@@ -905,8 +905,8 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       style={{
         userSelect: isDragging ? 'none' : 'auto',
         overflow: 'hidden',
-        background: '#1a1a1a', // Solid background
-        color: '#ffffff',
+        background: 'var(--background)',
+        color: 'var(--foreground)',
         borderRadius: '12px'
       }}
     >
@@ -924,7 +924,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         id="input-area"
         className="flex-none p-2"
       >
-        <Card className="p-2" style={{ backgroundColor: '#2a2a2a', border: '1px solid #444', borderRadius: '12px' }}>
+        <Card className="p-2" style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px' }}>
           {/* Attachment Preview */}
           {attachedFiles.length > 0 && (
             <div
@@ -989,9 +989,9 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               className="flex-1 min-h-[40px] p-2 resize-none focus:outline-none cursor-text overflow-y-auto"
               style={{
                 lineHeight: '1.5',
-                backgroundColor: '#333333',
-                border: '1px solid #555',
-                color: '#ffffff',
+                backgroundColor: 'var(--input)',
+                border: '1px solid var(--border)',
+                color: 'var(--foreground)',
                 borderRadius: '8px'
               }}
               data-interactive="true"
@@ -1073,7 +1073,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       {/* Chat Interface - Only show after first message - Positioned between input and bottom toolbar */}
       {messages.length > 0 && showChat && (
         <div className="flex-1 flex flex-col p-2 overflow-hidden">
-          <Card className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: '#2a2a2a', border: '1px solid #444', borderRadius: '12px' }}>
+          <Card className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px' }}>
             {/* Chat Header with Controls - FIXED POSITION */}
             <div className="flex-none flex items-center justify-between p-2 border-b border-border bg-background">
               <div className="flex items-center gap-3">
@@ -1207,7 +1207,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         id="bottom-toolbar"
         className="flex-none cursor-default p-2"
       >
-        <Card className="rounded-lg" style={{ backgroundColor: '#2a2a2a', border: '1px solid #444', borderRadius: '12px' }}>
+        <Card className="rounded-lg" style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px' }}>
             <BottomToolbar
               settings={settings}
               onSettingsChange={handleSettingsChange}

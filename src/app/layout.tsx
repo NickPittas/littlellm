@@ -19,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" style={{ borderRadius: '20px', overflow: 'hidden', background: '#1a1a1a' }}>
+    <html lang="en" style={{ borderRadius: '20px', overflow: 'hidden', background: 'var(--background)' }}>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -35,7 +35,7 @@ export default function RootLayout({
                   if (el) {
                     el.style.borderRadius = '20px';
                     el.style.overflow = 'hidden';
-                    el.style.background = '#1a1a1a';
+                    el.style.background = 'var(--background)';
                     el.style.setProperty('-electron-corner-smoothing', '80%');
                     el.style.clipPath = 'polygon(20px 0%, calc(100% - 20px) 0%, 100% 20px, 100% calc(100% - 20px), calc(100% - 20px) 100%, 20px 100%, 0% calc(100% - 20px), 0% 20px)';
                   }
@@ -48,8 +48,8 @@ export default function RootLayout({
       <body
         className={inter.className}
         style={{
-          backgroundColor: '#1a1a1a',
-          color: '#ffffff',
+          backgroundColor: 'var(--background)',
+          color: 'var(--foreground)',
           borderRadius: '20px',
           overflow: 'hidden',
           margin: 0,
