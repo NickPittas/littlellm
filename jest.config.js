@@ -20,8 +20,10 @@ const customJestConfig = {
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   testMatch: [
-    '<rootDir>/src/**/__tests__/**/*.(ts|tsx|js)',
-    '<rootDir>/src/**/?(*.)(spec|test).(ts|tsx|js)'
+    '**/tests/**/*.test.ts',
+    '**/tests/**/*.test.js',
+    '**/src/**/*.test.ts',
+    '**/src/**/*.test.js'
   ],
   collectCoverageFrom: [
     'src/**/*.(ts|tsx)',

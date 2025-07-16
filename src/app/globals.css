@@ -1,32 +1,33 @@
+/* Tailwind CSS directives */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    /* CSS variables will be set dynamically by ThemeProvider */
+    /* Static CSS variables - no dynamic theming */
     --radius: 0.8rem;
 
-    /* Default dark theme fallback */
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
-    --card: 224 71% 10%;
-    --card-foreground: 213 31% 91%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 222.2 84% 11%;
-    --secondary-foreground: 210 40% 98%;
-    --accent: 216 34% 17%;
-    --accent-foreground: 210 40% 98%;
-    --muted: 223 47% 11%;
-    --muted-foreground: 215.4 16.3% 56.9%;
-    --border: 216 34% 17%;
-    --input: 216 34% 17%;
-    --ring: 216 34% 17%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --popover: 224 71% 10%;
-    --popover-foreground: 213 31% 91%;
+    /* Fixed dark theme colors */
+    --background: #1a1a1a;
+    --foreground: #ffffff;
+    --card: #2a2a2a;
+    --card-foreground: #ffffff;
+    --primary: #3b82f6;
+    --primary-foreground: #ffffff;
+    --secondary: #374151;
+    --secondary-foreground: #ffffff;
+    --accent: #4b5563;
+    --accent-foreground: #ffffff;
+    --muted: #333333;
+    --muted-foreground: #9ca3af;
+    --border: #444444;
+    --input: #444444;
+    --ring: #444444;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --popover: #2a2a2a;
+    --popover-foreground: #ffffff;
   }
 }
 
@@ -68,18 +69,31 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Solid backgrounds everywhere - no transparency */
+  /* More rounded corners implementation */
   html {
-    background: hsl(var(--background)) !important;
-    margin: 0;
-    padding: 0;
+    background: #1a1a1a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 20px !important;
+    -electron-corner-smoothing: 80% !important; /* More rounded squircle corners */
+    overflow: hidden !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    position: relative !important;
   }
 
   body {
-    background: hsl(var(--background)) !important;
-    color: hsl(var(--foreground));
-    margin: 0;
-    padding: 0;
+    background: #1a1a1a !important;
+    color: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 20px !important;
+    -electron-corner-smoothing: 80% !important; /* More rounded squircle corners */
+    overflow: hidden !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    position: relative !important;
+
     /* Prevent any scaling issues */
     transform: none !important;
     zoom: normal !important;
@@ -90,7 +104,108 @@
   }
 
   #__next {
-    background: hsl(var(--background)) !important;
+    background: #1a1a1a !important;
+    border-radius: 20px !important;
+    -electron-corner-smoothing: 80% !important; /* More rounded squircle corners */
+    overflow: hidden !important;
+    width: 100% !important;
+    height: 100% !important;
+    position: relative !important;
+    min-height: 100vh !important;
+  }
+
+  /* Force rounded corners on all elements */
+  * {
+    box-sizing: border-box !important;
+  }
+
+  /* Simplified styling using CSS variables */
+  .card, [data-radix-dialog-content] {
+    background: var(--card) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--card-foreground) !important;
+    border-radius: 16px !important;
+  }
+
+  /* Force buttons and inputs to be solid */
+  button, input, textarea, select {
+    background: var(--muted) !important;
+    color: var(--foreground) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+  }
+
+  button:hover {
+    background: var(--accent) !important;
+  }
+
+  /* Enhanced animations for thinking indicator */
+  @keyframes thinking-bounce {
+    0%, 80%, 100% {
+      transform: scale(0);
+      opacity: 0.5;
+    }
+    40% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  .thinking-dot {
+    animation: thinking-bounce 1.4s infinite ease-in-out both;
+  }
+
+  .thinking-dot:nth-child(1) { animation-delay: -0.32s; }
+  .thinking-dot:nth-child(2) { animation-delay: -0.16s; }
+  .thinking-dot:nth-child(3) { animation-delay: 0s; }
+
+  /* Override chat bubble colors - targeting the actual classes used */
+  .bg-primary {
+    background-color: rgb(59, 130, 246) !important; /* Blue for user messages */
+  }
+
+  .text-primary-foreground {
+    color: white !important;
+  }
+
+  .bg-muted {
+    background-color: rgb(55, 65, 81) !important; /* Dark gray for assistant messages */
+  }
+
+  .text-foreground {
+    color: white !important;
+  }
+
+  /* Force chat bubble colors for both interfaces */
+  .user-message,
+  .bg-primary {
+    background: rgb(59, 130, 246) !important;
+    border-color: rgb(96, 165, 250) !important;
+    color: white !important;
+  }
+
+  .assistant-message,
+  .bg-muted {
+    background: rgb(55, 65, 81) !important;
+    border-color: rgb(75, 85, 99) !important;
+    color: white !important;
+  }
+
+  /* Ensure card content inherits colors */
+  .user-message .card-content,
+  .user-message [data-radix-card-content],
+  .bg-primary .card-content,
+  .bg-primary [data-radix-card-content] {
+    background: transparent !important;
+    color: white !important;
+  }
+
+  .assistant-message .card-content,
+  .assistant-message [data-radix-card-content],
+  .bg-muted .card-content,
+  .bg-muted [data-radix-card-content] {
+    background: transparent !important;
+    color: white !important;
   }
 
   /* Prevent scaling during drag operations */
@@ -105,45 +220,32 @@
 }
 
 @layer components {
-  /* Transparent window support */
-  .transparent-window {
-    background: transparent !important;
-  }
 
-  .floating-panel {
-    background: rgba(30, 41, 59, 0.1) !important; /* slate-800 with 95% opacity */
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(71, 85, 105, 0.7); /* slate-600 with 70% opacity */
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9);
-  }
-
-  .floating-panel-user {
-    background: rgba(13, 148, 136, 0.1) !important; /* teal-600 with 95% opacity */
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(20, 184, 166, 0.7); /* teal-500 with 70% opacity */
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9);
-  }
-
-  /* Ensure dropdown menus are completely opaque */
+  /* Ensure dropdown menus and inputs have solid backgrounds */
   [data-radix-select-content],
   [data-radix-popover-content] {
-    background-color: rgba(30, 41, 59, 0.95) !important;
-    backdrop-filter: blur(12px) !important;
-    -webkit-backdrop-filter: blur(12px) !important;
-    border: 1px solid rgba(71, 85, 105, 0.7) !important;
+    background-color: var(--card) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--card-foreground) !important;
+    border-radius: 12px !important;
   }
 
-  /* Remove any transparency from dropdown items */
+  /* Ensure input fields have solid backgrounds */
+  input, textarea, select {
+    background: var(--muted) !important;
+    color: var(--foreground) !important;
+  }
+
+  /* Solid backgrounds for dropdown items */
   [data-radix-select-item],
   .popover-content > * {
-    background-color: transparent;
+    background-color: var(--muted) !important;
+    color: var(--foreground) !important;
   }
 
   [data-radix-select-item]:hover,
   [data-radix-select-item][data-highlighted] {
-    background-color: rgba(71, 85, 105, 0.1) !important;
+    background-color: var(--accent) !important;
   }
 
   /* Hide scrollbars while maintaining functionality */
@@ -164,7 +266,6 @@
     display: none !important;
     width: 0 !important;
     height: 0 !important;
-    background: transparent !important;
   }
 
   .hide-scrollbar::-webkit-scrollbar-track {

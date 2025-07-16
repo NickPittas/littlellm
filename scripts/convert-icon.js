@@ -1,6 +1,10 @@
-const fs = require('fs');
-const path = require('path');
-const svg2img = require('svg2img');
+import fs from 'fs';
+import path from 'path';
+import svg2img from 'svg2img';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const svgPath = path.join(__dirname, '..', 'assets', 'icon.svg');
 const svgContent = fs.readFileSync(svgPath, 'utf8');

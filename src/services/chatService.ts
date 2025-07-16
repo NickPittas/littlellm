@@ -69,6 +69,7 @@ export interface Message {
   content: string | Array<ContentItem>;
   role: 'user' | 'assistant';
   timestamp: Date;
+  isThinking?: boolean; // Mark message as a thinking indicator bubble
   usage?: {
     promptTokens: number;
     completionTokens: number;

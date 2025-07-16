@@ -19,13 +19,13 @@ import {
   RotateCw,
   MessageSquare,
   Paperclip,
-  Camera,
   X
 } from 'lucide-react';
 import { promptsService } from '../services/promptsService';
 import { chatService, type Message, type ChatSettings } from '../services/chatService';
 import { MessageWithThinking } from './MessageWithThinking';
 import { UserMessage } from './UserMessage';
+import { ThinkingIndicator } from './ThinkingIndicator';
 import { settingsService } from '../services/settingsService';
 
 
@@ -198,7 +198,7 @@ export function ChatInterface({
         console.log('ChatInterface input auto-focused on mount');
       }, 100);
     }
-  }, []); // Empty dependency array - only focus on initial mount
+  }, [hideInput]); // Include hideInput dependency
 
   const handleSendMessage = async () => {
     if (!input.trim() && attachedFiles.length === 0) return;
@@ -393,10 +393,11 @@ export function ChatInterface({
             >
               <Card
                 style={{
-                  backgroundColor: message.role === 'user' ? 'rgb(13, 148, 136)' : 'rgb(30, 41, 59)',
-                  borderColor: message.role === 'user' ? 'rgb(20, 184, 166)' : 'rgb(71, 85, 105)'
+                  backgroundColor: message.role === 'user' ? 'rgb(59, 130, 246) !important' : 'rgb(55, 65, 81) !important',
+                  borderColor: message.role === 'user' ? 'rgb(96, 165, 250) !important' : 'rgb(75, 85, 99) !important',
+                  border: `2px solid ${message.role === 'user' ? 'rgb(96, 165, 250)' : 'rgb(75, 85, 99)'}`
                 }}
-                className="max-w-[80%] shadow-2xl text-white"
+                className={`max-w-[80%] shadow-lg text-white ${message.role === 'user' ? 'user-message' : 'assistant-message'}`}
               >
                 <CardContent className="p-3">
                   {message.role === 'assistant' ? (
@@ -471,16 +472,12 @@ export function ChatInterface({
         
         {isLoading && (
           <div className="flex justify-start">
-            <Card style={{ backgroundColor: 'rgb(30, 41, 59)', borderColor: 'rgb(71, 85, 105)' }} className="text-white shadow-2xl">
-              <CardContent className="p-3">
-                <div className="flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500"></div>
-                  <span>Thinking...</span>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="max-w-[80%]">
+              <ThinkingIndicator />
+            </div>
           </div>
         )}
+
         
         <div ref={messagesEndRef} />
       </div>

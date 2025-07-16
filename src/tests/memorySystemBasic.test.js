@@ -19,7 +19,7 @@ global.window = {
 };
 
 // Import the memory tools
-const { executeMemoryTool } = require('../services/memoryMCPTools');
+import { executeMemoryTool } from '../services/memoryMCPTools.js';
 
 async function testMemorySystem() {
   console.log('🧠 Starting Memory System Basic Test...');

@@ -4,13 +4,13 @@
  */
 
 import { memoryService } from './memoryService';
-import { 
-  MemoryStoreRequest, 
-  MemorySearchRequest, 
-  MemoryRetrieveRequest, 
-  MemoryUpdateRequest, 
+import {
+  MemoryStoreRequest,
+  MemorySearchRequest,
+  MemoryRetrieveRequest,
+  MemoryUpdateRequest,
   MemoryDeleteRequest,
-  MemoryType 
+  MemoryToolResponse
 } from '../types/memory';
 
 // MCP Tool definitions for memory operations
@@ -159,7 +159,7 @@ export const memoryMCPTools = [
 ];
 
 // Tool execution functions
-export async function executeMemoryTool(toolName: string, args: any): Promise<any> {
+export async function executeMemoryTool(toolName: string, args: unknown): Promise<MemoryToolResponse<unknown>> {
   console.log(`🧠 Executing memory tool: ${toolName} with args:`, args);
 
   try {

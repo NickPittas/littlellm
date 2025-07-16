@@ -1,13 +1,14 @@
-const fs = require('fs');
-const path = require('path');
-const { execSync } = require('child_process');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // This script regenerates the icon files to ensure proper Windows taskbar support
 // It creates ICO files with multiple sizes for better Windows compatibility
 
 const assetsDir = path.join(__dirname, '..', 'assets');
-const iconSvgPath = path.join(assetsDir, 'icon.svg');
-const iconPngPath = path.join(assetsDir, 'icon.png');
 const iconIcoPath = path.join(assetsDir, 'icon.ico');
 
 console.log('Regenerating icon files for better Windows taskbar support...');
@@ -15,7 +16,7 @@ console.log('Regenerating icon files for better Windows taskbar support...');
 // Check if we have the required tools
 try {
   // First, let's use the existing PNG files to create a proper ICO
-  const pngToIco = require('png-to-ico');
+  const { default: pngToIco } = await import('png-to-ico');
   
   // Create ICO from multiple PNG sizes
   const pngFiles = [

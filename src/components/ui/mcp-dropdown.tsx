@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronDown, Server, Check, X, RefreshCw, AlertCircle, Zap } from "lucide-react"
+import { Server, Check, X, RefreshCw } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { Button } from "./button"
 import { mcpService, type MCPServer } from "../../services/mcpService"
@@ -19,20 +19,18 @@ export function MCPDropdown({
   const [servers, setServers] = React.useState<MCPServer[]>([])
   const [enabledServers, setEnabledServers] = React.useState<Set<string>>(new Set())
   const [connectedServers, setConnectedServers] = React.useState<Set<string>>(new Set())
-  const [serverStatus, setServerStatus] = React.useState<Map<string, any>>(new Map())
+  const [serverStatus, setServerStatus] = React.useState<Map<string, {
+    status: string;
+    error?: string;
+    toolCount?: number;
+    resourceCount?: number;
+    promptCount?: number;
+  }>>(new Map())
   
   const triggerRef = React.useRef<HTMLButtonElement>(null)
   const isElectron = typeof window !== 'undefined' && window.electronAPI
 
-  // Load MCP servers on mount only (no auto-refresh)
-  React.useEffect(() => {
-    loadServers()
-    // Removed auto-refresh interval - servers will be refreshed when needed (e.g., when toggling)
-  }, [])
-
-
-
-  const loadServers = async () => {
+  const loadServers = React.useCallback(async () => {
     try {
       const mcpServers = await mcpService.getServers()
       setServers(mcpServers)
@@ -47,11 +45,27 @@ export function MCPDropdown({
       setConnectedServers(connected)
 
       // Get detailed status for health indicators
-      const detailedStatus = await mcpService.getDetailedStatus()
+      const detailedStatus = await mcpService.getDetailedStatus() as {
+        servers?: Array<{
+          id: string;
+          connected: boolean;
+          toolCount?: number;
+          resourceCount?: number;
+          promptCount?: number;
+          hasProcess?: boolean;
+        }>
+      }
       const statusMap = new Map()
 
       if (detailedStatus?.servers) {
-        detailedStatus.servers.forEach((serverInfo: any) => {
+        detailedStatus.servers.forEach((serverInfo: {
+          id: string;
+          connected: boolean;
+          toolCount?: number;
+          resourceCount?: number;
+          promptCount?: number;
+          hasProcess?: boolean;
+        }) => {
           statusMap.set(serverInfo.id, {
             connected: serverInfo.connected,
             toolCount: serverInfo.toolCount || 0,
@@ -73,9 +87,15 @@ export function MCPDropdown({
     } catch (error) {
       console.error('Failed to load MCP servers:', error)
     }
-  }
+  }, [])
 
-  const toggleServer = async (serverId: string, currentlyEnabled: boolean) => {
+  // Load MCP servers on mount only (no auto-refresh)
+  React.useEffect(() => {
+    loadServers()
+    // Removed auto-refresh interval - servers will be refreshed when needed (e.g., when toggling)
+  }, [loadServers])
+
+  const toggleServer = React.useCallback(async (serverId: string, currentlyEnabled: boolean) => {
     try {
       console.log(`🔄 MCP Dropdown: Toggling server ${serverId}: ${currentlyEnabled} -> ${!currentlyEnabled}`)
       console.log('🔄 MCP Dropdown: Current enabled servers:', Array.from(enabledServers))
@@ -121,7 +141,7 @@ export function MCPDropdown({
       // Reload servers to ensure UI is in sync
       await loadServers()
     }
-  }
+  }, [enabledServers, connectedServers, loadServers])
 
   const restartServer = async (serverId: string) => {
     try {
@@ -186,7 +206,7 @@ export function MCPDropdown({
       // Don't remove all listeners - just let this one be overridden
       // The electron API will handle multiple listeners properly
     };
-  }, [servers, enabledServers]);
+  }, [servers, enabledServers, isElectron, toggleServer]);
 
   const generateMCPDropdownHTML = (servers: MCPServer[], enabledServers: Set<string>) => {
     const serverItems = servers.map(server => {
@@ -233,9 +253,9 @@ export function MCPDropdown({
         .dropdown-header {
           padding: 8px 12px;
           font-size: 12px;
-          color: hsl(var(--muted-foreground));
-          border-bottom: 1px solid hsl(var(--border));
-          background: hsl(var(--muted));
+          color: var(--muted-foreground);
+          border-bottom: 1px solid var(--border);
+          background: var(--muted);
         }
         .dropdown-item {
           padding: 8px 12px;
@@ -246,9 +266,11 @@ export function MCPDropdown({
           align-items: center;
           justify-content: space-between;
           min-height: 48px;
+          color: var(--card-foreground);
         }
         .dropdown-item:hover {
-          background: hsl(var(--accent));
+          background: var(--accent);
+          color: var(--accent-foreground);
         }
         .dropdown-item:last-child {
           border-bottom: none;
@@ -264,7 +286,7 @@ export function MCPDropdown({
           width: 16px;
           height: 16px;
           flex-shrink: 0;
-          color: hsl(var(--muted-foreground));
+          color: var(--muted-foreground);
         }
         .server-details {
           display: flex;
@@ -276,14 +298,14 @@ export function MCPDropdown({
         .server-name {
           font-size: 14px;
           font-weight: 500;
-          color: hsl(var(--card-foreground));
+          color: var(--card-foreground);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
         .server-description {
           font-size: 12px;
-          color: hsl(0 0% 63.9%);
+          color: var(--muted-foreground);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -313,7 +335,7 @@ export function MCPDropdown({
         .empty-state {
           padding: 16px;
           text-align: center;
-          color: hsl(0 0% 63.9%);
+          color: var(--muted-foreground);
           font-size: 14px;
         }
         /* Enable scrolling with hidden scrollbars */
@@ -528,12 +550,12 @@ export function MCPDropdown({
                                 {isEnabled && isConnected && status && (
                                   <span
                                     className="text-xs text-muted-foreground"
-                                    title={`Tools: ${status.toolCount}, Resources: ${status.resourceCount}, Prompts: ${status.promptCount}`}
+                                    title={`Tools: ${status.toolCount ?? 0}, Resources: ${status.resourceCount ?? 0}, Prompts: ${status.promptCount ?? 0}`}
                                   >
-                                    {status.toolCount > 0 && `${status.toolCount}t`}
-                                    {status.resourceCount > 0 && ` ${status.resourceCount}r`}
-                                    {status.promptCount > 0 && ` ${status.promptCount}p`}
-                                    {status.toolCount === 0 && status.resourceCount === 0 && status.promptCount === 0 && 'no capabilities'}
+                                    {(status.toolCount ?? 0) > 0 && `${status.toolCount}t`}
+                                    {(status.resourceCount ?? 0) > 0 && ` ${status.resourceCount}r`}
+                                    {(status.promptCount ?? 0) > 0 && ` ${status.promptCount}p`}
+                                    {(status.toolCount ?? 0) === 0 && (status.resourceCount ?? 0) === 0 && (status.promptCount ?? 0) === 0 && 'no capabilities'}
                                   </span>
                                 )}
                               </div>

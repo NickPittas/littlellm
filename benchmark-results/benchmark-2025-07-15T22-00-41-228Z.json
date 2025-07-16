@@ -1,0 +1,229 @@
+{
+  "summary": {
+    "totalBenchmarks": 11,
+    "overallSuccessRate": 100,
+    "fastestOperation": {
+      "name": "Memory Store Operations",
+      "time": 10.521157999999705
+    },
+    "slowestOperation": {
+      "name": "Single Complex Tool",
+      "time": 803.4764399999998
+    },
+    "mostMemoryIntensive": {
+      "name": "Partial Failure Recovery",
+      "memory": 0.01713409423828125
+    }
+  },
+  "detailed": {
+    "timestamp": "2025-07-15T22:00:05.600Z",
+    "system": {
+      "platform": "win32",
+      "arch": "x64",
+      "cpus": 32,
+      "memory": "126GB",
+      "nodeVersion": "v22.17.0"
+    },
+    "benchmarks": {
+      "Single Simple Tool": {
+        "totalIterations": 10,
+        "successful": 10,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 52.22569999999996,
+          "max": 149.95309999999995,
+          "avg": 100.99907,
+          "median": 99.34285000000001
+        },
+        "memory": {
+          "totalDelta": 0.07403564453125,
+          "avgDelta": 0.007403564453125,
+          "peak": 0.02025604248046875
+        },
+        "errors": []
+      },
+      "Single Medium Tool": {
+        "totalIterations": 10,
+        "successful": 10,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 262.3989999999999,
+          "max": 483.5644999999995,
+          "avg": 354.8078300000001,
+          "median": 310.74540000000025
+        },
+        "memory": {
+          "totalDelta": 0.03143310546875,
+          "avgDelta": 0.003143310546875,
+          "peak": 0.00756072998046875
+        },
+        "errors": []
+      },
+      "Single Complex Tool": {
+        "totalIterations": 5,
+        "successful": 5,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 514.2991000000002,
+          "max": 1038.0787,
+          "avg": 803.4764399999998,
+          "median": 861.6656000000003
+        },
+        "memory": {
+          "totalDelta": -0.34937286376953125,
+          "avgDelta": -0.06987457275390625,
+          "peak": 0.00347137451171875
+        },
+        "errors": []
+      },
+      "Two Tools Parallel": {
+        "totalIterations": 10,
+        "successful": 10,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 61.0028999999995,
+          "max": 144.91580000000067,
+          "avg": 116.16507999999976,
+          "median": 123.34649999999965
+        },
+        "memory": {
+          "totalDelta": 0.05950927734375,
+          "avgDelta": 0.005950927734375,
+          "peak": 0.00861358642578125
+        },
+        "errors": []
+      },
+      "Three Tools Parallel": {
+        "totalIterations": 10,
+        "successful": 10,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 292.4904999999999,
+          "max": 483.83460000000014,
+          "avg": 371.13516999999973,
+          "median": 361.0908499999996
+        },
+        "memory": {
+          "totalDelta": 0.08747100830078125,
+          "avgDelta": 0.008747100830078125,
+          "peak": 0.01752471923828125
+        },
+        "errors": []
+      },
+      "Five Tools Parallel": {
+        "totalIterations": 5,
+        "successful": 5,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 318.0141000000003,
+          "max": 496.95350000000326,
+          "avg": 413.33348000000115,
+          "median": 384.6648000000023
+        },
+        "memory": {
+          "totalDelta": 0.0616302490234375,
+          "avgDelta": 0.0123260498046875,
+          "peak": 0.01358795166015625
+        },
+        "errors": []
+      },
+      "Two Tools Sequential": {
+        "totalIterations": 10,
+        "successful": 10,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 145.87870000000112,
+          "max": 245.90409999999974,
+          "avg": 208.89358000000067,
+          "median": 204.71335
+        },
+        "memory": {
+          "totalDelta": 0.0648345947265625,
+          "avgDelta": 0.00648345947265625,
+          "peak": 0.014678955078125
+        },
+        "errors": []
+      },
+      "Three Tools Sequential": {
+        "totalIterations": 5,
+        "successful": 5,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 453.33380000000034,
+          "max": 690.2934000000023,
+          "avg": 585.2805800000002,
+          "median": 604.4264000000003
+        },
+        "memory": {
+          "totalDelta": 0.03932952880859375,
+          "avgDelta": 0.00786590576171875,
+          "peak": 0.00872039794921875
+        },
+        "errors": []
+      },
+      "Partial Failure Recovery": {
+        "totalIterations": 5,
+        "successful": 5,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 221.90659999999843,
+          "max": 249.52779999999984,
+          "avg": 229.73619999999937,
+          "median": 224.83949999999822
+        },
+        "memory": {
+          "totalDelta": 0.08567047119140625,
+          "avgDelta": 0.01713409423828125,
+          "peak": 0.01959228515625
+        },
+        "errors": []
+      },
+      "Memory Store Operations": {
+        "totalIterations": 50,
+        "successful": 50,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 9.94720000000234,
+          "max": 12.964099999997416,
+          "avg": 10.521157999999705,
+          "median": 10.48344999999972
+        },
+        "memory": {
+          "totalDelta": 0.12766265869140625,
+          "avgDelta": 0.002553253173828125,
+          "peak": 0.00519561767578125
+        },
+        "errors": []
+      },
+      "Memory Search Operations": {
+        "totalIterations": 20,
+        "successful": 20,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 20.018400000000838,
+          "max": 22.0199999999968,
+          "avg": 20.416879999999946,
+          "median": 20.34939999999915
+        },
+        "memory": {
+          "totalDelta": 0.05644989013671875,
+          "avgDelta": 0.0028224945068359374,
+          "peak": 0.00458526611328125
+        },
+        "errors": []
+      }
+    }
+  },
+  "recommendations": []
+}

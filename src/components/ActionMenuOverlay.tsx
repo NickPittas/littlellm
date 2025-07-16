@@ -10,8 +10,7 @@ import {
   Code,
   MessageSquare,
   Zap,
-  Star,
-  X
+  Star
 } from 'lucide-react';
 import { promptsService, type Prompt } from '../services/promptsService';
 

@@ -1,6 +1,10 @@
-const { app, BrowserWindow, nativeImage } = require('electron');
-const path = require('path');
-const fs = require('fs');
+import { app, nativeImage } from 'electron';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Test script to verify icon loading
 function testIconPaths() {

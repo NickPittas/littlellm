@@ -62,8 +62,21 @@ export function ElectronDropdown({
     }
 
     // Calculate dropdown dimensions
-    const dropdownWidth = 280
-    const dropdownHeight = Math.min(315, filteredOptions.length * 40 + 80 + 15) // Dynamic height + 15px for draggable header
+    // Calculate width based on longest option text
+    const maxTextLength = Math.max(
+      ...filteredOptions.map(option =>
+        displayTransform ? displayTransform(option).length : String(option).length
+      ),
+      12 // Minimum width for "Search options..."
+    )
+    const dropdownWidth = Math.max(280, Math.min(500, maxTextLength * 8 + 60)) // 8px per char + padding
+    // Height calculation: search section (50px) + content area (dynamic) + minimal padding
+    const searchSectionHeight = 50
+    const itemHeight = 40
+    const maxContentHeight = 250
+    const calculatedContentHeight = filteredOptions.length * itemHeight + 8 // 8px for content padding
+    const actualContentHeight = Math.min(maxContentHeight, calculatedContentHeight)
+    const dropdownHeight = searchSectionHeight + actualContentHeight
 
     try {
       // Get trigger button position relative to the window (not viewport)

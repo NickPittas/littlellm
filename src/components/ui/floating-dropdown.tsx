@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
+
 
 interface FloatingDropdownProps {
   trigger: React.ReactNode;

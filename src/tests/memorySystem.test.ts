@@ -5,7 +5,7 @@
 
 import { memoryService } from '../services/memoryService';
 import { executeMemoryTool } from '../services/memoryMCPTools';
-import { MemoryType } from '../types/memory';
+import { MemoryType, MemoryEntry, SearchResponse } from '../types/memory';
 
 // Mock Electron API for testing
 const mockElectronAPI = {
@@ -137,7 +137,7 @@ describe('Memory System', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
-      expect(result.data.results).toBeDefined();
+      expect((result.data as SearchResponse).results).toBeDefined();
     });
 
     test('should handle unknown memory tool', async () => {
@@ -160,7 +160,7 @@ describe('Memory System', () => {
       });
 
       expect(storeResult.success).toBe(true);
-      const memoryId = storeResult.data?.id;
+      const memoryId = (storeResult.data as MemoryEntry)?.id;
 
       // 2. Retrieve the memory
       mockElectronAPI.loadMemoryEntry.mockResolvedValue({
@@ -182,7 +182,7 @@ describe('Memory System', () => {
       const retrieveResult = await executeMemoryTool('memory-retrieve', { id: memoryId });
 
       expect(retrieveResult.success).toBe(true);
-      expect(retrieveResult.data?.title).toBe('LiteLLM Architecture');
+      expect((retrieveResult.data as MemoryEntry)?.title).toBe('LiteLLM Architecture');
 
       // 3. Update the memory
       const updateResult = await executeMemoryTool('memory-update', {
