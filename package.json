@@ -1,6 +1,6 @@
 {
   "name": "littlellm",
-  "version": "1.8.0",
+  "version": "1.8.5",
   "description": "A powerful desktop AI chat application with enhanced vision support, n8n integration, and advanced response parsing",
   "author": "LittleLLM Team",
   "private": true,
