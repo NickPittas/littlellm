@@ -45,7 +45,7 @@ export function ThemeSelector() {
                 <div className="text-2xl">
                   {typeof themeOption.icon === 'string'
                     ? themeOption.icon
-                    : React.createElement(themeOption.icon, { size: 24 })
+                    : React.createElement(themeOption.icon, { width: 24, height: 24 })
                   }
                 </div>
                 <div className="text-sm font-medium text-center">{themeOption.name}</div>

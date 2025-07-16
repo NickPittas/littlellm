@@ -1,0 +1,235 @@
+{
+  "summary": {
+    "totalBenchmarks": 11,
+    "overallSuccessRate": 100,
+    "fastestOperation": {
+      "name": "Memory Store Operations",
+      "time": 10.250249999999651
+    },
+    "slowestOperation": {
+      "name": "Single Complex Tool",
+      "time": 769.3586999999998
+    },
+    "mostMemoryIntensive": {
+      "name": "Partial Failure Recovery",
+      "memory": 0.01831512451171875
+    }
+  },
+  "detailed": {
+    "timestamp": "2025-07-15T22:02:24.532Z",
+    "system": {
+      "platform": "win32",
+      "arch": "x64",
+      "cpus": 32,
+      "memory": "126GB",
+      "nodeVersion": "v22.17.0"
+    },
+    "benchmarks": {
+      "Single Simple Tool": {
+        "totalIterations": 10,
+        "successful": 10,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 60.21630000000005,
+          "max": 143.3102,
+          "avg": 99.41547000000003,
+          "median": 107.32305000000007
+        },
+        "memory": {
+          "totalDelta": 0.0685577392578125,
+          "avgDelta": 0.00685577392578125,
+          "peak": 0.01877593994140625
+        },
+        "errors": []
+      },
+      "Single Medium Tool": {
+        "totalIterations": 10,
+        "successful": 10,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 221.3068999999998,
+          "max": 499.7399999999998,
+          "avg": 395.8748099999999,
+          "median": 398.99505
+        },
+        "memory": {
+          "totalDelta": -0.41009521484375,
+          "avgDelta": -0.041009521484375,
+          "peak": 0.00640106201171875
+        },
+        "errors": []
+      },
+      "Single Complex Tool": {
+        "totalIterations": 5,
+        "successful": 5,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 576.6687999999995,
+          "max": 998.2070000000003,
+          "avg": 769.3586999999998,
+          "median": 770.9658999999992
+        },
+        "memory": {
+          "totalDelta": -0.3480987548828125,
+          "avgDelta": -0.0696197509765625,
+          "peak": 0.00347137451171875
+        },
+        "errors": []
+      },
+      "Two Tools Parallel": {
+        "totalIterations": 10,
+        "successful": 10,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 60.54919999999947,
+          "max": 146.37450000000172,
+          "avg": 111.52397000000019,
+          "median": 113.66644999999971
+        },
+        "memory": {
+          "totalDelta": 0.06488037109375,
+          "avgDelta": 0.006488037109375,
+          "peak": 0.01103973388671875
+        },
+        "errors": []
+      },
+      "Three Tools Parallel": {
+        "totalIterations": 10,
+        "successful": 10,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 291.257599999999,
+          "max": 485.63900000000103,
+          "avg": 403.49090000000035,
+          "median": 409.3256500000007
+        },
+        "memory": {
+          "totalDelta": 0.08728790283203125,
+          "avgDelta": 0.008728790283203124,
+          "peak": 0.01734161376953125
+        },
+        "errors": []
+      },
+      "Five Tools Parallel": {
+        "totalIterations": 5,
+        "successful": 5,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 228.35729999999967,
+          "max": 414.2560999999987,
+          "avg": 284.3357000000004,
+          "median": 238.64710000000196
+        },
+        "memory": {
+          "totalDelta": 0.06185150146484375,
+          "avgDelta": 0.01237030029296875,
+          "peak": 0.0135345458984375
+        },
+        "errors": []
+      },
+      "Two Tools Sequential": {
+        "totalIterations": 10,
+        "successful": 10,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 173.34490000000005,
+          "max": 264.0096999999987,
+          "avg": 224.09781000000004,
+          "median": 229.92545000000064
+        },
+        "memory": {
+          "totalDelta": 0.063751220703125,
+          "avgDelta": 0.0063751220703125,
+          "peak": 0.0135955810546875
+        },
+        "errors": []
+      },
+      "Three Tools Sequential": {
+        "totalIterations": 5,
+        "successful": 5,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 381.11569999999847,
+          "max": 612.557499999999,
+          "avg": 474.64990000000034,
+          "median": 448.56920000000173
+        },
+        "memory": {
+          "totalDelta": 0.03932952880859375,
+          "avgDelta": 0.00786590576171875,
+          "peak": 0.00872039794921875
+        },
+        "errors": []
+      },
+      "Partial Failure Recovery": {
+        "totalIterations": 5,
+        "successful": 5,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 215.70349999999962,
+          "max": 272.15999999999985,
+          "avg": 244.30635999999942,
+          "median": 252.51759999999922
+        },
+        "memory": {
+          "totalDelta": 0.09157562255859375,
+          "avgDelta": 0.01831512451171875,
+          "peak": 0.02596282958984375
+        },
+        "errors": []
+      },
+      "Memory Store Operations": {
+        "totalIterations": 50,
+        "successful": 50,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 9.5441000000028,
+          "max": 10.946399999997084,
+          "avg": 10.250249999999651,
+          "median": 10.063750000001164
+        },
+        "memory": {
+          "totalDelta": 0.13446044921875,
+          "avgDelta": 0.002689208984375,
+          "peak": 0.00946807861328125
+        },
+        "errors": []
+      },
+      "Memory Search Operations": {
+        "totalIterations": 20,
+        "successful": 20,
+        "failed": 0,
+        "successRate": 100,
+        "executionTime": {
+          "min": 19.716999999996915,
+          "max": 20.794700000005832,
+          "avg": 20.36666999999943,
+          "median": 20.50829999999769
+        },
+        "memory": {
+          "totalDelta": 0.05644989013671875,
+          "avgDelta": 0.0028224945068359374,
+          "peak": 0.00458526611328125
+        },
+        "errors": []
+      }
+    }
+  },
+  "recommendations": [
+    {
+      "type": "performance",
+      "priority": "high",
+      "message": "Parallel execution is 50.2% faster than sequential. Use parallel execution for independent tools."
+    }
+  ]
+}

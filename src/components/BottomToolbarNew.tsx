@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { ElectronDropdown } from './ui/electron-dropdown';
 import { ProviderDropdown } from './ui/provider-dropdown';
@@ -39,15 +39,7 @@ export function BottomToolbar({
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
 
-  // Get provider display options
-  const getProviders = () => {
-    return chatService.getProviders();
-  };
 
-  const getProviderIdFromName = (name: string) => {
-    const provider = chatService.getProviders().find(p => p.name === name);
-    return provider?.id || '';
-  };
 
   const getProviderNameFromId = (id: string) => {
     const provider = chatService.getProviders().find(p => p.id === id);
@@ -74,20 +66,9 @@ export function BottomToolbar({
 
     // Never auto-initialize provider - only use what the user has saved
     // Let the user manually select their provider
-  }, [settings.provider, settings.model]); // Watch for settings changes
+  }, [settings]); // Watch for settings changes
 
-  // Fetch models when provider changes
-  useEffect(() => {
-    console.log('🔄 Provider useEffect triggered! settings.provider:', settings.provider);
-    if (settings.provider) {
-      console.log('Fetching models for provider:', settings.provider);
-      fetchModelsForProvider(settings.provider);
-    } else {
-      console.log('❌ No provider set, skipping model fetch');
-    }
-  }, [settings.provider]);
-
-  const fetchModelsForProvider = async (providerId: string) => {
+  const fetchModelsForProvider = useCallback(async (providerId: string) => {
     console.log('fetchModelsForProvider called with:', providerId);
     setIsLoadingModels(true);
     try {
@@ -140,8 +121,20 @@ export function BottomToolbar({
     } finally {
       setIsLoadingModels(false);
     }
-  };
-  
+  }, [settings, onSettingsChange]);
+
+  // Fetch models when provider changes
+  useEffect(() => {
+    console.log('🔄 Provider useEffect triggered! settings.provider:', settings.provider);
+    if (settings.provider) {
+      console.log('Fetching models for provider:', settings.provider);
+      fetchModelsForProvider(settings.provider);
+    } else {
+      console.log('❌ No provider set, skipping model fetch');
+    }
+  }, [settings.provider, fetchModelsForProvider]);
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleFileUpload = () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -247,6 +240,7 @@ export function BottomToolbar({
     input.click();
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleScreenshot = async () => {
     try {
       console.log('Screenshot button clicked');
@@ -348,7 +342,7 @@ export function BottomToolbar({
                   const currentProvider = settings.provider;
                   const currentModel = settings.model;
 
-                  let updatedProviders = { ...settings.providers };
+                  const updatedProviders = { ...settings.providers };
 
                   if (currentProvider && currentModel && currentModel.trim() !== '') {
                     console.log('💾 SAVING current model to current provider:', currentProvider, '->', currentModel);

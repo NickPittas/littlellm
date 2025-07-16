@@ -1,3 +1,10 @@
+// Extend Window interface for tool thinking trigger
+declare global {
+  interface Window {
+    triggerToolThinking?: (toolName: string) => void;
+  }
+}
+
 export interface LLMProvider {
   id: string;
   name: string;
@@ -17,19 +24,19 @@ export interface LLMSettings {
   maxTokens: number;
   systemPrompt?: string;
   toolCallingEnabled?: boolean;
-  memoryContext?: any; // Memory context for provider-specific integration
+  memoryContext?: MemoryContext; // Memory context for provider-specific integration
 }
 
 import { mcpService } from './mcpService';
 import { getMemoryMCPTools, executeMemoryTool, isMemoryTool } from './memoryMCPTools';
-import { memoryContextService } from './memoryContextService';
+import { memoryContextService, MemoryContext } from './memoryContextService';
 import { automaticMemoryService } from './automaticMemoryService';
 
 // Type guards for tool types
 interface MCPTool {
   name: string;
   description: string;
-  inputSchema?: any;
+  inputSchema?: Record<string, unknown>;
   serverId?: string;
 }
 
@@ -38,7 +45,7 @@ interface MemoryTool {
   function: {
     name: string;
     description: string;
-    parameters: any;
+    parameters: Record<string, unknown>;
   };
 }
 
@@ -640,11 +647,11 @@ class LLMService {
     return !isUnsupported;
   }
 
-  private generateToolInstructions(tools: unknown[], provider: string): string {
+  private generateToolInstructions(tools: unknown[]): string {
     if (tools.length === 0) return '';
 
     // Type guard for tool objects
-    const isToolObject = (t: unknown): t is { function?: { name?: string; description?: string; parameters?: any } } => {
+    const isToolObject = (t: unknown): t is { function?: { name?: string; description?: string; parameters?: Record<string, unknown> } } => {
       return typeof t === 'object' && t !== null;
     };
 
@@ -1104,6 +1111,12 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
       } else {
         // Execute as MCP tool
         console.log(`🔧 Executing MCP tool: ${toolName}`);
+
+        // Trigger thinking indicator for tool execution
+        if (typeof window !== 'undefined' && window.triggerToolThinking) {
+          window.triggerToolThinking(toolName);
+        }
+
         const result = await mcpService.callTool(toolName, parsedArgs);
         console.log(`✅ MCP tool ${toolName} executed successfully:`, result);
         return JSON.stringify(result);
@@ -1118,7 +1131,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
    * Detect if a request is incomplete based on user message and executed tools
    */
   private detectIncompleteRequest(
-    userMessage: string | any,
+    userMessage: string | unknown,
     executedResults: Array<{ name: string; success: boolean }>
   ): { incomplete: boolean; missing: string[] } {
     if (!userMessage || typeof userMessage !== 'string') {
@@ -1221,7 +1234,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
    * Validate tool calls for provider-specific requirements
    */
   private validateToolCallsForProvider(
-    toolCalls: Array<{ id?: string; name: string; arguments: any }>,
+    toolCalls: Array<{ id?: string; name: string; arguments: Record<string, unknown> }>,
     provider: string
   ): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
@@ -1264,8 +1277,119 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
           if (!toolCall.id) {
             errors.push(`Mistral tool call missing required id: ${toolCall.name}`);
           }
+          if (toolCall.arguments && typeof toolCall.arguments !== 'object') {
+            errors.push(`Mistral tool call arguments must be object: ${toolCall.name}`);
+          }
+          break;
+
+        case 'gemini':
+        case 'google':
+          // Google/Gemini has specific requirements
+          if (toolCall.arguments && typeof toolCall.arguments !== 'object') {
+            errors.push(`Google/Gemini tool call arguments must be object: ${toolCall.name}`);
+          }
+          break;
+
+        case 'requesty':
+          // Requesty provider validation
+          if (!toolCall.id) {
+            errors.push(`Requesty tool call missing required id: ${toolCall.name}`);
+          }
+          break;
+
+        case 'n8n':
+          // N8N provider validation
+          if (toolCall.arguments && typeof toolCall.arguments !== 'object') {
+            errors.push(`N8N tool call arguments must be object: ${toolCall.name}`);
+          }
+          break;
+
+        default:
+          // Generic validation for unknown providers
+          if (toolCall.arguments && typeof toolCall.arguments === 'string') {
+            try {
+              JSON.parse(toolCall.arguments);
+            } catch {
+              errors.push(`Tool call has invalid JSON arguments: ${toolCall.name}`);
+            }
+          }
           break;
       }
+
+      // Additional validation for tool name format
+      if (toolCall.name.length > 64) {
+        errors.push(`Tool name too long (max 64 chars): ${toolCall.name}`);
+      }
+
+      if (!/^[a-zA-Z0-9_-]+$/.test(toolCall.name)) {
+        errors.push(`Tool name contains invalid characters: ${toolCall.name}`);
+      }
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * Validate tool schema compatibility for specific providers
+   */
+  private validateToolSchemaForProvider(
+    tool: {
+      type?: string;
+      name?: string;
+      description?: string;
+      function?: { name?: string; parameters?: Record<string, unknown> }
+    },
+    provider: string
+  ): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (!tool || typeof tool !== 'object') {
+      errors.push('Tool must be an object');
+      return { valid: false, errors };
+    }
+
+    switch (provider.toLowerCase()) {
+      case 'openai':
+        if (!tool.type || tool.type !== 'function') {
+          errors.push('OpenAI tools must have type: "function"');
+        }
+        if (!tool.function || !tool.function.name) {
+          errors.push('OpenAI tools must have function.name');
+        }
+        if (tool.function?.name && tool.function.name.length > 64) {
+          errors.push('OpenAI function names must be ≤64 characters');
+        }
+        break;
+
+      case 'anthropic':
+        if (!tool.name) {
+          errors.push('Anthropic tools must have name property');
+        }
+        if (!tool.description) {
+          errors.push('Anthropic tools must have description property');
+        }
+        break;
+
+      case 'mistral':
+        // Mistral uses OpenAI-compatible format
+        if (!tool.type || tool.type !== 'function') {
+          errors.push('Mistral tools must have type: "function"');
+        }
+        if (!tool.function || !tool.function.name) {
+          errors.push('Mistral tools must have function.name');
+        }
+        break;
+
+      case 'ollama':
+        // Ollama supports both native and OpenAI-compatible formats
+        if (tool.type === 'function') {
+          if (!tool.function || !tool.function.name) {
+            errors.push('Ollama OpenAI-format tools must have function.name');
+          }
+        } else if (!tool.name) {
+          errors.push('Ollama native-format tools must have name property');
+        }
+        break;
     }
 
     return { valid: errors.length === 0, errors };
@@ -1278,7 +1402,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
     toolCalls: Array<{
       id?: string;
       name: string;
-      arguments: any;
+      arguments: Record<string, unknown>;
     }>,
     provider: string = 'unknown'
   ): Promise<Array<{
@@ -1294,7 +1418,22 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
     const validation = this.validateToolCallsForProvider(toolCalls, provider);
     if (!validation.valid) {
       console.warn(`⚠️ Tool call validation failed for ${provider}:`, validation.errors);
-      // Continue execution but log warnings
+
+      // For critical validation failures, return error results
+      const criticalErrors = validation.errors.filter(error =>
+        error.includes('missing required') || error.includes('invalid JSON')
+      );
+
+      if (criticalErrors.length > 0) {
+        console.error(`🚨 Critical validation errors for ${provider}, aborting tool execution:`, criticalErrors);
+        return toolCalls.map(tc => ({
+          id: tc.id,
+          name: tc.name,
+          result: `Validation Error: ${criticalErrors.join(', ')}`,
+          success: false,
+          executionTime: 0
+        }));
+      }
     }
 
     const startTime = Date.now();
@@ -1340,7 +1479,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   private async executeMultipleToolsLegacy(toolCalls: Array<{
     id?: string;
     name: string;
-    arguments: any;
+    arguments: Record<string, unknown>;
   }>): Promise<Array<{
     id?: string;
     name: string;
@@ -1357,6 +1496,12 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
       const toolStartTime = Date.now();
       try {
         console.log(`🔧 [${index}] Starting legacy parallel execution of ${toolCall.name}`);
+
+        // Trigger thinking indicator for tool execution
+        if (typeof window !== 'undefined' && window.triggerToolThinking) {
+          window.triggerToolThinking(toolCall.name);
+        }
+
         const result = await this.executeMCPTool(toolCall.name, toolCall.arguments);
         const executionTime = Date.now() - toolStartTime;
         console.log(`✅ [${index}] Tool ${toolCall.name} completed in ${executionTime}ms`);
@@ -1540,22 +1685,22 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Format individual tool results based on tool type and content
    */
-  private formatToolResult(toolName: string, result: any): string {
+  private formatToolResult(toolName: string, result: unknown): string {
     const toolType = this.identifyToolType(toolName);
 
     switch (toolType) {
       case 'search':
-        return this.formatSearchResult(result);
+        return this.formatSearchResult(result as { results?: Array<{ title?: string; content?: string; snippet?: string; url?: string }> });
       case 'memory':
-        return this.formatMemoryResult(result);
+        return this.formatMemoryResult(result as { success?: boolean; memories?: Array<{ title?: string; content?: string }>; id?: string });
       case 'file':
-        return this.formatFileResult(result);
+        return this.formatFileResult(result as { content?: string; [key: string]: unknown });
       case 'api':
-        return this.formatApiResult(result);
+        return this.formatApiResult(result as { status?: string; data?: unknown; [key: string]: unknown });
       case 'datetime':
-        return this.formatDateTimeResult(result);
+        return this.formatDateTimeResult(result as string | { content?: Array<{ text?: string }>; [key: string]: unknown });
       case 'weather':
-        return this.formatWeatherResult(result);
+        return this.formatWeatherResult(result as string | { weather?: string; temperature?: string; condition?: string; [key: string]: unknown });
       default:
         return this.formatGenericResult(result);
     }
@@ -1587,14 +1732,14 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Format search tool results
    */
-  private formatSearchResult(result: any): string {
+  private formatSearchResult(result: { results?: Array<{ title?: string; content?: string; snippet?: string; url?: string }> }): string {
     if (result.results && Array.isArray(result.results)) {
       let formatted = `**Found ${result.results.length} results:**\n\n`;
-      result.results.slice(0, 5).forEach((item: any, index: number) => {
+      result.results.slice(0, 5).forEach((item: { title?: string; content?: string; snippet?: string; url?: string }, index: number) => {
         formatted += `${index + 1}. **${item.title || 'No title'}**\n`;
         if (item.url) formatted += `   🔗 ${item.url}\n`;
         if (item.content || item.snippet) {
-          const content = (item.content || item.snippet).substring(0, 200);
+          const content = (item.content || item.snippet || '').substring(0, 200);
           formatted += `   ${content}${content.length >= 200 ? '...' : ''}\n\n`;
         }
       });
@@ -1610,12 +1755,12 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Format memory tool results
    */
-  private formatMemoryResult(result: any): string {
+  private formatMemoryResult(result: { success?: boolean; memories?: Array<{ title?: string; content?: string }>; id?: string }): string {
     if (result.success && result.memories && Array.isArray(result.memories)) {
       let formatted = `**Retrieved ${result.memories.length} memory entries:**\n\n`;
-      result.memories.forEach((memory: any, index: number) => {
+      result.memories.forEach((memory: { title?: string; content?: string }, index: number) => {
         formatted += `${index + 1}. **${memory.title || 'Untitled'}**\n`;
-        formatted += `   ${memory.content?.substring(0, 150)}${memory.content?.length > 150 ? '...' : ''}\n\n`;
+        formatted += `   ${memory.content?.substring(0, 150)}${(memory.content?.length || 0) > 150 ? '...' : ''}\n\n`;
       });
       return formatted;
     } else if (result.success && result.id) {
@@ -1628,7 +1773,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Format file tool results
    */
-  private formatFileResult(result: any): string {
+  private formatFileResult(result: { content?: string; [key: string]: unknown }): string {
     if (result.content) {
       const content = result.content.substring(0, 500);
       return `**File content:**\n\`\`\`\n${content}${content.length >= 500 ? '\n... (truncated)' : ''}\n\`\`\`\n`;
@@ -1640,7 +1785,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Format API tool results
    */
-  private formatApiResult(result: any): string {
+  private formatApiResult(result: { status?: string; data?: unknown; [key: string]: unknown }): string {
     if (result.status && result.data) {
       return `**API Response (${result.status}):**\n\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\`\n`;
     }
@@ -1651,7 +1796,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Format datetime tool results
    */
-  private formatDateTimeResult(result: any): string {
+  private formatDateTimeResult(result: string | { content?: Array<{ text?: string }>; [key: string]: unknown }): string {
     if (typeof result === 'string') {
       return `📅 **${result}**`;
     } else if (result.content && Array.isArray(result.content)) {
@@ -1670,7 +1815,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Format weather tool results
    */
-  private formatWeatherResult(result: any): string {
+  private formatWeatherResult(result: string | { weather?: string; temperature?: string; condition?: string; [key: string]: unknown }): string {
     if (typeof result === 'string') {
       return `🌤️ **Weather:** ${result}`;
     } else if (result.weather) {
@@ -1685,25 +1830,27 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Format generic tool results
    */
-  private formatGenericResult(result: any): string {
+  private formatGenericResult(result: unknown): string {
     if (typeof result === 'string') {
       return result;
     } else if (typeof result === 'object' && result !== null) {
+      const resultObj = result as Record<string, unknown>;
+
       // Handle MCP tool response format first
-      if (result.content && Array.isArray(result.content)) {
-        const content = result.content[0];
+      if (resultObj.content && Array.isArray(resultObj.content)) {
+        const content = resultObj.content[0] as { text?: string };
         if (content && content.text) {
           return content.text;
         }
       }
 
       // Try to extract meaningful content
-      if (result.content) {
-        return result.content;
-      } else if (result.message) {
-        return result.message;
-      } else if (result.data) {
-        return `\`\`\`json\n${JSON.stringify(result.data, null, 2)}\n\`\`\``;
+      if (typeof resultObj.content === 'string') {
+        return resultObj.content;
+      } else if (typeof resultObj.message === 'string') {
+        return resultObj.message;
+      } else if (resultObj.data) {
+        return `\`\`\`json\n${JSON.stringify(resultObj.data, null, 2)}\n\`\`\``;
       } else {
         return `\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
       }
@@ -1718,7 +1865,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   private async executeToolsWithRecovery(toolCalls: Array<{
     id?: string;
     name: string;
-    arguments: any;
+    arguments: Record<string, unknown>;
   }>, availableTools: unknown[] = []): Promise<Array<{
     id?: string;
     name: string;
@@ -1731,6 +1878,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
     console.log(`🔄 Executing ${toolCalls.length} tools with recovery mechanisms`);
 
     // First attempt: parallel execution
+    // eslint-disable-next-line prefer-const
     let results = await this.executeMultipleToolsParallel(toolCalls);
 
     // Identify failed tools for retry/fallback
@@ -1765,6 +1913,14 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
                 executionTime: retryTime,
                 retryCount: 1,
                 fallbackUsed: altTool
+              } as {
+                id?: string;
+                name: string;
+                result: string;
+                success: boolean;
+                executionTime: number;
+                retryCount?: number;
+                fallbackUsed?: string;
               };
               console.log(`✅ Recovery successful using ${altTool}`);
               break; // Success, no need to try more alternatives
@@ -1841,7 +1997,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
     initialToolCalls: Array<{
       id?: string;
       name: string;
-      arguments: any;
+      arguments: Record<string, unknown>;
     }>,
     availableTools: unknown[],
     maxIterations: number = 3
@@ -1963,19 +2119,16 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
     availableTools: unknown[]
   ): Array<{
     name: string;
-    arguments: any;
+    arguments: Record<string, unknown>;
     chainedFrom: string;
   }> {
     const chainedTools: Array<{
       name: string;
-      arguments: any;
+      arguments: Record<string, unknown>;
       chainedFrom: string;
     }> = [];
 
-    // Type guard for tool objects
-    const isToolObject = (t: unknown): t is { function?: { name?: string; description?: string } } => {
-      return typeof t === 'object' && t !== null;
-    };
+
 
     for (const result of results) {
       if (!result.success) continue;
@@ -2019,7 +2172,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
           })));
         }
 
-      } catch (error) {
+      } catch {
         // If result is not JSON, skip chaining analysis
         continue;
       }
@@ -2036,20 +2189,21 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Analyze search results for potential tool chaining
    */
-  private analyzeSearchForChaining(searchResult: any, availableTools: unknown[]): Array<{
+  private analyzeSearchForChaining(searchResult: { results?: unknown[] }, availableTools: unknown[]): Array<{
     name: string;
-    arguments: any;
+    arguments: Record<string, unknown>;
   }> {
-    const chains: Array<{ name: string; arguments: any }> = [];
+    const chains: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
     // If search found relevant information, consider storing it in memory
     if (searchResult.results && Array.isArray(searchResult.results) && searchResult.results.length > 0) {
-      const hasMemoryTool = availableTools.some((tool: any) =>
-        tool.function?.name?.toLowerCase().includes('memory-store')
-      );
+      const hasMemoryTool = availableTools.some((tool: unknown) => {
+        const toolObj = tool as { function?: { name?: string } };
+        return toolObj.function?.name?.toLowerCase().includes('memory-store');
+      });
 
       if (hasMemoryTool) {
-        const topResult = searchResult.results[0];
+        const topResult = searchResult.results[0] as { title?: string; content?: string; snippet?: string; url?: string };
         chains.push({
           name: 'memory-store',
           arguments: {
@@ -2068,20 +2222,21 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Analyze memory results for potential tool chaining
    */
-  private analyzeMemoryForChaining(memoryResult: any, availableTools: unknown[]): Array<{
+  private analyzeMemoryForChaining(memoryResult: { memories?: unknown[] }, availableTools: unknown[]): Array<{
     name: string;
-    arguments: any;
+    arguments: Record<string, unknown>;
   }> {
-    const chains: Array<{ name: string; arguments: any }> = [];
+    const chains: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
     // If memory search found relevant context, consider searching for more current information
     if (memoryResult.memories && Array.isArray(memoryResult.memories) && memoryResult.memories.length > 0) {
-      const hasSearchTool = availableTools.some((tool: any) =>
-        tool.function?.name?.toLowerCase().includes('search')
-      );
+      const hasSearchTool = availableTools.some((tool: unknown) => {
+        const toolObj = tool as { function?: { name?: string } };
+        return toolObj.function?.name?.toLowerCase().includes('search');
+      });
 
       if (hasSearchTool) {
-        const memory = memoryResult.memories[0];
+        const memory = memoryResult.memories[0] as { content?: string };
         if (memory.content) {
           // Extract key terms for follow-up search
           const keyTerms = this.extractKeyTermsFromText(memory.content);
@@ -2105,17 +2260,18 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Analyze file results for potential tool chaining
    */
-  private analyzeFileForChaining(fileResult: any, availableTools: unknown[]): Array<{
+  private analyzeFileForChaining(fileResult: { content?: string; filename?: string }, availableTools: unknown[]): Array<{
     name: string;
-    arguments: any;
+    arguments: Record<string, unknown>;
   }> {
-    const chains: Array<{ name: string; arguments: any }> = [];
+    const chains: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
     // If file content was read, consider storing important parts in memory
     if (fileResult.content && typeof fileResult.content === 'string') {
-      const hasMemoryTool = availableTools.some((tool: any) =>
-        tool.function?.name?.toLowerCase().includes('memory-store')
-      );
+      const hasMemoryTool = availableTools.some((tool: unknown) => {
+        const toolObj = tool as { function?: { name?: string } };
+        return toolObj.function?.name?.toLowerCase().includes('memory-store');
+      });
 
       if (hasMemoryTool && fileResult.content.length > 100) {
         chains.push({
@@ -2136,17 +2292,18 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   /**
    * Analyze API results for potential tool chaining
    */
-  private analyzeApiForChaining(apiResult: any, availableTools: unknown[]): Array<{
+  private analyzeApiForChaining(apiResult: { data?: unknown; endpoint?: string }, availableTools: unknown[]): Array<{
     name: string;
-    arguments: any;
+    arguments: Record<string, unknown>;
   }> {
-    const chains: Array<{ name: string; arguments: any }> = [];
+    const chains: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
     // If API returned structured data, consider storing it in memory
     if (apiResult.data && typeof apiResult.data === 'object') {
-      const hasMemoryTool = availableTools.some((tool: any) =>
-        tool.function?.name?.toLowerCase().includes('memory-store')
-      );
+      const hasMemoryTool = availableTools.some((tool: unknown) => {
+        const toolObj = tool as { function?: { name?: string } };
+        return toolObj.function?.name?.toLowerCase().includes('memory-store');
+      });
 
       if (hasMemoryTool) {
         chains.push({
@@ -2859,7 +3016,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
     // Build enhanced system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || '';
     if (mcpTools.length > 0) {
-      const toolInstructions = this.generateToolInstructions(mcpTools, 'openai');
+      const toolInstructions = this.generateToolInstructions(mcpTools);
       systemPrompt += toolInstructions;
     }
 
@@ -2869,7 +3026,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
     // Extract user message text for memory operations
     const userMessageText = typeof message === 'string' ? message :
       (Array.isArray(message) ? JSON.stringify(message) :
-      (message as any).text || JSON.stringify(message));
+      (message as { text?: string }).text || JSON.stringify(message));
 
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
@@ -3031,7 +3188,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
         let content = message.content || '';
 
         // Prepare tool calls for parallel execution
-        const toolCallsForExecution = message.tool_calls.map((toolCall: any) => {
+        const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string | Record<string, unknown> } }) => {
           let parsedArguments;
           try {
             parsedArguments = typeof toolCall.function.arguments === 'string'
@@ -3202,7 +3359,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
     // Build enhanced system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || '';
     if (mcpTools.length > 0) {
-      const toolInstructions = this.generateToolInstructions(mcpTools, 'anthropic');
+      const toolInstructions = this.generateToolInstructions(mcpTools);
       systemPrompt += toolInstructions;
 
       // Add comprehensive tool execution strategy for Anthropic
@@ -3261,7 +3418,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
     // Extract user message text for memory operations
     const userMessageText = typeof message === 'string' ? message :
       (Array.isArray(message) ? JSON.stringify(message) :
-      (message as any).text || JSON.stringify(message));
+      (message as { text?: string }).text || JSON.stringify(message));
 
     const requestBody: Record<string, unknown> = {
       model: settings.model,
@@ -3328,7 +3485,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
       }
 
       // Execute tools in parallel if any are present
-      let toolResults: any[] = [];
+      let toolResults: Array<{ type: string; tool_use_id?: string; content: string; is_error?: boolean }> = [];
       if (toolUseBlocks.length > 0) {
         console.log(`🔧 Anthropic response contains ${toolUseBlocks.length} tool use blocks:`, toolUseBlocks);
 
@@ -3666,7 +3823,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
     // Build enhanced system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || '';
     if (mcpTools.length > 0) {
-      const toolInstructions = this.generateToolInstructions(mcpTools, 'mistral');
+      const toolInstructions = this.generateToolInstructions(mcpTools);
       systemPrompt += toolInstructions;
     }
 
@@ -3836,7 +3993,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
         console.log(`🔧 Mistral response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
         // Execute tools in parallel and collect results
-        const toolCallsForExecution = message.tool_calls.map((toolCall: any) => ({
+        const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
           id: toolCall.id,
           name: toolCall.function.name,
           arguments: JSON.parse(toolCall.function.arguments)
@@ -4069,7 +4226,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
     // Build system prompt with tool instructions if tools are available
     let systemPrompt = settings.systemPrompt || '';
     if (mcpTools.length > 0) {
-      const toolInstructions = this.generateToolInstructions(mcpTools, 'lmstudio');
+      const toolInstructions = this.generateToolInstructions(mcpTools);
       systemPrompt += toolInstructions;
       systemPrompt += `\n\nIMPORTANT: Only use the tools listed above. Do not use any other tools like 'get_weather' or similar tools that are not in the list. If you need weather information, use the search tools provided.`;
     }
@@ -4338,7 +4495,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
 
     // Add tool instructions if tools are available
     if (mcpTools.length > 0) {
-      const toolInstructions = this.generateToolInstructions(mcpTools, 'ollama');
+      const toolInstructions = this.generateToolInstructions(mcpTools);
       systemPrompt += toolInstructions;
       systemPrompt += `\n\nIMPORTANT: Only use the tools listed above. Do not use any other tools like 'get_weather' or similar tools that are not in the list. If you need weather information, use the search tools provided.`;
       console.log('🧠 Ollama system prompt after adding tools:', systemPrompt.length);
@@ -4545,7 +4702,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
             role: 'tool',
             content: result.result,
             tool_call_id: result.id || ''
-          } as any); // Cast to any to handle tool message type
+          } as { role: string; content: string; tool_call_id: string }); // Cast to handle tool message type
         }
 
         // Log execution summary
@@ -4638,7 +4795,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
         console.log(`🔧 Ollama response contains ${parsedToolCalls.length} tool calls:`, parsedToolCalls);
 
         // Prepare tool calls for parallel execution
-        const toolCallsForExecution = parsedToolCalls.map((toolCall: any) => ({
+        const toolCallsForExecution = parsedToolCalls.map((toolCall: { id?: string; function: { name: string; arguments: Record<string, unknown> } }) => ({
           id: toolCall.id || `ollama-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           name: toolCall.function.name,
           arguments: toolCall.function.arguments
@@ -4761,7 +4918,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
     // Build enhanced system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || '';
     if (mcpTools.length > 0) {
-      const toolInstructions = this.generateToolInstructions(mcpTools, 'openrouter');
+      const toolInstructions = this.generateToolInstructions(mcpTools);
       systemPrompt += toolInstructions;
     }
 
@@ -5068,7 +5225,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
     // Build enhanced system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || '';
     if (mcpTools.length > 0) {
-      const toolInstructions = this.generateToolInstructions(mcpTools, targetProvider);
+      const toolInstructions = this.generateToolInstructions(mcpTools);
       systemPrompt += toolInstructions;
 
       // Add specific multi-tool execution instructions for OpenAI models
@@ -5728,7 +5885,8 @@ USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
 
     let fullContent = '';
     let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
-    let toolCalls: any[] = [];
+    // eslint-disable-next-line prefer-const
+    let toolCalls: Array<{ id: string; function: { name?: string; arguments: string } }> = [];
     const decoder = new TextDecoder();
 
     try {
@@ -5759,7 +5917,7 @@ USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
             if (parsed.message && parsed.message.tool_calls) {
               console.log('🔧 Native Ollama tool calls detected:', parsed.message.tool_calls);
               // Convert native Ollama format to internal format and APPEND to existing tool calls
-              const newToolCalls = parsed.message.tool_calls.map((tc: any) => ({
+              const newToolCalls = parsed.message.tool_calls.map((tc: { id?: string; function?: { name?: string; arguments?: Record<string, unknown> } }) => ({
                 id: tc.id || `call_${Math.random().toString(36).substr(2, 9)}`,
                 function: {
                   name: tc.function?.name,
@@ -5798,11 +5956,13 @@ USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
         completionTokens: usage.completion_tokens || 0,
         totalTokens: usage.total_tokens || 0
       } : undefined,
-      toolCalls: toolCalls.length > 0 ? toolCalls.map(tc => ({
-        id: tc.id,
-        name: tc.function?.name,
-        arguments: JSON.parse(tc.function?.arguments || '{}')
-      })) : undefined
+      toolCalls: toolCalls.length > 0 ? toolCalls
+        .filter(tc => tc.function?.name) // Filter out tool calls without names
+        .map(tc => ({
+          id: tc.id,
+          name: tc.function!.name!,
+          arguments: JSON.parse(tc.function?.arguments || '{}') as ToolCallArguments
+        })) : undefined
     };
   }
 
@@ -6512,7 +6672,7 @@ USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
     let fullContent = '';
     let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
     const decoder = new TextDecoder();
-    const toolCalls: Array<{ id?: string; name?: string; arguments?: unknown; result?: string; isError?: boolean }> = [];
+    const toolCalls: Array<{ id?: string; name?: string; arguments?: unknown; result?: string; isError?: boolean; parseError?: string }> = [];
     const toolInputBuffers: { [index: number]: string } = {};
     const currentToolBlocks: { [index: number]: Record<string, unknown> } = {};
     const assistantContent: Array<Record<string, unknown>> = [];
@@ -6670,7 +6830,7 @@ USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
         .map(tc => ({
           id: tc.id!,
           name: tc.name!,
-          arguments: tc.arguments
+          arguments: tc.arguments as Record<string, unknown>
         }));
 
       // Execute all tools in parallel
@@ -7306,4 +7466,5 @@ USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
 
 }
 
+export { LLMService };
 export const llmService = new LLMService();

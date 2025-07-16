@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -67,12 +67,7 @@ export function MemoryManagement({ className }: MemoryManagementProps) {
     general: { icon: FileText, label: 'General', color: 'bg-gray-500' }
   };
 
-  useEffect(() => {
-    loadMemories();
-    loadStats();
-  }, []);
-
-  const loadMemories = async () => {
+  const loadMemories = useCallback(async () => {
     setLoading(true);
     try {
       const query: SearchQuery = {
@@ -97,7 +92,12 @@ export function MemoryManagement({ className }: MemoryManagementProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [searchQuery, selectedType]);
+
+  useEffect(() => {
+    loadMemories();
+    loadStats();
+  }, [loadMemories]);
 
   const loadStats = async () => {
     try {

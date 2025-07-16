@@ -4,7 +4,19 @@
  */
 
 import { memoryService } from './memoryService';
-import { MemoryEntry, MemoryIndex, MemoryStats } from '../types/memory';
+import { MemoryEntry, MemoryIndex, MemoryStats, MemoryType } from '../types/memory';
+
+interface ElectronSaveResult {
+  success: boolean;
+  filename?: string;
+  error?: string;
+}
+
+interface ElectronLoadResult {
+  success: boolean;
+  data?: MemoryExport;
+  error?: string;
+}
 
 export interface MemoryExport {
   version: string;
@@ -51,7 +63,7 @@ class MemoryExportService {
       // Get all memories based on filters
       const searchResult = await memoryService.searchMemories({
         query: {
-          type: options.includeTypes?.[0] as any,
+          type: options.includeTypes?.[0] as MemoryType,
           tags: options.tags,
           projectId: options.projectId,
           dateRange: options.dateRange,
@@ -236,7 +248,7 @@ class MemoryExportService {
         const defaultFilename = filename || `littlellm-memories-${new Date().toISOString().split('T')[0]}.json`;
         
         // Use Electron's save dialog
-        const result = await (window.electronAPI as any).saveMemoryExport?.(exportData, defaultFilename);
+        const result = await window.electronAPI.saveMemoryExport?.(exportData, defaultFilename) as unknown as ElectronSaveResult;
         
         if (result?.success) {
           return {
@@ -283,7 +295,7 @@ class MemoryExportService {
   async loadExportFromFile(): Promise<{ success: boolean; data?: MemoryExport; error?: string }> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
-        const result = await (window.electronAPI as any).loadMemoryExport?.();
+        const result = await window.electronAPI.loadMemoryExport?.() as unknown as ElectronLoadResult;
         
         if (result?.success) {
           return {
@@ -314,38 +326,47 @@ class MemoryExportService {
   /**
    * Validate export data structure
    */
-  private validateExportData(exportData: any): { valid: boolean; errors: string[] } {
+  private validateExportData(exportData: unknown): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
-    if (!exportData) {
-      errors.push('Export data is null or undefined');
+    if (!exportData || typeof exportData !== 'object') {
+      errors.push('Export data is null, undefined, or not an object');
       return { valid: false, errors };
     }
 
-    if (!exportData.version) {
+    const data = exportData as Record<string, unknown>;
+
+    if (!data.version) {
       errors.push('Missing version information');
     }
 
-    if (!exportData.memories || !Array.isArray(exportData.memories)) {
+    if (!data.memories || !Array.isArray(data.memories)) {
       errors.push('Invalid or missing memories array');
     }
 
-    if (!exportData.exportDate) {
+    if (!data.exportDate) {
       errors.push('Missing export date');
     }
 
-    if (exportData.memories) {
-      exportData.memories.forEach((memory: any, index: number) => {
-        if (!memory.id) {
+    if (Array.isArray(data.memories)) {
+      data.memories.forEach((memory: unknown, index: number) => {
+        if (!memory || typeof memory !== 'object') {
+          errors.push(`Memory at index ${index} is not a valid object`);
+          return;
+        }
+
+        const memoryObj = memory as Record<string, unknown>;
+
+        if (!memoryObj.id) {
           errors.push(`Memory at index ${index} missing ID`);
         }
-        if (!memory.type) {
+        if (!memoryObj.type) {
           errors.push(`Memory at index ${index} missing type`);
         }
-        if (!memory.title) {
+        if (!memoryObj.title) {
           errors.push(`Memory at index ${index} missing title`);
         }
-        if (!memory.content) {
+        if (!memoryObj.content) {
           errors.push(`Memory at index ${index} missing content`);
         }
       });

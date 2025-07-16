@@ -4,7 +4,7 @@
  */
 
 import { memoryService } from './memoryService';
-import { MemoryEntry, MemoryType } from '../types/memory';
+import { MemoryEntry } from '../types/memory';
 
 export interface CleanupConfig {
   maxMemories: number;

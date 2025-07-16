@@ -21,7 +21,7 @@ interface MessageWithThinkingProps {
   toolCalls?: Array<{
     id: string;
     name: string;
-    arguments: any;
+    arguments: Record<string, unknown>;
   }>;
 }
 

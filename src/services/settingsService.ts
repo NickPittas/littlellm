@@ -6,11 +6,12 @@ export interface AppSettings {
     theme: 'light' | 'dark' | 'system';
     alwaysOnTop: boolean;
     startMinimized: boolean;
-    opacity?: number;
     fontSize?: 'small' | 'medium' | 'large';
     windowBounds: {
       width: number;
       height: number;
+      x?: number;
+      y?: number;
     };
   };
   shortcuts: {
@@ -53,11 +54,12 @@ const DEFAULT_SETTINGS: AppSettings = {
     theme: 'system',
     alwaysOnTop: true,
     startMinimized: false,
-    opacity: 1.0,
     fontSize: 'small',
     windowBounds: {
       width: 400,
       height: 615, // Increased by 15px for draggable header
+      x: undefined, // Let Electron choose initial position
+      y: undefined, // Let Electron choose initial position
     },
   },
   shortcuts: {

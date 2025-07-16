@@ -13,29 +13,8 @@ export function ProviderLogo({ provider, className = "", size = 20 }: ProviderLo
   const [isDarkTheme, setIsDarkTheme] = React.useState(true)
 
   React.useEffect(() => {
-    // Check if we're in dark mode
-    const checkTheme = () => {
-      const isDark = document.documentElement.classList.contains('dark') || 
-                     window.matchMedia('(prefers-color-scheme: dark)').matches
-      setIsDarkTheme(isDark)
-    }
-
-    checkTheme()
-
-    // Listen for theme changes
-    const observer = new MutationObserver(checkTheme)
-    observer.observe(document.documentElement, { 
-      attributes: true, 
-      attributeFilter: ['class'] 
-    })
-
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    mediaQuery.addEventListener('change', checkTheme)
-
-    return () => {
-      observer.disconnect()
-      mediaQuery.removeEventListener('change', checkTheme)
-    }
+    // Force dark theme - no dynamic detection
+    setIsDarkTheme(true)
   }, [])
 
   // Convert relative URLs to absolute URLs for Electron compatibility

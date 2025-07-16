@@ -1,25 +1,61 @@
-import { app, BrowserWindow, globalShortcut, Tray, Menu, clipboard, ipcMain, nativeImage, protocol, session, net } from 'electron';
+import { app, BrowserWindow, globalShortcut, Tray, Menu, clipboard, ipcMain, nativeImage, protocol, screen, BrowserWindowConstructorOptions, dialog, desktopCapturer } from 'electron';
 import * as path from 'path';
-import * as isDev from 'electron-is-dev';
 import * as fs from 'fs';
-import * as os from 'os';
-import { pathToFileURL } from 'url';
 import * as http from 'http';
 import * as mime from 'mime-types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { spawn } from 'child_process';
 
 // MCP Connection Management
+interface MCPTool {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+interface MCPResource {
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+}
+
+interface MCPPrompt {
+  name: string;
+  description?: string;
+  arguments?: Record<string, unknown>;
+}
+
+interface MCPServer {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+interface MCPServerConfig {
+  id: string;
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  enabled: boolean;
+}
+
+interface MCPData {
+  servers: MCPServerConfig[];
+  version: string;
+}
+
 interface MCPConnection {
   client: Client;
   transport: StdioClientTransport;
-  server: any;
-  tools: any[];
-  resources: any[];
-  prompts: any[];
+  server: MCPServer;
+  tools: MCPTool[];
+  resources: MCPResource[];
+  prompts: MCPPrompt[];
   connected: boolean;
-  process?: any;
+  process?: NodeJS.Process;
 }
 
 const mcpConnections: Map<string, MCPConnection> = new Map();
@@ -31,7 +67,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
 
     // Load server configuration
     const mcpData = loadMCPServers();
-    const server = mcpData.servers.find((s: any) => s.id === serverId);
+    const server = mcpData.servers.find((s: MCPServerConfig) => s.id === serverId);
 
     if (!server) {
       console.error(`❌ Server ${serverId} not found in configuration`);
@@ -50,9 +86,9 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     }
 
     // Create transport
-    console.log(`🚀 Starting MCP server process: ${server.command} ${server.args.join(' ')}`);
+    console.log(`🚀 Starting MCP server process: ${server.command} ${server.args?.join(' ') || ''}`);
     console.log(`🔧 Server environment variables:`, server.env);
-    const mergedEnv = { ...process.env, ...server.env };
+    const mergedEnv = { ...process.env, ...server.env } as Record<string, string>;
     console.log(`🔧 Merged environment (showing only server env vars):`, Object.fromEntries(
       Object.entries(mergedEnv).filter(([key]) => server.env && key in server.env)
     ));
@@ -85,14 +121,15 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     console.log(`✅ Connected to MCP server: ${serverId}`);
 
     // Discover capabilities with error handling
-    let tools: any = { tools: [] };
-    let resources: any = { resources: [] };
-    let prompts: any = { prompts: [] };
+    let tools: { tools: unknown[] } = { tools: [] };
+    let resources: { resources: unknown[] } = { resources: [] };
+    let prompts: { prompts: unknown[] } = { prompts: [] };
 
     try {
       tools = await client.listTools();
-    } catch (error: any) {
-      if (error.code === -32601) {
+    } catch (error: unknown) {
+      const err = error as { code?: number; message?: string };
+      if (err.code === -32601) {
         console.log(`ℹ️ Server ${serverId} does not support tools (method not found)`);
       } else {
         console.warn(`⚠️ Failed to list tools for ${serverId}:`, error);
@@ -101,8 +138,9 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
 
     try {
       resources = await client.listResources();
-    } catch (error: any) {
-      if (error.code === -32601) {
+    } catch (error: unknown) {
+      const err = error as { code?: number; message?: string };
+      if (err.code === -32601) {
         console.log(`ℹ️ Server ${serverId} does not support resources (method not found)`);
       } else {
         console.warn(`⚠️ Failed to list resources for ${serverId}:`, error);
@@ -111,8 +149,9 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
 
     try {
       prompts = await client.listPrompts();
-    } catch (error: any) {
-      if (error.code === -32601) {
+    } catch (error: unknown) {
+      const err = error as { code?: number; message?: string };
+      if (err.code === -32601) {
         console.log(`ℹ️ Server ${serverId} does not support prompts (method not found)`);
       } else {
         console.warn(`⚠️ Failed to list prompts for ${serverId}:`, error);
@@ -139,9 +178,9 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
       client,
       transport,
       server,
-      tools: tools.tools || [],
-      resources: resources.resources || [],
-      prompts: prompts.prompts || [],
+      tools: (tools.tools || []) as MCPTool[],
+      resources: (resources.resources || []) as MCPResource[],
+      prompts: (prompts.prompts || []) as MCPPrompt[],
       connected: true
     };
 
@@ -206,7 +245,7 @@ async function connectEnabledMCPServers(): Promise<void> {
     console.log('🔌 Auto-connecting enabled MCP servers...');
 
     const mcpData = loadMCPServers();
-    const enabledServers = mcpData.servers.filter((server: any) => server.enabled);
+    const enabledServers = mcpData.servers.filter((server: MCPServerConfig) => server.enabled);
 
     console.log(`📋 Found ${enabledServers.length} enabled servers`);
 
@@ -221,15 +260,15 @@ async function connectEnabledMCPServers(): Promise<void> {
 }
 
 // MCP Tool Management Functions
-async function callMCPTool(toolName: string, args: any): Promise<any> {
+async function callMCPTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
   try {
     console.log(`🔧 Calling MCP tool: ${toolName} with args:`, args);
 
     // Find the tool in connected servers
     let targetConnection: MCPConnection | null = null;
-    let targetTool: any = null;
+    let targetTool: MCPTool | null = null;
 
-    for (const [serverId, connection] of mcpConnections) {
+    for (const [, connection] of mcpConnections) {
       if (!connection.connected) continue;
 
       const tool = connection.tools.find(t => t.name === toolName);
@@ -263,12 +302,12 @@ async function callMCPTool(toolName: string, args: any): Promise<any> {
 // Enhanced concurrent tool execution
 async function callMultipleMCPTools(toolCalls: Array<{
   name: string;
-  args: any;
+  args: Record<string, unknown>;
   id?: string;
 }>): Promise<Array<{
   id?: string;
   name: string;
-  result: any;
+  result: unknown;
   success: boolean;
   error?: string;
   executionTime: number;
@@ -284,7 +323,7 @@ async function callMultipleMCPTools(toolCalls: Array<{
   for (const toolCall of toolCalls) {
     let targetConnection: MCPConnection | null = null;
 
-    for (const [serverId, connection] of mcpConnections) {
+    for (const [, connection] of mcpConnections) {
       if (!connection.connected) continue;
 
       const tool = connection.tools.find(t => t.name === toolCall.name);
@@ -366,8 +405,8 @@ async function callMultipleMCPTools(toolCalls: Array<{
   return processedResults;
 }
 
-function getAllMCPTools(): any[] {
-  const allTools: any[] = [];
+function getAllMCPTools(): (MCPTool & { serverId: string })[] {
+  const allTools: (MCPTool & { serverId: string })[] = [];
 
   for (const [serverId, connection] of mcpConnections) {
     if (!connection.connected) continue;
@@ -401,8 +440,41 @@ function getMCPConnectionStatus(): Record<string, boolean> {
   return status;
 }
 
-function getMCPDetailedStatus(): any {
-  const status: any = {
+interface MCPDetailedStatus {
+  totalServers: number;
+  connectedServers: number;
+  servers: Array<{
+    id: string;
+    connected: boolean;
+    toolCount: number;
+    resourceCount: number;
+    promptCount: number;
+    tools: Array<{ name: string; description?: string }>;
+    hasProcess: boolean;
+  }>;
+}
+
+interface Conversation {
+  id: string;
+  title?: string;
+  updatedAt: string;
+  messages?: Array<{ role: string; content: string }>;
+}
+
+interface AppSettings {
+  shortcuts?: {
+    toggleWindow?: string;
+    actionMenu?: string;
+  };
+  ui?: {
+    alwaysOnTop?: boolean;
+    startMinimized?: boolean;
+  };
+  [key: string]: unknown;
+}
+
+function getMCPDetailedStatus(): MCPDetailedStatus {
+  const status: MCPDetailedStatus = {
     totalServers: mcpConnections.size,
     connectedServers: 0,
     servers: []
@@ -434,15 +506,15 @@ function getConnectedMCPServerIds(): string[] {
 }
 
 // MCP Resource Management Functions
-async function readMCPResource(uri: string): Promise<any> {
+async function readMCPResource(uri: string): Promise<unknown> {
   try {
     console.log(`📄 Reading MCP resource: ${uri}`);
 
     // Find the resource in connected servers
     let targetConnection: MCPConnection | null = null;
-    let targetResource: any = null;
+    let targetResource: MCPResource | null = null;
 
-    for (const [serverId, connection] of mcpConnections) {
+    for (const [, connection] of mcpConnections) {
       if (!connection.connected) continue;
 
       const resource = connection.resources.find(r => r.uri === uri);
@@ -470,8 +542,8 @@ async function readMCPResource(uri: string): Promise<any> {
   }
 }
 
-function getAllMCPResources(): any[] {
-  const allResources: any[] = [];
+function getAllMCPResources(): (MCPResource & { serverId: string })[] {
+  const allResources: (MCPResource & { serverId: string })[] = [];
 
   for (const [serverId, connection] of mcpConnections) {
     if (!connection.connected) continue;
@@ -489,15 +561,15 @@ function getAllMCPResources(): any[] {
 }
 
 // MCP Prompt Management Functions
-async function getMCPPrompt(name: string, args: any): Promise<any> {
+async function getMCPPrompt(name: string, args: Record<string, string>): Promise<unknown> {
   try {
     console.log(`📝 Getting MCP prompt: ${name} with args:`, args);
 
     // Find the prompt in connected servers
     let targetConnection: MCPConnection | null = null;
-    let targetPrompt: any = null;
+    let targetPrompt: MCPPrompt | null = null;
 
-    for (const [serverId, connection] of mcpConnections) {
+    for (const [, connection] of mcpConnections) {
       if (!connection.connected) continue;
 
       const prompt = connection.prompts.find(p => p.name === name);
@@ -528,8 +600,8 @@ async function getMCPPrompt(name: string, args: any): Promise<any> {
   }
 }
 
-function getAllMCPPrompts(): any[] {
-  const allPrompts: any[] = [];
+function getAllMCPPrompts(): (MCPPrompt & { serverId: string })[] {
+  const allPrompts: (MCPPrompt & { serverId: string })[] = [];
 
   for (const [serverId, connection] of mcpConnections) {
     if (!connection.connected) continue;
@@ -670,7 +742,7 @@ async function createStaticServer(): Promise<number> {
         resolve(port);
       });
 
-      server.on('error', (err: any) => {
+      server.on('error', (err: { code?: string }) => {
         if (err.code === 'EADDRINUSE') {
           console.log(`Port ${port} is busy, trying ${port + 1}...`);
           server.removeAllListeners('error');
@@ -702,6 +774,7 @@ let mainWindow: BrowserWindow | null = null;
 let actionMenuWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let dropdownWindow: BrowserWindow | null = null;
+let historyWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let staticServerPort: number = 3001;
 let isQuitting = false;
@@ -717,7 +790,7 @@ async function openActionMenu() {
 
   // Get main window position to position overlay relative to it
   const mainBounds = mainWindow.getBounds();
-  const { screen } = require('electron');
+  // screen is already imported at the top
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
@@ -746,6 +819,8 @@ async function openActionMenu() {
     title: 'LittleLLM - Quick Actions',
     autoHideMenuBar: true, // Hide menu bar
     backgroundColor: '#1a1a1a',
+    roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
+    hasShadow: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -842,11 +917,13 @@ function loadAppSettings() {
       theme: 'system',
       alwaysOnTop: true,
       startMinimized: false,
-      opacity: 1.0,
+
       fontSize: 'small',
       windowBounds: {
         width: 400,
         height: 615, // Increased by 15px for draggable header
+        x: undefined, // Let Electron choose initial position
+        y: undefined, // Let Electron choose initial position
       },
     },
     shortcuts: {
@@ -863,7 +940,7 @@ function loadAppSettings() {
   };
 }
 
-function saveAppSettings(settings: any) {
+function saveAppSettings(settings: Record<string, unknown>) {
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
     return true;
@@ -873,7 +950,7 @@ function saveAppSettings(settings: any) {
   }
 }
 
-function loadMCPServers() {
+function loadMCPServers(): MCPData {
   try {
     if (fs.existsSync(mcpServersPath)) {
       const data = fs.readFileSync(mcpServersPath, 'utf8');
@@ -897,7 +974,7 @@ function loadMCPServers() {
   };
 }
 
-function saveMCPServers(mcpData: any) {
+function saveMCPServers(mcpData: MCPData) {
   try {
     fs.writeFileSync(mcpServersPath, JSON.stringify(mcpData, null, 2));
     return true;
@@ -913,7 +990,8 @@ async function createWindow() {
   const appSettings = loadAppSettings();
   const bounds = appSettings.ui?.windowBounds || { width: 570, height: 157 }; // Increased by 15px for draggable header
 
-  mainWindow = new BrowserWindow({
+  // Prepare window options with size
+  const windowOptions: BrowserWindowConstructorOptions = {
     width: Math.max(bounds.width, 350), // Ensure minimum width for all UI elements
     height: Math.max(bounds.height, 157), // Increased by 15px for draggable header
     minWidth: 350, // Ensure all bottom toolbar buttons are visible (calculated from UI elements)
@@ -923,11 +1001,14 @@ async function createWindow() {
     show: !appSettings.ui?.startMinimized,
     alwaysOnTop: appSettings.ui?.alwaysOnTop !== false, // Default to true if not set
     frame: false, // Remove traditional frame completely for Windows
-    resizable: true,
+    resizable: true, // Enable resizing
     skipTaskbar: true, // Show in taskbar
     autoHideMenuBar: true, // Hide menu bar
     titleBarStyle: 'hidden', // Hide title bar completely
-    transparent: false, // Disable transparency to test React rendering
+    transparent: false, // Keep solid background for better compatibility
+    backgroundColor: '#1a1a1a', // Solid background
+    roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
+    hasShadow: false, // Disable shadow to help with rounded corners
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -939,7 +1020,15 @@ async function createWindow() {
       disableBlinkFeatures: 'Auxclick',
     },
     icon: getIconPath(),
-  });
+  };
+
+  // Add saved position if available
+  if (bounds.x !== undefined && bounds.y !== undefined) {
+    windowOptions.x = bounds.x;
+    windowOptions.y = bounds.y;
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
 
   // Load the app with automatic port detection
   let startUrl: string;
@@ -976,11 +1065,7 @@ async function createWindow() {
 
   console.log('About to load URL:', startUrl);
 
-  // Set initial window properties from app settings
-  const currentAppSettings = loadAppSettings();
-  if (currentAppSettings.ui && currentAppSettings.ui.opacity !== undefined) {
-    mainWindow.setOpacity(currentAppSettings.ui.opacity);
-  }
+  // Note: Rounded corners are now handled by Electron's roundedCorners option + CSS for content
 
   mainWindow.loadURL(startUrl).then(() => {
     console.log('Successfully loaded URL');
@@ -1032,7 +1117,7 @@ async function createWindow() {
   });
 
   // Add error handling for failed loads
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+  mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL) => {
     console.error('Failed to load page:', errorCode, errorDescription, validatedURL);
   });
 
@@ -1053,8 +1138,8 @@ async function createWindow() {
     mainWindow = null;
   });
 
-  // Save window bounds when resized
-  mainWindow.on('resize', () => {
+  // Save window bounds when resized or moved
+  const saveWindowBounds = () => {
     if (mainWindow) {
       const bounds = mainWindow.getBounds();
       const currentSettings = loadAppSettings();
@@ -1062,12 +1147,22 @@ async function createWindow() {
         ...currentSettings,
         ui: {
           ...currentSettings.ui,
-          windowBounds: { width: bounds.width, height: bounds.height }
+          windowBounds: {
+            width: bounds.width,
+            height: bounds.height,
+            x: bounds.x,
+            y: bounds.y
+          }
         }
       };
       saveAppSettings(updatedSettings);
     }
-  });
+  };
+
+  mainWindow.on('resize', saveWindowBounds);
+  mainWindow.on('move', saveWindowBounds);
+
+
 
   // Handle window show/hide
   mainWindow.on('show', () => {
@@ -1275,7 +1370,7 @@ function setupIPC() {
     return settings;
   });
 
-  ipcMain.handle('update-app-settings', (_, settings: any) => {
+  ipcMain.handle('update-app-settings', (_, settings: AppSettings) => {
     try {
       console.log('update-app-settings called, received:', settings);
 
@@ -1345,10 +1440,7 @@ function setupIPC() {
         if (cleanSettings.ui.alwaysOnTop !== undefined) {
           mainWindow.setAlwaysOnTop(cleanSettings.ui.alwaysOnTop);
         }
-        if (cleanSettings.ui.opacity !== undefined) {
-          console.log('Setting window opacity to:', cleanSettings.ui.opacity);
-          mainWindow.setOpacity(cleanSettings.ui.opacity);
-        }
+
       }
 
       const success = saveAppSettings(cleanSettings);
@@ -1371,7 +1463,7 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('set-storage-item', (_, key: string, value: any) => {
+  ipcMain.handle('set-storage-item', (_, key: string, value: unknown) => {
     try {
       const settings = loadAppSettings();
       settings[key] = value;
@@ -1405,7 +1497,7 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('save-mcp-servers', (_, mcpData: any) => {
+  ipcMain.handle('save-mcp-servers', (_, mcpData: MCPData) => {
     try {
       console.log('save-mcp-servers called, received:', mcpData);
       const success = saveMCPServers(mcpData);
@@ -1418,7 +1510,7 @@ function setupIPC() {
   });
 
   // Additional MCP server operations
-  ipcMain.handle('add-mcp-server', (_, server: any) => {
+  ipcMain.handle('add-mcp-server', (_, server: Omit<MCPServerConfig, 'id'>) => {
     try {
       console.log('Add MCP server:', server);
 
@@ -1428,7 +1520,7 @@ function setupIPC() {
       // Create new server with ID
       const newServer = {
         ...server,
-        id: `mcp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        id: `mcp-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
       };
 
       // Add to servers array
@@ -1449,7 +1541,7 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('update-mcp-server', async (_, id: string, updates: any) => {
+  ipcMain.handle('update-mcp-server', async (_, id: string, updates: Partial<MCPServerConfig>) => {
     try {
       console.log('Update MCP server:', id, updates);
 
@@ -1457,12 +1549,11 @@ function setupIPC() {
       const mcpData = loadMCPServers();
 
       // Find and update the server
-      const serverIndex = mcpData.servers.findIndex((server: any) => server.id === id);
+      const serverIndex = mcpData.servers.findIndex((server: MCPServerConfig) => server.id === id);
       if (serverIndex === -1) {
         throw new Error(`Server with ID ${id} not found`);
       }
 
-      const oldServer = mcpData.servers[serverIndex];
       const wasConnected = mcpConnections.has(id);
 
       // Update the server
@@ -1507,7 +1598,7 @@ function setupIPC() {
       const mcpData = loadMCPServers();
 
       // Find and remove the server
-      const serverIndex = mcpData.servers.findIndex((server: any) => server.id === id);
+      const serverIndex = mcpData.servers.findIndex((server: MCPServerConfig) => server.id === id);
       if (serverIndex === -1) {
         throw new Error(`Server with ID ${id} not found`);
       }
@@ -1553,13 +1644,13 @@ function setupIPC() {
     console.log('✅ All MCP servers restarted');
   });
 
-  ipcMain.handle('call-mcp-tool', async (_, toolName: string, args: any) => {
+  ipcMain.handle('call-mcp-tool', async (_, toolName: string, args: Record<string, unknown>) => {
     return await callMCPTool(toolName, args);
   });
 
   ipcMain.handle('call-multiple-mcp-tools', async (_, toolCalls: Array<{
     name: string;
-    args: any;
+    args: Record<string, unknown>;
     id?: string;
   }>) => {
     return await callMultipleMCPTools(toolCalls);
@@ -1585,7 +1676,7 @@ function setupIPC() {
     return await readMCPResource(uri);
   });
 
-  ipcMain.handle('get-mcp-prompt', async (_, name: string, args: any) => {
+  ipcMain.handle('get-mcp-prompt', async (_, name: string, args: Record<string, string>) => {
     return await getMCPPrompt(name, args);
   });
 
@@ -1598,7 +1689,7 @@ function setupIPC() {
   });
 
   // Save individual conversation to JSON file
-  ipcMain.handle('save-conversation-to-file', (_, conversationId: string, conversation: any) => {
+  ipcMain.handle('save-conversation-to-file', (_, conversationId: string, conversation: Conversation) => {
     try {
       const conversationsDir = path.join(app.getPath('userData'), 'conversations');
       if (!fs.existsSync(conversationsDir)) {
@@ -1616,7 +1707,7 @@ function setupIPC() {
   });
 
   // Save conversation index to JSON file
-  ipcMain.handle('save-conversation-index', (_, conversationIndex: any[]) => {
+  ipcMain.handle('save-conversation-index', (_, conversationIndex: Conversation[]) => {
     try {
       const conversationsDir = path.join(app.getPath('userData'), 'conversations');
       if (!fs.existsSync(conversationsDir)) {
@@ -1688,7 +1779,7 @@ function setupIPC() {
   // Memory System IPC Handlers
 
   // Save memory index to JSON file
-  ipcMain.handle('save-memory-index', (_, memoryIndex: any) => {
+  ipcMain.handle('save-memory-index', (_, memoryIndex: Record<string, unknown>) => {
     try {
       const memoryDir = path.join(app.getPath('userData'), 'memory');
       if (!fs.existsSync(memoryDir)) {
@@ -1723,7 +1814,7 @@ function setupIPC() {
   });
 
   // Save individual memory entry to JSON file
-  ipcMain.handle('save-memory-entry', (_, memoryEntry: any) => {
+  ipcMain.handle('save-memory-entry', (_, memoryEntry: Record<string, unknown>) => {
     try {
       const memoryDir = path.join(app.getPath('userData'), 'memory');
       const entriesDir = path.join(memoryDir, 'entries');
@@ -1812,9 +1903,11 @@ function setupIPC() {
   // Memory Export/Import IPC Handlers
 
   // Save memory export to file
-  ipcMain.handle('save-memory-export', async (_, exportData: any, filename: string) => {
+  ipcMain.handle('save-memory-export', async (_, exportData: Record<string, unknown>, filename: string) => {
     try {
-      const { dialog } = require('electron');
+      if (!mainWindow) return { success: false, error: 'No main window available' };
+
+      // dialog is already imported at the top
       const result = await dialog.showSaveDialog(mainWindow, {
         title: 'Save Memory Export',
         defaultPath: filename,
@@ -1847,7 +1940,9 @@ function setupIPC() {
   // Load memory export from file
   ipcMain.handle('load-memory-export', async () => {
     try {
-      const { dialog } = require('electron');
+      if (!mainWindow) return { success: false, error: 'No main window available' };
+
+      // dialog is already imported at the top
       const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Load Memory Export',
         filters: [
@@ -1933,7 +2028,7 @@ function setupIPC() {
 
   ipcMain.handle('take-screenshot', async () => {
     try {
-      const { desktopCapturer } = require('electron');
+      // desktopCapturer is already imported at the top
 
       // Get all available sources (screens)
       const sources = await desktopCapturer.getSources({
@@ -1964,7 +2059,7 @@ function setupIPC() {
   ipcMain.handle('start-drag', () => {
     if (mainWindow) {
       // Get current mouse position and window position
-      const { screen } = require('electron');
+      // screen is already imported at the top
       const point = screen.getCursorScreenPoint();
       const windowBounds = mainWindow.getBounds();
 
@@ -2006,7 +2101,7 @@ function setupIPC() {
   });
 
   // Handle prompt selection from action menu
-  ipcMain.handle('send-prompt-to-main', (event, promptText: string) => {
+  ipcMain.handle('send-prompt-to-main', (_, promptText: string) => {
     if (mainWindow) {
       mainWindow.webContents.send('prompt-selected', promptText);
     }
@@ -2026,7 +2121,7 @@ function setupIPC() {
 
     // Get main window position to position overlay relative to it
     const mainBounds = mainWindow.getBounds();
-    const { screen } = require('electron');
+    // screen is already imported at the top
     const primaryDisplay = screen.getPrimaryDisplay();
     const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
 
@@ -2057,6 +2152,7 @@ function setupIPC() {
       minHeight: 400,
       autoHideMenuBar: true, // Hide menu bar
       backgroundColor: '#1a1a1a',
+      roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -2108,7 +2204,7 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('save-state-file', async (_, filename: string, data: any) => {
+  ipcMain.handle('save-state-file', async (_, filename: string, data: Record<string, unknown>) => {
     try {
       const stateDir = path.join(app.getPath('userData'), 'state');
 
@@ -2133,8 +2229,270 @@ function setupIPC() {
     }
   });
 
+  // Generate HTML content for history window
+  function generateHistoryHTML(conversations: Conversation[], cssVariables: string): string {
+    const conversationItems = conversations.map(conversation => {
+      const date = new Date(conversation.updatedAt).toLocaleDateString();
+      const messageCount = conversation.messages?.length || 0;
+
+      return `
+        <div class="history-item" data-conversation-id="${conversation.id}">
+          <div class="history-item-content">
+            <div class="history-item-title">${conversation.title || 'Untitled Conversation'}</div>
+            <div class="history-item-meta">${messageCount} messages • ${date}</div>
+          </div>
+          <button class="history-item-delete" data-conversation-id="${conversation.id}" title="Delete conversation">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3,6 5,6 21,6"></polyline>
+              <path d="m19,6v14a2,2 0 0,1-2,2H7a2,2 0 0,1-2-2V6m3,0V4a2,2 0 0,1,2-2h4a2,2 0 0,1,2,2v2"></path>
+              <line x1="10" y1="11" x2="10" y2="17"></line>
+              <line x1="14" y1="11" x2="14" y2="17"></line>
+            </svg>
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    const emptyState = conversations.length === 0 ? `
+      <div class="empty-state">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <p>No chat history yet</p>
+        <p class="empty-state-subtitle">Start a conversation to see it here</p>
+      </div>
+    ` : '';
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          :root {
+            ${cssVariables || `
+            --background: #1a1a1a;
+            --foreground: #ffffff;
+            --card: #2a2a2a;
+            --card-foreground: #ffffff;
+            --primary: #3b82f6;
+            --primary-foreground: #ffffff;
+            --secondary: #374151;
+            --secondary-foreground: #ffffff;
+            --accent: #4b5563;
+            --accent-foreground: #ffffff;
+            --muted: #333333;
+            --muted-foreground: #9ca3af;
+            --border: #444444;
+            --input: #444444;
+            --ring: #444444;
+            --destructive: #ef4444;
+            --destructive-foreground: #ffffff;`}
+          }
+
+          body {
+            margin: 0;
+            padding: 0;
+            background: var(--card);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: var(--card-foreground);
+            overflow: hidden;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+
+          body::-webkit-scrollbar {
+            display: none;
+          }
+
+          .history-container {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+          }
+
+          .history-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            background: var(--card);
+          }
+
+          .history-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--card-foreground);
+            flex: 1;
+          }
+
+          .clear-all-button {
+            background: var(--destructive);
+            color: var(--destructive-foreground);
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-left: 12px;
+          }
+
+          .clear-all-button:hover {
+            opacity: 0.9;
+          }
+
+          .history-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+
+          .history-content::-webkit-scrollbar {
+            display: none;
+          }
+
+          .history-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 4px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            group: hover;
+          }
+
+          .history-item:hover {
+            background: var(--accent);
+            color: var(--accent-foreground);
+          }
+
+          .history-item-content {
+            flex: 1;
+            min-width: 0;
+          }
+
+          .history-item-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--card-foreground);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 4px;
+          }
+
+          .history-item:hover .history-item-title {
+            color: var(--accent-foreground);
+          }
+
+          .history-item-meta {
+            font-size: 12px;
+            color: var(--muted-foreground);
+          }
+
+          .history-item:hover .history-item-meta {
+            color: var(--accent-foreground);
+            opacity: 0.8;
+          }
+
+          .history-item-delete {
+            background: none;
+            border: none;
+            color: var(--muted-foreground);
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            margin-left: 8px;
+          }
+
+          .history-item:hover .history-item-delete {
+            opacity: 1;
+          }
+
+          .history-item-delete:hover {
+            background: var(--destructive);
+            color: var(--destructive-foreground);
+          }
+
+          .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            color: var(--muted-foreground);
+            text-align: center;
+          }
+
+          .empty-state svg {
+            margin-bottom: 12px;
+            opacity: 0.5;
+          }
+
+          .empty-state p {
+            margin: 4px 0;
+          }
+
+          .empty-state-subtitle {
+            font-size: 12px;
+            opacity: 0.7;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="history-container">
+          <div class="history-header">
+            <div class="history-title">Chat History</div>
+            ${conversations.length > 0 ? '<button class="clear-all-button" onclick="clearAllHistory()">Clear All</button>' : ''}
+          </div>
+          <div class="history-content">
+            ${emptyState}
+            ${conversationItems}
+          </div>
+        </div>
+        <script>
+          // Handle conversation item clicks
+          document.addEventListener('click', function(e) {
+            const historyItem = e.target.closest('.history-item');
+            const deleteButton = e.target.closest('.history-item-delete');
+
+            if (deleteButton) {
+              e.stopPropagation();
+              const conversationId = deleteButton.dataset.conversationId;
+              if (confirm('Delete this conversation?')) {
+                window.electronAPI?.deleteHistoryItem?.(conversationId);
+              }
+            } else if (historyItem) {
+              const conversationId = historyItem.dataset.conversationId;
+              window.electronAPI?.selectHistoryItem?.(conversationId);
+            }
+          });
+
+          // Handle clear all history
+          function clearAllHistory() {
+            if (confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
+              window.electronAPI?.clearAllHistory?.();
+            }
+          }
+        </script>
+      </body>
+      </html>
+    `;
+  }
+
   // Handle dropdown window creation
-  ipcMain.handle('open-dropdown', async (_, { x, y, width, height, content }) => {
+  ipcMain.handle('open-dropdown', async (_, { width, height, content }) => {
     if (!mainWindow) return;
 
     // Close existing dropdown if open
@@ -2172,7 +2530,7 @@ function setupIPC() {
 
 
     // Use Electron's built-in cursor positioning instead of manual math
-    const { screen } = require('electron');
+    // screen is already imported at the top
     const cursorPoint = screen.getCursorScreenPoint();
 
     // Position dropdown at cursor with small offset
@@ -2206,6 +2564,7 @@ function setupIPC() {
       skipTaskbar: true,
       transparent: false,
       backgroundColor: '#1a1a1a', // Dark background
+      roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
       focusable: true, // Enable focus to receive click events
       parent: mainWindow, // Anchor to main window
       webPreferences: {
@@ -2227,32 +2586,32 @@ function setupIPC() {
           /* Use CSS variables from main window, with fallback */
           :root {
             ${cssVariables || `
-            /* Default dark theme fallback - same as globals.css */
-            --background: 224 71% 4%;
-            --foreground: 213 31% 91%;
-            --card: 224 71% 10%;
-            --card-foreground: 213 31% 91%;
-            --primary: 217 91% 60%;
-            --primary-foreground: 222.2 84% 4.9%;
-            --secondary: 222.2 84% 11%;
-            --secondary-foreground: 210 40% 98%;
-            --accent: 216 34% 17%;
-            --accent-foreground: 210 40% 98%;
-            --muted: 223 47% 11%;
-            --muted-foreground: 215.4 16.3% 56.9%;
-            --border: 216 34% 17%;
-            --input: 216 34% 17%;
-            --ring: 216 34% 17%;
-            --destructive: 0 62.8% 30.6%;
-            --destructive-foreground: 210 40% 98%;`}
+            /* Fixed dark theme colors - matching globals.css */
+            --background: #1a1a1a;
+            --foreground: #ffffff;
+            --card: #2a2a2a;
+            --card-foreground: #ffffff;
+            --primary: #3b82f6;
+            --primary-foreground: #ffffff;
+            --secondary: #374151;
+            --secondary-foreground: #ffffff;
+            --accent: #4b5563;
+            --accent-foreground: #ffffff;
+            --muted: #333333;
+            --muted-foreground: #9ca3af;
+            --border: #444444;
+            --input: #444444;
+            --ring: #444444;
+            --destructive: #ef4444;
+            --destructive-foreground: #ffffff;`}
           }
 
           body {
             margin: 0;
             padding: 0;
-            background: hsl(var(--card));
+            background: var(--card);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            color: hsl(var(--card-foreground));
+            color: var(--card-foreground);
             overflow: hidden; /* Prevent any scrollbars on body */
             scrollbar-width: none; /* Firefox */
             -ms-overflow-style: none; /* IE */
@@ -2263,14 +2622,14 @@ function setupIPC() {
             -ms-overflow-style: none; /* IE */
           }
           .dropdown-container {
-            background: hsl(var(--card));
-            border: 1px solid hsl(var(--border));
+            background: var(--card);
+            border: 1px solid var(--border);
             border-radius: 6px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             overflow: hidden;
             min-width: 280px;
-            max-width: 280px;
-            width: 280px;
+            max-width: 500px;
+            width: 100%;
             box-sizing: border-box;
             scrollbar-width: none;
             -ms-overflow-style: none;
@@ -2281,29 +2640,30 @@ function setupIPC() {
           .search-section {
             display: flex;
             align-items: center;
-            border-bottom: 1px solid hsl(var(--border));
+            border-bottom: 1px solid var(--border);
             padding: 8px 12px;
           }
           .search-input {
             background: transparent;
             border: none;
             outline: none;
-            color: hsl(var(--card-foreground));
+            color: var(--card-foreground);
             width: 100%;
             font-size: 14px;
             padding: 4px 8px;
           }
           .search-input::placeholder {
-            color: hsl(var(--muted-foreground));
+            color: var(--muted-foreground);
           }
           .dropdown-content {
-            max-height: 215px; /* Increased by 15px for draggable header */
+            max-height: 250px;
             overflow-y: auto;
             overflow-x: hidden;
             padding: 4px;
             box-sizing: border-box;
             scrollbar-width: none;
             -ms-overflow-style: none;
+            flex: 1;
           }
           .dropdown-content::-webkit-scrollbar {
             display: none;
@@ -2312,7 +2672,7 @@ function setupIPC() {
             display: flex;
             align-items: center;
             padding: 8px 12px;
-            color: hsl(var(--card-foreground));
+            color: var(--card-foreground);
             cursor: pointer;
             border-radius: 4px;
             margin: 1px 0;
@@ -2325,10 +2685,16 @@ function setupIPC() {
             min-width: 0;
           }
           .dropdown-item:hover {
-            background: hsl(var(--accent));
+            background: var(--accent);
+            color: var(--accent-foreground);
           }
           .dropdown-item.selected {
-            background: hsl(var(--accent));
+            background: var(--accent);
+            color: var(--accent-foreground);
+          }
+          .dropdown-item.keyboard-selected {
+            background: var(--accent);
+            color: var(--accent-foreground);
           }
           .check-icon {
             margin-right: 8px;
@@ -2365,6 +2731,17 @@ function setupIPC() {
           ${content}
         </div>
         <script>
+          // Auto-focus search input when dropdown opens
+          document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.querySelector('.search-input');
+            if (searchInput) {
+              // Small delay to ensure window is fully loaded
+              setTimeout(() => {
+                searchInput.focus();
+              }, 50);
+            }
+          });
+
           // Handle click events
           document.addEventListener('click', function(e) {
             const item = e.target.closest('.dropdown-item');
@@ -2384,6 +2761,39 @@ function setupIPC() {
                 const text = item.textContent.toLowerCase();
                 item.style.display = text.includes(searchTerm) ? 'flex' : 'none';
               });
+            });
+
+            // Handle keyboard navigation
+            searchInput.addEventListener('keydown', function(e) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                const visibleItems = Array.from(document.querySelectorAll('.dropdown-item')).filter(item =>
+                  item.style.display !== 'none'
+                );
+                if (visibleItems.length > 0) {
+                  const currentSelected = document.querySelector('.dropdown-item.keyboard-selected');
+                  let newIndex = 0;
+
+                  if (currentSelected) {
+                    currentSelected.classList.remove('keyboard-selected');
+                    const currentIndex = visibleItems.indexOf(currentSelected);
+                    if (e.key === 'ArrowDown') {
+                      newIndex = (currentIndex + 1) % visibleItems.length;
+                    } else {
+                      newIndex = currentIndex > 0 ? currentIndex - 1 : visibleItems.length - 1;
+                    }
+                  }
+
+                  visibleItems[newIndex].classList.add('keyboard-selected');
+                  visibleItems[newIndex].scrollIntoView({ block: 'nearest' });
+                }
+              } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const selected = document.querySelector('.dropdown-item.keyboard-selected');
+                if (selected && selected.dataset.value) {
+                  window.electronAPI?.selectDropdownItem?.(selected.dataset.value);
+                }
+              }
             });
           }
         </script>
@@ -2454,6 +2864,162 @@ function setupIPC() {
     if (dropdownWindow) {
       dropdownWindow.close();
       dropdownWindow = null;
+    }
+  });
+
+  // Handle history window creation
+  ipcMain.handle('open-history', async (_, { conversations }) => {
+    if (!mainWindow) return;
+
+    // Close existing history window if open
+    if (historyWindow) {
+      historyWindow.close();
+      historyWindow = null;
+    }
+
+    // Get current CSS variables from main window
+    let cssVariables = '';
+    try {
+      cssVariables = await mainWindow.webContents.executeJavaScript(`
+        (() => {
+          const root = document.documentElement;
+          const computedStyle = getComputedStyle(root);
+          const variables = [];
+          for (let i = 0; i < computedStyle.length; i++) {
+            const property = computedStyle[i];
+            if (property.startsWith('--')) {
+              const value = computedStyle.getPropertyValue(property);
+              variables.push(\`\${property}: \${value};\`);
+            }
+          }
+          return variables.join('\\n            ');
+        })()
+      `);
+      console.log('🎨 Retrieved CSS variables from main window:', cssVariables ? 'Success' : 'Empty');
+    } catch (error) {
+      console.warn('Failed to retrieve CSS variables:', error);
+    }
+
+    // Calculate window size
+    const windowWidth = 400;
+    const windowHeight = 500;
+
+    // Position window near the main window
+    const mainBounds = mainWindow.getBounds();
+    const historyX = mainBounds.x + mainBounds.width + 10; // To the right of main window
+    const historyY = mainBounds.y;
+
+    // Get screen dimensions for bounds checking
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+    // Ensure window stays on screen
+    const adjustedX = Math.max(0, Math.min(historyX, screenWidth - windowWidth));
+    const adjustedY = Math.max(0, Math.min(historyY, screenHeight - windowHeight));
+
+    historyWindow = new BrowserWindow({
+      width: windowWidth,
+      height: windowHeight,
+      x: adjustedX,
+      y: adjustedY,
+      show: false,
+      frame: false,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      transparent: false,
+      backgroundColor: '#1a1a1a',
+      roundedCorners: true,
+      focusable: true,
+      parent: mainWindow,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js'),
+        webSecurity: false,
+      },
+    });
+
+    // Generate HTML content for history
+    const htmlContent = generateHistoryHTML(conversations, cssVariables);
+
+    historyWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+
+    // Handle click outside to close
+    historyWindow.on('blur', () => {
+      setTimeout(() => {
+        if (historyWindow && !historyWindow.isDestroyed()) {
+          historyWindow.close();
+        }
+      }, 100);
+    });
+
+    historyWindow.on('closed', () => {
+      historyWindow = null;
+    });
+
+    historyWindow.once('ready-to-show', () => {
+      historyWindow?.show();
+      historyWindow?.focus();
+    });
+
+    // Close history window if main window moves or is minimized
+    const handleMainWindowMove = () => {
+      if (historyWindow && !historyWindow.isDestroyed()) {
+        historyWindow.close();
+      }
+    };
+
+    mainWindow.on('move', handleMainWindowMove);
+    mainWindow.on('minimize', handleMainWindowMove);
+    mainWindow.on('hide', handleMainWindowMove);
+
+    // Clean up listeners when history window closes
+    historyWindow.on('closed', () => {
+      mainWindow?.off('move', handleMainWindowMove);
+      mainWindow?.off('minimize', handleMainWindowMove);
+      mainWindow?.off('hide', handleMainWindowMove);
+    });
+  });
+
+  ipcMain.handle('close-history', () => {
+    if (historyWindow) {
+      historyWindow.close();
+      historyWindow = null;
+    }
+  });
+
+  // Handle history item selection
+  ipcMain.handle('select-history-item', (_, conversationId: string) => {
+    // Send selection to main window
+    if (mainWindow) {
+      mainWindow.webContents.send('history-item-selected', conversationId);
+    }
+    // Close history window
+    if (historyWindow) {
+      historyWindow.close();
+      historyWindow = null;
+    }
+  });
+
+  // Handle history item deletion
+  ipcMain.handle('delete-history-item', (_, conversationId: string) => {
+    // Send deletion request to main window
+    if (mainWindow) {
+      mainWindow.webContents.send('history-item-deleted', conversationId);
+    }
+  });
+
+  // Handle clear all history
+  ipcMain.handle('clear-all-history', () => {
+    // Send clear all request to main window
+    if (mainWindow) {
+      mainWindow.webContents.send('clear-all-history');
+    }
+    // Close history window
+    if (historyWindow) {
+      historyWindow.close();
+      historyWindow = null;
     }
   });
 }

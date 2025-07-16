@@ -254,11 +254,4 @@ export const assertionHelpers = {
   }
 };
 
-// Export everything for use in tests
-export {
-  testEnvironment,
-  TEST_CONSTANTS,
-  testLogger,
-  mockDataGenerators,
-  assertionHelpers
-};
+// All exports are already defined above with individual export statements

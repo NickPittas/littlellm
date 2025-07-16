@@ -8,7 +8,7 @@ import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Plus, Edit, Trash2, Download, Upload } from 'lucide-react';
 import { promptsService, type Prompt } from '../services/promptsService';
-import { renderIcon } from '../utils/iconMapping';
+
 
 interface PromptsContentProps {
   onPromptSelect: (processedPrompt: string) => void;

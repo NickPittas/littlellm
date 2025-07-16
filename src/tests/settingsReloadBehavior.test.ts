@@ -23,15 +23,54 @@ describe('Settings Reload Behavior', () => {
     jest.clearAllMocks();
     
     // Spy on private methods
-    notifyListenersSpy = jest.spyOn(settingsService as any, 'notifyListeners');
+    notifyListenersSpy = jest.spyOn(settingsService as unknown as { notifyListeners: () => void }, 'notifyListeners');
     reloadForMCPChangeSpy = jest.spyOn(settingsService, 'reloadForMCPChange');
     
     // Mock default settings response
     mockElectronAPI.getSettings.mockResolvedValue({
-      chat: { provider: 'test', model: 'test-model' },
-      ui: { theme: 'dark' },
-      shortcuts: { toggleWindow: 'Ctrl+L' },
-      general: { autoStartWithSystem: false }
+      chat: {
+        provider: 'test',
+        model: 'test-model',
+        temperature: 0.3,
+        maxTokens: 8192,
+        systemPrompt: '',
+        toolCallingEnabled: true,
+        providers: {
+          openai: { apiKey: '', lastSelectedModel: '' },
+          anthropic: { apiKey: '', lastSelectedModel: '' },
+          gemini: { apiKey: '', lastSelectedModel: '' },
+          mistral: { apiKey: '', lastSelectedModel: '' },
+          deepseek: { apiKey: '', lastSelectedModel: '' },
+          lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+          ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+          openrouter: { apiKey: '', lastSelectedModel: '' },
+          requesty: { apiKey: '', lastSelectedModel: '' },
+          replicate: { apiKey: '', lastSelectedModel: '' },
+          n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+        }
+      },
+      ui: {
+        theme: 'dark',
+        alwaysOnTop: true,
+        startMinimized: false,
+        opacity: 1.0,
+        fontSize: 'small',
+        windowBounds: {
+          width: 400,
+          height: 615
+        }
+      },
+      shortcuts: {
+        toggleWindow: 'Ctrl+L',
+        processClipboard: 'CommandOrControl+Shift+V',
+        actionMenu: 'CommandOrControl+Shift+Space'
+      },
+      general: {
+        autoStartWithSystem: false,
+        showNotifications: true,
+        saveConversationHistory: true,
+        conversationHistoryLength: 10
+      }
     });
   });
 
@@ -44,10 +83,48 @@ describe('Settings Reload Behavior', () => {
     test('1. Manual reload button should trigger reload', async () => {
       // Simulate manual reload button click
       await settingsService.forceUpdateSettings({
-        chat: { provider: 'test', model: 'test-model' },
-        ui: { theme: 'light' },
-        shortcuts: { toggleWindow: 'Ctrl+L' },
-        general: { autoStartWithSystem: false }
+        chat: {
+          provider: 'test',
+          model: 'test-model',
+          temperature: 0.3,
+          maxTokens: 8192,
+          systemPrompt: '',
+          toolCallingEnabled: true,
+          providers: {
+            openai: { apiKey: '', lastSelectedModel: '' },
+            anthropic: { apiKey: '', lastSelectedModel: '' },
+            gemini: { apiKey: '', lastSelectedModel: '' },
+            mistral: { apiKey: '', lastSelectedModel: '' },
+            deepseek: { apiKey: '', lastSelectedModel: '' },
+            lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+            ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+            openrouter: { apiKey: '', lastSelectedModel: '' },
+            requesty: { apiKey: '', lastSelectedModel: '' },
+            replicate: { apiKey: '', lastSelectedModel: '' },
+            n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+          }
+        },
+        ui: {
+          theme: 'light',
+          alwaysOnTop: true,
+          startMinimized: false,
+          fontSize: 'small',
+          windowBounds: {
+            width: 400,
+            height: 615
+          }
+        },
+        shortcuts: {
+          toggleWindow: 'Ctrl+L',
+          processClipboard: 'CommandOrControl+Shift+V',
+          actionMenu: 'CommandOrControl+Shift+Space'
+        },
+        general: {
+          autoStartWithSystem: false,
+          showNotifications: true,
+          saveConversationHistory: true,
+          conversationHistoryLength: 10
+        }
       });
 
       expect(notifyListenersSpy).toHaveBeenCalled();
@@ -64,7 +141,16 @@ describe('Settings Reload Behavior', () => {
     test('3. Save settings should trigger reload', async () => {
       // Simulate settings save
       const result = await settingsService.updateSettings({
-        ui: { theme: 'light' }
+        ui: {
+          theme: 'light',
+          alwaysOnTop: true,
+          startMinimized: false,
+          fontSize: 'small',
+          windowBounds: {
+            width: 400,
+            height: 615
+          }
+        }
       });
 
       expect(result).toBe(true);
@@ -75,7 +161,16 @@ describe('Settings Reload Behavior', () => {
     test('4. updateSettingsInMemory should NOT trigger reload', () => {
       // This should NOT notify listeners
       settingsService.updateSettingsInMemory({
-        ui: { theme: 'light' }
+        ui: {
+          theme: 'light',
+          alwaysOnTop: true,
+          startMinimized: false,
+          fontSize: 'small',
+          windowBounds: {
+            width: 400,
+            height: 615
+          }
+        }
       });
 
       expect(notifyListenersSpy).not.toHaveBeenCalled();
@@ -89,19 +184,22 @@ describe('Settings Reload Behavior', () => {
       expect(notifyListenersSpy).not.toHaveBeenCalled();
     });
 
-    test('6. addListener should NOT trigger reload', () => {
+    test('6. subscribe should NOT trigger reload', () => {
       // Adding a listener should not trigger reload
       const mockListener = jest.fn();
-      settingsService.addListener(mockListener);
+      const unsubscribe = settingsService.subscribe(mockListener);
 
       expect(notifyListenersSpy).not.toHaveBeenCalled();
+
+      // Clean up
+      unsubscribe();
     });
 
-    test('7. removeListener should NOT trigger reload', () => {
+    test('7. unsubscribe should NOT trigger reload', () => {
       // Removing a listener should not trigger reload
       const mockListener = jest.fn();
-      settingsService.addListener(mockListener);
-      settingsService.removeListener(mockListener);
+      const unsubscribe = settingsService.subscribe(mockListener);
+      unsubscribe();
 
       expect(notifyListenersSpy).not.toHaveBeenCalled();
     });
@@ -151,7 +249,16 @@ describe('Settings Reload Behavior', () => {
       mockElectronAPI.updateAppSettings.mockResolvedValue(false);
 
       const result = await settingsService.updateSettings({
-        ui: { theme: 'light' }
+        ui: {
+          theme: 'light',
+          alwaysOnTop: true,
+          startMinimized: false,
+          fontSize: 'small',
+          windowBounds: {
+            width: 400,
+            height: 615
+          }
+        }
       });
 
       expect(result).toBe(false);

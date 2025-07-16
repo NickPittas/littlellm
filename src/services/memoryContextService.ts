@@ -4,17 +4,19 @@
  */
 
 import { memoryService } from './memoryService';
-import { MemoryType, SearchQuery } from '../types/memory';
+import { MemoryType, SearchQuery, MemoryEntry } from '../types/memory';
+
+export interface ContextMemory {
+  id: string;
+  type: MemoryType;
+  title: string;
+  content: string;
+  relevanceScore: number;
+  tags: string[];
+}
 
 export interface MemoryContext {
-  relevantMemories: Array<{
-    id: string;
-    type: MemoryType;
-    title: string;
-    content: string;
-    relevanceScore: number;
-    tags: string[];
-  }>;
+  relevantMemories: ContextMemory[];
   contextSummary: string;
   totalMemories: number;
 }
@@ -50,7 +52,7 @@ class MemoryContextService {
     const entities = this.extractEntities(messageText);
     
     // Identify memory triggers
-    const memoryTriggers = this.identifyMemoryTriggers(messageText, recentHistory);
+    const memoryTriggers = this.identifyMemoryTriggers(messageText);
     
     // Determine if we should create a memory
     const shouldCreateMemory = this.shouldCreateMemory(messageText, intent, recentHistory);
@@ -198,7 +200,7 @@ class MemoryContextService {
 
 You have access to the following information from previous interactions:
 
-${memoryContext.relevantMemories.map((memory, index) =>
+${memoryContext.relevantMemories.map((memory) =>
   `• ${memory.content}`
 ).join('\n')}
 
@@ -257,7 +259,7 @@ Please use this context naturally when relevant to the conversation. You can ref
     return entities;
   }
 
-  private identifyMemoryTriggers(message: string, history: Array<{role: string, content: string}>): string[] {
+  private identifyMemoryTriggers(message: string): string[] {
     const triggers: string[] = [];
     
     // Preference indicators
@@ -349,7 +351,7 @@ Please use this context naturally when relevant to the conversation. You can ref
     return queries;
   }
 
-  private calculateRelevanceScore(memory: any, analysis: ConversationAnalysis, baseScore: number): number {
+  private calculateRelevanceScore(memory: MemoryEntry, analysis: ConversationAnalysis, baseScore: number): number {
     let score = baseScore;
 
     // Boost score for matching topics
@@ -368,12 +370,12 @@ Please use this context naturally when relevant to the conversation. You can ref
     if (daysSinceCreated < 7) score += 0.1;
 
     // Boost score for frequently accessed memories
-    if (memory.metadata.accessCount > 5) score += 0.1;
+    if (memory.metadata.accessCount && memory.metadata.accessCount > 5) score += 0.1;
 
     return Math.min(score, 1.0); // Cap at 1.0
   }
 
-  private deduplicateMemories(memories: Array<any>): Array<any> {
+  private deduplicateMemories(memories: ContextMemory[]): ContextMemory[] {
     const seen = new Set();
     return memories.filter(memory => {
       if (seen.has(memory.id)) return false;
@@ -382,7 +384,7 @@ Please use this context naturally when relevant to the conversation. You can ref
     });
   }
 
-  private createContextSummary(memories: Array<any>): string {
+  private createContextSummary(memories: ContextMemory[]): string {
     if (memories.length === 0) return '';
 
     const summaryParts: string[] = [];
@@ -392,11 +394,11 @@ Please use this context naturally when relevant to the conversation. You can ref
       if (!acc[memory.type]) acc[memory.type] = [];
       acc[memory.type].push(memory);
       return acc;
-    }, {} as Record<string, any[]>);
+    }, {} as Record<string, ContextMemory[]>);
 
     Object.entries(byType).forEach(([type, mems]) => {
       const typeLabel = type.replace('_', ' ').toUpperCase();
-      summaryParts.push(`${typeLabel}: ${(mems as any[]).map(m => m.title).join(', ')}`);
+      summaryParts.push(`${typeLabel}: ${mems.map(m => m.title).join(', ')}`);
     });
 
     return summaryParts.join(' | ');

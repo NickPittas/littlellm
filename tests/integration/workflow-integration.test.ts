@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LLMService } from '../../src/services/llmService';
 import { mcpService } from '../../src/services/mcpService';
+import { testEnvironment } from '../test-runner.config';
 
 // Mock electron API
 const mockElectronAPI = {
@@ -16,21 +17,18 @@ const mockElectronAPI = {
   getConnectedMCPServerIds: vi.fn()
 };
 
-// Setup global window mock
-Object.defineProperty(window, 'electronAPI', {
-  value: mockElectronAPI,
-  writable: true
-});
-
 describe('Workflow Integration Tests', () => {
   let llmService: LLMService;
 
   beforeEach(() => {
+    // Setup mock electron API using test environment
+    testEnvironment.setupMockElectronAPI(mockElectronAPI);
     llmService = new LLMService();
     vi.clearAllMocks();
   });
 
   afterEach(() => {
+    testEnvironment.cleanup();
     vi.restoreAllMocks();
   });
 

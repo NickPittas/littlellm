@@ -1,28 +1,33 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Minus, Send, Copy, Check, Paperclip, Camera } from 'lucide-react';
+
+// Extend Window interface for tool thinking trigger
+declare global {
+  interface Window {
+    triggerToolThinking?: (toolName: string) => void;
+  }
+}
+import { X, Minus, Send, Paperclip, Camera } from 'lucide-react';
 import { Button } from './ui/button';
 import { ToolCallingToggle } from './ui/tool-calling-toggle';
 import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag';
 
-import { Card, CardContent } from './ui/card';
-import { ChatInterface } from './ChatInterface';
+import { Card } from './ui/card';
 import { BottomToolbar } from './BottomToolbarNew';
-import { HistoryDialog } from './HistoryDialog';
+import { useHistoryOverlay } from './HistoryOverlay';
 
 // Settings handled by separate overlay window
-import { AttachmentPreview } from './AttachmentPreview';
-import { AutoResizeTextarea } from './AutoResizeTextarea';
 
-import { chatService, type ChatSettings } from '../services/chatService';
-import { settingsService, type AppSettings } from '../services/settingsService';
+import { chatService, type ChatSettings, type Message } from '../services/chatService';
+import { settingsService } from '../services/settingsService';
 import { conversationHistoryService } from '../services/conversationHistoryService';
 import { sessionService } from '../services/sessionService';
 import { stateService } from '../services/stateService';
 import { MessageWithThinking } from './MessageWithThinking';
 import { UserMessage } from './UserMessage';
-import { useTheme } from '../contexts/ThemeContext';
+import { ThinkingIndicator } from './ThinkingIndicator';
+// Theme system disabled
 
 
 interface VoilaInterfaceProps {
@@ -34,15 +39,15 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
   // Always in chat mode now - simplified interface
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [showChat, setShowChat] = useState(false); // Hide chat until first message
-  const [size, setSize] = useState({ width: 570, height: 142 }); // Start with minimum dimensions
-  const [showHistory, setShowHistory] = useState(false);
-  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [isLoading, setIsLoading] = useState(false); // Loading state for thinking indicator
+
+
   const [windowExpanded, setWindowExpanded] = useState(false); // Track if window has been expanded
   const [sessionStats, setSessionStats] = useState(sessionService.getSessionStats());
-  const { themes, setTheme } = useTheme();
+  // Theme system disabled
 
   // Initialize enhanced window dragging
   const { isDragging } = useEnhancedWindowDrag();
@@ -55,6 +60,25 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const [isAutoScrolling, setIsAutoScrolling] = useState(false);
 
+  // Dynamic window height management based on chat state
+  const updateWindowHeight = useCallback((hasChatContent: boolean) => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      const baseWidth = 570; // Keep width unchanged
+
+      if (hasChatContent) {
+        // Expanded height for active chat
+        const expandedHeight = 600; // Height when chat is active
+        console.log('🔧 Expanding window for active chat:', { width: baseWidth, height: expandedHeight });
+        window.electronAPI.resizeWindow(baseWidth, expandedHeight);
+      } else {
+        // Compact height for no chat - minimal size
+        const compactHeight = 120; // Very small height when no chat
+        console.log('🔧 Compacting window for no chat:', { width: baseWidth, height: compactHeight });
+        window.electronAPI.resizeWindow(baseWidth, compactHeight);
+      }
+    }
+  }, []);
+
   // Calculate total tokens for current chat
   const calculateChatTokens = () => {
     let totalTokens = 0;
@@ -64,12 +88,22 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     messages.forEach(message => {
       if (message.usage) {
         // Normalize token usage format (different providers use different field names)
+        const usage = message.usage as {
+          promptTokens?: number;
+          prompt_tokens?: number;
+          input_tokens?: number;
+          completionTokens?: number;
+          completion_tokens?: number;
+          output_tokens?: number;
+          totalTokens?: number;
+          total_tokens?: number;
+        };
         const normalizedUsage = {
-          promptTokens: message.usage.promptTokens || message.usage.prompt_tokens || message.usage.input_tokens || 0,
-          completionTokens: message.usage.completionTokens || message.usage.completion_tokens || message.usage.output_tokens || 0,
-          totalTokens: message.usage.totalTokens || message.usage.total_tokens ||
-                      (message.usage.promptTokens || message.usage.prompt_tokens || message.usage.input_tokens || 0) +
-                      (message.usage.completionTokens || message.usage.completion_tokens || message.usage.output_tokens || 0)
+          promptTokens: usage.promptTokens || usage.prompt_tokens || usage.input_tokens || 0,
+          completionTokens: usage.completionTokens || usage.completion_tokens || usage.output_tokens || 0,
+          totalTokens: usage.totalTokens || usage.total_tokens ||
+                      (usage.promptTokens || usage.prompt_tokens || usage.input_tokens || 0) +
+                      (usage.completionTokens || usage.completion_tokens || usage.output_tokens || 0)
         };
 
         totalTokens += normalizedUsage.totalTokens;
@@ -80,6 +114,12 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
     return { totalTokens, promptTokens, completionTokens };
   };
+
+  // Dynamic window height management based on chat state
+  useEffect(() => {
+    const hasChatContent = messages.length > 0 || showChat;
+    updateWindowHeight(hasChatContent);
+  }, [messages.length, showChat, updateWindowHeight]);
 
   // Update session stats when messages change
   useEffect(() => {
@@ -126,7 +166,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     },
   });
 
-  const containerRef = useRef<HTMLDivElement>(null);
+
 
   // Load app settings on mount and subscribe to changes
   useEffect(() => {
@@ -141,7 +181,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         // Only update if we have actual settings (not defaults from uninitialized service)
         if (appSettings.chat && (appSettings.chat.provider || Object.keys(appSettings.chat.providers || {}).length > 0)) {
           console.log('VoilaInterface: Settings appear to be loaded, updating state');
-          setAppSettings(appSettings);
+
           setSettings(appSettings.chat);
         } else {
           console.log('VoilaInterface: Settings not yet loaded, will retry...');
@@ -174,7 +214,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         console.log('VoilaInterface: Settings changed via subscription:', newAppSettings);
         // Only update if this is an external change (not from our own handleSettingsChange)
         // We handle our own changes directly in handleSettingsChange to avoid loops
-        setAppSettings(newAppSettings);
+
         // Don't update chat settings here - handleSettingsChange handles that
       });
 
@@ -348,23 +388,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     }
   }, [showChat, messages.length, windowExpanded, calculateWindowHeight]);
 
-  // Listen for theme changes from overlay windows - ONLY SETUP ONCE
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      const handleThemeChange = (themeId: string) => {
-        const newTheme = themes.find(t => t.id === themeId);
-        if (newTheme) {
-          setTheme(newTheme);
-        }
-      };
-
-      window.electronAPI.onThemeChanged(handleThemeChange);
-
-      return () => {
-        window.electronAPI.removeAllListeners('theme-changed');
-      };
-    }
-  }, []); // EMPTY DEPENDENCY ARRAY - ONLY SETUP ONCE
+  // Theme system disabled
 
   // Listen for prompt selections from action menu overlay
   useEffect(() => {
@@ -407,13 +431,9 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     }
   }, []); // EMPTY DEPENDENCY ARRAY - ONLY SETUP ONCE
 
-  // Handle input changes
-  const handleInputChange = (value: string) => {
-    setInput(value);
-    // Auto-resize will be handled by useEffect
-  };
 
-  // Auto-resize textarea and window based on content
+
+  // Auto-resize textarea height only (no window resizing)
   const autoResizeTextarea = useCallback(() => {
     if (textareaRef.current) {
       const textarea = textareaRef.current;
@@ -422,7 +442,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       textarea.style.height = '40px'; // Reset to minimum height first
 
       // Force a reflow to get accurate scrollHeight
-      textarea.offsetHeight;
+      void textarea.offsetHeight;
 
       // Calculate the new height based on content
       const minHeight = 40; // Minimum height (40px)
@@ -432,24 +452,14 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       const scrollHeight = textarea.scrollHeight;
       const contentHeight = Math.max(minHeight, Math.min(maxHeight, scrollHeight));
 
-      // Set the new height
+      // Set the new height (textarea only, no window resizing)
       textarea.style.height = `${contentHeight}px`;
 
-      // Resize window to accommodate new textarea height
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const baseWidth = 570;
-        const baseHeight = 142; // Base height (padding, borders, etc.)
-        const chatHeight = showChat && messages.length > 0 ? 450 : 0; // Chat area height
-        const textareaExtraHeight = Math.max(0, contentHeight - 40); // Extra height beyond minimum
-        const newWindowHeight = baseHeight + chatHeight + textareaExtraHeight;
-        window.electronAPI.resizeWindow(baseWidth, newWindowHeight);
-      }
-
-      console.log('Auto-resize:', { scrollHeight, contentHeight, inputLength: input.length });
+      console.log('Textarea auto-resize:', { scrollHeight, contentHeight, inputLength: input.length });
     }
-  }, [input, showChat, messages.length]);
+  }, [input]);
 
-  // Auto-resize when input changes
+  // Auto-resize textarea when input changes
   useEffect(() => {
     // Use setTimeout to ensure DOM is updated
     const timer = setTimeout(() => {
@@ -565,6 +575,11 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
     setInput('');
+    setIsLoading(true); // Start thinking indicator
+    console.log('🧠 Started thinking indicator - user message sent');
+
+    // Track when we started processing for timeout detection
+    const processingStartTime = Date.now();
 
     // Save conversation immediately after user message
     try {
@@ -597,8 +612,34 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       console.log('🧠 VoilaInterface conversation history debug:', {
         updatedMessagesLength: updatedMessages.length,
         conversationHistoryLength: conversationHistory.length,
-        lastMessage: updatedMessages[updatedMessages.length - 1]?.content?.substring(0, 50)
+        lastMessage: (() => {
+          const content = updatedMessages[updatedMessages.length - 1]?.content;
+          return typeof content === 'string' ? content.substring(0, 50) : '[Complex content]';
+        })()
       });
+
+      // Track if we've already created a tool thinking bubble for this conversation turn
+      let toolThinkingCreated = false;
+
+      // Set up tool thinking trigger function
+      window.triggerToolThinking = () => {
+        // Only create thinking bubble for the FIRST tool call in a turn
+        if (!toolThinkingCreated && !isLoading) {
+          toolThinkingCreated = true;
+          const toolThinkingMessage = {
+            id: (Date.now() + 2).toString(),
+            content: '',
+            role: 'assistant' as const,
+            timestamp: new Date(),
+            isThinking: true,
+          };
+
+          setMessages(prev => [...prev, toolThinkingMessage]);
+          setIsLoading(true);
+        }
+
+
+      };
 
       const response = await chatService.sendMessage(
         messageContent,
@@ -606,6 +647,16 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         settings,
         conversationHistory,
         (chunk: string) => {
+          // Stop thinking indicator when streaming starts (first chunk received)
+          if (assistantContent === '' && chunk.trim().length > 0) {
+            const processingDuration = Date.now() - processingStartTime;
+            console.log(`🤖 Model started streaming after ${processingDuration}ms, stopping thinking indicators and removing thinking bubbles`);
+            setIsLoading(false);
+
+            // Remove all thinking bubbles when streaming starts
+            setMessages(prev => prev.filter(msg => !msg.isThinking));
+          }
+
           // Handle streaming response
           assistantContent += chunk;
           setMessages(prev =>
@@ -615,19 +666,55 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 : msg
             )
           );
+
+
         },
         undefined, // signal
         conversationHistoryService.getCurrentConversationId() || undefined
       );
 
-      // Update final message with complete response
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === assistantMessage.id
-            ? { ...msg, content: response.content, usage: response.usage, toolCalls: response.toolCalls }
-            : msg
-        )
-      );
+      // If we get here and still loading, it means no streaming occurred
+      // This handles non-streaming responses (like OpenRouter issues)
+      if (isLoading) {
+        const totalProcessingTime = Date.now() - processingStartTime;
+        console.log(`🔄 No streaming detected, stopping thinking indicator after ${totalProcessingTime}ms (non-streaming response)`);
+        setIsLoading(false);
+      }
+
+
+
+      // Check if this is a follow-up response replacing a thinking bubble
+      setMessages(prev => {
+        const lastMessage = prev[prev.length - 1];
+
+        if (lastMessage && lastMessage.isThinking) {
+          // Replace the thinking bubble with the actual response
+          console.log(`🔄 Replacing thinking bubble with follow-up response`);
+          return prev.slice(0, -1).concat([{
+            id: lastMessage.id,
+            content: response.content,
+            role: 'assistant' as const,
+            timestamp: new Date(),
+            usage: response.usage,
+            toolCalls: response.toolCalls,
+            isThinking: false, // No longer thinking
+          }]);
+        } else {
+          // Update the original assistant message
+          return prev.map(msg =>
+            msg.id === assistantMessage.id
+              ? { ...msg, content: response.content, usage: response.usage, toolCalls: response.toolCalls }
+              : msg
+          );
+        }
+      });
+
+      // Stop thinking indicator when final response is complete
+      if (isLoading) {
+        const totalProcessingTime = Date.now() - processingStartTime;
+        console.log(`✅ Final response complete after ${totalProcessingTime}ms, stopping thinking indicator`);
+        setIsLoading(false);
+      }
 
       // Clear attached files after sending
       setAttachedFiles([]);
@@ -652,13 +739,17 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       };
 
       setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      // Clean up tool thinking trigger
+      delete window.triggerToolThinking;
+
+      // Ensure all loading indicators are reset
+      setIsLoading(false);
+      console.log('🔄 Message handling completed, reset all loading states');
     }
   };
 
-  // Handle prompt selection
-  const handlePromptSelect = (prompt: string) => {
-    setInput(prompt);
-  };
+
 
   // Handle prompts button click - open action menu like Ctrl+Shift+Space
   const handlePromptsClick = () => {
@@ -677,7 +768,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
           await conversationHistoryService.updateConversation(currentConversationId, messages);
         } else if (messages.length > 0) {
           // Create a new conversation if there isn't one
-          const newConversationId = await conversationHistoryService.createNewConversation(messages);
+          await conversationHistoryService.createNewConversation(messages);
           // Don't set as current since we're clearing it
         }
       } catch (error) {
@@ -717,12 +808,9 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     setShowChat(false);
   };
 
-  // Handle toggling chat visibility
-  const handleToggleChat = () => {
-    setShowChat(!showChat);
-  };
 
-  const handleLoadConversation = async (conversation: any) => {
+
+  const handleLoadConversation = async (conversation: { id: string; messages: Message[] }) => {
     try {
       console.log('🔄 Loading conversation:', conversation.id);
 
@@ -748,9 +836,13 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     }
   };
 
+  // Initialize history overlay after handleLoadConversation is defined
+  const { openHistory } = useHistoryOverlay(handleLoadConversation);
+
   // Add MCP connectivity test function to window for debugging
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).testMCPConnectivity = async () => {
         console.log('🔍 Testing MCP Connectivity...');
 
@@ -809,10 +901,13 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
   return (
     <div
-      className={`h-screen w-full bg-background flex flex-col text-foreground ${isDragging ? 'cursor-grabbing' : ''}`}
+      className={`h-screen w-full flex flex-col ${isDragging ? 'cursor-grabbing' : ''}`}
       style={{
         userSelect: isDragging ? 'none' : 'auto',
-        overflow: 'visible'
+        overflow: 'hidden',
+        background: '#1a1a1a', // Solid background
+        color: '#ffffff',
+        borderRadius: '12px'
       }}
     >
       {/* Minimal visual header for window identification */}
@@ -829,7 +924,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         id="input-area"
         className="flex-none p-2"
       >
-        <Card className="p-2">
+        <Card className="p-2" style={{ backgroundColor: '#2a2a2a', border: '1px solid #444', borderRadius: '12px' }}>
           {/* Attachment Preview */}
           {attachedFiles.length > 0 && (
             <div
@@ -887,22 +982,18 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               onChange={(e) => {
                 const newValue = e.target.value;
                 setInput(newValue);
-                // Simple textarea auto-resize without window resizing
-                setTimeout(() => {
-                  if (textareaRef.current) {
-                    const textarea = textareaRef.current;
-                    textarea.style.height = '40px';
-                    textarea.offsetHeight; // Force reflow
-                    const scrollHeight = textarea.scrollHeight;
-                    const contentHeight = Math.max(40, Math.min(200, scrollHeight));
-                    textarea.style.height = `${contentHeight}px`;
-                  }
-                }, 0);
+                // Note: Textarea auto-resize is handled by the useEffect hook above
               }}
               onKeyDown={handleKeyDown}
               placeholder="Type your message..."
-              className="flex-1 min-h-[40px] p-2 border border-border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary bg-background text-foreground cursor-text overflow-y-auto"
-              style={{ lineHeight: '1.5' }}
+              className="flex-1 min-h-[40px] p-2 resize-none focus:outline-none cursor-text overflow-y-auto"
+              style={{
+                lineHeight: '1.5',
+                backgroundColor: '#333333',
+                border: '1px solid #555',
+                color: '#ffffff',
+                borderRadius: '8px'
+              }}
               data-interactive="true"
             />
 
@@ -982,7 +1073,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       {/* Chat Interface - Only show after first message - Positioned between input and bottom toolbar */}
       {messages.length > 0 && showChat && (
         <div className="flex-1 flex flex-col p-2 overflow-hidden">
-          <Card className="flex-1 flex flex-col overflow-hidden">
+          <Card className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: '#2a2a2a', border: '1px solid #444', borderRadius: '12px' }}>
             {/* Chat Header with Controls - FIXED POSITION */}
             <div className="flex-none flex items-center justify-between p-2 border-b border-border bg-background">
               <div className="flex items-center gap-3">
@@ -1054,31 +1145,46 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                     className={`max-w-[80%] p-3 rounded-lg ${
                       message.role === 'user'
                         ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted'
+                        : 'bg-muted text-foreground'
                     }`}
                     data-interactive="true"
                   >
                     {message.role === 'assistant' ? (
                       <>
-                        <MessageWithThinking
-                          content={message.content}
-                          usage={message.usage}
-                          timing={message.timing}
-                          toolCalls={message.toolCalls}
-                        />
-                        {/* Debug tool calls */}
-                        {message.toolCalls && console.log('🔍 UI received toolCalls for message:', {
-                          messageId: message.id,
-                          toolCallsCount: message.toolCalls.length,
-                          toolNames: message.toolCalls.map(tc => tc.name)
-                        })}
+                        {message.isThinking ? (
+                          <ThinkingIndicator />
+                        ) : (
+                          <>
+                            <MessageWithThinking
+                              content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
+                              usage={message.usage}
+                              timing={message.timing}
+                              toolCalls={message.toolCalls}
+                            />
+                            {/* Debug tool calls */}
+                            {message.toolCalls && console.log('🔍 UI received toolCalls for message:', {
+                              messageId: message.id,
+                              toolCallsCount: message.toolCalls.length,
+                              toolNames: message.toolCalls.map((tc: { name: string }) => tc.name)
+                            })}
+                          </>
+                        )}
                       </>
                     ) : (
-                      <UserMessage content={message.content} />
+                      <UserMessage content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)} />
                     )}
                   </div>
                 </div>
               ))}
+
+              {/* Show thinking indicator when loading */}
+              {isLoading && (
+                <div className="flex justify-start p-2">
+                  <div className="max-w-[80%]">
+                    <ThinkingIndicator />
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
         </div>
@@ -1101,12 +1207,12 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         id="bottom-toolbar"
         className="flex-none cursor-default p-2"
       >
-        <Card className="rounded-lg border border-border">
+        <Card className="rounded-lg" style={{ backgroundColor: '#2a2a2a', border: '1px solid #444', borderRadius: '12px' }}>
             <BottomToolbar
               settings={settings}
               onSettingsChange={handleSettingsChange}
-              showHistory={showHistory}
-              onHistoryChange={setShowHistory}
+              showHistory={false}
+              onHistoryChange={openHistory}
               onFileUpload={handleFileUpload}
               onScreenshotCapture={handleScreenshotCapture}
               onPromptsClick={handlePromptsClick}
@@ -1117,12 +1223,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
         {/* Settings now opens as separate overlay window via electronAPI */}
 
-        {/* History Dialog - TESTING HISTORY FUNCTIONALITY */}
-        <HistoryDialog
-          open={showHistory}
-          onOpenChange={setShowHistory}
-          onLoadConversation={handleLoadConversation}
-        />
+        {/* History is now handled by overlay window */}
 
         {/* STILL COMMENTED OUT */}
         {/* AutoResizeTextarea */}

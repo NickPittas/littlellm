@@ -119,7 +119,7 @@ export interface MemoryDeleteRequest {
 }
 
 // Response types for MCP tools
-export interface MemoryToolResponse<T = any> {
+export interface MemoryToolResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;

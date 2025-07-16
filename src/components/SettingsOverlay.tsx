@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Badge } from './ui/badge';
 import {
-  Settings,
   Key,
   Keyboard,
   Wand2,
@@ -27,13 +26,12 @@ import {
   Server,
   Play,
   Square,
-  FileText,
   Brain
 } from 'lucide-react';
 import { settingsService, type AppSettings } from '../services/settingsService';
 import { promptsService, type Prompt } from '../services/promptsService';
 import { mcpService, type MCPServer } from '../services/mcpService';
-import { useTheme } from '../contexts/ThemeContext';
+// import { useTheme } from '../contexts/ThemeContext'; // Theme system disabled
 import { MemoryManagement } from './MemoryManagement';
 
 export function SettingsOverlay() {
@@ -63,12 +61,12 @@ export function SettingsOverlay() {
   });
   const [mcpConfigText, setMcpConfigText] = useState('');
 
-  const { theme, setTheme, themes } = useTheme();
+  // const { theme, setTheme, themes } = useTheme(); // Theme system disabled
 
   // Load settings and prompts
   useEffect(() => {
     console.log('SettingsOverlay component mounted');
-    console.log('Theme context available:', theme);
+    // console.log('Theme context available:', theme); // Theme system disabled
     loadSettings();
     loadCustomPrompts();
     loadMcpServers();
@@ -86,17 +84,21 @@ export function SettingsOverlay() {
 
     if (typeof window !== 'undefined' && window.electronAPI) {
       // Add event listeners for immediate MCP server updates
-      window.electronAPI.onMcpServerConnected?.(handleMcpServerConnected);
-      window.electronAPI.onMcpServerDisconnected?.(handleMcpServerDisconnected);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const electronAPI = window.electronAPI as any;
+      electronAPI.onMcpServerConnected?.(handleMcpServerConnected);
+      electronAPI.onMcpServerDisconnected?.(handleMcpServerDisconnected);
     }
 
     return () => {
       // Cleanup event listeners
       if (typeof window !== 'undefined' && window.electronAPI) {
-        window.electronAPI.removeMcpServerListeners?.();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const electronAPI = window.electronAPI as any;
+        electronAPI.removeMcpServerListeners?.();
       }
     };
-  }, []);
+  }, []); // Theme system disabled - no dependencies
 
   const loadSettings = async () => {
     try {
@@ -147,6 +149,7 @@ export function SettingsOverlay() {
           temperature: 0.3,
           maxTokens: 8192,
           systemPrompt: '',
+          toolCallingEnabled: true,
           providers: {
             openai: { apiKey: '', lastSelectedModel: '' },
             anthropic: { apiKey: '', lastSelectedModel: '' },
@@ -162,14 +165,15 @@ export function SettingsOverlay() {
           },
         },
         ui: {
-          theme: 'system' as const,
+          theme: 'dark' as const, // Force dark theme
           alwaysOnTop: true,
           startMinimized: false,
-          opacity: 1.0,
           fontSize: 'small' as const,
           windowBounds: {
             width: 400,
             height: 615, // Increased by 15px for draggable header
+            x: undefined, // Let Electron choose initial position
+            y: undefined, // Let Electron choose initial position
           },
         },
         shortcuts: {
@@ -181,6 +185,7 @@ export function SettingsOverlay() {
           autoStartWithSystem: false,
           showNotifications: true,
           saveConversationHistory: true,
+          conversationHistoryLength: 10,
         },
       };
       console.log('Using default settings:', defaultSettings);
@@ -205,9 +210,9 @@ export function SettingsOverlay() {
       console.log('=== SETTINGS SAVED FROM OVERLAY ===');
 
       // Force theme update in main window by triggering a settings change event
-      if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.notifyThemeChange) {
-        window.electronAPI.notifyThemeChange(theme.id);
-      }
+      // if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.notifyThemeChange) {
+      //   window.electronAPI.notifyThemeChange(theme.id);
+      // } // Theme system disabled
 
       handleClose();
     } catch (error) {
@@ -949,54 +954,20 @@ export function SettingsOverlay() {
 
                 <div className="space-y-2">
                   <Label>Theme</Label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-64 overflow-y-auto hide-scrollbar">
-                    {themes.map((themeOption) => (
-                      <div
-                        key={themeOption.id}
-                        className={`p-3 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
-                          theme.id === themeOption.id
-                            ? 'border-primary bg-primary/5 shadow-md'
-                            : 'border-border hover:border-primary/50'
-                        }`}
-                        onClick={() => {
-                        setTheme(themeOption);
-                        // Notify main window about theme change
-                        if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.notifyThemeChange) {
-                          window.electronAPI.notifyThemeChange(themeOption.id);
-                        }
-                      }}
-                      >
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="text-lg">
-                            {typeof themeOption.icon === 'string' ? (
-                              themeOption.icon
-                            ) : (
-                              <themeOption.icon className="w-4 h-4" />
-                            )}
-                          </div>
-                          <div className="text-xs font-medium text-center">{themeOption.name}</div>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="p-4 border rounded-lg bg-muted/50">
+                    <p className="text-sm text-muted-foreground">
+                      Theme system is disabled. Using static dark theme for optimal rounded corners.
+                    </p>
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label>Window Opacity</Label>
-                  <Input
-                    type="number"
-                    min="0.1"
-                    max="1"
-                    step="0.05"
-                    value={settings.ui.opacity || 1}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      ui: { ...settings.ui, opacity: parseFloat(e.target.value) }
-                    })}
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    Adjust window transparency (0.5 = 50% transparent, 1 = fully opaque)
-                  </p>
+                  <div className="p-4 border rounded-lg bg-muted/50">
+                    <p className="text-sm text-muted-foreground">
+                      Window opacity is disabled for optimal rounded corners. Using solid background.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -1165,7 +1136,7 @@ export function SettingsOverlay() {
                 </div>
 
                 {/* All Prompts List */}
-                <div className="space-y-2 max-h-64 overflow-y-auto hide-scrollbar overlay-scroll">
+                <div className="space-y-2 flex-1 overflow-y-auto hide-scrollbar overlay-scroll" style={{ maxHeight: 'calc(100vh - 300px)' }}>
                   {customPrompts.map((prompt) => {
                     const isCustom = promptsService.isCustomPrompt(prompt.id);
                     return (
@@ -1237,7 +1208,7 @@ export function SettingsOverlay() {
                       {editingPrompt && !promptsService.isCustomPrompt(editingPrompt.id) && (
                         <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4">
                           <p className="text-sm text-blue-800 dark:text-blue-200">
-                            <strong>Note:</strong> You're editing a built-in prompt. {
+                            <strong>Note:</strong> You&apos;re editing a built-in prompt. {
                               promptsService.findCustomCopyOfBuiltinPrompt(editingPrompt)
                                 ? 'This will update your existing custom copy of this prompt.'
                                 : 'This will create a new custom copy that you can modify. The original built-in prompt will remain unchanged.'
@@ -1374,7 +1345,7 @@ export function SettingsOverlay() {
                 <div className="text-sm text-muted-foreground">
                   Configure MCP (Model Context Protocol) servers to extend functionality with tools, resources, and prompts.
                   <br />
-                  <span className="text-xs">💡 "Method not found" warnings are normal for servers that don't support all capabilities.</span>
+                  <span className="text-xs">💡 &quot;Method not found&quot; warnings are normal for servers that don&apos;t support all capabilities.</span>
                 </div>
 
                 {/* MCP Servers List */}
@@ -1469,7 +1440,7 @@ export function SettingsOverlay() {
                     className="font-mono text-sm"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Advanced: Edit the raw MCP configuration. Changes will be applied when you click "Save Config".
+                    Advanced: Edit the raw MCP configuration. Changes will be applied when you click &quot;Save Config&quot;.
                   </p>
                 </div>
 

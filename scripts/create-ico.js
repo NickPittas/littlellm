@@ -1,6 +1,10 @@
-const fs = require('fs');
-const path = require('path');
-const pngToIco = require('png-to-ico');
+import fs from 'fs';
+import path from 'path';
+import pngToIco from 'png-to-ico';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 async function createIcoIcon() {
   try {

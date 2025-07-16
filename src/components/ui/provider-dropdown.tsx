@@ -153,7 +153,6 @@ export function ProviderDropdown({
 
   // Find the selected provider to show its logo
   const selectedProvider = providers.find(p => p.name === value)
-  const displayValue = value || placeholder
 
   return (
     <div className="relative" style={{ zIndex: 1 }}>
@@ -173,11 +172,17 @@ export function ProviderDropdown({
       >
         <div className="flex items-center gap-2 min-w-0">
           {selectedProvider ? (
-            <div className="w-4 h-4 flex-shrink-0">
-              <ProviderLogo provider={selectedProvider} size={16} className="flex-shrink-0" />
-            </div>
+            <>
+              <div className="w-4 h-4 flex-shrink-0">
+                <ProviderLogo provider={selectedProvider} size={16} className="flex-shrink-0" />
+              </div>
+              <span className="truncate">{selectedProvider.name}</span>
+            </>
           ) : (
-            <span className="text-xs text-muted-foreground">?</span>
+            <>
+              <span className="text-xs text-muted-foreground">?</span>
+              <span className="truncate text-muted-foreground">{placeholder}</span>
+            </>
           )}
         </div>
         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -281,7 +286,7 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
         class="provider-icon"
         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
       />
-      <div class="provider-icon-fallback" style="display: none; width: 20px; height: 20px; background: hsl(240 3.7% 15.9%); border-radius: 4px; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: hsl(0 0% 98%);">
+      <div class="provider-icon-fallback" style="display: none; width: 20px; height: 20px; background: var(--muted); border-radius: 4px; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: var(--foreground);">
         ${provider.name.charAt(0).toUpperCase()}
       </div>
       <span>${provider.name}</span>
@@ -299,7 +304,7 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
         object-fit: contain;
       }
       .provider-icon-fallback {
-        color: hsl(0 0% 98%);
+        color: var(--foreground);
       }
       .dropdown-content {
         max-height: 415px; /* Increased by 15px for draggable header */
@@ -307,6 +312,8 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
         overflow-x: hidden;
         scrollbar-width: none;
         -ms-overflow-style: none;
+        background: var(--card);
+        color: var(--card-foreground);
       }
       .dropdown-content::-webkit-scrollbar {
         display: none;
@@ -314,12 +321,47 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
       .dropdown-header {
         padding: 8px 12px;
         font-size: 12px;
-        color: hsl(240 3.7% 15.9%);
-        border-bottom: 1px solid hsl(240 3.7% 15.9%);
-        background: hsl(240 10% 3.9%);
+        color: var(--muted-foreground);
+        border-bottom: 1px solid var(--border);
+        background: var(--muted);
         position: sticky;
         top: 0;
         z-index: 1;
+      }
+      .dropdown-item {
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        color: var(--card-foreground);
+        cursor: pointer;
+        border-radius: 4px;
+        margin: 1px 0;
+        font-size: 14px;
+        user-select: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-sizing: border-box;
+        min-width: 0;
+        transition: background-color 0.2s;
+      }
+      .dropdown-item:hover {
+        background: var(--accent);
+        color: var(--accent-foreground);
+      }
+      .dropdown-item.selected {
+        background: var(--accent);
+        color: var(--accent-foreground);
+      }
+      .check-icon {
+        margin-right: 8px;
+        width: 16px;
+        height: 16px;
+        opacity: 0;
+        color: var(--primary);
+      }
+      .check-icon.visible {
+        opacity: 1;
       }
     </style>
     <div class="dropdown-content">

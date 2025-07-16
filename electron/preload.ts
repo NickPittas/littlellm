@@ -91,6 +91,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeDropdown: () => ipcRenderer.invoke('close-dropdown'),
   selectDropdownItem: (value: string) => ipcRenderer.invoke('select-dropdown-item', value),
 
+  // History window operations
+  openHistory: (conversations: any[]) => ipcRenderer.invoke('open-history', { conversations }),
+  closeHistory: () => ipcRenderer.invoke('close-history'),
+  selectHistoryItem: (conversationId: string) => ipcRenderer.invoke('select-history-item', conversationId),
+  deleteHistoryItem: (conversationId: string) => ipcRenderer.invoke('delete-history-item', conversationId),
+  clearAllHistory: () => ipcRenderer.invoke('clear-all-history'),
+
   // Event listeners
   onClipboardContent: (callback: (content: string) => void) => {
     ipcRenderer.on('clipboard-content', (_, content) => callback(content));
@@ -114,6 +121,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onDropdownItemSelected: (callback: (value: string) => void) => {
     ipcRenderer.on('dropdown-item-selected', (_, value) => callback(value));
+  },
+
+  onHistoryItemSelected: (callback: (conversationId: string) => void) => {
+    ipcRenderer.on('history-item-selected', (_, conversationId) => callback(conversationId));
+  },
+
+  onHistoryItemDeleted: (callback: (conversationId: string) => void) => {
+    ipcRenderer.on('history-item-deleted', (_, conversationId) => callback(conversationId));
+  },
+
+  onClearAllHistory: (callback: () => void) => {
+    ipcRenderer.on('clear-all-history', () => callback());
   },
 
   // Remove listeners
@@ -182,6 +201,18 @@ declare global {
       getMCPConnectionStatus: () => Promise<Record<string, boolean>>;
       getMCPDetailedStatus: () => Promise<any>;
       getConnectedMCPServerIds: () => Promise<string[]>;
+
+      // Memory operations
+      loadMemoryIndex: () => Promise<any>;
+      saveMemoryIndex: (index: any) => Promise<boolean>;
+      loadMemoryEntry: (id: string) => Promise<any>;
+      saveMemoryEntry: (entry: any) => Promise<boolean>;
+      deleteMemoryEntry: (id: string) => Promise<boolean>;
+      getMemoryStats: () => Promise<{ totalSize: number; entryCount: number }>;
+
+      // Memory export/import operations
+      saveMemoryExport: (exportData: any, filename: string) => Promise<boolean>;
+      loadMemoryExport: () => Promise<any>;
     };
   }
 }

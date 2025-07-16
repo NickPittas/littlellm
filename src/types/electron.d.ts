@@ -1,3 +1,5 @@
+import { MemoryEntry, MemoryIndex } from './memory';
+
 export interface ElectronAPI {
   // Clipboard operations
   readClipboard: () => Promise<string>;
@@ -82,10 +84,10 @@ export interface ElectronAPI {
   onThemeChanged: (callback: (themeId: string) => void) => void;
 
   // Memory operations
-  loadMemoryIndex: () => Promise<any>;
-  saveMemoryIndex: (index: any) => Promise<boolean>;
-  loadMemoryEntry: (id: string) => Promise<any>;
-  saveMemoryEntry: (entry: any) => Promise<boolean>;
+  loadMemoryIndex: () => Promise<MemoryIndex>;
+  saveMemoryIndex: (index: MemoryIndex) => Promise<boolean>;
+  loadMemoryEntry: (id: string) => Promise<MemoryEntry>;
+  saveMemoryEntry: (entry: MemoryEntry) => Promise<boolean>;
   deleteMemoryEntry: (id: string) => Promise<boolean>;
   getMemoryStats: () => Promise<{ totalSize: number; entryCount: number }>;
 }

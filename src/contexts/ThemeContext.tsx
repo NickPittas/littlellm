@@ -98,7 +98,7 @@ export const themes: Theme[] = [
     name: 'Dark',
     icon: Moon,
     colors: {
-      background: '224 71% 4%',
+      background: '0 0% 10%', // Dark gray instead of dark blue
       foreground: '213 31% 91%',
       card: '224 71% 10%',
       cardForeground: '213 31% 91%',

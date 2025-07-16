@@ -39,12 +39,12 @@ class MemoryService {
           this.memoryIndex = {
             ...index,
             lastUpdated: new Date(index.lastUpdated),
-            entries: index.entries.map(entry => ({
+            entries: index.entries.map((entry: MemoryIndexEntry & { timestamp: string }) => ({
               ...entry,
               timestamp: new Date(entry.timestamp)
             }))
           };
-          console.log(`Loaded ${this.memoryIndex.entries.length} memory entries from disk`);
+          console.log(`Loaded ${this.memoryIndex?.entries.length || 0} memory entries from disk`);
         } else {
           // Create new index if none exists
           this.memoryIndex = {
@@ -92,7 +92,7 @@ class MemoryService {
           }))
         };
 
-        const success = await window.electronAPI.saveMemoryIndex(serializedIndex as any);
+        const success = await window.electronAPI.saveMemoryIndex(serializedIndex);
         if (success) {
           console.log('Memory index saved successfully');
         } else {
@@ -573,7 +573,6 @@ class MemoryService {
       let oldestEntry: Date | undefined;
       let newestEntry: Date | undefined;
       let mostAccessedEntry: MemoryIndexEntry | undefined;
-      let maxAccessCount = 0;
 
       for (const entry of this.memoryIndex.entries) {
         // Count by type
@@ -585,6 +584,12 @@ class MemoryService {
         }
         if (!newestEntry || entry.timestamp > newestEntry) {
           newestEntry = entry.timestamp;
+        }
+
+        // For now, use the most recent entry as "most accessed"
+        // TODO: Implement proper access tracking in the future
+        if (!mostAccessedEntry || entry.timestamp > mostAccessedEntry.timestamp) {
+          mostAccessedEntry = entry;
         }
       }
 
