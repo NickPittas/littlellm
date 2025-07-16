@@ -392,12 +392,11 @@ export function ChatInterface({
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <Card
-                style={{
-                  backgroundColor: message.role === 'user' ? 'rgb(59, 130, 246) !important' : 'rgb(55, 65, 81) !important',
-                  borderColor: message.role === 'user' ? 'rgb(96, 165, 250) !important' : 'rgb(75, 85, 99) !important',
-                  border: `2px solid ${message.role === 'user' ? 'rgb(96, 165, 250)' : 'rgb(75, 85, 99)'}`
-                }}
-                className={`max-w-[80%] shadow-lg text-white ${message.role === 'user' ? 'user-message' : 'assistant-message'}`}
+                className={`max-w-[80%] shadow-lg ${
+                  message.role === 'user'
+                    ? 'bg-primary text-primary-foreground user-message'
+                    : 'bg-muted text-foreground assistant-message'
+                }`}
               >
                 <CardContent className="p-3">
                   {message.role === 'assistant' ? (
