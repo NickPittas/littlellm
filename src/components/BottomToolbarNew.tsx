@@ -251,7 +251,7 @@ export function BottomToolbar({
         const result = await window.electronAPI.takeScreenshot();
         console.log('Screenshot result:', result);
 
-        if (result.success && result.dataURL && onScreenshotCapture) {
+        if (typeof result === 'object' && result.success && result.dataURL && onScreenshotCapture) {
           console.log('Converting screenshot to file...');
           const response = await fetch(result.dataURL);
           const blob = await response.blob();
@@ -260,7 +260,9 @@ export function BottomToolbar({
 
           // Create a preview thumbnail in the UI immediately
           const img = document.createElement('img');
-          img.src = result.dataURL;
+          if (typeof result === 'object' && result.dataURL) {
+            img.src = result.dataURL;
+          }
           img.className = 'screenshot-preview';
           img.style.position = 'fixed';
           img.style.bottom = '60px';
@@ -288,7 +290,11 @@ export function BottomToolbar({
           onScreenshotCapture(file);
           console.log('Screenshot captured and passed to parent component');
         } else {
-          console.error('Screenshot failed or no callback:', { success: result.success, hasDataURL: !!result.dataURL, hasCallback: !!onScreenshotCapture });
+          console.error('Screenshot failed or no callback:', {
+            success: typeof result === 'object' ? result.success : false,
+            hasDataURL: typeof result === 'object' ? !!result.dataURL : false,
+            hasCallback: !!onScreenshotCapture
+          });
         }
       } else {
         console.error('No electronAPI available');

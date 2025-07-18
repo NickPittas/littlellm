@@ -114,7 +114,7 @@ export function SquircleWindow({
         if (element) {
           const display = element.style.display;
           element.style.display = 'none';
-          element.offsetHeight; // Trigger reflow
+          void element.offsetHeight; // Trigger reflow
           element.style.display = display;
         }
       });

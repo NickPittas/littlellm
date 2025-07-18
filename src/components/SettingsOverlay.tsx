@@ -80,7 +80,7 @@ export function SettingsOverlay() {
       };
 
       // Add listener for tab change events (if available)
-      let listener: any = null;
+      let listener: unknown = null;
       if (window.electronAPI.onTabChange) {
         listener = window.electronAPI.onTabChange(handleTabChange);
       }
@@ -138,7 +138,7 @@ export function SettingsOverlay() {
       // Try to get settings from electron API first
       if (typeof window !== 'undefined' && window.electronAPI) {
         console.log('Getting settings from electronAPI...');
-        const electronSettings = await window.electronAPI.getAppSettings();
+        const electronSettings = await window.electronAPI.getAppSettings() as any;
         console.log('Electron settings:', electronSettings);
         if (electronSettings) {
           // Ensure providers object exists
@@ -259,7 +259,7 @@ export function SettingsOverlay() {
 
       // Force reload from disk
       if (typeof window !== 'undefined' && window.electronAPI) {
-        const savedSettings = await window.electronAPI.getSettings();
+        const savedSettings = await window.electronAPI.getSettings() as any;
         if (savedSettings) {
           console.log('Settings reloaded from disk:', savedSettings);
 

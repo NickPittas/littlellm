@@ -18,6 +18,7 @@ export interface AppSettings {
     toggleWindow: string;
     processClipboard: string;
     actionMenu: string;
+    openShortcuts: string;
   };
   general: {
     autoStartWithSystem: boolean;
@@ -66,6 +67,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     toggleWindow: 'CommandOrControl+Shift+L',
     processClipboard: 'CommandOrControl+Shift+V',
     actionMenu: 'CommandOrControl+Shift+Space',
+    openShortcuts: 'CommandOrControl+Shift+K',
   },
   general: {
     autoStartWithSystem: false,

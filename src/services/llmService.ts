@@ -1121,7 +1121,7 @@ You can call multiple tools simultaneously or in sequence to complete complex re
     }
   }
 
-  private async getMCPToolsForProvider(provider: string, settings?: LLMSettings): Promise<unknown[]> {
+  public async getMCPToolsForProvider(provider: string, settings?: LLMSettings): Promise<unknown[]> {
     try {
       console.log(`🔍 Getting MCP tools for provider: ${provider}`);
       console.log(`🔍 MCP Service available:`, !!mcpService);
@@ -2398,7 +2398,7 @@ You can call multiple tools simultaneously or in sequence to complete complex re
   /**
    * Analyze results for potential tool chaining (generic approach)
    */
-  private analyzeSearchForChaining(searchResult: { results?: unknown[] }, availableTools: unknown[]): Array<{
+  private analyzeSearchForChaining(_searchResult: { results?: unknown[] }, _availableTools: unknown[]): Array<{
     name: string;
     arguments: Record<string, unknown>;
   }> {
@@ -2409,7 +2409,7 @@ You can call multiple tools simultaneously or in sequence to complete complex re
   /**
    * Analyze memory results for potential tool chaining (generic approach)
    */
-  private analyzeMemoryForChaining(memoryResult: { memories?: unknown[] }, availableTools: unknown[]): Array<{
+  private analyzeMemoryForChaining(_memoryResult: { memories?: unknown[] }, _availableTools: unknown[]): Array<{
     name: string;
     arguments: Record<string, unknown>;
   }> {
@@ -2420,7 +2420,7 @@ You can call multiple tools simultaneously or in sequence to complete complex re
   /**
    * Analyze file results for potential tool chaining (generic approach)
    */
-  private analyzeFileForChaining(fileResult: { content?: string; filename?: string }, availableTools: unknown[]): Array<{
+  private analyzeFileForChaining(_fileResult: { content?: string; filename?: string }, _availableTools: unknown[]): Array<{
     name: string;
     arguments: Record<string, unknown>;
   }> {
@@ -2431,7 +2431,7 @@ You can call multiple tools simultaneously or in sequence to complete complex re
   /**
    * Analyze API results for potential tool chaining (generic approach)
    */
-  private analyzeApiForChaining(apiResult: { data?: unknown; endpoint?: string }, availableTools: unknown[]): Array<{
+  private analyzeApiForChaining(_apiResult: { data?: unknown; endpoint?: string }, _availableTools: unknown[]): Array<{
     name: string;
     arguments: Record<string, unknown>;
   }> {
@@ -4357,34 +4357,39 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
     } else if (Array.isArray(message)) {
       messages.push({ role: 'user', content: message });
     } else {
-      // Handle vision format (convert to OpenAI format for LM Studio)
+      // Handle vision format (exact format from working Python example)
       const messageWithImages = message as { text: string; images: string[] };
       const content: ContentItem[] = [{ type: 'text', text: messageWithImages.text }];
 
       console.log(`🖼️ LM Studio: Processing ${messageWithImages.images.length} images`);
 
       for (const imageUrl of messageWithImages.images) {
-        console.log(`🖼️ LM Studio: Processing image URL:`, imageUrl.substring(0, 50) + '...');
+        console.log(`🖼️ LM Studio: Raw image data length:`, imageUrl.length);
 
-        // LM Studio supports base64 images in OpenAI format
-        // Images should be in format: data:image/jpeg;base64,<base64_data>
+        // Extract base64 data if it's a data URL, otherwise assume it's raw base64
+        let base64Data = imageUrl;
         if (imageUrl.startsWith('data:image/')) {
-          content.push({
-            type: 'image_url',
-            image_url: { url: imageUrl }
-          });
-          console.log(`✅ LM Studio: Added base64 image to content`);
-        } else {
-          // Handle regular URLs (though less common for local files)
-          content.push({
-            type: 'image_url',
-            image_url: { url: imageUrl }
-          });
-          console.log(`✅ LM Studio: Added URL image to content`);
+          base64Data = imageUrl.split(',')[1];
+          console.log(`🖼️ LM Studio: Extracted base64 from data URL`);
+        } else if (imageUrl.includes(',')) {
+          base64Data = imageUrl.split(',')[1];
+          console.log(`🖼️ LM Studio: Extracted base64 from comma-separated data`);
         }
+
+        // Use exact format from working Python example: f"data:image/jpeg;base64,{base64_image}"
+        const formattedImageUrl = `data:image/jpeg;base64,${base64Data}`;
+
+        console.log(`🖼️ LM Studio: Formatted image URL:`, formattedImageUrl.substring(0, 50) + '...');
+
+        // Exact structure from working example
+        content.push({
+          type: 'image_url',
+          image_url: { url: formattedImageUrl }
+        });
       }
+
       messages.push({ role: 'user', content });
-      console.log(`🖼️ LM Studio: Final message content has ${content.length} items (text + images)`);
+      console.log(`🖼️ LM Studio: Created message with ${content.length} content items`);
     }
 
     // MCP tools already retrieved above for system prompt
@@ -4397,13 +4402,16 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
       stream: !!onStream
     };
 
+    // Check if this request contains images
+    const hasImages = (requestBody.messages as any[]).some(msg =>
+      Array.isArray(msg.content) && msg.content.some((item: any) => item.type === 'image_url')
+    );
+
     // Debug: Log the complete request being sent to LM Studio
     console.log(`🔍 LM Studio request body:`, {
       model: requestBody.model,
       messageCount: (requestBody.messages as any[]).length,
-      hasImages: (requestBody.messages as any[]).some(msg =>
-        Array.isArray(msg.content) && msg.content.some((item: any) => item.type === 'image_url')
-      ),
+      hasImages: hasImages,
       stream: requestBody.stream
     });
 
@@ -4422,7 +4430,7 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
       console.log(`🚀 LMStudio API call without tools (no MCP tools available)`);
     }
 
-    // Fix URL - baseUrl already includes /v1, so just add /chat/completions
+    // Use standard OpenAI-compatible endpoint
     const apiUrl = `${baseUrl}/chat/completions`;
     console.log(`🔗 LMStudio request URL: ${apiUrl}`);
     console.log(`🔗 LMStudio request headers:`, {
@@ -4508,7 +4516,7 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
         console.log(`🔧 LMStudio executing tools: ${toolNames}`);
 
         // Execute each tool call and collect results
-        const toolResults = [];
+        const toolResults: any[] = [];
         for (const toolCall of message.tool_calls) {
           try {
             // Validate tool call structure
@@ -5178,7 +5186,7 @@ You can include multiple tool calls like this:
 {
   "tool_calls": [
     {"id": "call_1", "function": {"name": "get_datetime", "arguments": "{}"}},
-    {"id": "call_2", "function": {"name": "web_search", "arguments": "{\"query\": \"tech news last week\"}"}}
+    {"id": "call_2", "function": {"name": "web_search", "arguments": "{\\"query\\": \\"tech news last week\\"}"}}
   ]
 }
 \`\`\`

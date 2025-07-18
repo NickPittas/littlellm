@@ -1,10 +1,10 @@
-# LittleLLM v1.5.5 Installation Guide
+# LittleLLM v1.9.0 Installation Guide
 
-LittleLLM v1.5.5 is available in two distribution formats for Windows:
+LittleLLM v1.9.0 is available in two distribution formats for Windows:
 
 ## 📦 Windows Installer (Recommended)
 
-**File**: `LittleLLM-Setup-1.5.5.exe` (~154 MB)
+**File**: `LittleLLM-Setup-1.9.0.exe` (~153 MB)
 
 ### Features:
 - ✅ **Full Windows Integration**: Proper installation with uninstaller
@@ -16,7 +16,7 @@ LittleLLM v1.5.5 is available in two distribution formats for Windows:
 - ✅ **Taskbar Icon Fix**: Properly displays icon in Windows taskbar
 
 ### Installation Steps:
-1. Download `LittleLLM-Setup-1.5.5.exe`
+1. Download `LittleLLM-Setup-1.9.0.exe`
 2. Right-click and select "Run as administrator" (recommended)
 3. Follow the installation wizard:
    - Choose installation directory
@@ -38,7 +38,7 @@ LittleLLM v1.5.5 is available in two distribution formats for Windows:
 
 ## 📱 Portable Version
 
-**File**: `LittleLLM-Portable-1.5.0.exe` (~150 MB)
+**File**: `LittleLLM-Portable-1.9.0.exe` (~128 MB)
 
 ### Features:
 - ✅ **No Installation Required**: Run directly from any location
@@ -48,7 +48,7 @@ LittleLLM v1.5.5 is available in two distribution formats for Windows:
 - ✅ **Taskbar Icon Fix**: Same icon fix as installer version
 
 ### Usage:
-1. Download `LittleLLM-1.0.0-x64.exe`
+1. Download `LittleLLM-Portable-1.9.0.exe`
 2. Place in desired folder (Desktop, USB drive, etc.)
 3. Double-click to run
 4. No installation or admin rights required
@@ -66,7 +66,9 @@ After installation or running the portable version:
 1. **Global Shortcut**: Press `Ctrl+Shift+L` to open LittleLLM
 2. **Settings**: Click the gear icon to configure API keys
 3. **API Keys**: Add your OpenAI, Anthropic, or other provider keys
-4. **Start Chatting**: Select a model and start your conversation
+4. **MCP Setup**: Configure MCP servers in the settings for tool integration
+5. **Tool Calling**: Enable tool calling with the 🔧 toggle button
+6. **Start Chatting**: Select a model and start your conversation
 
 ## 🔧 System Requirements
 

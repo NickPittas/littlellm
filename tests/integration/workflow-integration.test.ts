@@ -124,6 +124,8 @@ describe('Workflow Integration Tests', () => {
         provider: 'openai' as const,
         model: 'gpt-4',
         apiKey: 'test-key',
+        temperature: 0.7,
+        maxTokens: 1000,
         systemPrompt: 'You are a helpful assistant.'
       };
 
@@ -141,6 +143,8 @@ describe('Workflow Integration Tests', () => {
         provider: 'anthropic' as const,
         model: 'claude-3-sonnet',
         apiKey: 'test-key',
+        temperature: 0.7,
+        maxTokens: 1000,
         systemPrompt: 'You are a helpful assistant.'
       };
 
@@ -156,7 +160,10 @@ describe('Workflow Integration Tests', () => {
       const mockSettings = {
         provider: 'ollama' as const,
         model: 'llama2',
+        apiKey: '',
         baseUrl: 'http://localhost:11434',
+        temperature: 0.7,
+        maxTokens: 1000,
         systemPrompt: 'You are a helpful assistant.'
       };
 

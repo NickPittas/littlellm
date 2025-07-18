@@ -1,74 +1,13 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 
 /**
  * Simple window dragging hook using Electron's built-in web API
  * This avoids high DPI scaling issues by using CSS -webkit-app-region
  */
 export function useEnhancedWindowDrag() {
-  // Check if an element should be excluded from dragging
-  const isInteractiveElement = useCallback((element: Element): boolean => {
-    // List of interactive element types and attributes that should not trigger dragging
-    const interactiveSelectors = [
-      'input',
-      'textarea',
-      'button',
-      'select',
-      'a',
-      '[contenteditable]',
-      '[role="button"]',
-      '[role="textbox"]',
-      '[role="combobox"]',
-      '[role="listbox"]',
-      '[role="option"]',
-      '[role="menuitem"]',
-      '[role="tab"]',
-      '[role="slider"]',
-      '[role="spinbutton"]',
-      '.cursor-pointer',
-      '.cursor-text',
-      '[data-radix-select-trigger]',
-      '[data-radix-select-content]',
-      '[data-radix-select-item]',
-      '[data-radix-popover-trigger]',
-      '[data-radix-popover-content]',
-      '[data-radix-dialog-trigger]',
-      '[data-radix-dialog-content]',
-      '.scrollbar-thumb',
-      '.scrollbar-track'
-    ];
-
-    // Check if the element itself matches any interactive selector
-    for (const selector of interactiveSelectors) {
-      if (element.matches(selector)) {
-        return true;
-      }
-    }
-
-    // Check if any parent element up to 5 levels is interactive
-    let parent = element.parentElement;
-    let level = 0;
-    while (parent && level < 5) {
-      for (const selector of interactiveSelectors) {
-        if (parent.matches(selector)) {
-          return true;
-        }
-      }
-
-      // Special check for elements with specific data attributes or classes
-      if (parent.hasAttribute('data-interactive') ||
-          parent.classList.contains('no-drag') ||
-          parent.style.getPropertyValue('-webkit-app-region') === 'no-drag') {
-        return true;
-      }
-
-      parent = parent.parentElement;
-      level++;
-    }
-
-    return false;
-  }, []);
+  // This hook now uses CSS-based dragging only
 
   useEffect(() => {
     // Only enable in Electron environment

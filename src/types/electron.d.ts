@@ -40,6 +40,8 @@ export interface ElectronAPI {
   getMCPConnectionStatus: () => Promise<Record<string, boolean>>;
   getMCPDetailedStatus: () => Promise<unknown>;
   getConnectedMCPServerIds: () => Promise<string[]>;
+  fixMacOSMCPServer: (serverId: string) => Promise<{ success: boolean; message: string }>;
+  validateMCPServer: (serverId: string) => Promise<{ valid: boolean; error?: string; fixedCommand?: string }>;
 
   // Conversation file operations
   saveConversationToFile: (conversationId: string, conversation: unknown) => Promise<boolean>;
@@ -56,7 +58,12 @@ export interface ElectronAPI {
   maximizeWindow: () => Promise<void>;
   resizeWindow: (width: number, height: number) => Promise<void>;
   getCurrentWindowSize: () => Promise<{ width: number; height: number }>;
-  takeScreenshot: () => Promise<string>;
+  getWindowPosition: () => Promise<{ x: number; y: number }>;
+  takeScreenshot: () => Promise<{ success: boolean; dataURL?: string; error?: string }>;
+
+  // Window dragging
+  startDrag: () => Promise<{ offsetX: number; offsetY: number } | null>;
+  dragWindow: (x: number, y: number, offsetX: number, offsetY: number) => Promise<void>;
 
   // Window dragging is now handled by CSS -webkit-app-region
   // No methods needed for CSS-based dragging
@@ -76,6 +83,8 @@ export interface ElectronAPI {
   // Dropdown operations
   openDropdown: (x: number, y: number, width: number, height: number, content: string) => Promise<void>;
   closeDropdown: () => Promise<void>;
+  selectDropdownItem: (value: string) => Promise<void>;
+  onDropdownItemSelected?: (callback: (value: string) => void) => void;
 
   // File operations
   selectFiles: (options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<string[]>;
@@ -84,9 +93,13 @@ export interface ElectronAPI {
   // Event listeners
   onSettingsChanged: (callback: (settings: unknown) => void) => void;
   onPromptReceived: (callback: (prompt: string) => void) => void;
+  onPromptSelected?: (callback: (promptText: string) => void) => void;
   onThemeChanged: (callback: (themeId: string) => void) => void;
-  onMessagesUpdate: (callback: (messages: unknown[]) => void) => void;
+  onMessagesUpdate?: (callback: (messages: unknown[]) => void) => void;
   onRequestCurrentMessages: (callback: () => void) => void;
+  onClipboardContent?: (callback: (content: string) => void) => void;
+  onProcessClipboard?: (callback: (content: string) => void) => void;
+  onOpenSettings?: (callback: () => void) => void;
   removeAllListeners: (channel: string) => void;
 
   // Memory operations
@@ -96,6 +109,30 @@ export interface ElectronAPI {
   saveMemoryEntry: (entry: MemoryEntry) => Promise<boolean>;
   deleteMemoryEntry: (id: string) => Promise<boolean>;
   getMemoryStats: () => Promise<{ totalSize: number; entryCount: number }>;
+
+  // Memory export/import operations
+  saveMemoryExport: (exportData: unknown, filename: string) => Promise<boolean>;
+  loadMemoryExport: () => Promise<unknown>;
+
+  // Tab change listener for settings overlay
+  onTabChange?: (callback: (tab: string) => void) => unknown;
+  removeTabChangeListener?: (listener: unknown) => void;
+
+  // History operations
+  openHistory: (conversations: unknown[]) => Promise<void>;
+  closeHistory: () => Promise<void>;
+  onHistoryItemSelected: (callback: (conversationId: string) => void) => void;
+  onHistoryItemDeleted: (callback: (conversationId: string) => void) => void;
+  onClearAllHistory: (callback: () => void) => void;
+
+  // State file operations
+  getStateFile: (filename: string) => Promise<unknown>;
+  saveStateFile: (filename: string, data: unknown) => Promise<boolean>;
+
+  // Transparency operations
+  setTransparency?: (enabled: boolean) => Promise<void>;
+  setOpacity?: (opacity: number) => Promise<void>;
+  setVibrancyType?: (type: string) => Promise<void>;
 }
 
 declare global {

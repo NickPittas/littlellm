@@ -382,7 +382,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         // Trigger resize after prompt is set - will be handled by input change effect
       };
 
-      window.electronAPI.onPromptSelected(handlePromptSelected);
+      window.electronAPI.onPromptSelected?.(handlePromptSelected);
 
       return () => {
         window.electronAPI.removeAllListeners('prompt-selected');
@@ -766,7 +766,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
           // Summary
           console.log('📋 MCP CONNECTIVITY SUMMARY:');
-          console.log(`- Connected servers: ${Object.keys(status.servers || {}).filter(id => status.servers[id].connected).length}`);
+          console.log(`- Connected servers: ${Object.keys((status as any)?.servers || {}).filter((id: string) => (status as any).servers[id].connected).length}`);
           console.log(`- Total tools: ${tools.length}`);
           console.log(`- Total resources: ${resources.length}`);
           console.log(`- Total prompts: ${prompts.length}`);
@@ -781,7 +781,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
             resources,
             prompts,
             summary: {
-              connectedServers: Object.keys(status.servers || {}).filter(id => status.servers[id].connected).length,
+              connectedServers: Object.keys((status as any)?.servers || {}).filter((id: string) => (status as any).servers[id].connected).length,
               totalTools: tools.length,
               totalResources: resources.length,
               totalPrompts: prompts.length
@@ -924,7 +924,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 try {
                   if (typeof window !== 'undefined' && window.electronAPI) {
                     const result = await window.electronAPI.takeScreenshot();
-                    if (result.success && result.dataURL) {
+                    if (typeof result === 'object' && result.success && result.dataURL) {
                       const response = await fetch(result.dataURL);
                       const blob = await response.blob();
                       const file = new File([blob], `screenshot-${Date.now()}.png`, { type: 'image/png' });

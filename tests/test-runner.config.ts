@@ -53,7 +53,7 @@ export default defineConfig({
     },
     
     // Reporter configuration
-    reporter: ['verbose', 'json', 'html'],
+    reporters: ['verbose', 'json', 'html'],
     outputFile: {
       json: './tests/results/test-results.json',
       html: './tests/results/test-results.html'
@@ -258,11 +258,11 @@ export const testEnvironment = {
   // Mock electron API setup
   setupMockElectronAPI: (customMocks: Partial<any> = {}) => {
     const defaultMocks = {
-      callMCPTool: vi.fn(),
-      callMultipleMCPTools: vi.fn(),
-      getAllMCPTools: vi.fn().mockResolvedValue([]),
-      getMCPServers: vi.fn().mockResolvedValue({ servers: [] }),
-      getConnectedMCPServerIds: vi.fn().mockResolvedValue([])
+      callMCPTool: () => Promise.resolve({}),
+      callMultipleMCPTools: () => Promise.resolve([]),
+      getAllMCPTools: () => Promise.resolve([]),
+      getMCPServers: () => Promise.resolve({ servers: [] }),
+      getConnectedMCPServerIds: () => Promise.resolve([])
     };
     
     const mockAPI = { ...defaultMocks, ...customMocks };
@@ -273,9 +273,6 @@ export const testEnvironment = {
   
   // Clean up test environment
   cleanup: () => {
-    vi.clearAllMocks();
-    vi.restoreAllMocks();
-    
     // Clear any global state
     if (typeof window !== 'undefined') {
       delete (window as any).electronAPI;

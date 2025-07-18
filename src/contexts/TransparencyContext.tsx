@@ -49,12 +49,12 @@ export function TransparencyProvider({ children }: TransparencyProviderProps) {
   useEffect(() => {
     const detectCapabilities = () => {
       const isElectron = typeof window !== 'undefined' && (window.electronAPI || window.require);
-      const supportsBackdropFilter = CSS.supports('backdrop-filter', 'blur(1px)') ||
+      const _supportsBackdropFilter = CSS.supports('backdrop-filter', 'blur(1px)') ||
                                    CSS.supports('-webkit-backdrop-filter', 'blur(1px)');
 
       const platformCapabilities: PlatformCapabilities = {
         supportsTransparency: true, // Force enable for testing
-        supportsVibrancy: isElectron,
+        supportsVibrancy: !!isElectron,
         supportsBackdropFilter: true, // Force enable for testing
         platform: typeof navigator !== 'undefined' ? navigator.platform : 'unknown',
       };
@@ -84,7 +84,12 @@ export function TransparencyProvider({ children }: TransparencyProviderProps) {
   };
 
   const updateOpacity = async (opacity: number) => {
-    setConfig(prev => prev ? { ...prev, opacity } : null);
+    setConfig(prev => prev ? { ...prev, opacity } : {
+      opacity,
+      vibrancyType: 'dark',
+      blurRadius: 10,
+      saturation: 1.0
+    });
     // Notify Electron main process if available
     if (window.electronAPI?.setOpacity) {
       await window.electronAPI.setOpacity(opacity);
@@ -92,7 +97,12 @@ export function TransparencyProvider({ children }: TransparencyProviderProps) {
   };
 
   const updateVibrancyType = async (type: string) => {
-    setConfig(prev => prev ? { ...prev, vibrancyType: type } : null);
+    setConfig(prev => prev ? { ...prev, vibrancyType: type } : {
+      opacity: 0.9,
+      vibrancyType: type,
+      blurRadius: 10,
+      saturation: 1.0
+    });
     // Notify Electron main process if available
     if (window.electronAPI?.setVibrancyType) {
       await window.electronAPI.setVibrancyType(type);

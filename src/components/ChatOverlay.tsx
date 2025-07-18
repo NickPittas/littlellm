@@ -23,7 +23,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Initialize enhanced window dragging
-  const { isDragging } = useEnhancedWindowDrag();
+  const { } = useEnhancedWindowDrag();
 
   const handleClose = () => {
     if (typeof window !== 'undefined' && window.electronAPI) {
@@ -59,8 +59,8 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
       };
 
       // Listen for message updates from main window
-      const handleMessagesUpdate = (newMessages: Message[]) => {
-        setMessages(newMessages);
+      const handleMessagesUpdate = (newMessages: unknown[]) => {
+        setMessages(newMessages as Message[]);
         // Store messages in localStorage for persistence
         localStorage.setItem('chatWindowMessages', JSON.stringify(newMessages));
       };
