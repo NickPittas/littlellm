@@ -30,8 +30,20 @@ export function MCPDropdown({
   const triggerRef = React.useRef<HTMLButtonElement>(null)
   const isElectron = typeof window !== 'undefined' && window.electronAPI
 
+  const [isLoading, setIsLoading] = React.useState(false)
+  const loadingTimeoutRef = React.useRef<NodeJS.Timeout>()
+
   const loadServers = React.useCallback(async () => {
+    // Prevent concurrent loads
+    if (isLoading) {
+      console.log('🔄 MCP Dropdown: Load already in progress, skipping')
+      return
+    }
+
     try {
+      setIsLoading(true)
+      console.log('🔄 MCP Dropdown: Loading servers...')
+
       const mcpServers = await mcpService.getServers()
       setServers(mcpServers)
 
@@ -86,6 +98,14 @@ export function MCPDropdown({
       })
     } catch (error) {
       console.error('Failed to load MCP servers:', error)
+    } finally {
+      // Clear loading state after a short delay to prevent rapid successive calls
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current)
+      }
+      loadingTimeoutRef.current = setTimeout(() => {
+        setIsLoading(false)
+      }, 500) // 500ms debounce
     }
   }, [])
 
@@ -93,55 +113,85 @@ export function MCPDropdown({
   React.useEffect(() => {
     loadServers()
     // Removed auto-refresh interval - servers will be refreshed when needed (e.g., when toggling)
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current)
+      }
+    }
   }, [loadServers])
 
   const toggleServer = React.useCallback(async (serverId: string, currentlyEnabled: boolean) => {
     try {
       console.log(`🔄 MCP Dropdown: Toggling server ${serverId}: ${currentlyEnabled} -> ${!currentlyEnabled}`)
-      console.log('🔄 MCP Dropdown: Current enabled servers:', Array.from(enabledServers))
+      console.log('🔄 Current enabledServers state:', Array.from(enabledServers))
+      console.log('🔄 Current connectedServers state:', Array.from(connectedServers))
+
+      // Use the exact same logic as SettingsOverlay.tsx handleUpdateMcpServer
+      const wasEnabled = currentlyEnabled
+      const willBeEnabled = !currentlyEnabled
+      const updates = { enabled: willBeEnabled }
+
+      console.log('🔄 Updating MCP server:', serverId, updates)
 
       // Update server enabled state
-      await mcpService.updateServer(serverId, { enabled: !currentlyEnabled })
+      await mcpService.updateServer(serverId, updates)
 
-      // If enabling, try to connect the server
-      if (!currentlyEnabled) {
-        console.log(`🔌 Connecting MCP server ${serverId}`)
-        const connected = await mcpService.connectServer(serverId)
-        console.log(`🔌 MCP server ${serverId} connection result:`, connected)
-      } else {
-        console.log(`🔌 Disconnecting MCP server ${serverId}`)
-        await mcpService.disconnectServer(serverId)
+      // Handle connection changes - same logic as settings page
+      if (wasEnabled !== willBeEnabled) {
+        if (willBeEnabled) {
+          console.log('🔌 Connecting MCP server after enable:', serverId)
+          try {
+            await mcpService.connectServer(serverId)
+          } catch (connectError) {
+            console.warn('⚠️ Failed to connect server after enable:', connectError)
+          }
+        } else {
+          console.log('🔌 Disconnecting MCP server after disable:', serverId)
+          try {
+            await mcpService.disconnectServer(serverId)
+          } catch (disconnectError) {
+            console.warn('⚠️ Failed to disconnect server after disable:', disconnectError)
+          }
+        }
       }
 
       // Update local state immediately for responsive UI
       const newEnabledServers = new Set(enabledServers)
       const newConnectedServers = new Set(connectedServers)
 
-      if (currentlyEnabled) {
+      if (willBeEnabled) {
+        newEnabledServers.add(serverId)
+        newConnectedServers.add(serverId)
+      } else {
         newEnabledServers.delete(serverId)
         newConnectedServers.delete(serverId)
-      } else {
-        newEnabledServers.add(serverId)
-        // Connection status will be updated by loadServers
       }
 
       setEnabledServers(newEnabledServers)
       setConnectedServers(newConnectedServers)
 
-      // Reload servers to get updated state
-      await loadServers()
+      console.log('🔄 Updated local state - enabledServers:', Array.from(newEnabledServers))
+      console.log('🔄 Updated local state - connectedServers:', Array.from(newConnectedServers))
 
-      // Trigger settings reload for MCP server change (explicit requirement)
+      // Trigger settings reload for MCP server change (explicit requirement) - same as settings page
       const { settingsService } = await import('../../services/settingsService')
       await settingsService.reloadForMCPChange()
 
-      console.log(`✅ MCP server ${serverId} toggle completed`)
-    } catch (error) {
-      console.error('❌ Failed to toggle MCP server:', error)
-      // Reload servers to ensure UI is in sync
+      // Force reload servers to ensure UI is in sync with backend state
+      console.log('🔄 Reloading servers to sync UI state...')
       await loadServers()
+
+      console.log('✅ MCP server update completed')
+    } catch (error) {
+      console.error('❌ Failed to update MCP server:', error)
+      // Only reload if not already loading to prevent loops
+      if (!isLoading) {
+        setTimeout(() => loadServers(), 1000) // Delayed reload to prevent loops
+      }
     }
-  }, [enabledServers, connectedServers, loadServers])
+  }, [enabledServers, connectedServers, loadServers, isLoading])
 
   const restartServer = async (serverId: string) => {
     try {
@@ -157,14 +207,18 @@ export function MCPDropdown({
       const connected = await mcpService.connectServer(serverId)
       console.log(`🔌 MCP server ${serverId} restart result:`, connected)
 
-      // Reload servers to get updated state
-      await loadServers()
+      // Update local state instead of full reload
+      if (connected) {
+        setConnectedServers(prev => new Set([...prev, serverId]))
+      }
 
       console.log(`✅ MCP server ${serverId} restart completed`)
     } catch (error) {
       console.error('❌ Failed to restart MCP server:', error)
-      // Reload servers to ensure UI is in sync
-      await loadServers()
+      // Only reload if not already loading to prevent loops
+      if (!isLoading) {
+        setTimeout(() => loadServers(), 1000) // Delayed reload to prevent loops
+      }
     }
   }
 
@@ -372,8 +426,10 @@ export function MCPDropdown({
   }
 
   const openDropdown = async () => {
-    // Refresh servers before opening to get latest data
-    await loadServers()
+    // Only refresh servers if we haven't loaded them recently or if not currently loading
+    if (servers.length === 0 && !isLoading) {
+      await loadServers()
+    }
 
     if (!isElectron || !triggerRef.current) {
       setOpen(true)

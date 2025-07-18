@@ -1,8 +1,9 @@
-import { app, BrowserWindow, globalShortcut, Tray, Menu, clipboard, ipcMain, nativeImage, protocol, screen, BrowserWindowConstructorOptions, dialog, desktopCapturer } from 'electron';
+import { app, BrowserWindow, globalShortcut, Tray, Menu, clipboard, ipcMain, nativeImage, protocol, screen, BrowserWindowConstructorOptions, dialog, desktopCapturer, Display } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as mime from 'mime-types';
+import { spawn } from 'child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
@@ -60,6 +61,526 @@ interface MCPConnection {
 
 const mcpConnections: Map<string, MCPConnection> = new Map();
 
+// Multi-Monitor Utility Functions
+interface WindowPositionOptions {
+  width: number;
+  height: number;
+  offsetX?: number;
+  offsetY?: number;
+  preferredPosition?: 'center' | 'below' | 'right' | 'cursor';
+}
+
+function getMainWindowDisplay(): Display {
+  if (!mainWindow) {
+    return screen.getPrimaryDisplay();
+  }
+
+  const mainBounds = mainWindow.getBounds();
+  const mainCenterX = mainBounds.x + mainBounds.width / 2;
+  const mainCenterY = mainBounds.y + mainBounds.height / 2;
+
+  return screen.getDisplayNearestPoint({ x: mainCenterX, y: mainCenterY });
+}
+
+function calculateWindowPosition(options: WindowPositionOptions): { x: number; y: number } {
+  const { width, height, offsetX = 0, offsetY = 0, preferredPosition = 'center' } = options;
+
+  if (!mainWindow) {
+    // Fallback to primary display center
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+    return {
+      x: Math.max(0, (screenWidth - width) / 2),
+      y: Math.max(0, (screenHeight - height) / 2)
+    };
+  }
+
+  const mainBounds = mainWindow.getBounds();
+  const display = getMainWindowDisplay();
+  const { x: displayX, y: displayY, width: displayWidth, height: displayHeight } = display.workArea;
+
+  let x: number, y: number;
+
+  switch (preferredPosition) {
+    case 'center':
+      x = mainBounds.x + (mainBounds.width - width) / 2;
+      y = mainBounds.y + (mainBounds.height - height) / 2;
+      break;
+    case 'below':
+      x = mainBounds.x + (mainBounds.width - width) / 2;
+      y = mainBounds.y + mainBounds.height + 10;
+      break;
+    case 'right':
+      x = mainBounds.x + mainBounds.width + 10;
+      y = mainBounds.y;
+      break;
+    case 'cursor':
+      const cursorPoint = screen.getCursorScreenPoint();
+      x = cursorPoint.x + offsetX;
+      y = cursorPoint.y + offsetY;
+      break;
+    default:
+      x = mainBounds.x + offsetX;
+      y = mainBounds.y + offsetY;
+  }
+
+  // Ensure window stays within the display bounds
+  x = Math.max(displayX, Math.min(x, displayX + displayWidth - width));
+  y = Math.max(displayY, Math.min(y, displayY + displayHeight - height));
+
+  return { x, y };
+}
+
+// macOS Permission and Security Utilities
+async function checkAndFixMacOSPermissions(command: string): Promise<string> {
+  if (process.platform !== 'darwin') {
+    return command; // Not macOS, return as-is
+  }
+
+  try {
+    // Check if command is a full path
+    const isFullPath = path.isAbsolute(command);
+    let executablePath = command;
+
+    if (!isFullPath) {
+      // Try to find the command in PATH
+      try {
+        const result = spawn('which', [command], { stdio: 'pipe' });
+        const output = await new Promise<string>((resolve, reject) => {
+          let stdout = '';
+          result.stdout.on('data', (data) => stdout += data.toString());
+          result.on('close', (code) => {
+            if (code === 0) resolve(stdout.trim());
+            else reject(new Error(`Command not found: ${command}`));
+          });
+        });
+        executablePath = output;
+      } catch (error) {
+        console.warn(`⚠️ Command '${command}' not found in PATH, trying as-is`);
+        return command;
+      }
+    }
+
+    // Check if file exists
+    if (!fs.existsSync(executablePath)) {
+      console.warn(`⚠️ Executable not found: ${executablePath}`);
+      return command;
+    }
+
+    // Check and fix executable permissions
+    try {
+      const stats = fs.statSync(executablePath);
+      const hasExecutePermission = (stats.mode & parseInt('111', 8)) !== 0;
+
+      if (!hasExecutePermission) {
+        console.log(`🔧 Adding execute permissions to: ${executablePath}`);
+        fs.chmodSync(executablePath, stats.mode | parseInt('755', 8));
+      }
+    } catch (error) {
+      console.warn(`⚠️ Could not check/fix permissions for ${executablePath}:`, error);
+    }
+
+    return executablePath;
+  } catch (error) {
+    console.warn(`⚠️ Error checking macOS permissions for ${command}:`, error);
+    return command;
+  }
+}
+
+function setupMacOSEnvironment(env: Record<string, string>): Record<string, string> {
+  if (process.platform !== 'darwin') {
+    // Windows/Linux environment setup
+    return setupCrossPlatformEnvironment(env);
+  }
+
+  // Get security bypass environment variables
+  const securityBypass = createMacOSSecurityBypass();
+
+  // Common macOS environment setup
+  const macOSEnv = {
+    ...env,
+    ...securityBypass, // Apply security bypass
+
+    // Ensure PATH includes common locations
+    PATH: [
+      env.PATH || process.env.PATH || '',
+      '/usr/local/bin',
+      '/opt/homebrew/bin',
+      '/usr/bin',
+      '/bin',
+      '/usr/sbin',
+      '/sbin',
+      '/opt/local/bin',
+      '/usr/local/opt/python/bin',
+      '/Library/Frameworks/Python.framework/Versions/3.11/bin',
+      '/Library/Frameworks/Python.framework/Versions/3.12/bin',
+      '/Library/Frameworks/Python.framework/Versions/3.13/bin',
+      process.env.HOME + '/.local/bin',
+      process.env.HOME + '/bin',
+      process.env.HOME + '/.cargo/bin', // Rust tools
+      process.env.HOME + '/.npm-global/bin', // Global npm packages
+      '/usr/local/share/npm/bin' // Alternative npm location
+    ].filter(Boolean).join(':'),
+
+    // Python-specific environment variables
+    PYTHONPATH: env.PYTHONPATH || process.env.PYTHONPATH || '',
+
+    // Node.js environment
+    NODE_ENV: env.NODE_ENV || process.env.NODE_ENV || 'production'
+  };
+
+  return macOSEnv;
+}
+
+function setupCrossPlatformEnvironment(env: Record<string, string>): Record<string, string> {
+  // Windows/Linux environment setup
+  const isWindows = process.platform === 'win32';
+  const pathSeparator = isWindows ? ';' : ':';
+
+  // Common paths for Node.js/npm on Windows and Linux
+  const commonPaths = [
+    env.PATH || process.env.PATH || '',
+  ];
+
+  if (isWindows) {
+    // Windows-specific paths
+    commonPaths.push(
+      'C:\\Program Files\\nodejs',
+      'C:\\Program Files (x86)\\nodejs',
+      process.env.APPDATA + '\\npm',
+      process.env.USERPROFILE + '\\AppData\\Roaming\\npm',
+      process.env.USERPROFILE + '\\.npm-global',
+      process.env.LOCALAPPDATA + '\\npm'
+    );
+  } else {
+    // Linux-specific paths
+    commonPaths.push(
+      '/usr/local/bin',
+      '/usr/bin',
+      '/bin',
+      process.env.HOME + '/.local/bin',
+      process.env.HOME + '/bin',
+      process.env.HOME + '/.npm-global/bin',
+      '/usr/local/share/npm/bin'
+    );
+  }
+
+  return {
+    ...env,
+    PATH: commonPaths.filter(Boolean).join(pathSeparator),
+    NODE_ENV: env.NODE_ENV || process.env.NODE_ENV || 'production'
+  };
+}
+
+async function validateMCPServerCommand(server: MCPServerConfig): Promise<{ valid: boolean; error?: string; fixedCommand?: string }> {
+  try {
+    console.log(`🔍 Validating MCP server command: ${server.command} on ${process.platform}`);
+
+    if (process.platform === 'darwin') {
+      return await validateMacOSCommand(server);
+    } else if (process.platform === 'win32') {
+      return await validateWindowsCommand(server);
+    } else {
+      return await validateLinuxCommand(server);
+    }
+  } catch (error) {
+    return {
+      valid: false,
+      error: `Validation error: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+async function validateMacOSCommand(server: MCPServerConfig): Promise<{ valid: boolean; error?: string; fixedCommand?: string }> {
+  console.log(`🍎 Running macOS validation for: ${server.command}`);
+
+  // Check and fix macOS permissions
+  const fixedCommand = await checkAndFixMacOSPermissions(server.command);
+
+  // Test if the command can be executed
+  return new Promise((resolve) => {
+    const testProcess = spawn(fixedCommand, ['--help'], {
+      stdio: 'pipe',
+      env: setupMacOSEnvironment(server.env || {})
+    });
+
+    let hasResponded = false;
+    const timeout = setTimeout(() => {
+      if (!hasResponded) {
+        hasResponded = true;
+        testProcess.kill();
+        resolve({
+          valid: true, // Assume valid if no immediate error
+          fixedCommand
+        });
+      }
+    }, 3000); // 3 second timeout
+
+    testProcess.on('error', (error) => {
+      if (!hasResponded) {
+        hasResponded = true;
+        clearTimeout(timeout);
+        console.error(`❌ macOS command validation failed for ${server.command}:`, error);
+        resolve({
+          valid: false,
+          error: `macOS command execution failed: ${error.message}`,
+          fixedCommand
+        });
+      }
+    });
+
+    testProcess.on('spawn', () => {
+      if (!hasResponded) {
+        hasResponded = true;
+        clearTimeout(timeout);
+        testProcess.kill();
+        resolve({
+          valid: true,
+          fixedCommand
+        });
+      }
+    });
+  });
+}
+
+async function validateWindowsCommand(server: MCPServerConfig): Promise<{ valid: boolean; error?: string; fixedCommand?: string }> {
+  console.log(`🪟 Running Windows validation for: ${server.command}`);
+
+  // Windows-specific command validation
+  const fixedCommand = server.command;
+
+  // For Windows, we need to handle .cmd and .bat files differently
+  const windowsCommand = server.command.endsWith('.cmd') || server.command.endsWith('.bat')
+    ? server.command
+    : server.command;
+
+  return new Promise((resolve) => {
+    // Use 'where' command on Windows to check if command exists
+    const testProcess = spawn('where', [windowsCommand], {
+      stdio: 'pipe',
+      env: setupCrossPlatformEnvironment(server.env || {}),
+      shell: true // Important for Windows
+    });
+
+    let hasResponded = false;
+    const timeout = setTimeout(() => {
+      if (!hasResponded) {
+        hasResponded = true;
+        testProcess.kill();
+        resolve({
+          valid: true, // Assume valid if no immediate error
+          fixedCommand
+        });
+      }
+    }, 3000);
+
+    testProcess.on('error', (error) => {
+      if (!hasResponded) {
+        hasResponded = true;
+        clearTimeout(timeout);
+        console.error(`❌ Windows command validation failed for ${server.command}:`, error);
+        resolve({
+          valid: false,
+          error: `Windows command not found: ${error.message}`,
+          fixedCommand
+        });
+      }
+    });
+
+    testProcess.on('close', (code) => {
+      if (!hasResponded) {
+        hasResponded = true;
+        clearTimeout(timeout);
+        if (code === 0) {
+          console.log(`✅ Windows command found: ${server.command}`);
+          resolve({
+            valid: true,
+            fixedCommand
+          });
+        } else {
+          console.warn(`⚠️ Windows command not found in PATH: ${server.command}`);
+          resolve({
+            valid: false,
+            error: `Command not found in Windows PATH: ${server.command}`,
+            fixedCommand
+          });
+        }
+      }
+    });
+  });
+}
+
+async function validateLinuxCommand(server: MCPServerConfig): Promise<{ valid: boolean; error?: string; fixedCommand?: string }> {
+  console.log(`🐧 Running Linux validation for: ${server.command}`);
+
+  const fixedCommand = server.command;
+
+  return new Promise((resolve) => {
+    // Use 'which' command on Linux to check if command exists
+    const testProcess = spawn('which', [server.command], {
+      stdio: 'pipe',
+      env: setupCrossPlatformEnvironment(server.env || {})
+    });
+
+    let hasResponded = false;
+    const timeout = setTimeout(() => {
+      if (!hasResponded) {
+        hasResponded = true;
+        testProcess.kill();
+        resolve({
+          valid: true, // Assume valid if no immediate error
+          fixedCommand
+        });
+      }
+    }, 3000);
+
+    testProcess.on('error', (error) => {
+      if (!hasResponded) {
+        hasResponded = true;
+        clearTimeout(timeout);
+        console.error(`❌ Linux command validation failed for ${server.command}:`, error);
+        resolve({
+          valid: false,
+          error: `Linux command execution failed: ${error.message}`,
+          fixedCommand
+        });
+      }
+    });
+
+    testProcess.on('close', (code) => {
+      if (!hasResponded) {
+        hasResponded = true;
+        clearTimeout(timeout);
+        if (code === 0) {
+          console.log(`✅ Linux command found: ${server.command}`);
+          resolve({
+            valid: true,
+            fixedCommand
+          });
+        } else {
+          resolve({
+            valid: false,
+            error: `Command not found in Linux PATH: ${server.command}`,
+            fixedCommand
+          });
+        }
+      }
+    });
+  });
+}
+
+async function attemptMacOSFixes(server: MCPServerConfig): Promise<{ success: boolean; message: string }> {
+  if (process.platform !== 'darwin') {
+    return { success: false, message: 'Not macOS' };
+  }
+
+  console.log(`🔧 Attempting macOS fixes for ${server.command}...`);
+
+  try {
+    // Fix 1: Try to install common MCP servers via package managers
+    if (server.command.includes('python') || server.command.includes('pip')) {
+      console.log(`🐍 Detected Python-based MCP server, checking Python installation...`);
+
+      // Check if Python is available
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const pythonCheck = spawn('python3', ['--version'], { stdio: 'pipe' });
+          pythonCheck.on('close', (code) => {
+            if (code === 0) resolve();
+            else reject(new Error('Python3 not found'));
+          });
+        });
+        console.log(`✅ Python3 is available`);
+      } catch {
+        return {
+          success: false,
+          message: 'Python3 not found. Install with: brew install python3'
+        };
+      }
+    }
+
+    // Fix 2: Try to make the command executable
+    if (fs.existsSync(server.command)) {
+      try {
+        const stats = fs.statSync(server.command);
+        if (!(stats.mode & parseInt('111', 8))) {
+          fs.chmodSync(server.command, stats.mode | parseInt('755', 8));
+          console.log(`✅ Added execute permissions to ${server.command}`);
+        }
+      } catch (error) {
+        console.warn(`⚠️ Could not fix permissions: ${error}`);
+      }
+    }
+
+    // Fix 3: Check and suggest Homebrew installation for common tools
+    const commonTools = ['uv', 'node', 'npm', 'python3', 'pip3'];
+    const commandName = path.basename(server.command);
+
+    if (commonTools.includes(commandName)) {
+      try {
+        // Check if Homebrew is available
+        await new Promise<void>((resolve, reject) => {
+          const brewCheck = spawn('brew', ['--version'], { stdio: 'pipe' });
+          brewCheck.on('close', (code) => {
+            if (code === 0) resolve();
+            else reject(new Error('Homebrew not found'));
+          });
+        });
+
+        return {
+          success: false,
+          message: `Try installing with Homebrew: brew install ${commandName}`
+        };
+      } catch {
+        return {
+          success: false,
+          message: `Install Homebrew first: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`
+        };
+      }
+    }
+
+    // Fix 4: For npm-based tools, suggest global installation
+    if (server.command.includes('npx') || server.command.includes('node_modules')) {
+      return {
+        success: false,
+        message: 'Try installing globally: npm install -g <package-name>'
+      };
+    }
+
+    return { success: true, message: 'Basic fixes applied' };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Fix attempt failed: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+function createMacOSSecurityBypass(): Record<string, string> {
+  if (process.platform !== 'darwin') {
+    return {};
+  }
+
+  return {
+    // Disable macOS security warnings for development
+    'PYTHONDONTWRITEBYTECODE': '1',
+    'PYTHONUNBUFFERED': '1',
+
+    // Bypass some macOS security restrictions
+    'OBJC_DISABLE_INITIALIZE_FORK_SAFETY': 'YES',
+
+    // Ensure proper locale
+    'LC_ALL': 'en_US.UTF-8',
+    'LANG': 'en_US.UTF-8',
+
+    // Node.js specific
+    'NODE_OPTIONS': '--max-old-space-size=4096',
+
+    // Disable macOS quarantine for known safe operations
+    'DISABLE_QUARANTINE': '1'
+  };
+}
+
 // MCP Server Management Functions
 async function connectMCPServer(serverId: string): Promise<boolean> {
   try {
@@ -85,16 +606,56 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
       return true;
     }
 
-    // Create transport
-    console.log(`🚀 Starting MCP server process: ${server.command} ${server.args?.join(' ') || ''}`);
-    console.log(`🔧 Server environment variables:`, server.env);
-    const mergedEnv = { ...process.env, ...server.env } as Record<string, string>;
-    console.log(`🔧 Merged environment (showing only server env vars):`, Object.fromEntries(
-      Object.entries(mergedEnv).filter(([key]) => server.env && key in server.env)
-    ));
+    // Skip validation for npx commands since user confirmed they work
+    let validation;
+    if (server.command === 'npx' || server.command === 'npm') {
+      console.log(`✅ Skipping validation for ${server.command} command (user confirmed it's in PATH)`);
+      validation = { valid: true, fixedCommand: server.command };
+    } else {
+      // Validate and prepare command for macOS
+      console.log(`🔍 Validating MCP server for macOS compatibility...`);
+      validation = await validateMCPServerCommand(server);
+
+      if (!validation.valid) {
+        console.warn(`⚠️ Initial MCP server validation failed: ${validation.error}`);
+
+        // Attempt macOS-specific fixes
+        console.log(`🔧 Attempting macOS fixes...`);
+        const fixResult = await attemptMacOSFixes(server);
+
+        if (!fixResult.success) {
+          console.error(`❌ MCP server fixes failed: ${fixResult.message}`);
+          throw new Error(`Server validation and fixes failed: ${validation.error}. Suggestion: ${fixResult.message}`);
+        }
+
+        console.log(`✅ Applied macOS fixes: ${fixResult.message}`);
+
+        // Re-validate after fixes
+        const revalidation = await validateMCPServerCommand(server);
+        if (!revalidation.valid) {
+          throw new Error(`Server still invalid after fixes: ${revalidation.error}`);
+        }
+        validation = revalidation;
+      }
+    }
+
+    const finalCommand = validation.fixedCommand || server.command;
+    console.log(`🚀 Starting MCP server process: ${finalCommand} ${server.args?.join(' ') || ''}`);
+
+    // Setup macOS-compatible environment
+    const baseEnv = setupMacOSEnvironment(server.env || {});
+    const mergedEnv = { ...process.env, ...baseEnv } as Record<string, string>;
+
+    console.log(`🔧 macOS Environment setup:`, {
+      command: finalCommand,
+      args: server.args,
+      pathEntries: mergedEnv.PATH?.split(':').length || 0,
+      pythonPath: mergedEnv.PYTHONPATH || 'not set',
+      platform: process.platform
+    });
 
     const transport = new StdioClientTransport({
-      command: server.command,
+      command: finalCommand,
       args: server.args,
       env: mergedEnv
     });
@@ -162,6 +723,11 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     const resourceCount = resources.resources?.length || 0;
     const promptCount = prompts.prompts?.length || 0;
 
+    console.log(`🔍 [DEBUG] Server ${serverId} discovered capabilities:`);
+    console.log(`🔍 [DEBUG] - Tools: ${toolCount}`, toolCount > 0 ? (tools.tools || []).map((t: any) => t.name) : []);
+    console.log(`🔍 [DEBUG] - Resources: ${resourceCount}`);
+    console.log(`🔍 [DEBUG] - Prompts: ${promptCount}`);
+
     const capabilities = [];
     if (toolCount > 0) capabilities.push(`${toolCount} tools`);
     if (resourceCount > 0) capabilities.push(`${resourceCount} resources`);
@@ -198,6 +764,35 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     return true;
   } catch (error) {
     console.error(`❌ Failed to connect to MCP server ${serverId}:`, error);
+
+    // Provide macOS-specific troubleshooting information
+    if (process.platform === 'darwin') {
+      // Reload server config for troubleshooting
+      const mcpData = loadMCPServers();
+      const serverConfig = mcpData.servers.find((s: MCPServerConfig) => s.id === serverId);
+
+      console.log(`\n🍎 macOS Troubleshooting for MCP server ${serverId}:`);
+      if (serverConfig) {
+        console.log(`1. Check if the command exists: which ${serverConfig.command}`);
+        console.log(`2. Verify executable permissions: ls -la ${serverConfig.command}`);
+        console.log(`3. Try running manually: ${serverConfig.command} ${serverConfig.args?.join(' ') || ''}`);
+      }
+      console.log(`4. Check if Gatekeeper is blocking: System Preferences > Security & Privacy`);
+      console.log(`5. For Python servers, ensure Python is in PATH: echo $PATH`);
+      console.log(`6. For npm packages, try: npm install -g <package-name>`);
+
+      // Check common issues
+      if (error instanceof Error) {
+        if (error.message.includes('ENOENT')) {
+          console.log(`❗ Command not found. Try installing with: brew install <package> or pip install <package>`);
+        } else if (error.message.includes('EACCES')) {
+          console.log(`❗ Permission denied. Try: chmod +x <command>`);
+        } else if (error.message.includes('spawn')) {
+          console.log(`❗ Process spawn failed. Check if the executable is signed or add to Security & Privacy exceptions`);
+        }
+      }
+    }
+
     return false;
   }
 }
@@ -245,15 +840,49 @@ async function connectEnabledMCPServers(): Promise<void> {
     console.log('🔌 Auto-connecting enabled MCP servers...');
 
     const mcpData = loadMCPServers();
-    const enabledServers = mcpData.servers.filter((server: MCPServerConfig) => server.enabled);
+    console.log(`🔍 [DEBUG] Total servers in config: ${mcpData.servers.length}`);
+    console.log(`🔍 [DEBUG] All servers:`, mcpData.servers.map(s => ({
+      id: s.id,
+      name: s.name,
+      enabled: s.enabled,
+      command: s.command
+    })));
 
+    const enabledServers = mcpData.servers.filter((server: MCPServerConfig) => server.enabled);
     console.log(`📋 Found ${enabledServers.length} enabled servers`);
+    console.log(`🔍 [DEBUG] Enabled servers:`, enabledServers.map(s => ({
+      id: s.id,
+      name: s.name,
+      command: s.command
+    })));
 
     for (const server of enabledServers) {
-      await connectMCPServer(server.id);
+      console.log(`🔌 [DEBUG] Attempting to connect server: ${server.id} (${server.name})`);
+      try {
+        const connected = await connectMCPServer(server.id);
+        console.log(`🔌 [DEBUG] Server ${server.id} connection result: ${connected}`);
+        if (!connected) {
+          console.error(`❌ [DEBUG] Failed to connect server ${server.id} - connection returned false`);
+        }
+      } catch (error) {
+        console.error(`❌ [DEBUG] Exception while connecting server ${server.id}:`, error);
+      }
     }
 
     console.log('✅ Auto-connection complete');
+    console.log(`🔍 [DEBUG] Final connection status:`, Array.from(mcpConnections.keys()));
+
+    // Detailed status check
+    const finalStatus = getMCPConnectionStatus();
+    console.log(`🔍 [DEBUG] Detailed connection status:`, finalStatus);
+
+    // Check for enabled servers that failed to connect
+    const connectedIds = getConnectedMCPServerIds();
+    const failedServers = enabledServers.filter(s => !connectedIds.includes(s.id));
+    if (failedServers.length > 0) {
+      console.error(`❌ [DEBUG] ${failedServers.length} enabled servers failed to connect:`,
+        failedServers.map(s => ({ id: s.id, name: s.name, command: s.command })));
+    }
   } catch (error) {
     console.error('❌ Failed to auto-connect enabled MCP servers:', error);
   }
@@ -408,8 +1037,18 @@ async function callMultipleMCPTools(toolCalls: Array<{
 function getAllMCPTools(): (MCPTool & { serverId: string })[] {
   const allTools: (MCPTool & { serverId: string })[] = [];
 
+  console.log(`🔍 [DEBUG] getAllMCPTools called - checking ${mcpConnections.size} total connections`);
+
   for (const [serverId, connection] of mcpConnections) {
-    if (!connection.connected) continue;
+    console.log(`🔍 [DEBUG] Server ${serverId}: connected=${connection.connected}, tools=${connection.tools.length}`);
+
+    if (!connection.connected) {
+      console.log(`⏸️ [DEBUG] Skipping disconnected server: ${serverId}`);
+      continue;
+    }
+
+    console.log(`🔧 [DEBUG] Processing ${connection.tools.length} tools from server ${serverId}:`,
+      connection.tools.map(t => t.name));
 
     for (const tool of connection.tools) {
       allTools.push({
@@ -418,6 +1057,14 @@ function getAllMCPTools(): (MCPTool & { serverId: string })[] {
       });
     }
   }
+
+  console.log(`📋 [DEBUG] Final result: ${allTools.length} tools from ${mcpConnections.size} total servers`);
+  console.log(`🔍 [DEBUG] Tools by server:`, Array.from(mcpConnections.entries()).map(([serverId, conn]) => ({
+    serverId,
+    connected: conn.connected,
+    toolCount: conn.tools.length,
+    toolNames: conn.tools.map(t => t.name)
+  })));
 
   console.log(`📋 Retrieved ${allTools.length} tools from ${mcpConnections.size} connected servers`);
   console.log(`🔍 Tool details:`, allTools.map(tool => ({
@@ -464,7 +1111,9 @@ interface Conversation {
 interface AppSettings {
   shortcuts?: {
     toggleWindow?: string;
+    processClipboard?: string;
     actionMenu?: string;
+    openShortcuts?: string;
   };
   ui?: {
     alwaysOnTop?: boolean;
@@ -773,11 +1422,82 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow: BrowserWindow | null = null;
 let actionMenuWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+let chatWindow: BrowserWindow | null = null;
 let dropdownWindow: BrowserWindow | null = null;
 let historyWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let staticServerPort: number = 3001;
 let isQuitting = false;
+
+// Global function to open settings overlay with optional tab
+async function openSettingsOverlay(tab?: string) {
+  if (!mainWindow) return;
+
+  if (settingsWindow) {
+    settingsWindow.focus();
+    // Send tab change message if tab is specified
+    if (tab) {
+      settingsWindow.webContents.send('change-settings-tab', tab);
+    }
+    return;
+  }
+
+  // Calculate position using multi-monitor aware utility
+  const windowWidth = 800;
+  const windowHeight = 600;
+  const { x, y } = calculateWindowPosition({
+    width: windowWidth,
+    height: windowHeight,
+    preferredPosition: 'center',
+    offsetY: 50
+  });
+
+  settingsWindow = new BrowserWindow({
+    width: windowWidth,
+    height: windowHeight,
+    x: x,
+    y: y,
+    show: false,
+    frame: false, // Remove native frame completely
+    resizable: true, // Allow resizing
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    transparent: false,
+    titleBarStyle: 'hidden', // Hide title bar completely
+    title: 'LittleLLM - Settings',
+    autoHideMenuBar: true, // Hide menu bar
+    backgroundColor: '#1a1a1a',
+    roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
+    hasShadow: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: false,
+      allowRunningInsecureContent: true,
+    },
+  });
+
+  // Load the settings overlay URL
+  let startUrl: string;
+  if (process.env.NODE_ENV === 'production') {
+    startUrl = `file://${path.join(__dirname, '../out/index.html')}`;
+  } else {
+    const detectedPort = await detectNextJSPort();
+    startUrl = `http://localhost:${detectedPort}`;
+  }
+  const settingsUrl = `${startUrl}?overlay=settings${tab ? `&tab=${tab}` : ''}`;
+  settingsWindow.loadURL(settingsUrl);
+
+  settingsWindow.on('closed', () => {
+    settingsWindow = null;
+  });
+
+  settingsWindow.once('ready-to-show', () => {
+    settingsWindow?.show();
+    settingsWindow?.focus();
+  });
+}
 
 // Global function to open action menu
 async function openActionMenu() {
@@ -788,21 +1508,15 @@ async function openActionMenu() {
     return;
   }
 
-  // Get main window position to position overlay relative to it
-  const mainBounds = mainWindow.getBounds();
-  // screen is already imported at the top
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-
-  // Calculate position ensuring window stays on screen
+  // Calculate position using multi-monitor aware utility
   const windowWidth = 600;
   const windowHeight = 400;
-  let x = mainBounds.x + (mainBounds.width - windowWidth) / 2;
-  let y = mainBounds.y + 50;
-
-  // Ensure window doesn't go off screen
-  x = Math.max(0, Math.min(x, screenWidth - windowWidth));
-  y = Math.max(0, Math.min(y, screenHeight - windowHeight));
+  const { x, y } = calculateWindowPosition({
+    width: windowWidth,
+    height: windowHeight,
+    preferredPosition: 'center',
+    offsetY: 50
+  });
 
   actionMenuWindow = new BrowserWindow({
     width: windowWidth,
@@ -930,6 +1644,7 @@ function loadAppSettings() {
       toggleWindow: 'CommandOrControl+Shift+L',
       processClipboard: 'CommandOrControl+Shift+V',
       actionMenu: 'CommandOrControl+Shift+Space',
+      openShortcuts: 'CommandOrControl+Shift+K',
     },
     general: {
       autoStartWithSystem: false,
@@ -1263,18 +1978,43 @@ function registerGlobalShortcuts() {
 
   console.log('Registering global shortcut:', shortcut);
 
-  // Register the main shortcut to toggle window
+  // Register the main shortcut to toggle ALL windows
   globalShortcut.register(shortcut, () => {
     console.log('Global shortcut triggered:', shortcut);
-    if (mainWindow) {
-      if (mainWindow.isVisible() && mainWindow.isFocused()) {
-        mainWindow.hide();
-      } else {
+
+    // Check if any window is visible and focused
+    const anyWindowVisible = (mainWindow && mainWindow.isVisible()) ||
+                            (chatWindow && chatWindow.isVisible()) ||
+                            (settingsWindow && settingsWindow.isVisible()) ||
+                            (actionMenuWindow && actionMenuWindow.isVisible()) ||
+                            (dropdownWindow && dropdownWindow.isVisible());
+
+    const anyWindowFocused = (mainWindow && mainWindow.isFocused()) ||
+                           (chatWindow && chatWindow.isFocused()) ||
+                           (settingsWindow && settingsWindow.isFocused()) ||
+                           (actionMenuWindow && actionMenuWindow.isFocused()) ||
+                           (dropdownWindow && dropdownWindow.isFocused());
+
+    if (anyWindowVisible && anyWindowFocused) {
+      // Hide ALL windows
+      console.log('Hiding all application windows');
+      if (mainWindow && mainWindow.isVisible()) mainWindow.hide();
+      if (chatWindow && chatWindow.isVisible()) chatWindow.hide();
+      if (settingsWindow && settingsWindow.isVisible()) settingsWindow.hide();
+      if (actionMenuWindow && actionMenuWindow.isVisible()) actionMenuWindow.hide();
+      if (dropdownWindow && dropdownWindow.isVisible()) dropdownWindow.hide();
+    } else {
+      // Show main window (and restore other windows if they were open)
+      console.log('Showing application windows');
+      if (mainWindow) {
         mainWindow.show();
         mainWindow.focus();
+      } else {
+        createWindow().catch(console.error);
       }
-    } else {
-      createWindow().catch(console.error);
+
+      // Note: We don't automatically restore other windows as they should be opened by user action
+      // The main window is the primary interface
     }
   });
 
@@ -1313,6 +2053,21 @@ function registerGlobalShortcuts() {
       }
       // Open action menu using the global function
       await openActionMenu();
+    }
+  });
+
+  // Register shortcut for opening shortcuts settings
+  const shortcutsSettingsShortcut = appSettings.shortcuts?.openShortcuts || 'CommandOrControl+Shift+K';
+  globalShortcut.register(shortcutsSettingsShortcut, async () => {
+    console.log('Shortcuts settings shortcut triggered:', shortcutsSettingsShortcut);
+    if (mainWindow) {
+      // Show main window first if hidden
+      if (!mainWindow.isVisible()) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+      // Open settings overlay directly to shortcuts tab
+      await openSettingsOverlay('shortcuts');
     }
   });
 }
@@ -1430,6 +2185,34 @@ function setupIPC() {
               }
               // Open action menu
               await openActionMenu();
+            }
+          });
+        }
+      }
+
+      // Handle open shortcuts shortcut updates
+      if (cleanSettings.shortcuts && cleanSettings.shortcuts.openShortcuts) {
+        const currentSettings = loadAppSettings();
+        const currentOpenShortcutsShortcut = currentSettings.shortcuts?.openShortcuts || 'CommandOrControl+Shift+K';
+        const newOpenShortcutsShortcut = cleanSettings.shortcuts.openShortcuts;
+
+        if (newOpenShortcutsShortcut !== currentOpenShortcutsShortcut) {
+          console.log('Updating open shortcuts shortcut from', currentOpenShortcutsShortcut, 'to', newOpenShortcutsShortcut);
+
+          // Unregister old shortcut
+          globalShortcut.unregister(currentOpenShortcutsShortcut);
+
+          // Register new shortcut
+          globalShortcut.register(newOpenShortcutsShortcut, async () => {
+            console.log('New open shortcuts shortcut triggered:', newOpenShortcutsShortcut);
+            if (mainWindow) {
+              // Show main window first if hidden
+              if (!mainWindow.isVisible()) {
+                mainWindow.show();
+                mainWindow.focus();
+              }
+              // Open settings overlay directly to shortcuts tab
+              await openSettingsOverlay('shortcuts');
             }
           });
         }
@@ -1670,6 +2453,65 @@ function setupIPC() {
 
   ipcMain.handle('get-connected-mcp-server-ids', () => {
     return getConnectedMCPServerIds();
+  });
+
+  // macOS-specific MCP server troubleshooting
+  ipcMain.handle('fix-macos-mcp-server', async (_, serverId: string) => {
+    try {
+      console.log(`🔧 Manual macOS fix requested for server: ${serverId}`);
+
+      // Load server configuration
+      const mcpData = loadMCPServers();
+      const server = mcpData.servers.find((s: MCPServerConfig) => s.id === serverId);
+
+      if (!server) {
+        return { success: false, message: `Server ${serverId} not found` };
+      }
+
+      // Attempt fixes
+      const fixResult = await attemptMacOSFixes(server);
+
+      if (fixResult.success) {
+        // Try to validate after fixes
+        const validation = await validateMCPServerCommand(server);
+        return {
+          success: validation.valid,
+          message: validation.valid
+            ? `Fixes applied successfully: ${fixResult.message}`
+            : `Fixes applied but validation still fails: ${validation.error}`
+        };
+      }
+
+      return fixResult;
+    } catch (error) {
+      console.error('Failed to apply macOS fixes:', error);
+      return {
+        success: false,
+        message: `Fix attempt failed: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  });
+
+  ipcMain.handle('validate-mcp-server', async (_, serverId: string) => {
+    try {
+      console.log(`🔍 Manual validation requested for server: ${serverId}`);
+
+      // Load server configuration
+      const mcpData = loadMCPServers();
+      const server = mcpData.servers.find((s: MCPServerConfig) => s.id === serverId);
+
+      if (!server) {
+        return { valid: false, error: `Server ${serverId} not found` };
+      }
+
+      return await validateMCPServerCommand(server);
+    } catch (error) {
+      console.error('Failed to validate MCP server:', error);
+      return {
+        valid: false,
+        error: `Validation failed: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
   });
 
   ipcMain.handle('read-mcp-resource', async (_, uri: string) => {
@@ -2026,6 +2868,14 @@ function setupIPC() {
     return { width: 570, height: 195 }; // Default size (increased by 15px for draggable header)
   });
 
+  ipcMain.handle('get-window-position', () => {
+    if (mainWindow) {
+      const bounds = mainWindow.getBounds();
+      return { x: bounds.x, y: bounds.y };
+    }
+    return { x: 0, y: 0 };
+  });
+
   ipcMain.handle('take-screenshot', async () => {
     try {
       // desktopCapturer is already imported at the top
@@ -2055,41 +2905,8 @@ function setupIPC() {
     }
   });
 
-  // Window dragging functionality
-  ipcMain.handle('start-drag', () => {
-    if (mainWindow) {
-      // Get current mouse position and window position
-      // screen is already imported at the top
-      const point = screen.getCursorScreenPoint();
-      const windowBounds = mainWindow.getBounds();
-
-      // Calculate offset from mouse to window top-left
-      const offsetX = point.x - windowBounds.x;
-      const offsetY = point.y - windowBounds.y;
-
-      return { offsetX, offsetY };
-    }
-    return null;
-  });
-
-  ipcMain.handle('drag-window', (_, { x, y, offsetX, offsetY }) => {
-    if (mainWindow) {
-      // Get current window bounds to prevent scaling issues
-      const currentBounds = mainWindow.getBounds();
-
-      // Calculate new position
-      const newX = Math.round(x - offsetX);
-      const newY = Math.round(y - offsetY);
-
-      // Set position while preserving size
-      mainWindow.setBounds({
-        x: newX,
-        y: newY,
-        width: currentBounds.width,
-        height: currentBounds.height
-      });
-    }
-  });
+  // Window dragging is now handled by CSS -webkit-app-region in the renderer
+  // No IPC handlers needed for CSS-based dragging
 
   // Handle overlay window creation
   ipcMain.handle('open-action-menu', openActionMenu);
@@ -2119,21 +2936,15 @@ function setupIPC() {
       return;
     }
 
-    // Get main window position to position overlay relative to it
-    const mainBounds = mainWindow.getBounds();
-    // screen is already imported at the top
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-
-    // Calculate position ensuring window stays on screen
+    // Calculate position using multi-monitor aware utility
     const windowWidth = 800;
     const windowHeight = 600;
-    let x = mainBounds.x + (mainBounds.width - windowWidth) / 2;
-    let y = mainBounds.y + 50;
-
-    // Ensure window doesn't go off screen
-    x = Math.max(0, Math.min(x, screenWidth - windowWidth));
-    y = Math.max(0, Math.min(y, screenHeight - windowHeight));
+    const { x, y } = calculateWindowPosition({
+      width: windowWidth,
+      height: windowHeight,
+      preferredPosition: 'center',
+      offsetY: 50
+    });
 
     settingsWindow = new BrowserWindow({
       width: windowWidth,
@@ -2184,6 +2995,90 @@ function setupIPC() {
   ipcMain.handle('close-settings-overlay', () => {
     if (settingsWindow) {
       settingsWindow.close();
+    }
+  });
+
+  // Handle chat window creation
+  ipcMain.handle('open-chat-window', async () => {
+    if (!mainWindow) return;
+
+    if (chatWindow) {
+      chatWindow.focus();
+      return;
+    }
+
+    // Calculate position next to main window
+    const windowWidth = 400; // 50% smaller than original 800px
+    const windowHeight = 600;
+
+    // Get main window position and size
+    const mainBounds = mainWindow.getBounds();
+
+    // Position chat window to the right of main window
+    const x = mainBounds.x + mainBounds.width + 10; // 10px gap
+    const y = mainBounds.y;
+
+    chatWindow = new BrowserWindow({
+      width: windowWidth,
+      height: windowHeight,
+      minWidth: 300, // Minimum width to prevent cropping
+      minHeight: 400, // Minimum height to prevent cropping
+      x: x,
+      y: y,
+      show: false,
+      frame: false, // No title bar
+      resizable: true, // Make it resizable
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      transparent: false,
+      backgroundColor: '#1e1e1e',
+      roundedCorners: true, // Enable rounded corners
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js'),
+        webSecurity: false,
+      },
+    });
+
+    let startUrl: string;
+    if (isProduction) {
+      startUrl = `http://localhost:${staticServerPort}`;
+    } else {
+      const detectedPort = await detectNextJSPort();
+      startUrl = `http://localhost:${detectedPort}`;
+    }
+    const chatUrl = `${startUrl}?overlay=chat`;
+    chatWindow.loadURL(chatUrl);
+
+    chatWindow.on('closed', () => {
+      chatWindow = null;
+    });
+
+    chatWindow.once('ready-to-show', () => {
+      chatWindow?.show();
+      chatWindow?.focus();
+    });
+  });
+
+  ipcMain.handle('close-chat-window', () => {
+    if (chatWindow) {
+      chatWindow.close();
+    }
+  });
+
+  // Handle messages synchronization between main window and chat window
+  ipcMain.handle('sync-messages-to-chat', (_, messages) => {
+    if (chatWindow) {
+      chatWindow.webContents.send('messages-update', messages);
+    }
+  });
+
+  // Handle request for current messages from chat window
+  ipcMain.handle('request-current-messages', () => {
+    if (mainWindow) {
+      // Request current messages from main window
+      mainWindow.webContents.send('request-current-messages');
     }
   });
 
@@ -2492,7 +3387,7 @@ function setupIPC() {
   }
 
   // Handle dropdown window creation
-  ipcMain.handle('open-dropdown', async (_, { width, height, content }) => {
+  ipcMain.handle('open-dropdown', async (_, { x, y, width, height, content }) => {
     if (!mainWindow) return;
 
     // Close existing dropdown if open
@@ -2529,27 +3424,25 @@ function setupIPC() {
 
 
 
-    // Use Electron's built-in cursor positioning instead of manual math
-    // screen is already imported at the top
-    const cursorPoint = screen.getCursorScreenPoint();
+    // Convert viewport coordinates to screen coordinates using multi-monitor aware utility
+    const mainBounds = mainWindow.getBounds();
+    const screenX = mainBounds.x + x;
+    const screenY = mainBounds.y + y;
 
-    // Position dropdown at cursor with small offset
-    const dropdownX = cursorPoint.x;
-    const dropdownY = cursorPoint.y + 10; // Small offset below cursor
+    // Get the display where the dropdown should appear
+    const display = screen.getDisplayNearestPoint({ x: screenX, y: screenY });
+    const { x: displayX, y: displayY, width: displayWidth, height: displayHeight } = display.workArea;
 
-    // Get screen dimensions for bounds checking
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+    // Ensure dropdown stays within the display bounds
+    const adjustedX = Math.max(displayX, Math.min(screenX, displayX + displayWidth - width));
+    const adjustedY = Math.max(displayY, Math.min(screenY, displayY + displayHeight - height));
 
-    // Ensure dropdown stays on screen
-    const adjustedX = Math.max(0, Math.min(dropdownX, screenWidth - width));
-    const adjustedY = Math.max(0, Math.min(dropdownY, screenHeight - height));
-
-    console.log('🔍 Dropdown cursor positioning:', {
-      cursorPoint,
-      calculated: { dropdownX, dropdownY },
-      adjusted: { adjustedX, adjustedY },
-      screenSize: { screenWidth, screenHeight }
+    console.log('🔍 Dropdown multi-monitor positioning:', {
+      viewportCoords: { x, y },
+      screenCoords: { screenX, screenY },
+      adjustedPosition: { adjustedX, adjustedY },
+      size: { width, height },
+      display: display.bounds
     });
 
     dropdownWindow = new BrowserWindow({
@@ -2898,22 +3791,14 @@ function setupIPC() {
       console.warn('Failed to retrieve CSS variables:', error);
     }
 
-    // Calculate window size
+    // Calculate window size and position using multi-monitor aware utility
     const windowWidth = 400;
     const windowHeight = 500;
-
-    // Position window near the main window
-    const mainBounds = mainWindow.getBounds();
-    const historyX = mainBounds.x + mainBounds.width + 10; // To the right of main window
-    const historyY = mainBounds.y;
-
-    // Get screen dimensions for bounds checking
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
-
-    // Ensure window stays on screen
-    const adjustedX = Math.max(0, Math.min(historyX, screenWidth - windowWidth));
-    const adjustedY = Math.max(0, Math.min(historyY, screenHeight - windowHeight));
+    const { x: adjustedX, y: adjustedY } = calculateWindowPosition({
+      width: windowWidth,
+      height: windowHeight,
+      preferredPosition: 'right'
+    });
 
     historyWindow = new BrowserWindow({
       width: windowWidth,

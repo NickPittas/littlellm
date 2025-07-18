@@ -9,11 +9,13 @@ import {
   History,
   Settings,
   Wand2,
-  RotateCcw
+  RotateCcw,
+  MessageSquare
 } from 'lucide-react';
 import { chatService } from '../services/chatService';
 import type { ChatSettings } from '../services/chatService';
 import { settingsService } from '../services/settingsService';
+import { conversationHistoryService } from '../services/conversationHistoryService';
 
 interface BottomToolbarProps {
   onFileUpload?: (files: FileList) => void;
@@ -478,6 +480,48 @@ export function BottomToolbar({
           data-interactive="true"
         >
           <History className="h-4 w-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={async () => {
+            if (typeof window !== 'undefined' && window.electronAPI) {
+              // Check if there's already an active conversation
+              const currentConversationId = conversationHistoryService.getCurrentConversationId();
+
+              // Only load a previous conversation if there's no active conversation
+              if (!currentConversationId) {
+                try {
+                  const conversations = await conversationHistoryService.getAllConversations();
+                  if (conversations.length > 0) {
+                    const mostRecent = conversations[0]; // Conversations are sorted by most recent first
+                    const fullConversation = await conversationHistoryService.loadFullConversation(mostRecent.id);
+                    if (fullConversation && fullConversation.messages) {
+                      // Sync the conversation to the chat window
+                      window.electronAPI.syncMessagesToChat(fullConversation.messages);
+
+                      // Also trigger a custom event to load the conversation in the main window
+                      const event = new CustomEvent('loadConversation', {
+                        detail: { conversation: fullConversation }
+                      });
+                      window.dispatchEvent(event);
+                    }
+                  }
+                } catch (error) {
+                  console.error('Failed to load recent conversation:', error);
+                }
+              }
+
+              // Open the chat window (it will request current messages automatically)
+              window.electronAPI.openChatWindow();
+            }
+          }}
+          className="h-8 w-8 p-0"
+          title="Open Chat Window"
+          data-interactive="true"
+        >
+          <MessageSquare className="h-4 w-4" />
         </Button>
 
         <MCPDropdown

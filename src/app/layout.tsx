@@ -19,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" style={{ borderRadius: '20px', overflow: 'hidden', background: 'var(--background)' }}>
+    <html lang="en" style={{ borderRadius: '20px', overflow: 'hidden', backgroundColor: 'var(--background)' }}>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -30,16 +30,28 @@ export default function RootLayout({
                 const body = document.body;
                 const next = document.getElementById('__next');
 
-                // Apply aggressive styling with more rounded corners
-                [html, body, next].forEach(el => {
-                  if (el) {
-                    el.style.borderRadius = '20px';
-                    el.style.overflow = 'hidden';
-                    el.style.background = 'var(--background)';
-                    el.style.setProperty('-electron-corner-smoothing', '80%');
-                    el.style.clipPath = 'polygon(20px 0%, calc(100% - 20px) 0%, 100% 20px, 100% calc(100% - 20px), calc(100% - 20px) 100%, 20px 100%, 0% calc(100% - 20px), 0% 20px)';
-                  }
-                });
+                // Apply responsive styling with rounded corners (match globals.css)
+                if (html) {
+                  html.style.borderRadius = '20px';
+                  html.style.overflow = 'hidden';
+                  html.style.backgroundColor = 'var(--background)';
+                }
+
+                if (body) {
+                  body.style.backgroundColor = 'var(--background)';
+                  body.style.color = 'var(--foreground)';
+                  body.style.borderRadius = '20px';
+                  body.style.overflow = 'hidden';
+                  body.style.margin = '0';
+                  body.style.padding = '0';
+                }
+
+                if (next) {
+                  next.style.backgroundColor = 'var(--background)';
+                  next.style.borderRadius = '20px';
+                  next.style.setProperty('-electron-corner-smoothing', '80%');
+                  next.style.overflow = 'hidden';
+                }
               });
             `,
           }}
@@ -52,8 +64,8 @@ export default function RootLayout({
           color: 'var(--foreground)',
           borderRadius: '20px',
           overflow: 'hidden',
-          margin: 0,
-          padding: 0
+          margin: '0',
+          padding: '0'
         }}
       >
         {children}

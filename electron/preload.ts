@@ -43,6 +43,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMCPDetailedStatus: () => ipcRenderer.invoke('get-mcp-detailed-status'),
   getConnectedMCPServerIds: () => ipcRenderer.invoke('get-connected-mcp-server-ids'),
 
+  // macOS MCP server troubleshooting
+  fixMacOSMCPServer: (serverId: string) => ipcRenderer.invoke('fix-macos-mcp-server', serverId),
+  validateMCPServer: (serverId: string) => ipcRenderer.invoke('validate-mcp-server', serverId),
+
   // Conversation file operations
   saveConversationToFile: (conversationId: string, conversation: any) => ipcRenderer.invoke('save-conversation-to-file', conversationId, conversation),
   saveConversationIndex: (conversationIndex: any[]) => ipcRenderer.invoke('save-conversation-index', conversationIndex),
@@ -70,12 +74,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
   resizeWindow: (width: number, height: number) => ipcRenderer.invoke('resize-window', width, height),
   getCurrentWindowSize: () => ipcRenderer.invoke('get-current-window-size'),
+  getWindowPosition: () => ipcRenderer.invoke('get-window-position'),
   takeScreenshot: () => ipcRenderer.invoke('take-screenshot'),
 
-  // Window dragging
-  startDrag: () => ipcRenderer.invoke('start-drag'),
-  dragWindow: (x: number, y: number, offsetX: number, offsetY: number) =>
-    ipcRenderer.invoke('drag-window', { x, y, offsetX, offsetY }),
+  // Window dragging is now handled by CSS -webkit-app-region
+  // No IPC methods needed for CSS-based dragging
 
   // Overlay windows
   openActionMenu: () => ipcRenderer.invoke('open-action-menu'),
@@ -83,6 +86,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendPromptToMain: (promptText: string) => ipcRenderer.invoke('send-prompt-to-main', promptText),
   openSettingsOverlay: () => ipcRenderer.invoke('open-settings-overlay'),
   closeSettingsOverlay: () => ipcRenderer.invoke('close-settings-overlay'),
+  openChatWindow: () => ipcRenderer.invoke('open-chat-window'),
+  closeChatWindow: () => ipcRenderer.invoke('close-chat-window'),
+  syncMessagesToChat: (messages: any[]) => ipcRenderer.invoke('sync-messages-to-chat', messages),
+  requestCurrentMessages: () => ipcRenderer.invoke('request-current-messages'),
   notifyThemeChange: (themeId: string) => ipcRenderer.invoke('notify-theme-change', themeId),
 
   // Dropdown operations
@@ -119,6 +126,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('prompt-selected', (_, promptText) => callback(promptText));
   },
 
+  onMessagesUpdate: (callback: (messages: any[]) => void) => {
+    ipcRenderer.on('messages-update', (_, messages) => callback(messages));
+  },
+
+  onRequestCurrentMessages: (callback: () => void) => {
+    ipcRenderer.on('request-current-messages', () => callback());
+  },
+
   onDropdownItemSelected: (callback: (value: string) => void) => {
     ipcRenderer.on('dropdown-item-selected', (_, value) => callback(value));
   },
@@ -138,6 +153,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Remove listeners
   removeAllListeners: (channel: string) => {
     ipcRenderer.removeAllListeners(channel);
+  },
+
+  // Tab change listener for settings overlay
+  onTabChange: (callback: (tab: string) => void) => {
+    const listener = (_: any, tab: string) => callback(tab);
+    ipcRenderer.on('change-settings-tab', listener);
+    return listener;
+  },
+
+  removeTabChangeListener: (listener: any) => {
+    ipcRenderer.removeListener('change-settings-tab', listener);
   }
 });
 
@@ -162,6 +188,7 @@ declare global {
       maximizeWindow: () => Promise<void>;
       resizeWindow: (width: number, height: number) => Promise<void>;
       getCurrentWindowSize: () => Promise<{ width: number; height: number }>;
+      getWindowPosition: () => Promise<{ x: number; y: number }>;
       takeScreenshot: () => Promise<{ success: boolean; dataURL?: string; error?: string }>;
       startDrag: () => Promise<{ offsetX: number; offsetY: number } | null>;
       dragWindow: (x: number, y: number, offsetX: number, offsetY: number) => Promise<void>;
@@ -170,6 +197,10 @@ declare global {
       sendPromptToMain: (promptText: string) => Promise<void>;
       openSettingsOverlay: () => Promise<void>;
       closeSettingsOverlay: () => Promise<void>;
+      openChatWindow: () => Promise<void>;
+      closeChatWindow: () => Promise<void>;
+      syncMessagesToChat: (messages: any[]) => Promise<void>;
+      requestCurrentMessages: () => Promise<void>;
       notifyThemeChange: (themeId: string) => Promise<void>;
       openDropdown: (x: number, y: number, width: number, height: number, content: string) => Promise<void>;
       closeDropdown: () => Promise<void>;
@@ -180,6 +211,8 @@ declare global {
       onOpenSettings: (callback: () => void) => void;
       onThemeChanged: (callback: (themeId: string) => void) => void;
       onPromptSelected: (callback: (promptText: string) => void) => void;
+      onMessagesUpdate: (callback: (messages: any[]) => void) => void;
+      onRequestCurrentMessages: (callback: () => void) => void;
       removeAllListeners: (channel: string) => void;
 
       // MCP operations
@@ -201,6 +234,8 @@ declare global {
       getMCPConnectionStatus: () => Promise<Record<string, boolean>>;
       getMCPDetailedStatus: () => Promise<any>;
       getConnectedMCPServerIds: () => Promise<string[]>;
+      fixMacOSMCPServer: (serverId: string) => Promise<{ success: boolean; message: string }>;
+      validateMCPServer: (serverId: string) => Promise<{ valid: boolean; error?: string; fixedCommand?: string }>;
 
       // Memory operations
       loadMemoryIndex: () => Promise<any>;
@@ -213,6 +248,10 @@ declare global {
       // Memory export/import operations
       saveMemoryExport: (exportData: any, filename: string) => Promise<boolean>;
       loadMemoryExport: () => Promise<any>;
+
+      // Tab change listener for settings overlay
+      onTabChange?: (callback: (tab: string) => void) => any;
+      removeTabChangeListener?: (listener: any) => void;
     };
   }
 }

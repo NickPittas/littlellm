@@ -1,34 +1,18 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
-
-interface DragState {
-  isDragging: boolean;
-  startX: number;
-  startY: number;
-  offsetX: number;
-  offsetY: number;
-}
+import { useEffect, useCallback } from 'react';
 
 /**
- * Enhanced window dragging hook that makes the entire window draggable
- * while preserving all interactive element functionality
+ * Simple window dragging hook using Electron's built-in web API
+ * This avoids high DPI scaling issues by using CSS -webkit-app-region
  */
 export function useEnhancedWindowDrag() {
-  const dragStateRef = useRef<DragState>({
-    isDragging: false,
-    startX: 0,
-    startY: 0,
-    offsetX: 0,
-    offsetY: 0
-  });
-
   // Check if an element should be excluded from dragging
   const isInteractiveElement = useCallback((element: Element): boolean => {
     // List of interactive element types and attributes that should not trigger dragging
     const interactiveSelectors = [
       'input',
-      'textarea', 
+      'textarea',
       'button',
       'select',
       'a',
@@ -71,7 +55,7 @@ export function useEnhancedWindowDrag() {
           return true;
         }
       }
-      
+
       // Special check for elements with specific data attributes or classes
       if (parent.hasAttribute('data-interactive') ||
           parent.classList.contains('no-drag') ||
@@ -86,105 +70,83 @@ export function useEnhancedWindowDrag() {
     return false;
   }, []);
 
-  const handleMouseDown = useCallback((e: MouseEvent) => {
-    // Only handle left mouse button
-    if (e.button !== 0) return;
-
-    const target = e.target as Element;
-    
-    // Don't start dragging if clicking on interactive elements
-    if (isInteractiveElement(target)) {
-      return;
-    }
-
-    // Don't start dragging if the target has explicit no-drag styling
-    const computedStyle = window.getComputedStyle(target);
-    if (computedStyle.getPropertyValue('-webkit-app-region') === 'no-drag') {
-      return;
-    }
-
-    // Start drag operation
-    e.preventDefault();
-    
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      window.electronAPI.startDrag().then((dragInfo: { offsetX: number; offsetY: number } | null) => {
-        if (dragInfo) {
-          dragStateRef.current = {
-            isDragging: true,
-            startX: e.clientX,
-            startY: e.clientY,
-            offsetX: dragInfo.offsetX,
-            offsetY: dragInfo.offsetY
-          };
-
-          // Add visual feedback
-          document.body.style.cursor = 'grabbing';
-          document.body.style.userSelect = 'none';
-        }
-      }).catch(console.error);
-    }
-  }, [isInteractiveElement]);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!dragStateRef.current.isDragging) return;
-
-    e.preventDefault();
-    
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      window.electronAPI.dragWindow(
-        e.screenX,
-        e.screenY,
-        dragStateRef.current.offsetX,
-        dragStateRef.current.offsetY
-      ).catch(console.error);
-    }
-  }, []);
-
-  const handleMouseUp = useCallback(() => {
-    if (!dragStateRef.current.isDragging) return;
-
-    dragStateRef.current.isDragging = false;
-
-    // Remove visual feedback
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
-  }, []);
-
-  // Handle mouse leave to stop dragging when cursor leaves window
-  const handleMouseLeave = useCallback(() => {
-    if (dragStateRef.current.isDragging) {
-      dragStateRef.current.isDragging = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    }
-  }, []);
-
   useEffect(() => {
     // Only enable in Electron environment
     if (typeof window === 'undefined' || !window.electronAPI) {
       return;
     }
 
-    // Add event listeners to document for global dragging
-    document.addEventListener('mousedown', handleMouseDown, { passive: false });
-    document.addEventListener('mousemove', handleMouseMove, { passive: false });
-    document.addEventListener('mouseup', handleMouseUp, { passive: false });
-    document.addEventListener('mouseleave', handleMouseLeave, { passive: false });
+    // Apply CSS-based dragging to non-interactive elements
+    const applyDragRegions = () => {
+      // Set the entire body as draggable by default
+      document.body.style.setProperty('-webkit-app-region', 'drag');
+
+      // Find all interactive elements and mark them as no-drag
+      const interactiveElements = document.querySelectorAll([
+        'input',
+        'textarea',
+        'button',
+        'select',
+        'a',
+        '[contenteditable]',
+        '[role="button"]',
+        '[role="textbox"]',
+        '[role="combobox"]',
+        '[role="listbox"]',
+        '[role="option"]',
+        '[role="menuitem"]',
+        '[role="tab"]',
+        '[role="slider"]',
+        '[role="spinbutton"]',
+        '.cursor-pointer',
+        '.cursor-text',
+        '[data-radix-select-trigger]',
+        '[data-radix-select-content]',
+        '[data-radix-select-item]',
+        '[data-radix-popover-trigger]',
+        '[data-radix-popover-content]',
+        '[data-radix-dialog-trigger]',
+        '[data-radix-dialog-content]',
+        '.scrollbar-thumb',
+        '.scrollbar-track',
+        '[data-interactive]'
+      ].join(', '));
+
+      interactiveElements.forEach(element => {
+        (element as HTMLElement).style.setProperty('-webkit-app-region', 'no-drag');
+      });
+
+      console.log('🎯 Applied CSS drag regions to', interactiveElements.length, 'interactive elements');
+    };
+
+    // Apply drag regions immediately
+    applyDragRegions();
+
+    // Reapply when DOM changes (for dynamically added elements)
+    const observer = new MutationObserver(() => {
+      applyDragRegions();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-interactive']
+    });
 
     // Cleanup function
     return () => {
-      document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('mouseleave', handleMouseLeave);
-      
-      // Reset any lingering styles
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      observer.disconnect();
+      // Reset drag regions
+      document.body.style.removeProperty('-webkit-app-region');
+      const allElements = document.querySelectorAll('[style*="-webkit-app-region"]');
+      allElements.forEach(element => {
+        (element as HTMLElement).style.removeProperty('-webkit-app-region');
+      });
     };
-  }, [handleMouseDown, handleMouseMove, handleMouseUp, handleMouseLeave]);
+  }, []);
 
   return {
-    isDragging: dragStateRef.current.isDragging
+    isDragging: false // CSS-based dragging doesn't need state tracking
   };
 }

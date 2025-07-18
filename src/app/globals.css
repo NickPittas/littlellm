@@ -84,30 +84,18 @@
     border-radius: 20px !important;
     -electron-corner-smoothing: 80% !important; /* More rounded squircle corners */
     overflow: hidden !important;
-    width: 100vw !important;
-    height: 100vh !important;
+    width: 100% !important;
+    height: 100% !important;
     position: relative !important;
   }
 
   body {
-    background: var(--background) !important;
+    background-color: var(--background) !important;
     color: var(--foreground) !important;
+    border-radius: 20px !important;
+    overflow: hidden !important;
     margin: 0 !important;
     padding: 0 !important;
-    border-radius: 20px !important;
-    -electron-corner-smoothing: 80% !important; /* More rounded squircle corners */
-    overflow: hidden !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    position: relative !important;
-
-    /* Prevent any scaling issues */
-    transform: none !important;
-    zoom: normal !important;
-    scale: 1 !important;
-    -webkit-transform: none !important;
-    -moz-transform: none !important;
-    -ms-transform: none !important;
   }
 
   #__next {
@@ -118,7 +106,7 @@
     width: 100% !important;
     height: 100% !important;
     position: relative !important;
-    min-height: 100vh !important;
+    min-height: 100% !important;
   }
 
   /* Force main app container background */
@@ -180,6 +168,21 @@
 
   /* Chat bubble colors use Tailwind classes - no overrides needed */
 
+  /* Message bubble specific styling - override card defaults */
+  .user-message,
+  .bg-primary {
+    background: rgba(86, 156, 214, 0.8) !important; /* More subtle blue */
+    color: var(--primary-foreground) !important;
+    border-radius: 16px !important; /* Match main app */
+  }
+
+  .assistant-message,
+  .bg-secondary {
+    background: rgba(32, 30, 49, 0.9) !important; /* Subtle dark purple, similar to muted but slightly different */
+    color: #d4d4d4 !important; /* Use foreground color for better readability */
+    border-radius: 16px !important; /* Match main app */
+  }
+
   /* Ensure card content inherits colors */
   .user-message .card-content,
   .user-message [data-radix-card-content],
@@ -191,8 +194,8 @@
 
   .assistant-message .card-content,
   .assistant-message [data-radix-card-content],
-  .bg-muted .card-content,
-  .bg-muted [data-radix-card-content] {
+  .bg-secondary .card-content,
+  .bg-secondary [data-radix-card-content] {
     background: transparent !important;
     color: white !important;
   }
@@ -287,5 +290,35 @@
     display: none !important;
     width: 0 !important;
     height: 0 !important;
+  }
+
+  /* Custom themed scrollbar for chat window */
+  .custom-scrollbar {
+    /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) var(--muted);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: var(--muted);
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+    border: 1px solid var(--muted);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:active {
+    background: var(--primary);
   }
 }

@@ -395,7 +395,7 @@ export function ChatInterface({
                 className={`max-w-[80%] shadow-lg ${
                   message.role === 'user'
                     ? 'bg-primary text-primary-foreground user-message'
-                    : 'bg-muted text-foreground assistant-message'
+                    : 'bg-secondary text-foreground assistant-message'
                 }`}
               >
                 <CardContent className="p-3">
