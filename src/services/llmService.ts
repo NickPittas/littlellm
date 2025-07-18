@@ -647,7 +647,7 @@ class LLMService {
     return !isUnsupported;
   }
 
-  private generateToolInstructions(tools: unknown[]): string {
+  private generateToolInstructions(tools: unknown[], provider?: string): string {
     if (tools.length === 0) return '';
 
     // Type guard for tool objects
@@ -655,6 +655,234 @@ class LLMService {
       return typeof t === 'object' && t !== null;
     };
 
+    // Use simplified instructions for local models (LM Studio, Ollama)
+    const isLocalModel = provider === 'lmstudio' || provider === 'ollama';
+
+    if (isLocalModel) {
+      return this.generateSimpleToolInstructions(tools, isToolObject);
+    }
+
+    // Keep the complex instructions for cloud models
+    return this.generateComplexToolInstructions(tools, isToolObject);
+  }
+
+
+
+  /**
+   * Parse JSON tool call blocks from model output
+   * Uses proper brace counting to handle nested JSON objects
+   */
+  private parseJSONToolCalls(content: string): Array<{ id?: string; name: string; arguments: Record<string, unknown> }> {
+    const toolCalls: Array<{ id?: string; name: string; arguments: Record<string, unknown> }> = [];
+    const parsedToolCalls = new Set<string>(); // Track duplicates
+
+    console.log(`🔍 Searching for tool calls in content:`, content.substring(0, 200) + '...');
+
+    // Find all potential JSON objects by looking for opening braces
+    let i = 0;
+    while (i < content.length) {
+      if (content[i] === '{') {
+        // Found opening brace, try to extract complete JSON object
+        const jsonResult = this.extractCompleteJSON(content, i);
+        if (jsonResult) {
+          const { jsonStr, endIndex } = jsonResult;
+
+          // Check if this JSON contains "tool_call"
+          if (jsonStr.includes('"tool_call"')) {
+            try {
+              console.log(`🔍 Found potential tool call JSON:`, jsonStr);
+              const parsed = JSON.parse(jsonStr);
+
+              if (parsed.tool_call && parsed.tool_call.name) {
+                const toolCallKey = `${parsed.tool_call.name}-${JSON.stringify(parsed.tool_call.arguments)}`;
+
+                if (!parsedToolCalls.has(toolCallKey)) {
+                  parsedToolCalls.add(toolCallKey);
+                  toolCalls.push({
+                    id: `extracted-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    name: parsed.tool_call.name,
+                    arguments: parsed.tool_call.arguments || {}
+                  });
+                  console.log(`✅ Successfully parsed tool call:`, parsed.tool_call.name);
+                }
+              }
+            } catch (error) {
+              console.warn('Failed to parse extracted JSON:', jsonStr, error);
+            }
+          }
+
+          i = endIndex + 1;
+        } else {
+          i++;
+        }
+      } else {
+        i++;
+      }
+    }
+
+    console.log(`🔍 Parsed ${toolCalls.length} JSON tool calls from content`);
+    return toolCalls;
+  }
+
+  /**
+   * Extract a complete JSON object starting from a given position
+   * Uses proper brace counting to handle nested objects
+   */
+  private extractCompleteJSON(content: string, startIndex: number): { jsonStr: string; endIndex: number } | null {
+    let braceCount = 0;
+    let inString = false;
+    let escaped = false;
+    let i = startIndex;
+
+    while (i < content.length) {
+      const char = content[i];
+
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\' && inString) {
+        escaped = true;
+      } else if (char === '"') {
+        inString = !inString;
+      } else if (!inString) {
+        if (char === '{') {
+          braceCount++;
+        } else if (char === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            // Found complete JSON object
+            const jsonStr = content.substring(startIndex, i + 1);
+            return { jsonStr, endIndex: i };
+          }
+        }
+      }
+
+      i++;
+    }
+
+    return null; // No complete JSON object found
+  }
+
+  /**
+   * Remove JSON tool call blocks from content
+   * Uses proper JSON extraction to remove complete objects
+   */
+  private removeJSONToolCalls(content: string): string {
+    console.log(`🔍 Removing tool calls from content:`, content.substring(0, 200) + '...');
+
+    let cleaned = content;
+    const jsonObjectsToRemove: Array<{ start: number; end: number }> = [];
+
+    // Find all JSON objects that contain "tool_call"
+    let i = 0;
+    while (i < cleaned.length) {
+      if (cleaned[i] === '{') {
+        const jsonResult = this.extractCompleteJSON(cleaned, i);
+        if (jsonResult) {
+          const { jsonStr, endIndex } = jsonResult;
+
+          // Check if this JSON contains "tool_call"
+          if (jsonStr.includes('"tool_call"')) {
+            jsonObjectsToRemove.push({ start: i, end: endIndex + 1 });
+            console.log(`🔍 Marking JSON for removal:`, jsonStr.substring(0, 100) + '...');
+          }
+
+          i = endIndex + 1;
+        } else {
+          i++;
+        }
+      } else {
+        i++;
+      }
+    }
+
+    // Remove JSON objects in reverse order to maintain indices
+    for (let j = jsonObjectsToRemove.length - 1; j >= 0; j--) {
+      const { start, end } = jsonObjectsToRemove[j];
+      cleaned = cleaned.substring(0, start) + cleaned.substring(end);
+    }
+
+    // Clean up any remaining artifacts
+    cleaned = cleaned.replace(/\n\s*\n\s*\n/g, '\n\n'); // Multiple empty lines to double
+    cleaned = cleaned.replace(/^\s+|\s+$/g, ''); // Trim start and end
+
+    console.log(`🔍 Content after tool call removal:`, cleaned.substring(0, 200) + '...');
+
+    return cleaned;
+  }
+
+  /**
+   * Controlled Planning + Explicit Function-Only Output for local models
+   * Forces linear reasoning and atomic tool calls with JSON-only output
+   */
+  private generateSimpleToolInstructions(tools: unknown[], isToolObject: (t: unknown) => t is { function?: { name?: string; description?: string; parameters?: Record<string, unknown> } }): string {
+    const availableToolNames = tools
+      .filter(isToolObject)
+      .map(tool => tool.function?.name)
+      .filter(Boolean);
+
+    const instructions = `
+[PLANNER MODE ACTIVE]
+
+You are a reasoning assistant that can use tools (functions) to complete complex tasks.
+
+You must always:
+- First think step-by-step.
+- Identify **each sub-task**.
+- For each sub-task, if a tool is needed, call the tool using strict structured output in JSON.
+- You may call **multiple tools in one response**, BUT each tool call must be a **separate JSON block**.
+
+Never answer the user directly until tool results are received.
+
+NEVER explain what you are doing before or after the tool call. Only respond with tool calls when needed.
+
+### Available Tools:
+${availableToolNames.length > 0 ? availableToolNames.join(', ') : 'No tools available'}
+
+### When given a prompt like:
+"Get the weather in Paris and today's news"
+
+You MUST:
+
+1. Think: "This requires two sub-tasks: (1) get weather, (2) get news"
+2. Output BOTH tool calls in structured JSON, like this:
+
+\`\`\`json
+{
+  "tool_call": {
+    "name": "web_search",
+    "arguments": {
+      "query": "weather Paris current"
+    }
+  }
+}
+
+{
+  "tool_call": {
+    "name": "web_search",
+    "arguments": {
+      "query": "today news headlines"
+    }
+  }
+}
+\`\`\`
+
+Only output tool call JSON blocks. DO NOT write normal text.
+
+Once tools return results, THEN you may summarize and respond in natural language.
+
+Be precise, ordered, and structured. Avoid combining tasks in one tool if they require separate calls.
+
+**CRITICAL**: Only use tools from the available list above: ${availableToolNames.join(', ')}
+
+`;
+
+    return instructions;
+  }
+
+  /**
+   * Complex tool instructions for cloud models (OpenAI, Anthropic, etc.)
+   */
+  private generateComplexToolInstructions(tools: unknown[], isToolObject: (t: unknown) => t is { function?: { name?: string; description?: string; parameters?: Record<string, unknown> } }): string {
     // Dynamic tool categorization based on actual tool names and descriptions
     const categorizeTools = (tools: unknown[]) => {
       const categories: Record<string, unknown[]> = {};
@@ -711,163 +939,57 @@ class LLMService {
     const toolCategories = categorizeTools(tools);
 
     let instructions = `
-# Universal Agentic AI Assistant System Prompt
+[PLANNER MODE ACTIVE]
 
-You are an advanced AI assistant with extensive capabilities across multiple domains including analysis, research, problem-solving, creative tasks, technical work, and general assistance. You have access to a comprehensive set of tools that enable you to accomplish complex, multi-step tasks effectively.
+You are a reasoning assistant that can use tools (functions) to complete complex tasks.
 
-## INTERACTION APPROACH
+You must always:
+- First think step-by-step.
+- Identify **each sub-task**.
+- For each sub-task, if a tool is needed, call the tool using strict structured output.
+- You may call **multiple tools in one response**, BUT each tool call must be **separate and atomic**.
 
-### Natural Conversation Priority
-Default to conversational responses for general questions, explanations, advice, and casual interaction. Tools should enhance the conversation when they add clear value, not replace natural dialogue.
+Never answer the user directly until tool results are received.
 
-### Tool Integration Patterns
-When tools are beneficial, integrate them seamlessly:
-- **Information Requests**: "Let me check the latest information for you..."
-- **Complex Tasks**: Break down into steps, using tools where they add value
-- **Verification**: Use tools to confirm or update information when accuracy is critical
-- **Real-time Data**: Always use tools for current information (news, weather, prices, etc.)
+NEVER explain what you are doing before or after the tool call. Only respond with tool calls when needed.
 
-### Response Flow Examples
+## Strategic Tool Usage
 
-**Casual Question**:
-- User: "How are you doing today?"
-- Response: Natural conversation without tools
+**Use tools for**:
+- Current information (weather, news, stock prices, etc.)
+- File operations or system commands
+- Complex calculations or data analysis
+- Information beyond your training cutoff
+- Real-time data that changes frequently
 
-**Knowledge Question**:
-- User: "How does photosynthesis work?"
-- Response: Explain conversationally using existing knowledge
-
-**Current Information**:
-- User: "What's the weather like today?"
-- Response: Use weather tool + conversational explanation
-
-**Complex Task**:
-- User: "Research and summarize the latest AI developments"
-- Response: Use multiple tools (search, fetch, analyze) + synthesize conversationally
-
-====
-
-## CORE PRINCIPLES
-
-**Natural Interaction**: Engage in normal conversation while intelligently recognizing when tools can enhance the response.
-
-**Tool Intelligence**: Use tools when they provide clear value - for real-time information, complex calculations, file operations, or tasks beyond your training knowledge. Avoid tools for general knowledge questions or casual conversation.
-
-**Balanced Approach**: Seamlessly blend conversational responses with tool-enhanced capabilities based on the user's actual needs.
-
-**User-Centric**: Prioritize the user's experience and intent, whether that's a quick chat or a complex multi-step task.
-
-====
-
-## TOOL USE FRAMEWORK
-
-### General Tool Use Guidelines
-
-1. **Assessment**: Evaluate whether tools are actually needed for the user's request
-2. **Conversation First**: For general questions, casual chat, or topics within your knowledge, respond naturally without tools
-3. **Tool Value Check**: Use tools when they provide clear benefits:
-   - Current/real-time information (news, weather, stock prices)
-   - File system operations
-   - Complex calculations or data processing
-   - Information beyond your training cutoff
-   - Tasks requiring external system interaction
-4. **Smart Execution**: When tools are needed, use them efficiently in logical sequence
-5. **Natural Flow**: Seamlessly transition between conversation and tool usage as appropriate
-
-### When to Use Tools vs. Conversation
-
-**Use Tools When**:
-- User asks for current/recent information ("today's news", "latest stock prices")
-- Request involves file operations or system commands
-- Complex calculations or data analysis required
-- Information verification from external sources needed
-- User explicitly requests tool usage
-
-**Use Conversation When**:
-- General knowledge questions you can answer confidently
-- Casual conversation or personal interaction
-- Explaining concepts, providing advice, or brainstorming
-- Questions about your capabilities or general topics
+**Use conversation for**:
+- General knowledge questions
+- Casual conversation
+- Explaining concepts or providing advice
 - Historical information or established facts
 
-### Tool Use Formatting
+## Multi-Tool Execution Rules
 
-Tool uses are formatted using XML-style tags where the tool name becomes the XML tag name:
+When given a complex request:
 
-\`\`\`xml
-<tool_name>
-<parameter1_name>value1</parameter1_name>
-<parameter2_name>value2</parameter2_name>
-</tool_name>
-\`\`\`
+1. **Think**: Break down into sub-tasks
+2. **Identify**: Which tools are needed for each sub-task
+3. **Execute**: Call each tool separately and atomically
+4. **Wait**: For all tool results before responding
+5. **Summarize**: Provide final natural language response
 
-### Multi-Tool Workflow Execution
+Be precise, ordered, and structured. Avoid combining tasks in one tool if they require separate calls.
 
-**Continue Automatically When**:
-- Tool execution is successful and more tools are clearly needed to complete the specific request
-- You have a clear plan requiring multiple sequential tool calls for a complex task
-- The user's request explicitly requires gathering information from multiple sources
+**CRITICAL**: Only use tools from the available list below. Do not invent tool names.
 
-**Respond Conversationally When**:
-- You can answer the question with your existing knowledge
-- The user is asking for explanations, advice, or general information
-- Tools would not meaningfully improve your response
-- The request is for casual conversation or simple clarification
+## Available Tools
 
-**Stop and Wait When**:
-- Tool execution fails or returns an error
-- You need user clarification or additional information
-- The complete task has been accomplished
-- You encounter ambiguous requirements that need resolution
+You have access to ${tools.length} specialized tools:
 
-**Example Decision Making**:
-- "What's the weather like?" → Use weather tool for current conditions
-- "How does weather work?" → Explain meteorology conversationally
-- "What's the latest news from Greece?" → Use search tools for current news
-- "Tell me about Greek culture" → Respond with cultural knowledge conversationally
-- "How are you doing?" → Engage in natural conversation
-
-### Available Tool Categories
-
-**Information Gathering**:
-- Web search and content retrieval
-- File system exploration and reading
-- Database queries and API calls
-- Document analysis and extraction
-
-**Content Creation & Modification**:
-- File creation and editing
-- Content generation and formatting
-- Data processing and transformation
-- Media creation and manipulation
-
-**Communication & Interaction**:
-- External system integration
-- Email and messaging
-- User interaction and clarification
-- Real-time collaboration tools
-
-**Analysis & Computation**:
-- Data analysis and visualization
-- Mathematical calculations
-- Pattern recognition and ML
-- Performance monitoring and testing
-
-**Automation & Execution**:
-- Command line operations
-- Process automation
-- Scheduled task management
-- Workflow orchestration
-
-====
-
-## AVAILABLE TOOLS
-
-You have access to the following ${tools.length} specialized tools organized by category:
 
 `;
 
-    // Dynamic tool categorization and display
+    // Add tool categories and descriptions
     const categoryIcons: Record<string, string> = {
       search: '🔍',
       memory: '🧠',
@@ -880,239 +1002,55 @@ You have access to the following ${tools.length} specialized tools organized by 
       general: '⚡'
     };
 
-    const categoryDescriptions: Record<string, string> = {
-      search: 'Information retrieval, web search, research',
-      memory: 'Context storage, information recall, conversation state',
-      files: 'File operations, document processing, content management',
-      data: 'Database operations, data analysis, structured queries',
-      api: 'External service integration, API calls, data synchronization',
-      development: 'Code operations, version control, programming tasks',
-      time: 'Date/time operations, scheduling, temporal queries',
-      media: 'Image processing, visual content, media operations',
-      general: 'Specialized operations and custom functionality'
-    };
-
     Object.entries(toolCategories).forEach(([category, categoryTools]) => {
       if (categoryTools.length === 0) return;
 
       const icon = categoryIcons[category] || '🔧';
-      const description = categoryDescriptions[category] || 'Specialized tools for specific tasks';
-
-      instructions += `### ${icon} **${category.toUpperCase()} TOOLS** (${categoryTools.length} available)\n`;
-      instructions += `*${description}*\n\n`;
+      instructions += `\n### ${icon} ${category.toUpperCase()} (${categoryTools.length} tools)\n`;
 
       categoryTools.forEach(tool => {
-        if (isToolObject(tool) && tool.function && tool.function.name) {
-          instructions += `**${tool.function.name}**\n`;
-          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
-          if (tool.function.parameters?.properties) {
-            const params = Object.keys(tool.function.parameters.properties);
-            if (params.length > 0) {
-              instructions += `  └ Parameters: ${params.slice(0, 3).join(', ')}${params.length > 3 ? '...' : ''}\n`;
-            }
-          }
-          instructions += `\n`;
+        if (isToolObject(tool) && tool.function?.name) {
+          instructions += `- **${tool.function.name}**: ${tool.function.description || 'No description'}\n`;
         }
       });
     });
 
-    // Add the rest of the Universal Agentic AI Assistant System Prompt
     instructions += `
 
-====
+## Tool Usage Format
 
-## OPERATIONAL MODES
-
-### Mode Framework
-Different modes optimize the assistant's behavior for specific types of tasks:
-
-**Research Mode** - Focused on information gathering, analysis, and synthesis
-- Prioritizes comprehensive source exploration
-- Emphasizes fact-checking and verification
-- Organizes findings systematically
-
-**Creative Mode** - Optimized for ideation, design, and content creation
-- Encourages innovative approaches
-- Balances creativity with practical constraints
-- Iterates on concepts and designs
-
-**Analytical Mode** - Specialized for data analysis and problem-solving
-- Emphasizes logical reasoning and evidence
-- Focuses on patterns, trends, and insights
-- Provides structured conclusions and recommendations
-
-**Productivity Mode** - Designed for task completion and automation
-- Prioritizes efficiency and effectiveness
-- Focuses on practical solutions and implementation
-- Optimizes workflows and processes
-
-**Collaborative Mode** - Tailored for multi-stakeholder projects
-- Emphasizes communication and coordination
-- Manages complex requirements and feedback
-- Facilitates consensus and decision-making
-
-### Mode Switching
-You can switch between modes when the task requirements change:
-
+Use XML-style tags for tool calls:
 \`\`\`xml
-<switch_mode>
-<mode_name>target_mode</mode_name>
-<reason>Explanation for mode change</reason>
-</switch_mode>
+<tool_name>
+<parameter>value</parameter>
+</tool_name>
 \`\`\`
 
-====
+## Multi-Tool Execution
 
-## TASK EXECUTION METHODOLOGY
+You can call multiple tools simultaneously or in sequence to complete complex requests:
 
-### 1. Initial Analysis
-- Understand the user's request and objectives
-- Identify the domain and complexity level
-- Determine required resources and constraints
-- Plan the optimal approach and tool sequence
+**Parallel Execution** (multiple tools at once):
+- When user asks for multiple independent pieces of information
+- Example: "Get weather and news" → call web_search twice with different queries
+- Example: "Search for X and remember Y" → call search tool and memory_store
 
-### 2. Information Gathering
-- Use appropriate tools to collect necessary information
-- Verify information quality and relevance
-- Identify gaps that need additional research
-- Organize findings for easy reference
+**Sequential Execution** (one after another):
+- When one tool's output is needed for the next tool
+- Example: Search for information, then store the results in memory
+- Example: Get current time, then search for time-sensitive information
 
-### 3. Action Planning
-- Break down the task into specific, actionable steps
-- Prioritize steps based on dependencies and importance
-- Identify potential risks and mitigation strategies
-- Prepare contingency plans for common issues
-
-### 4. Execution
-- Implement planned actions using appropriate tools in sequence
-- Continue using additional tools as needed without stopping for confirmation
-- Monitor progress and adjust approach as needed
-- Only pause for user input when encountering errors or ambiguities
-- Maintain quality standards throughout
-
-### 5. Verification & Completion
-- Verify that objectives have been met using all necessary tools
-- Test functionality and validate results where applicable
-- Prepare comprehensive summary of work completed
-- Deliver final results to the user with complete information
-
-====
-
-## QUALITY STANDARDS
-
-### Accuracy & Reliability
-- Verify information from multiple sources when possible
-- Acknowledge uncertainty and limitations clearly
-- Provide confidence levels for recommendations
-- Flag potential risks or considerations
-
-### Efficiency & Effectiveness
-- Choose the most direct path to objectives
-- Minimize unnecessary tool usage and redundancy
-- Optimize resource utilization
-- Focus on actionable outcomes
-
-### Communication & Clarity
-- Provide clear explanations of actions and reasoning
-- Use appropriate technical level for the audience
-- Structure information logically and accessibly
-- Offer relevant context and background
-
-### Adaptability & Learning
-- Adjust approach based on feedback and results
-- Learn from errors and incorporate improvements
-- Stay flexible when requirements change
-- Continuously optimize performance
-
-====
-
-## INTERACTION GUIDELINES
-
-### User Communication
-- Be direct and purposeful in responses
-- Avoid unnecessary pleasantries or filler content
-- Ask clarifying questions only when essential information is missing
-- Provide progress updates for long-running tasks
-
-### Error Handling
-- Acknowledge errors promptly and clearly
-- Explain the cause and impact of issues
-- Propose specific solutions or alternatives
-- Learn from failures to improve future performance
-
-### Feedback Integration
-- Welcome and incorporate user feedback actively
-- Adjust approach based on user preferences
-- Clarify expectations when requirements are ambiguous
-- Maintain focus on user objectives throughout
-
-### Task Completion
-- Confirm completion explicitly when objectives are met
-- Provide comprehensive summary of work performed
-- Offer relevant follow-up suggestions when appropriate
-- Document any outstanding items or recommendations
-
-====
-
-## DOMAIN-SPECIFIC ADAPTATIONS
-
-### Technical Tasks
-- Prioritize best practices and industry standards
-- Consider security, performance, and maintainability
-- Provide detailed technical documentation
-- Test thoroughly before completion
-
-### Creative Projects
-- Explore multiple concepts and approaches
-- Balance innovation with practical constraints
-- Iterate based on feedback and testing
-- Consider audience and context carefully
-
-### Research & Analysis
-- Use diverse, credible sources
-- Apply appropriate analytical methods
-- Present findings objectively and clearly
-- Acknowledge limitations and uncertainties
-
-### Business & Strategy
-- Consider stakeholder perspectives and constraints
-- Focus on measurable outcomes and ROI
-- Provide actionable recommendations
-- Account for implementation challenges
-
-### Personal Assistance
-- Respect privacy and confidentiality
-- Customize approach to individual preferences
-- Provide practical, actionable guidance
-- Maintain appropriate professional boundaries
-
-====
-
-## SUCCESS METRICS
-
-- **Objective Achievement**: Tasks completed successfully and efficiently
-- **Quality Standards**: High-quality outputs that meet or exceed expectations
-- **User Satisfaction**: Positive feedback and continued engagement
-- **Continuous Improvement**: Learning and optimization over time
-- **Adaptability**: Successful handling of diverse and changing requirements
-
-====
-
-## FINAL NOTES
-
-This assistant is designed to be:
-- **Conversational**: Engaging naturally while intelligently leveraging tools when beneficial
-- **Context-Aware**: Understanding when tools add value vs. when conversation suffices
-- **Versatile**: Capable across multiple domains with appropriate response styles
-- **User-Focused**: Prioritizing natural user experience over tool usage
-- **Intelligently Enhanced**: Using tools to provide better answers when they genuinely help
-
-**Key Philosophy**: Be a natural conversational partner first, with powerful tool capabilities that enhance the interaction when they provide clear value. Don't force tool usage when conversation alone serves the user better.
+**Multi-Tool Patterns**:
+- Information gathering: Use multiple search tools for comprehensive results
+- Research + Storage: Search for information, then save key findings to memory
+- Context + Action: Get current context (time, location) then perform relevant searches
 
 `;
 
     return instructions;
   }
+
+
 
   /**
    * Get tools directly from enabled servers - force connect all enabled servers first
@@ -4391,9 +4329,19 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
     // Build system prompt with tool instructions if tools are available
     let systemPrompt = settings.systemPrompt || '';
     if (mcpTools.length > 0) {
-      const toolInstructions = this.generateToolInstructions(mcpTools);
+      console.log(`🔍 [LM STUDIO DEBUG] Available tools being passed to model:`, mcpTools.map(t => {
+        const tool = t as { name?: string; function?: { name?: string } };
+        return tool.name || tool.function?.name || 'unknown';
+      }));
+
+      const toolInstructions = this.generateToolInstructions(mcpTools, 'lmstudio');
       systemPrompt += toolInstructions;
-      systemPrompt += `\n\nIMPORTANT: Only use the tools listed above. These are the only tools available to you.`;
+      systemPrompt += `\n\nCRITICAL: Only use the tools listed above. DO NOT invent tool names like "get_weather" or "get_news" - they don't exist. If you need weather/news/current info, use web_search with appropriate queries.`;
+
+      console.log(`🔍 [LM STUDIO DEBUG] System prompt length: ${systemPrompt.length} characters`);
+      console.log(`🔍 [LM STUDIO DEBUG] Tool instructions preview:`, toolInstructions.substring(0, 500) + '...');
+    } else {
+      console.warn(`⚠️ [LM STUDIO DEBUG] No tools available for LM Studio!`);
     }
 
     if (systemPrompt) {
@@ -4409,17 +4357,34 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
     } else if (Array.isArray(message)) {
       messages.push({ role: 'user', content: message });
     } else {
-      // Handle vision format (convert to OpenAI format)
+      // Handle vision format (convert to OpenAI format for LM Studio)
       const messageWithImages = message as { text: string; images: string[] };
       const content: ContentItem[] = [{ type: 'text', text: messageWithImages.text }];
 
+      console.log(`🖼️ LM Studio: Processing ${messageWithImages.images.length} images`);
+
       for (const imageUrl of messageWithImages.images) {
-        content.push({
-          type: 'image_url',
-          image_url: { url: imageUrl }
-        });
+        console.log(`🖼️ LM Studio: Processing image URL:`, imageUrl.substring(0, 50) + '...');
+
+        // LM Studio supports base64 images in OpenAI format
+        // Images should be in format: data:image/jpeg;base64,<base64_data>
+        if (imageUrl.startsWith('data:image/')) {
+          content.push({
+            type: 'image_url',
+            image_url: { url: imageUrl }
+          });
+          console.log(`✅ LM Studio: Added base64 image to content`);
+        } else {
+          // Handle regular URLs (though less common for local files)
+          content.push({
+            type: 'image_url',
+            image_url: { url: imageUrl }
+          });
+          console.log(`✅ LM Studio: Added URL image to content`);
+        }
       }
       messages.push({ role: 'user', content });
+      console.log(`🖼️ LM Studio: Final message content has ${content.length} items (text + images)`);
     }
 
     // MCP tools already retrieved above for system prompt
@@ -4431,6 +4396,16 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
       max_tokens: settings.maxTokens,
       stream: !!onStream
     };
+
+    // Debug: Log the complete request being sent to LM Studio
+    console.log(`🔍 LM Studio request body:`, {
+      model: requestBody.model,
+      messageCount: (requestBody.messages as any[]).length,
+      hasImages: (requestBody.messages as any[]).some(msg =>
+        Array.isArray(msg.content) && msg.content.some((item: any) => item.type === 'image_url')
+      ),
+      stream: requestBody.stream
+    });
 
     // Add tools if available
     if (mcpTools.length > 0) {
@@ -4500,30 +4475,83 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
       const message = data.choices[0].message;
       console.log(`🔍 LMStudio message:`, message);
 
-      // Handle tool calls using two-call pattern (like Anthropic/Gemini)
+      // Parse JSON tool calls from content (new structured format)
+      let parsedToolCalls: Array<{ id?: string; name: string; arguments: Record<string, unknown> }> = [];
+      if (message?.content) {
+        parsedToolCalls = this.parseJSONToolCalls(message.content);
+        if (parsedToolCalls.length > 0) {
+          console.log(`🔍 Parsed ${parsedToolCalls.length} JSON tool calls:`, parsedToolCalls);
+
+          // Remove tool call JSON from content
+          message.content = this.removeJSONToolCalls(message.content);
+          console.log(`🔍 Cleaned content:`, message.content);
+
+          // Convert parsed tool calls to native format
+          message.tool_calls = parsedToolCalls.map(tc => ({
+            id: tc.id || `json-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            type: 'function',
+            function: {
+              name: tc.name,
+              arguments: JSON.stringify(tc.arguments)
+            }
+          }));
+          console.log(`🔍 Converted to native tool calls:`, message.tool_calls);
+        }
+      }
+
+      // Handle tool calls (both native and converted from JSON)
       if (message.tool_calls && message.tool_calls.length > 0) {
         console.log(`🔧 LMStudio response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
+
+        // Log tool names for multi-tool debugging
+        const toolNames = message.tool_calls.map((tc: any) => tc.function?.name || 'unknown').join(', ');
+        console.log(`🔧 LMStudio executing tools: ${toolNames}`);
 
         // Execute each tool call and collect results
         const toolResults = [];
         for (const toolCall of message.tool_calls) {
           try {
+            // Validate tool call structure
+            if (!toolCall.id) {
+              throw new Error('Tool call missing required id field');
+            }
+            if (!toolCall.function?.name) {
+              throw new Error('Tool call missing required function name');
+            }
+            if (!toolCall.function.arguments) {
+              console.warn(`⚠️ Tool call ${toolCall.function.name} has no arguments, using empty object`);
+              toolCall.function.arguments = '{}';
+            }
+
             console.log(`🔧 Executing LMStudio tool call:`, toolCall);
             const toolResult = await this.executeMCPTool(
               toolCall.function.name,
               JSON.parse(toolCall.function.arguments)
             );
-            toolResults.push({
+            console.log(`✅ LMStudio tool result for ${toolCall.function.name}:`, toolResult);
+            const toolResultMessage = {
               tool_call_id: toolCall.id,
               role: 'tool',
               content: JSON.stringify(toolResult)
-            } as { tool_call_id: string; role: string; content: string });
+            } as { tool_call_id: string; role: string; content: string };
+            toolResults.push(toolResultMessage);
+            console.log(`📝 Added tool result to conversation history:`, { tool_call_id: toolCall.id, contentLength: toolResultMessage.content.length });
           } catch (error) {
-            console.error(`❌ LMStudio tool call failed:`, error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(`❌ LMStudio tool call failed for ${toolCall.function.name}:`, errorMessage);
+
+            // Provide structured error response for the LLM
+            const errorResponse = {
+              error: true,
+              tool_name: toolCall.function.name,
+              error_message: errorMessage,
+              error_type: error instanceof Error ? error.constructor.name : 'UnknownError'
+            };
+
             toolResults.push({
               tool_call_id: toolCall.id,
               role: 'tool',
-              content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
+              content: JSON.stringify(errorResponse)
             } as { tool_call_id: string; role: string; content: string });
           }
         }
@@ -4536,7 +4564,17 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
         const toolConversationHistory = [
           ...conversationHistory,
           { role: 'user', content: userMessage },
-          { role: 'assistant', tool_calls: data.choices[0].message.tool_calls }, // Use tool_calls from LLM response
+          {
+            role: 'assistant',
+            tool_calls: data.choices[0].message.tool_calls.map((tc: any) => ({
+              id: tc.id,
+              type: tc.type || 'function',
+              function: {
+                name: tc.function.name,
+                arguments: tc.function.arguments
+              }
+            }))
+          },
           ...toolResults
         ];
 
@@ -4550,6 +4588,7 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
           temperature: settings.temperature,
           max_tokens: settings.maxTokens,
           stream: false
+          // Explicitly exclude tools from second call - LLM should provide final response
         };
 
         const secondResponse = await fetch(apiUrl, {
@@ -4564,7 +4603,17 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
 
         if (!secondResponse.ok) {
           const error = await secondResponse.text();
-          throw new Error(`LMStudio second API call error: ${error}`);
+          console.error(`❌ LMStudio second API call failed (${secondResponse.status}):`, error);
+
+          // Provide more specific error messages for common issues
+          if (secondResponse.status === 400 && error.includes('tool')) {
+            throw new Error(`LM Studio tool processing error: The model may not support the tool call format. Try a different model or check tool definitions. Error: ${error}`);
+          }
+          if (secondResponse.status === 400 && error.includes('context')) {
+            throw new Error(`LM Studio context error: Tool results may be too large for the model's context window. Try reducing tool output size. Error: ${error}`);
+          }
+
+          throw new Error(`LM Studio second API call error (${secondResponse.status}): ${error}`);
         }
 
         const secondData = await secondResponse.json();
@@ -4572,8 +4621,20 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
         const secondMessage = secondData.choices[0]?.message;
         console.log(`🔍 LMStudio final message:`, secondMessage);
 
+        // Format tool execution results for UI display (like Anthropic)
+        const toolExecutionResults = data.choices[0].message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
+          id: tc.id,
+          name: tc.function.name,
+          result: JSON.stringify(toolResults.find(tr => tr.tool_call_id === tc.id)?.content || 'No result'),
+          success: true,
+          executionTime: 100 // Estimated
+        }));
+
+        const toolExecutionSummary = this.summarizeToolResultsForModel(toolExecutionResults);
+        const finalContent = toolExecutionSummary + (secondMessage?.content || 'Tool execution completed.');
+
         return {
-          content: secondMessage?.content || 'Tool execution completed.',
+          content: finalContent,
           usage: {
             promptTokens: (data.usage?.prompt_tokens || 0) + (secondData.usage?.prompt_tokens || 0),
             completionTokens: (data.usage?.completion_tokens || 0) + (secondData.usage?.completion_tokens || 0),
@@ -4586,6 +4647,8 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
           }))
         };
       }
+
+
 
       // Check if the model is thinking about tools but not using them
       const content = message.content || '';
@@ -4659,10 +4722,19 @@ You have access to ${mcpTools.length} specialized tools. Use them as needed to a
 
     // Add tool instructions if tools are available
     if (mcpTools.length > 0) {
-      const toolInstructions = this.generateToolInstructions(mcpTools);
+      console.log(`🔍 [OLLAMA DEBUG] Available tools being passed to model:`, mcpTools.map(t => {
+        const tool = t as { name?: string; function?: { name?: string } };
+        return tool.name || tool.function?.name || 'unknown';
+      }));
+
+      const toolInstructions = this.generateToolInstructions(mcpTools, 'ollama');
       systemPrompt += toolInstructions;
-      systemPrompt += `\n\nIMPORTANT: Only use the tools listed above. These are the only tools available to you.`;
+      systemPrompt += `\n\nCRITICAL: Only use the tools listed above. DO NOT invent or hallucinate tool names. If you need current information and no specific tool exists, use web_search with appropriate queries.`;
       console.log('🧠 Ollama system prompt after adding tools:', systemPrompt.length);
+
+      console.log(`🔍 [OLLAMA DEBUG] Tool instructions preview:`, toolInstructions.substring(0, 500) + '...');
+    } else {
+      console.warn(`⚠️ [OLLAMA DEBUG] No tools available for Ollama!`);
     }
 
     if (systemPrompt) {
@@ -7519,7 +7591,13 @@ Use tools strategically to provide comprehensive and helpful responses.`;
               // Handle regular text content
               if (delta?.content) {
                 fullContent += delta.content;
-                onStream(delta.content);
+
+                // Don't stream JSON tool call blocks to avoid showing them to user
+                if (!delta.content.includes('"tool_call"') &&
+                    !delta.content.includes('```') &&
+                    !delta.content.trim().startsWith('json')) {
+                  onStream(delta.content);
+                }
               }
 
               // Handle tool calls (LM Studio streaming format)
@@ -7563,6 +7641,30 @@ Use tools strategically to provide comprehensive and helpful responses.`;
       toolCallsCount: toolCalls.length
     });
 
+    // Parse JSON tool calls from the full content if no native tool calls
+    let parsedToolCalls: Array<{ id?: string; name: string; arguments: Record<string, unknown> }> = [];
+    if (fullContent && toolCalls.length === 0) {
+      parsedToolCalls = this.parseJSONToolCalls(fullContent);
+      if (parsedToolCalls.length > 0) {
+        console.log(`🔍 Parsed ${parsedToolCalls.length} JSON tool calls from streaming:`, parsedToolCalls);
+
+        // Remove tool call JSON from content
+        fullContent = this.removeJSONToolCalls(fullContent);
+        console.log(`🔍 Cleaned streaming content:`, fullContent);
+
+        // Convert parsed tool calls to native format
+        toolCalls.push(...parsedToolCalls.map(tc => ({
+          id: tc.id || `json-stream-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          type: 'function' as const,
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.arguments)
+          }
+        })));
+        console.log(`🔍 Converted streaming tool calls:`, toolCalls);
+      }
+    }
+
     if (usage) {
       console.log('📊 LM Studio raw usage data:', usage);
     } else {
@@ -7573,6 +7675,10 @@ Use tools strategically to provide comprehensive and helpful responses.`;
     if (toolCalls.length > 0) {
       console.log(`🔧 LMStudio streaming found ${toolCalls.length} tool calls:`, toolCalls);
 
+      // Log tool names for multi-tool debugging
+      const toolNamesForLogging = toolCalls.map(tc => tc.function?.name || 'unknown').join(', ');
+      console.log(`🔧 LMStudio streaming executing tools: ${toolNamesForLogging}`);
+
       // Show tool usage in the stream (without markdown formatting)
       const toolNames = toolCalls.map(tc => tc.function?.name || 'unknown').join(', ');
       const toolMessage = `\n\n🔧 Executing tools: ${toolNames}\n`;
@@ -7580,26 +7686,50 @@ Use tools strategically to provide comprehensive and helpful responses.`;
       onStream(toolMessage);
 
       // Execute each tool call and collect results
-      const toolResults = [];
+      const toolResults: Array<{ tool_call_id: string; role: string; content: string }> = [];
       for (const toolCall of toolCalls) {
         try {
+          // Validate tool call structure
+          if (!toolCall.id) {
+            throw new Error('Tool call missing required id field');
+          }
+          if (!toolCall.function?.name) {
+            throw new Error('Tool call missing required function name');
+          }
+          if (!toolCall.function.arguments) {
+            console.warn(`⚠️ Streaming tool call ${toolCall.function.name} has no arguments, using empty object`);
+            toolCall.function.arguments = '{}';
+          }
+
           console.log(`🔧 Executing LMStudio streaming tool call:`, toolCall);
           const toolResult = await this.executeMCPTool(
-            toolCall.function?.name || 'unknown',
-            JSON.parse(toolCall.function?.arguments || '{}')
+            toolCall.function.name,
+            JSON.parse(toolCall.function.arguments)
           );
-          console.log(`✅ LMStudio tool result for ${toolCall.function?.name || 'unknown'}:`, toolResult);
-          toolResults.push({
+          console.log(`✅ LMStudio streaming tool result for ${toolCall.function?.name || 'unknown'}:`, toolResult);
+          const toolResultMessage = {
             tool_call_id: toolCall.id,
             role: 'tool',
             content: JSON.stringify(toolResult)
-          } as { tool_call_id: string; role: string; content: string });
+          } as { tool_call_id: string; role: string; content: string };
+          toolResults.push(toolResultMessage);
+          console.log(`📝 Added tool result to conversation history:`, { tool_call_id: toolCall.id, contentLength: toolResultMessage.content.length });
         } catch (error) {
-          console.error(`❌ LMStudio streaming tool call failed:`, error);
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          console.error(`❌ LMStudio streaming tool call failed for ${toolCall.function?.name || 'unknown'}:`, errorMessage);
+
+          // Provide structured error response for the LLM
+          const errorResponse = {
+            error: true,
+            tool_name: toolCall.function?.name || 'unknown',
+            error_message: errorMessage,
+            error_type: error instanceof Error ? error.constructor.name : 'UnknownError'
+          };
+
           toolResults.push({
             tool_call_id: toolCall.id,
             role: 'tool',
-            content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
+            content: JSON.stringify(errorResponse)
           } as { tool_call_id: string; role: string; content: string });
         }
       }
@@ -7611,7 +7741,19 @@ Use tools strategically to provide comprehensive and helpful responses.`;
       const toolConversationHistory = [
         ...conversationHistory,
         { role: 'user', content: userMessage },
-        { role: 'assistant', tool_calls: toolCalls },
+        {
+          role: 'assistant',
+          tool_calls: toolCalls
+            .filter(tc => tc.id && tc.function?.name)
+            .map((tc: any) => ({
+              id: tc.id,
+              type: tc.type || 'function',
+              function: {
+                name: tc.function.name,
+                arguments: tc.function.arguments
+              }
+            }))
+        },
         ...toolResults
       ];
 
@@ -7626,6 +7768,7 @@ Use tools strategically to provide comprehensive and helpful responses.`;
         temperature: settings.temperature,
         max_tokens: settings.maxTokens,
         stream: true // Keep streaming for final response
+        // Explicitly exclude tools from second call - LLM should provide final response
       };
 
       const secondResponse = await fetch(apiUrl, {
@@ -7640,14 +7783,40 @@ Use tools strategically to provide comprehensive and helpful responses.`;
 
       if (!secondResponse.ok) {
         const error = await secondResponse.text();
-        throw new Error(`LMStudio second streaming call error: ${error}`);
+        console.error(`❌ LMStudio second streaming call failed (${secondResponse.status}):`, error);
+
+        // Provide more specific error messages for common issues
+        if (secondResponse.status === 400 && error.includes('tool')) {
+          throw new Error(`LM Studio streaming tool processing error: The model may not support the tool call format. Try a different model or check tool definitions. Error: ${error}`);
+        }
+        if (secondResponse.status === 400 && error.includes('context')) {
+          throw new Error(`LM Studio streaming context error: Tool results may be too large for the model's context window. Try reducing tool output size. Error: ${error}`);
+        }
+
+        throw new Error(`LM Studio second streaming call error (${secondResponse.status}): ${error}`);
       }
+
+      // Format tool execution results for UI display (like Anthropic)
+      const toolExecutionResults = toolCalls
+        .filter(tc => tc.id && tc.function?.name)
+        .map(tc => ({
+          id: tc.id!,
+          name: tc.function!.name!,
+          result: JSON.stringify(toolResults.find(tr => tr.tool_call_id === tc.id)?.content || 'No result'),
+          success: true,
+          executionTime: 100 // Estimated
+        }));
+
+      const toolExecutionSummary = this.summarizeToolResultsForModel(toolExecutionResults);
+
+      // Stream the tool execution summary first
+      onStream(toolExecutionSummary);
 
       // Stream the final response
       const finalResult = await this.handleStreamResponse(secondResponse, onStream);
 
       const finalResponse = {
-        content: fullContent + finalResult.content,
+        content: fullContent + toolExecutionSummary + finalResult.content,
         usage: (() => {
           // If we have usage data from both calls, combine them
           if (usage && finalResult.usage) {
