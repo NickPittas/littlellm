@@ -655,70 +655,107 @@ class LLMService {
       return typeof t === 'object' && t !== null;
     };
 
-    // Enhanced tool categorization
-    const searchTools = tools.filter(t => {
-      if (!isToolObject(t)) return false;
-      const name = t.function?.name?.toLowerCase() || '';
-      const desc = t.function?.description?.toLowerCase() || '';
-      return name.includes('search') || desc.includes('search') ||
-             name.includes('brave') || name.includes('tavily') || name.includes('searx') ||
-             name.includes('web') || name.includes('internet');
-    });
+    // Dynamic tool categorization based on actual tool names and descriptions
+    const categorizeTools = (tools: unknown[]) => {
+      const categories: Record<string, unknown[]> = {};
 
-    const memoryTools = tools.filter(t => {
-      if (!isToolObject(t)) return false;
-      const name = t.function?.name?.toLowerCase() || '';
-      return name.includes('memory');
-    });
+      tools.forEach(tool => {
+        if (!isToolObject(tool) || !tool.function?.name) return;
 
-    const fileTools = tools.filter(t => {
-      if (!isToolObject(t)) return false;
-      const name = t.function?.name?.toLowerCase() || '';
-      const desc = t.function?.description?.toLowerCase() || '';
-      return name.includes('file') || name.includes('read') || name.includes('write') ||
-             desc.includes('file') || desc.includes('document');
-    });
+        const name = tool.function.name.toLowerCase();
+        const desc = (tool.function.description || '').toLowerCase();
 
-    const dataTools = tools.filter(t => {
-      if (!isToolObject(t)) return false;
-      const name = t.function?.name?.toLowerCase() || '';
-      const desc = t.function?.description?.toLowerCase() || '';
-      return name.includes('data') || name.includes('database') || name.includes('sql') ||
-             desc.includes('data') || desc.includes('database');
-    });
+        // Dynamic categorization based on keywords in names and descriptions
+        let category = 'general';
 
-    const apiTools = tools.filter(t => {
-      if (!isToolObject(t)) return false;
-      const name = t.function?.name?.toLowerCase() || '';
-      const desc = t.function?.description?.toLowerCase() || '';
-      return name.includes('api') || name.includes('http') || name.includes('request') ||
-             desc.includes('api') || desc.includes('endpoint') ||
-             name.includes('fetch') || name.includes('get') || desc.includes('fetch') || desc.includes('retrieve');
-    });
+        if (name.includes('search') || desc.includes('search') ||
+            name.includes('web') || desc.includes('web') ||
+            name.includes('internet') || desc.includes('internet')) {
+          category = 'search';
+        } else if (name.includes('memory') || desc.includes('memory') ||
+                   name.includes('remember') || desc.includes('remember')) {
+          category = 'memory';
+        } else if (name.includes('file') || desc.includes('file') ||
+                   name.includes('document') || desc.includes('document') ||
+                   name.includes('read') || name.includes('write')) {
+          category = 'files';
+        } else if (name.includes('data') || desc.includes('data') ||
+                   name.includes('database') || desc.includes('database') ||
+                   name.includes('sql') || desc.includes('query')) {
+          category = 'data';
+        } else if (name.includes('api') || desc.includes('api') ||
+                   name.includes('http') || desc.includes('http') ||
+                   name.includes('request') || desc.includes('request')) {
+          category = 'api';
+        } else if (name.includes('code') || desc.includes('code') ||
+                   name.includes('git') || desc.includes('git') ||
+                   name.includes('repo') || desc.includes('repository')) {
+          category = 'development';
+        } else if (name.includes('time') || desc.includes('time') ||
+                   name.includes('date') || desc.includes('date') ||
+                   name.includes('calendar') || desc.includes('calendar')) {
+          category = 'time';
+        } else if (name.includes('image') || desc.includes('image') ||
+                   name.includes('photo') || desc.includes('photo') ||
+                   name.includes('visual') || desc.includes('visual')) {
+          category = 'media';
+        }
 
-    const otherTools = tools.filter(t => {
-      if (!isToolObject(t)) return false;
-      return !searchTools.includes(t) && !memoryTools.includes(t) &&
-             !fileTools.includes(t) && !dataTools.includes(t) && !apiTools.includes(t);
-    });
+        if (!categories[category]) categories[category] = [];
+        categories[category].push(tool);
+      });
+
+      return categories;
+    };
+
+    const toolCategories = categorizeTools(tools);
 
     let instructions = `
-
 # Universal Agentic AI Assistant System Prompt
 
-You are an advanced AI assistant with extensive capabilities across multiple domains including analysis, research, problem-solving, creative tasks, technical work, and general assistance. You have access to a comprehensive set of ${tools.length} tools that enable you to accomplish complex, multi-step tasks effectively.
+You are an advanced AI assistant with extensive capabilities across multiple domains including analysis, research, problem-solving, creative tasks, technical work, and general assistance. You have access to a comprehensive set of tools that enable you to accomplish complex, multi-step tasks effectively.
+
+## INTERACTION APPROACH
+
+### Natural Conversation Priority
+Default to conversational responses for general questions, explanations, advice, and casual interaction. Tools should enhance the conversation when they add clear value, not replace natural dialogue.
+
+### Tool Integration Patterns
+When tools are beneficial, integrate them seamlessly:
+- **Information Requests**: "Let me check the latest information for you..."
+- **Complex Tasks**: Break down into steps, using tools where they add value
+- **Verification**: Use tools to confirm or update information when accuracy is critical
+- **Real-time Data**: Always use tools for current information (news, weather, prices, etc.)
+
+### Response Flow Examples
+
+**Casual Question**:
+- User: "How are you doing today?"
+- Response: Natural conversation without tools
+
+**Knowledge Question**:
+- User: "How does photosynthesis work?"
+- Response: Explain conversationally using existing knowledge
+
+**Current Information**:
+- User: "What's the weather like today?"
+- Response: Use weather tool + conversational explanation
+
+**Complex Task**:
+- User: "Research and summarize the latest AI developments"
+- Response: Use multiple tools (search, fetch, analyze) + synthesize conversationally
 
 ====
 
 ## CORE PRINCIPLES
 
-**Systematic Approach**: Break down complex tasks into clear, manageable steps and work through them methodically using available tools.
+**Natural Interaction**: Engage in normal conversation while intelligently recognizing when tools can enhance the response.
 
-**Tool-First Methodology**: Leverage your available tools strategically to gather information, perform actions, and accomplish objectives rather than relying solely on pre-trained knowledge.
+**Tool Intelligence**: Use tools when they provide clear value - for real-time information, complex calculations, file operations, or tasks beyond your training knowledge. Avoid tools for general knowledge questions or casual conversation.
 
-**Iterative Problem Solving**: Work step-by-step, using multiple tools when needed to gather comprehensive information.
+**Balanced Approach**: Seamlessly blend conversational responses with tool-enhanced capabilities based on the user's actual needs.
 
-**Adaptive Intelligence**: Adjust your approach based on the specific domain, context, and requirements of each task.
+**User-Centric**: Prioritize the user's experience and intent, whether that's a quick chat or a complex multi-step task.
 
 ====
 
@@ -726,188 +763,424 @@ You are an advanced AI assistant with extensive capabilities across multiple dom
 
 ### General Tool Use Guidelines
 
-1. **Assessment**: Analyze what information you have and what you need to proceed
-2. **Tool Selection**: Choose the most appropriate tools based on task requirements
-3. **Multi-Tool Execution**: Use multiple tools when needed to gather comprehensive information
-4. **Result Integration**: Incorporate tool results into your decision-making and responses
-5. **Complete Responses**: Provide comprehensive answers that address all aspects of user requests
+1. **Assessment**: Evaluate whether tools are actually needed for the user's request
+2. **Conversation First**: For general questions, casual chat, or topics within your knowledge, respond naturally without tools
+3. **Tool Value Check**: Use tools when they provide clear benefits:
+   - Current/real-time information (news, weather, stock prices)
+   - File system operations
+   - Complex calculations or data processing
+   - Information beyond your training cutoff
+   - Tasks requiring external system interaction
+4. **Smart Execution**: When tools are needed, use them efficiently in logical sequence
+5. **Natural Flow**: Seamlessly transition between conversation and tool usage as appropriate
 
-### Available Tool Categories\n\n`;
+### When to Use Tools vs. Conversation
 
-    // Add categorized tools with enhanced descriptions
-    if (searchTools.length > 0) {
-      instructions += `### 🔍 **SEARCH & WEB TOOLS** (${searchTools.length} available)\n`;
-      instructions += `*Use for: Real-time information, current events, research, fact-checking*\n\n`;
-      searchTools.forEach(tool => {
+**Use Tools When**:
+- User asks for current/recent information ("today's news", "latest stock prices")
+- Request involves file operations or system commands
+- Complex calculations or data analysis required
+- Information verification from external sources needed
+- User explicitly requests tool usage
+
+**Use Conversation When**:
+- General knowledge questions you can answer confidently
+- Casual conversation or personal interaction
+- Explaining concepts, providing advice, or brainstorming
+- Questions about your capabilities or general topics
+- Historical information or established facts
+
+### Tool Use Formatting
+
+Tool uses are formatted using XML-style tags where the tool name becomes the XML tag name:
+
+\`\`\`xml
+<tool_name>
+<parameter1_name>value1</parameter1_name>
+<parameter2_name>value2</parameter2_name>
+</tool_name>
+\`\`\`
+
+### Multi-Tool Workflow Execution
+
+**Continue Automatically When**:
+- Tool execution is successful and more tools are clearly needed to complete the specific request
+- You have a clear plan requiring multiple sequential tool calls for a complex task
+- The user's request explicitly requires gathering information from multiple sources
+
+**Respond Conversationally When**:
+- You can answer the question with your existing knowledge
+- The user is asking for explanations, advice, or general information
+- Tools would not meaningfully improve your response
+- The request is for casual conversation or simple clarification
+
+**Stop and Wait When**:
+- Tool execution fails or returns an error
+- You need user clarification or additional information
+- The complete task has been accomplished
+- You encounter ambiguous requirements that need resolution
+
+**Example Decision Making**:
+- "What's the weather like?" → Use weather tool for current conditions
+- "How does weather work?" → Explain meteorology conversationally
+- "What's the latest news from Greece?" → Use search tools for current news
+- "Tell me about Greek culture" → Respond with cultural knowledge conversationally
+- "How are you doing?" → Engage in natural conversation
+
+### Available Tool Categories
+
+**Information Gathering**:
+- Web search and content retrieval
+- File system exploration and reading
+- Database queries and API calls
+- Document analysis and extraction
+
+**Content Creation & Modification**:
+- File creation and editing
+- Content generation and formatting
+- Data processing and transformation
+- Media creation and manipulation
+
+**Communication & Interaction**:
+- External system integration
+- Email and messaging
+- User interaction and clarification
+- Real-time collaboration tools
+
+**Analysis & Computation**:
+- Data analysis and visualization
+- Mathematical calculations
+- Pattern recognition and ML
+- Performance monitoring and testing
+
+**Automation & Execution**:
+- Command line operations
+- Process automation
+- Scheduled task management
+- Workflow orchestration
+
+====
+
+## AVAILABLE TOOLS
+
+You have access to the following ${tools.length} specialized tools organized by category:
+
+`;
+
+    // Dynamic tool categorization and display
+    const categoryIcons: Record<string, string> = {
+      search: '🔍',
+      memory: '🧠',
+      files: '📁',
+      data: '💾',
+      api: '🌐',
+      development: '💻',
+      time: '⏰',
+      media: '🎨',
+      general: '⚡'
+    };
+
+    const categoryDescriptions: Record<string, string> = {
+      search: 'Information retrieval, web search, research',
+      memory: 'Context storage, information recall, conversation state',
+      files: 'File operations, document processing, content management',
+      data: 'Database operations, data analysis, structured queries',
+      api: 'External service integration, API calls, data synchronization',
+      development: 'Code operations, version control, programming tasks',
+      time: 'Date/time operations, scheduling, temporal queries',
+      media: 'Image processing, visual content, media operations',
+      general: 'Specialized operations and custom functionality'
+    };
+
+    Object.entries(toolCategories).forEach(([category, categoryTools]) => {
+      if (categoryTools.length === 0) return;
+
+      const icon = categoryIcons[category] || '🔧';
+      const description = categoryDescriptions[category] || 'Specialized tools for specific tasks';
+
+      instructions += `### ${icon} **${category.toUpperCase()} TOOLS** (${categoryTools.length} available)\n`;
+      instructions += `*${description}*\n\n`;
+
+      categoryTools.forEach(tool => {
         if (isToolObject(tool) && tool.function && tool.function.name) {
           instructions += `**${tool.function.name}**\n`;
           instructions += `  └ ${tool.function.description || 'No description available'}\n`;
           if (tool.function.parameters?.properties) {
             const params = Object.keys(tool.function.parameters.properties);
-            instructions += `  └ Key parameters: ${params.slice(0, 3).join(', ')}${params.length > 3 ? '...' : ''}\n`;
+            if (params.length > 0) {
+              instructions += `  └ Parameters: ${params.slice(0, 3).join(', ')}${params.length > 3 ? '...' : ''}\n`;
+            }
           }
           instructions += `\n`;
         }
       });
-      if (searchTools.length > 1) {
-        instructions += `💡 **Multi-Search Strategy**: Use multiple search tools for comprehensive coverage. If one fails, try another.\n\n`;
-      }
-    }
+    });
 
-    if (memoryTools.length > 0) {
-      instructions += `### 🧠 **MEMORY & CONTEXT TOOLS** (${memoryTools.length} available)\n`;
-      instructions += `*Use for: Storing important information, retrieving past context, maintaining conversation state*\n\n`;
-      memoryTools.forEach(tool => {
-        if (isToolObject(tool) && tool.function && tool.function.name) {
-          instructions += `**${tool.function.name}**\n`;
-          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
-          instructions += `\n`;
-        }
-      });
-      instructions += `💡 **Memory Strategy**: Always search memory first for relevant context, then store new important information.\n\n`;
-    }
-
-    if (fileTools.length > 0) {
-      instructions += `### 📁 **FILE & DOCUMENT TOOLS** (${fileTools.length} available)\n`;
-      instructions += `*Use for: Reading files, processing documents, data extraction*\n\n`;
-      fileTools.forEach(tool => {
-        if (isToolObject(tool) && tool.function && tool.function.name) {
-          instructions += `**${tool.function.name}**\n`;
-          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
-          instructions += `\n`;
-        }
-      });
-    }
-
-    if (dataTools.length > 0) {
-      instructions += `### 💾 **DATA & DATABASE TOOLS** (${dataTools.length} available)\n`;
-      instructions += `*Use for: Database queries, data analysis, structured data operations*\n\n`;
-      dataTools.forEach(tool => {
-        if (isToolObject(tool) && tool.function && tool.function.name) {
-          instructions += `**${tool.function.name}**\n`;
-          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
-          instructions += `\n`;
-        }
-      });
-    }
-
-    if (apiTools.length > 0) {
-      instructions += `### 🌐 **API & INTEGRATION TOOLS** (${apiTools.length} available)\n`;
-      instructions += `*Use for: External service integration, API calls, data synchronization*\n\n`;
-      apiTools.forEach(tool => {
-        if (isToolObject(tool) && tool.function && tool.function.name) {
-          instructions += `**${tool.function.name}**\n`;
-          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
-          instructions += `\n`;
-        }
-      });
-    }
-
-    if (otherTools.length > 0) {
-      instructions += `### ⚡ **SPECIALIZED TOOLS** (${otherTools.length} available)\n`;
-      instructions += `*Use for: Specific domain tasks, custom operations*\n\n`;
-      otherTools.forEach(tool => {
-        if (isToolObject(tool) && tool.function && tool.function.name) {
-          instructions += `**${tool.function.name}**\n`;
-          instructions += `  └ ${tool.function.description || 'No description available'}\n`;
-          instructions += `\n`;
-        }
-      });
-    }
-
-    // Add enhanced execution methodology
+    // Add the rest of the Universal Agentic AI Assistant System Prompt
     instructions += `
+
+====
+
+## OPERATIONAL MODES
+
+### Mode Framework
+Different modes optimize the assistant's behavior for specific types of tasks:
+
+**Research Mode** - Focused on information gathering, analysis, and synthesis
+- Prioritizes comprehensive source exploration
+- Emphasizes fact-checking and verification
+- Organizes findings systematically
+
+**Creative Mode** - Optimized for ideation, design, and content creation
+- Encourages innovative approaches
+- Balances creativity with practical constraints
+- Iterates on concepts and designs
+
+**Analytical Mode** - Specialized for data analysis and problem-solving
+- Emphasizes logical reasoning and evidence
+- Focuses on patterns, trends, and insights
+- Provides structured conclusions and recommendations
+
+**Productivity Mode** - Designed for task completion and automation
+- Prioritizes efficiency and effectiveness
+- Focuses on practical solutions and implementation
+- Optimizes workflows and processes
+
+**Collaborative Mode** - Tailored for multi-stakeholder projects
+- Emphasizes communication and coordination
+- Manages complex requirements and feedback
+- Facilitates consensus and decision-making
+
+### Mode Switching
+You can switch between modes when the task requirements change:
+
+\`\`\`xml
+<switch_mode>
+<mode_name>target_mode</mode_name>
+<reason>Explanation for mode change</reason>
+</switch_mode>
+\`\`\`
 
 ====
 
 ## TASK EXECUTION METHODOLOGY
 
 ### 1. Initial Analysis
-- Understand the user's request and objectives completely
-- Identify required information and capabilities needed
-- Plan the optimal tool sequence and approach
-- Consider multi-tool strategies for comprehensive results
+- Understand the user's request and objectives
+- Identify the domain and complexity level
+- Determine required resources and constraints
+- Plan the optimal approach and tool sequence
 
 ### 2. Information Gathering
 - Use appropriate tools to collect necessary information
-- Leverage multiple sources when beneficial for completeness
 - Verify information quality and relevance
-- Organize findings for effective synthesis
+- Identify gaps that need additional research
+- Organize findings for easy reference
 
-### 3. Execution & Synthesis
-- Execute planned actions using appropriate tools
-- Integrate results from multiple tools naturally
-- Provide comprehensive, well-structured responses
-- Address ALL aspects of the user's request
+### 3. Action Planning
+- Break down the task into specific, actionable steps
+- Prioritize steps based on dependencies and importance
+- Identify potential risks and mitigation strategies
+- Prepare contingency plans for common issues
 
-====
+### 4. Execution
+- Implement planned actions using appropriate tools in sequence
+- Continue using additional tools as needed without stopping for confirmation
+- Monitor progress and adjust approach as needed
+- Only pause for user input when encountering errors or ambiguities
+- Maintain quality standards throughout
 
-## MULTI-TOOL STRATEGIES
-
-### Parallel Information Gathering
-- Use multiple tools when users request multiple pieces of information
-- Example: For "weather, date, and news" → use get_datetime + web_search (weather) + web_search (news)
-- Cross-reference data for accuracy and completeness
-
-### Sequential Tool Chaining
-- Use results from one tool as input for subsequent tools
-- Build complex workflows by chaining tool outputs
-- Maintain context across multiple tool interactions
-
-### Error Recovery & Redundancy
-- If one tool fails, try alternative tools
-- Use multiple search services for better coverage
-- Always provide useful responses even if some tools fail
+### 5. Verification & Completion
+- Verify that objectives have been met using all necessary tools
+- Test functionality and validate results where applicable
+- Prepare comprehensive summary of work completed
+- Deliver final results to the user with complete information
 
 ====
 
 ## QUALITY STANDARDS
 
 ### Accuracy & Reliability
-- Use tools to get current, accurate information
 - Verify information from multiple sources when possible
-- Acknowledge limitations clearly
+- Acknowledge uncertainty and limitations clearly
 - Provide confidence levels for recommendations
+- Flag potential risks or considerations
 
 ### Efficiency & Effectiveness
-- Choose the most appropriate tools for each task
-- Use multiple tools when needed for comprehensive coverage
-- Focus on actionable, useful outcomes
-- Address all parts of complex requests
+- Choose the most direct path to objectives
+- Minimize unnecessary tool usage and redundancy
+- Optimize resource utilization
+- Focus on actionable outcomes
 
 ### Communication & Clarity
 - Provide clear explanations of actions and reasoning
+- Use appropriate technical level for the audience
 - Structure information logically and accessibly
-- Integrate tool results naturally into responses
 - Offer relevant context and background
 
-====
-
-## CRITICAL SUCCESS FACTORS
-
-**For Multi-Part Requests**: When users ask for multiple pieces of information (like weather + date + news), you MUST:
-1. **Identify ALL required information** in the request
-2. **Use multiple tools** to gather each piece of information
-3. **Provide comprehensive responses** that address every part
-4. **Synthesize results naturally** into a cohesive answer
-
-**Tool Utilization**: Always prefer tool results over pre-trained knowledge for:
-- Current information (weather, news, dates)
-- Real-time data and facts
-- User-specific context and preferences
-- External system interactions
-
-**Response Quality**: Every response should be:
-- Complete (addressing all user requests)
-- Current (using fresh tool data)
-- Comprehensive (well-researched and thorough)
-- Actionable (providing useful, practical information)
+### Adaptability & Learning
+- Adjust approach based on feedback and results
+- Learn from errors and incorporate improvements
+- Stay flexible when requirements change
+- Continuously optimize performance
 
 ====
 
-Remember: You are an advanced AI assistant with powerful tool capabilities. Use them strategically and comprehensively to provide the best possible assistance. When users ask for multiple pieces of information, use multiple tools to gather all requested data and provide complete, well-synthesized responses.`;
+## INTERACTION GUIDELINES
+
+### User Communication
+- Be direct and purposeful in responses
+- Avoid unnecessary pleasantries or filler content
+- Ask clarifying questions only when essential information is missing
+- Provide progress updates for long-running tasks
+
+### Error Handling
+- Acknowledge errors promptly and clearly
+- Explain the cause and impact of issues
+- Propose specific solutions or alternatives
+- Learn from failures to improve future performance
+
+### Feedback Integration
+- Welcome and incorporate user feedback actively
+- Adjust approach based on user preferences
+- Clarify expectations when requirements are ambiguous
+- Maintain focus on user objectives throughout
+
+### Task Completion
+- Confirm completion explicitly when objectives are met
+- Provide comprehensive summary of work performed
+- Offer relevant follow-up suggestions when appropriate
+- Document any outstanding items or recommendations
+
+====
+
+## DOMAIN-SPECIFIC ADAPTATIONS
+
+### Technical Tasks
+- Prioritize best practices and industry standards
+- Consider security, performance, and maintainability
+- Provide detailed technical documentation
+- Test thoroughly before completion
+
+### Creative Projects
+- Explore multiple concepts and approaches
+- Balance innovation with practical constraints
+- Iterate based on feedback and testing
+- Consider audience and context carefully
+
+### Research & Analysis
+- Use diverse, credible sources
+- Apply appropriate analytical methods
+- Present findings objectively and clearly
+- Acknowledge limitations and uncertainties
+
+### Business & Strategy
+- Consider stakeholder perspectives and constraints
+- Focus on measurable outcomes and ROI
+- Provide actionable recommendations
+- Account for implementation challenges
+
+### Personal Assistance
+- Respect privacy and confidentiality
+- Customize approach to individual preferences
+- Provide practical, actionable guidance
+- Maintain appropriate professional boundaries
+
+====
+
+## SUCCESS METRICS
+
+- **Objective Achievement**: Tasks completed successfully and efficiently
+- **Quality Standards**: High-quality outputs that meet or exceed expectations
+- **User Satisfaction**: Positive feedback and continued engagement
+- **Continuous Improvement**: Learning and optimization over time
+- **Adaptability**: Successful handling of diverse and changing requirements
+
+====
+
+## FINAL NOTES
+
+This assistant is designed to be:
+- **Conversational**: Engaging naturally while intelligently leveraging tools when beneficial
+- **Context-Aware**: Understanding when tools add value vs. when conversation suffices
+- **Versatile**: Capable across multiple domains with appropriate response styles
+- **User-Focused**: Prioritizing natural user experience over tool usage
+- **Intelligently Enhanced**: Using tools to provide better answers when they genuinely help
+
+**Key Philosophy**: Be a natural conversational partner first, with powerful tool capabilities that enhance the interaction when they provide clear value. Don't force tool usage when conversation alone serves the user better.
+
+`;
 
     return instructions;
+  }
+
+  /**
+   * Get tools directly from enabled servers - force connect all enabled servers first
+   */
+  private async getToolsFromEnabledServers(): Promise<MCPTool[]> {
+    try {
+      // Get servers directly from JSON file
+      const servers = await mcpService.getServers();
+      console.log(`🔍 All servers from JSON:`, servers.map(s => ({ id: s.id, name: s.name, enabled: s.enabled })));
+
+      // Filter only enabled servers
+      const enabledServers = servers.filter(s => s.enabled);
+      console.log(`✅ Found ${enabledServers.length} enabled servers:`, enabledServers.map(s => ({ id: s.id, name: s.name })));
+
+      if (enabledServers.length === 0) {
+        console.warn(`⚠️ No enabled servers found in JSON!`);
+        return [];
+      }
+
+      // Force connect ALL enabled servers
+      console.log(`🔌 Force connecting all enabled servers...`);
+      await mcpService.connectEnabledServers();
+
+      // Wait longer for connections to establish (some servers may take time to start)
+      console.log(`⏳ Waiting 3 seconds for connections to establish...`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Now get all available tools
+      const allTools = await mcpService.getAvailableTools();
+      console.log(`📋 After force connection, got ${allTools.length} total tools`);
+
+      // Log which servers are actually connected now
+      const connectedIds = await mcpService.getConnectedServerIds();
+      console.log(`🔗 Connected server IDs after force connect:`, connectedIds);
+
+      // Check if all enabled servers are now connected
+      const stillDisconnected = enabledServers.filter(s => !connectedIds.includes(s.id));
+      if (stillDisconnected.length > 0) {
+        console.error(`❌ STILL DISCONNECTED after force connect:`, stillDisconnected.map(s => ({ id: s.id, name: s.name })));
+
+        // Try one more time with individual server connections
+        console.log(`🔄 Attempting individual reconnection for failed servers...`);
+        for (const server of stillDisconnected) {
+          console.log(`🔌 Retrying connection to ${server.id} (${server.name})...`);
+          try {
+            await mcpService.connectServer(server.id);
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+          } catch (error) {
+            console.error(`❌ Retry failed for ${server.id}:`, error);
+          }
+        }
+
+        // Final check after retries
+        const finalConnectedIds = await mcpService.getConnectedServerIds();
+        const finalDisconnected = enabledServers.filter(s => !finalConnectedIds.includes(s.id));
+        if (finalDisconnected.length > 0) {
+          console.error(`❌ FINAL FAILURE: ${finalDisconnected.length} servers still disconnected after retries:`,
+            finalDisconnected.map(s => ({ id: s.id, name: s.name })));
+        } else {
+          console.log(`✅ All servers connected after retries!`);
+        }
+      }
+
+      return allTools;
+    } catch (error) {
+      console.error(`❌ Failed to get tools from enabled servers:`, error);
+      return [];
+    }
   }
 
   private async getMCPToolsForProvider(provider: string, settings?: LLMSettings): Promise<unknown[]> {
@@ -922,8 +1195,10 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
         return [];
       }
 
-      const mcpTools = await mcpService.getAvailableTools();
-      console.log(`📋 Raw MCP tools discovered (${mcpTools.length} tools):`, mcpTools);
+      // Get tools directly from enabled servers in JSON - fuck the connection status
+      console.log(`🔍 Reading MCP servers directly from JSON file...`);
+      const mcpTools = await this.getToolsFromEnabledServers();
+      console.log(`📋 Tools from enabled servers (${mcpTools.length} tools):`, mcpTools);
 
       // Add memory tools to the available tools
       const memoryTools = getMemoryMCPTools();
@@ -972,6 +1247,23 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
 
           const connectedIds = await mcpService.getConnectedServerIds();
           console.log(`🔗 Connected server IDs:`, connectedIds);
+
+          // Check for enabled but not connected servers
+          const enabledServers = servers.filter(s => s.enabled);
+          const disconnectedEnabledServers = enabledServers.filter(s => !connectedIds.includes(s.id));
+
+          if (disconnectedEnabledServers.length > 0) {
+            console.error(`❌ CRITICAL: ${disconnectedEnabledServers.length} enabled servers are NOT connected:`,
+              disconnectedEnabledServers.map(s => ({ id: s.id, name: s.name })));
+            console.error(`❌ This explains why tools are missing! Attempting to reconnect...`);
+
+            // Try to reconnect enabled servers
+            await mcpService.connectEnabledServers();
+
+            // Check again after reconnection attempt
+            const newConnectedIds = await mcpService.getConnectedServerIds();
+            console.log(`🔄 After reconnection attempt, connected servers:`, newConnectedIds);
+          }
         } catch (error) {
           console.error(`❌ Failed to get MCP server status:`, error);
         }
@@ -1139,57 +1431,45 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
     }
 
     const message = userMessage.toLowerCase();
-    const executedToolNames = executedResults.map(r => r.name.toLowerCase());
-    const missing: string[] = [];
 
-    // Check for common multi-part requests with more aggressive detection
-    const requestPatterns = [
-      { keywords: ['weather', 'forecast', 'temperature'], requirement: 'weather information', tools: ['web_search', 'weather'] },
-      { keywords: ['date', 'time', 'today', 'current date'], requirement: 'current date/time', tools: ['get_datetime', 'datetime'] },
-      { keywords: ['news', 'latest news', 'current events'], requirement: 'latest news', tools: ['web_search', 'news'] },
-      { keywords: ['search', 'find', 'look up'], requirement: 'search results', tools: ['web_search', 'search'] }
-    ];
-
-    let foundRequirements = 0;
-    let metRequirements = 0;
-
-    for (const pattern of requestPatterns) {
-      const hasKeywords = pattern.keywords.some(keyword => message.includes(keyword));
-      if (hasKeywords) {
-        foundRequirements++;
-        const hasMatchingTool = pattern.tools.some(tool =>
-          executedToolNames.some(executed => executed.includes(tool))
-        );
-
-        if (hasMatchingTool) {
-          metRequirements++;
-        } else {
-          missing.push(pattern.requirement);
-        }
-      }
-    }
-
-    // More aggressive detection for multi-part requests
+    // Enhanced multi-tool usage analysis
     const multiPartIndicators = [
-      ' and ', ', ', ' also ', ' plus ', ' as well as ', ' tell me ', ' find ', ' get '
+      ' and ', ', ', ' also ', ' plus ', ' as well as ', ' tell me ', ' find ', ' get ', ' show me ', ' give me '
     ];
     const hasMultipleRequests = multiPartIndicators.some(indicator => message.includes(indicator));
 
-    // If we found multiple requirements but only met some, it's incomplete
-    if (foundRequirements > 1 && metRequirements < foundRequirements) {
-      return { incomplete: true, missing };
+    // Count potential information requests
+    const informationKeywords = ['find', 'get', 'show', 'tell', 'what', 'how', 'when', 'where'];
+    const keywordCount = informationKeywords.filter(keyword => message.includes(keyword)).length;
+
+    // If user is asking for multiple things but only used one tool (or none), suggest more tools
+    if (hasMultipleRequests && executedResults.length <= 1) {
+      return {
+        incomplete: true,
+        missing: ['Use multiple tools to address all parts of your request - each piece of information may need a separate tool']
+      };
     }
 
-    // If user asks for multiple things with connectors and only 1 tool executed
-    if (hasMultipleRequests && executedResults.length === 1) {
-      // Add generic missing items if we couldn't identify specific ones
-      if (missing.length === 0) {
-        missing.push('remaining requested information');
-      }
-      return { incomplete: true, missing };
+    // If multiple information keywords but few tools used
+    if (keywordCount >= 2 && executedResults.length < keywordCount) {
+      return {
+        incomplete: true,
+        missing: ['Consider using additional tools to gather all the requested information comprehensively']
+      };
     }
 
-    return { incomplete: missing.length > 0, missing };
+    // If user is asking questions but no tools were used, suggest tool usage
+    const questionWords = ['what', 'how', 'when', 'where', 'who', 'which', 'why'];
+    const hasQuestions = questionWords.some(word => message.includes(word));
+
+    if (hasQuestions && executedResults.length === 0) {
+      return {
+        incomplete: true,
+        missing: ['Use available tools to provide accurate and current information instead of relying on training data']
+      };
+    }
+
+    return { incomplete: false, missing: [] };
   }
 
   /**
@@ -1203,18 +1483,18 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
     // Strategy: Keep the most important parts and use abbreviations
     let truncated = toolName;
 
-    // Common abbreviations to reduce length
-    const abbreviations = {
-      'OPENWEATHER_API': 'WEATHER',
-      'GET-WEATHER-FORECAST-BY-LOCATION': 'GET-FORECAST',
-      'FORECAST': 'FC',
-      'LOCATION': 'LOC',
+    // Dynamic abbreviations to reduce length
+    const abbreviations: Record<string, string> = {
       'SEARCH': 'SRCH',
       'BROWSER': 'BRWS',
       'MEMORY': 'MEM',
       'DATETIME': 'DT',
       'ANALYSIS': 'ANLYS',
-      'FUNCTION': 'FN'
+      'FUNCTION': 'FN',
+      'REQUEST': 'REQ',
+      'RESPONSE': 'RESP',
+      'DATABASE': 'DB',
+      'DOCUMENT': 'DOC'
     };
 
     // Apply abbreviations
@@ -1712,7 +1992,7 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   private identifyToolType(toolName: string): string {
     const name = toolName.toLowerCase();
 
-    if (name.includes('search') || name.includes('brave') || name.includes('tavily') || name.includes('web_search')) {
+    if (name.includes('search') || name.includes('web')) {
       return 'search';
     } else if (name.includes('memory')) {
       return 'memory';
@@ -1963,26 +2243,17 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
       // Skip the same tool
       if (toolName === failedToolName) continue;
 
-      // Find tools with similar functionality
-      if (failedToolLower.includes('search')) {
-        if (toolNameLower.includes('search') || toolNameLower.includes('brave') ||
-            toolNameLower.includes('tavily') || toolNameLower.includes('searx')) {
-          alternatives.push(toolName);
-        }
-      } else if (failedToolLower.includes('memory')) {
-        if (toolNameLower.includes('memory')) {
-          alternatives.push(toolName);
-        }
-      } else if (failedToolLower.includes('file') || failedToolLower.includes('read')) {
-        if (toolNameLower.includes('file') || toolNameLower.includes('read') ||
-            toolNameLower.includes('fetch')) {
-          alternatives.push(toolName);
-        }
-      } else if (failedToolLower.includes('api') || failedToolLower.includes('http')) {
-        if (toolNameLower.includes('api') || toolNameLower.includes('http') ||
-            toolNameLower.includes('fetch') || toolNameLower.includes('request')) {
-          alternatives.push(toolName);
-        }
+      // Find tools with similar functionality based on common words
+      const failedWords = failedToolLower.split(/[-_\s]+/);
+      const toolWords = toolNameLower.split(/[-_\s]+/);
+
+      // Check if tools share common functionality words
+      const hasCommonWords = failedWords.some(word =>
+        word.length > 2 && toolWords.includes(word)
+      );
+
+      if (hasCommonWords) {
+        alternatives.push(toolName);
       }
     }
 
@@ -2187,138 +2458,47 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
   }
 
   /**
-   * Analyze search results for potential tool chaining
+   * Analyze results for potential tool chaining (generic approach)
    */
   private analyzeSearchForChaining(searchResult: { results?: unknown[] }, availableTools: unknown[]): Array<{
     name: string;
     arguments: Record<string, unknown>;
   }> {
-    const chains: Array<{ name: string; arguments: Record<string, unknown> }> = [];
-
-    // If search found relevant information, consider storing it in memory
-    if (searchResult.results && Array.isArray(searchResult.results) && searchResult.results.length > 0) {
-      const hasMemoryTool = availableTools.some((tool: unknown) => {
-        const toolObj = tool as { function?: { name?: string } };
-        return toolObj.function?.name?.toLowerCase().includes('memory-store');
-      });
-
-      if (hasMemoryTool) {
-        const topResult = searchResult.results[0] as { title?: string; content?: string; snippet?: string; url?: string };
-        chains.push({
-          name: 'memory-store',
-          arguments: {
-            type: 'search_result',
-            title: `Search: ${topResult.title || 'Search Result'}`,
-            content: `${topResult.content || topResult.snippet || ''}\nSource: ${topResult.url || ''}`,
-            tags: ['search', 'web', 'research']
-          }
-        });
-      }
-    }
-
-    return chains;
+    // Return empty array - let the LLM decide what tools to use next
+    return [];
   }
 
   /**
-   * Analyze memory results for potential tool chaining
+   * Analyze memory results for potential tool chaining (generic approach)
    */
   private analyzeMemoryForChaining(memoryResult: { memories?: unknown[] }, availableTools: unknown[]): Array<{
     name: string;
     arguments: Record<string, unknown>;
   }> {
-    const chains: Array<{ name: string; arguments: Record<string, unknown> }> = [];
-
-    // If memory search found relevant context, consider searching for more current information
-    if (memoryResult.memories && Array.isArray(memoryResult.memories) && memoryResult.memories.length > 0) {
-      const hasSearchTool = availableTools.some((tool: unknown) => {
-        const toolObj = tool as { function?: { name?: string } };
-        return toolObj.function?.name?.toLowerCase().includes('search');
-      });
-
-      if (hasSearchTool) {
-        const memory = memoryResult.memories[0] as { content?: string };
-        if (memory.content) {
-          // Extract key terms for follow-up search
-          const keyTerms = this.extractKeyTermsFromText(memory.content);
-          if (keyTerms.length > 0) {
-            chains.push({
-              name: 'tavily-search', // Default to tavily, could be made configurable
-              arguments: {
-                query: keyTerms.slice(0, 3).join(' '), // Use top 3 key terms
-                search_depth: 'basic',
-                topic: 'general'
-              }
-            });
-          }
-        }
-      }
-    }
-
-    return chains;
+    // Return empty array - let the LLM decide what tools to use next
+    return [];
   }
 
   /**
-   * Analyze file results for potential tool chaining
+   * Analyze file results for potential tool chaining (generic approach)
    */
   private analyzeFileForChaining(fileResult: { content?: string; filename?: string }, availableTools: unknown[]): Array<{
     name: string;
     arguments: Record<string, unknown>;
   }> {
-    const chains: Array<{ name: string; arguments: Record<string, unknown> }> = [];
-
-    // If file content was read, consider storing important parts in memory
-    if (fileResult.content && typeof fileResult.content === 'string') {
-      const hasMemoryTool = availableTools.some((tool: unknown) => {
-        const toolObj = tool as { function?: { name?: string } };
-        return toolObj.function?.name?.toLowerCase().includes('memory-store');
-      });
-
-      if (hasMemoryTool && fileResult.content.length > 100) {
-        chains.push({
-          name: 'memory-store',
-          arguments: {
-            type: 'file_content',
-            title: `File: ${fileResult.filename || 'Document'}`,
-            content: fileResult.content.substring(0, 1000), // Store first 1000 chars
-            tags: ['file', 'document', 'content']
-          }
-        });
-      }
-    }
-
-    return chains;
+    // Return empty array - let the LLM decide what tools to use next
+    return [];
   }
 
   /**
-   * Analyze API results for potential tool chaining
+   * Analyze API results for potential tool chaining (generic approach)
    */
   private analyzeApiForChaining(apiResult: { data?: unknown; endpoint?: string }, availableTools: unknown[]): Array<{
     name: string;
     arguments: Record<string, unknown>;
   }> {
-    const chains: Array<{ name: string; arguments: Record<string, unknown> }> = [];
-
-    // If API returned structured data, consider storing it in memory
-    if (apiResult.data && typeof apiResult.data === 'object') {
-      const hasMemoryTool = availableTools.some((tool: unknown) => {
-        const toolObj = tool as { function?: { name?: string } };
-        return toolObj.function?.name?.toLowerCase().includes('memory-store');
-      });
-
-      if (hasMemoryTool) {
-        chains.push({
-          name: 'memory-store',
-          arguments: {
-            type: 'api_data',
-            title: `API Response: ${apiResult.endpoint || 'External API'}`,
-            content: JSON.stringify(apiResult.data, null, 2),
-            tags: ['api', 'data', 'external']
-          }
-        });
-      }
-    }
-
-    return chains;
+    // Return empty array - let the LLM decide what tools to use next
+    return [];
   }
 
   /**
@@ -3356,60 +3536,30 @@ Remember: You are an advanced AI assistant with powerful tool capabilities. Use 
     const mcpTools = await this.getMCPToolsForProvider('anthropic', settings);
     console.log('🔍 [DEBUG] MCP tools result:', { count: mcpTools.length, tools: mcpTools });
 
+    // Enhanced debugging for tool availability
+    if (mcpTools.length > 0) {
+      console.log('🔍 [DEBUG] Available tool names:', mcpTools.map(t => {
+        const tool = t as { name?: string };
+        return tool.name || 'unknown';
+      }));
+      console.log('🔍 [DEBUG] Available tools:', mcpTools.map(t => {
+        const tool = t as { name?: string; description?: string };
+        return { name: tool.name || 'unknown', description: tool.description || 'no description' };
+      }));
+    } else {
+      console.warn('🔍 [DEBUG] No MCP tools available! This explains why Claude can\'t search for news.');
+    }
+
     // Build enhanced system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || '';
     if (mcpTools.length > 0) {
       const toolInstructions = this.generateToolInstructions(mcpTools);
       systemPrompt += toolInstructions;
 
-      // Add comprehensive tool execution strategy for Anthropic
-      systemPrompt += `\n\n🎯 **CRITICAL: COMPLETE REQUEST FULFILLMENT STRATEGY**
+      // Add tool availability information
+      systemPrompt += `\n\n## Available Tools Summary
 
-When a user asks for multiple pieces of information, you MUST:
-
-1. **ANALYZE THE FULL REQUEST** - Identify ALL information needed
-2. **PLAN YOUR TOOLS** - Determine which tools are required
-3. **EXECUTE ALL TOOLS** - Call ALL necessary tools before responding
-4. **COMPILE COMPLETE ANSWER** - Only respond when you have ALL information
-
-**EXAMPLE REQUEST:** "search for weather in Athens Greece, tell me the date, and find latest news"
-
-**STEP 1: ANALYZE** - User wants: weather + date + news (3 pieces of information)
-
-**STEP 2: PLAN** - Need: web_search (weather) + get_datetime + web_search (news)
-
-**STEP 3: EXECUTE ALL TOOLS** - Use multiple tool_use blocks:
-\`\`\`
-<tool_use>
-<tool_name>web_search</tool_name>
-<parameters>{"query": "weather forecast Athens Greece today"}</parameters>
-</tool_use>
-<tool_use>
-<tool_name>get_datetime</tool_name>
-<parameters>{"format": "date"}</parameters>
-</tool_use>
-<tool_use>
-<tool_name>web_search</tool_name>
-<parameters>{"query": "latest news today"}</parameters>
-</tool_use>
-\`\`\`
-
-**STEP 4: COMPILE** - Only after ALL tools complete, provide comprehensive answer covering weather, date, AND news.
-
-**CRITICAL RULES:**
-- NEVER respond with partial information
-- NEVER call just one tool when multiple are needed
-- ALWAYS complete the ENTIRE request before responding
-- If you call only some tools, you MUST continue calling the remaining tools
-- When user asks for "A, B, and C" you MUST provide ALL THREE items
-- Do NOT ask "would you like me to search for B and C?" - just DO IT
-
-**EXAMPLE OF WRONG BEHAVIOR:**
-User: "weather, date, and news"
-❌ WRONG: Call weather tool → respond with weather → ask if user wants date/news
-✅ CORRECT: Call weather + date + news tools → respond with ALL information
-
-This ensures complete, efficient responses that fully satisfy user requests.`;
+You have access to ${mcpTools.length} specialized tools. Use them as needed to accomplish user objectives.`;
     }
 
     // Memory enhancement is now handled at the sendMessageWithAutoMemory level
@@ -3432,10 +3582,24 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
     // Add tools if available
     if (mcpTools.length > 0) {
       requestBody.tools = mcpTools;
+
+      // For Claude 3.7 Sonnet, encourage parallel tool use
+      if (settings.model.includes('claude-3-7-sonnet') || settings.model.includes('claude-sonnet-3-7')) {
+        // Don't disable parallel tool use to encourage multiple tool calls
+        // requestBody.disable_parallel_tool_use = false; // This is the default
+      }
+
+      // Use auto tool choice to allow Claude to decide when to use tools
+      requestBody.tool_choice = { type: "auto" };
+
       console.log(`🚀 Anthropic API call with ${mcpTools.length} tools:`, {
         model: settings.model,
         toolCount: mcpTools.length,
-        tools: mcpTools
+        toolChoice: requestBody.tool_choice,
+        tools: mcpTools.map(t => {
+          const tool = t as { name?: string; description?: string };
+          return { name: tool.name || 'unknown', description: tool.description || 'no description' };
+        })
       });
     } else {
       console.log(`🚀 Anthropic API call without tools (no MCP tools available)`);
@@ -3545,6 +3709,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
           temperature: settings.temperature,
           system: settings.systemPrompt || undefined,
           messages: updatedMessages
+          // Note: Don't include tools in follow-up call - Anthropic doesn't need them
         };
 
         const followUpResponse = await fetch(`${provider.baseUrl}/messages`, {
@@ -4228,7 +4393,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
     if (mcpTools.length > 0) {
       const toolInstructions = this.generateToolInstructions(mcpTools);
       systemPrompt += toolInstructions;
-      systemPrompt += `\n\nIMPORTANT: Only use the tools listed above. Do not use any other tools like 'get_weather' or similar tools that are not in the list. If you need weather information, use the search tools provided.`;
+      systemPrompt += `\n\nIMPORTANT: Only use the tools listed above. These are the only tools available to you.`;
     }
 
     if (systemPrompt) {
@@ -4425,10 +4590,9 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
       // Check if the model is thinking about tools but not using them
       const content = message.content || '';
       const isThinkingAboutTools = content.toLowerCase().includes('tool') &&
-                                   (content.includes('brave_web_search') ||
-                                    content.includes('send_notification') ||
-                                    content.includes('search') ||
-                                    content.includes('function'));
+                                   (content.includes('search') ||
+                                    content.includes('function') ||
+                                    content.includes('call'));
 
       if (isThinkingAboutTools && mcpTools.length > 0) {
         console.log(`⚠️ LMStudio model is thinking about tools but not using them. Response:`, content.substring(0, 200));
@@ -4497,7 +4661,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
     if (mcpTools.length > 0) {
       const toolInstructions = this.generateToolInstructions(mcpTools);
       systemPrompt += toolInstructions;
-      systemPrompt += `\n\nIMPORTANT: Only use the tools listed above. Do not use any other tools like 'get_weather' or similar tools that are not in the list. If you need weather information, use the search tools provided.`;
+      systemPrompt += `\n\nIMPORTANT: Only use the tools listed above. These are the only tools available to you.`;
       console.log('🧠 Ollama system prompt after adding tools:', systemPrompt.length);
     }
 
@@ -4920,6 +5084,34 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
     if (mcpTools.length > 0) {
       const toolInstructions = this.generateToolInstructions(mcpTools);
       systemPrompt += toolInstructions;
+
+      // Add specific multi-tool execution instructions for OpenRouter
+      systemPrompt += `\n\n🎯 **IMPORTANT: MULTIPLE TOOL CALLS IN SINGLE RESPONSE**
+
+When a user request requires multiple pieces of information, you can make MULTIPLE tool calls in the SAME response:
+
+1. **Identify all needed information** from the user's request
+2. **Include ALL necessary tool calls** in your tool_calls array in ONE response
+3. **Don't wait for results** - make all calls you need upfront
+
+Example: For "tell me the date and last week's tech news":
+- Include BOTH tool calls in your response:
+  * Call datetime tool for current date
+  * Call search tool for tech news
+- Both will be executed and results returned to you
+- Then provide a complete answer with both pieces of information
+
+You can include multiple tool calls like this:
+\`\`\`json
+{
+  "tool_calls": [
+    {"id": "call_1", "function": {"name": "get_datetime", "arguments": "{}"}},
+    {"id": "call_2", "function": {"name": "web_search", "arguments": "{\"query\": \"tech news last week\"}"}}
+  ]
+}
+\`\`\`
+
+This is more efficient than making one tool call, waiting, then making another.`;
     }
 
     if (systemPrompt) {
@@ -4985,85 +5177,7 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
       // Check if there are tool calls that need follow-up processing
       if (streamResult.toolCalls && streamResult.toolCalls.length > 0) {
         console.log(`🔄 OpenRouter streaming: Processing ${streamResult.toolCalls.length} tool calls for follow-up`);
-
-        // Build conversation history with tool calls and results
-        const toolConversationHistory = [
-          ...messages,
-          { role: 'assistant', content: streamResult.content, tool_calls: streamResult.toolCalls.map(tc => ({
-            id: tc.id,
-            type: 'function',
-            function: {
-              name: tc.name,
-              arguments: JSON.stringify(tc.arguments)
-            }
-          })) }
-        ];
-
-        // Execute tool calls and add results to conversation
-        for (const toolCall of streamResult.toolCalls) {
-          try {
-            console.log(`🔧 Executing tool for OpenRouter follow-up:`, toolCall);
-            console.log(`🔧 Tool arguments being passed:`, JSON.stringify(toolCall.arguments, null, 2));
-            const toolResult = await this.executeMCPTool(toolCall.name, toolCall.arguments);
-            toolConversationHistory.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: toolResult
-            } as { role: string; tool_call_id: string; content: string });
-          } catch (error) {
-            console.error(`❌ Tool execution failed in OpenRouter follow-up:`, error);
-            toolConversationHistory.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as { role: string; tool_call_id: string; content: string });
-          }
-        }
-
-        // Make follow-up call to get LLM's processed response
-        console.log(`🔄 Making follow-up OpenRouter call after streaming to process tool results...`);
-        const followUpRequestBody = {
-          model: settings.model,
-          messages: toolConversationHistory,
-          temperature: settings.temperature,
-          max_tokens: settings.maxTokens,
-          stream: false // Use non-streaming for follow-up
-        };
-
-        const followUpResponse = await fetch(`${provider.baseUrl || 'https://openrouter.ai/api/v1'}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${settings.apiKey}`,
-            'HTTP-Referer': 'https://littlellm.app',
-            'X-Title': 'LittleLLM'
-          },
-          body: JSON.stringify(followUpRequestBody),
-          signal
-        });
-
-        if (!followUpResponse.ok) {
-          const error = await followUpResponse.text();
-          console.error(`❌ OpenRouter follow-up call failed:`, error);
-          // Return original response if follow-up fails
-          return streamResult;
-        }
-
-        const followUpData = await followUpResponse.json();
-        const followUpMessage = followUpData.choices[0]?.message;
-
-        // Combine the original response with the follow-up
-        const combinedUsage = {
-          promptTokens: (streamResult.usage?.promptTokens || 0) + (followUpData.usage?.prompt_tokens || 0),
-          completionTokens: (streamResult.usage?.completionTokens || 0) + (followUpData.usage?.completion_tokens || 0),
-          totalTokens: (streamResult.usage?.totalTokens || 0) + (followUpData.usage?.total_tokens || 0)
-        };
-
-        return {
-          content: (streamResult.content || '') + '\n\n' + (followUpMessage?.content || 'Tool execution completed.'),
-          usage: combinedUsage,
-          toolCalls: streamResult.toolCalls
-        };
+        return await this.processOpenRouterToolCalls(streamResult, messages, settings, provider, onStream, signal);
       }
 
       return streamResult;
@@ -5097,59 +5211,86 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
       if (detectedToolCalls && detectedToolCalls.length > 0) {
         console.log(`🔧 OpenRouter response contains ${detectedToolCalls.length} tool calls:`, detectedToolCalls);
 
-        // Execute each tool call and collect results
-        const toolResults = [];
-        for (const toolCall of detectedToolCalls) {
-          try {
-            console.log(`🔧 Executing OpenRouter tool call:`, toolCall);
+        // Execute tools in parallel - same as other providers
+        console.log(`🚀 Executing ${detectedToolCalls.length} OpenRouter tools in parallel`);
 
-            // Handle different tool call formats
-            let toolName: string;
-            let toolArgs: Record<string, unknown>;
+        // Filter and prepare tool calls for parallel execution
+        const validToolCalls = detectedToolCalls
+          .map((toolCall: any) => {
+            try {
+              // Handle different tool call formats
+              let toolName: string;
+              let toolArgs: Record<string, unknown>;
 
-            if (toolCall.function) {
-              // Standard OpenAI format
-              toolName = toolCall.function.name;
-              toolArgs = typeof toolCall.function.arguments === 'string'
-                ? JSON.parse(toolCall.function.arguments)
-                : toolCall.function.arguments;
-            } else if (toolCall.name) {
-              // Alternative format
-              toolName = toolCall.name;
-              toolArgs = toolCall.arguments || {};
-            } else {
-              throw new Error('Unknown tool call format');
+              if (toolCall.function) {
+                // Standard OpenAI format
+                toolName = toolCall.function.name;
+                toolArgs = typeof toolCall.function.arguments === 'string'
+                  ? JSON.parse(toolCall.function.arguments)
+                  : toolCall.function.arguments;
+              } else if (toolCall.name) {
+                // Alternative format
+                toolName = toolCall.name;
+                toolArgs = toolCall.arguments || {};
+              } else {
+                throw new Error('Unknown tool call format');
+              }
+
+              return {
+                id: toolCall.id,
+                name: toolName,
+                arguments: toolArgs
+              };
+            } catch (error) {
+              console.error(`❌ Failed to parse OpenRouter tool call:`, toolCall, error);
+              return null;
             }
+          })
+          .filter((tc: any) => tc !== null) as Array<{
+            id: string;
+            name: string;
+            arguments: Record<string, unknown>;
+          }>;
 
-            const toolResult = await this.executeMCPTool(toolName, toolArgs);
-            toolResults.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              name: toolName,
-              content: JSON.stringify(toolResult)
-            } as { tool_call_id: string; name: string; content: string });
-          } catch (error) {
-            console.error(`❌ OpenRouter tool call failed:`, error);
-            const errorToolName = toolCall.function?.name || toolCall.name || 'unknown_tool';
-            toolResults.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              name: errorToolName,
-              content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
-            } as { tool_call_id: string; name: string; content: string });
-          }
-        }
+        // Execute all tools in parallel
+        const parallelResults = await this.executeMultipleToolsParallel(validToolCalls, 'openrouter');
+
+        // Convert parallel results to tool results format
+        const toolResults = parallelResults.map(result => ({
+          role: 'tool',
+          tool_call_id: result.id || 'unknown',
+          name: result.name,
+          content: result.success ? JSON.stringify(result.result) : JSON.stringify({ error: 'Tool execution failed' })
+        } as { tool_call_id: string; name: string; content: string }));
+
+        // Log execution summary
+        const successCount = parallelResults.filter(r => r.success).length;
+        console.log(`✅ OpenRouter tool execution completed: ${successCount}/${parallelResults.length} successful`);
 
         // Build conversation history with tool calls and results
+        // Include the complete conversation context for the follow-up call
         const toolConversationHistory = [
-          ...conversationHistory,
+          ...conversationHistory, // Original conversation history including system prompt
           { role: 'user', content: typeof message === 'string' ? message : JSON.stringify(message) },
-          { role: 'assistant', tool_calls: message.tool_calls },
+          {
+            role: 'assistant',
+            content: data.choices[0]?.message?.content || '',
+            tool_calls: detectedToolCalls.map((tc: any) => ({
+              id: tc.id,
+              type: 'function',
+              function: {
+                name: tc.function?.name || tc.name,
+                arguments: typeof tc.function?.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function?.arguments || tc.arguments || {})
+              }
+            }))
+          },
           ...toolResults
         ];
 
         // Make second call to get LLM's processed response
         console.log(`🔄 Making second OpenRouter call to process tool results...`);
+        console.log(`🔍 Tool conversation history for follow-up:`, JSON.stringify(toolConversationHistory, null, 2));
+
         const secondRequestBody = {
           model: settings.model,
           messages: toolConversationHistory,
@@ -5232,22 +5373,9 @@ This ensures complete, efficient responses that fully satisfy user requests.`;
       if (settings.model?.startsWith('openai/')) {
         systemPrompt += `\n\n🎯 **CRITICAL: MULTI-TOOL EXECUTION STRATEGY FOR COMPLEX REQUESTS**
 
-When a user asks for multiple pieces of information (like weather + date + news), you MUST:
+Follow the systematic approach outlined in your system prompt. Use available tools strategically to accomplish user objectives effectively.
 
-1. **IDENTIFY ALL REQUIRED TOOLS**: Break down the request into individual tasks
-2. **CALL ALL NECESSARY TOOLS**: Use multiple tool calls in your response
-3. **DON'T STOP AFTER ONE TOOL**: Continue calling tools until all parts of the request are fulfilled
-
-**Example Request**: "Get weather, date, and news"
-**Correct Response**: Call get_datetime(), web_search("weather"), web_search("news") - ALL in one response
-
-**IMPORTANT**: You have access to web_search and other tools. Do NOT say you cannot search the web or access real-time information. Use the tools provided.
-
-**Available Search Tools**: web_search, fetch
-**Available Utility Tools**: get_datetime, sequentialthinking
-**Available Memory Tools**: memory-store, memory-search, memory-retrieve
-
-USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
+Use tools strategically to provide comprehensive and helpful responses.`;
       }
     }
 
@@ -5964,6 +6092,165 @@ USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
           arguments: JSON.parse(tc.function?.arguments || '{}') as ToolCallArguments
         })) : undefined
     };
+  }
+
+  /**
+   * Process OpenRouter tool calls with recursive handling for multi-round execution
+   */
+  private async processOpenRouterToolCalls(
+    streamResult: any,
+    messages: any[],
+    settings: LLMSettings,
+    provider: LLMProvider,
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<LLMResponse> {
+    // Get MCP tools for follow-up calls - CRITICAL: tools must be included in every request
+    const mcpTools = await this.getMCPToolsForProvider('openrouter', settings);
+    // Build conversation history with tool calls and results
+    const toolConversationHistory = [
+      ...messages,
+      {
+        role: 'assistant',
+        content: streamResult.content || '',
+        tool_calls: streamResult.toolCalls.map((tc: any) => ({
+          id: tc.id,
+          type: 'function',
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.arguments)
+          }
+        }))
+      }
+    ];
+
+    // Execute tools in parallel
+    console.log(`🚀 Executing ${streamResult.toolCalls.length} OpenRouter tools in parallel`);
+
+    const parallelMessage = `\n🚀 Executing ${streamResult.toolCalls.length} tools in parallel...\n`;
+    if (onStream) onStream(parallelMessage);
+
+    const validToolCalls = streamResult.toolCalls
+      .filter((tc: any) => tc.id && tc.name && tc.arguments !== undefined)
+      .map((tc: any) => ({
+        id: tc.id,
+        name: tc.name,
+        arguments: tc.arguments as Record<string, unknown>
+      }));
+
+    const parallelResults = await this.executeMultipleToolsParallel(validToolCalls, 'openrouter');
+
+    const successCount = parallelResults.filter(r => r.success).length;
+    const completionMessage = `✅ Parallel execution completed: ${successCount}/${parallelResults.length} successful\n\n`;
+    if (onStream) onStream(completionMessage);
+
+    // Add tool results to conversation history
+    for (const result of parallelResults) {
+      toolConversationHistory.push({
+        role: 'tool',
+        tool_call_id: result.id || 'unknown',
+        content: result.success ? JSON.stringify(result.result) : JSON.stringify({ error: 'Tool execution failed' })
+      });
+    }
+
+    // Make follow-up call
+    const followUpResponse = await fetch(`${provider.baseUrl || 'https://openrouter.ai/api/v1'}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`,
+        'HTTP-Referer': 'https://littlellm.app',
+        'X-Title': 'LittleLLM'
+      },
+      body: JSON.stringify({
+        model: settings.model,
+        messages: toolConversationHistory,
+        temperature: settings.temperature,
+        max_tokens: settings.maxTokens,
+        tools: mcpTools, // CRITICAL: Include tools so LLM can make additional tool calls
+        tool_choice: 'auto',
+        stream: false
+      }),
+      signal
+    });
+
+    if (!followUpResponse.ok) {
+      const error = await followUpResponse.text();
+      console.error(`❌ OpenRouter follow-up call failed:`, error);
+      return streamResult;
+    }
+
+    const followUpData = await followUpResponse.json();
+    const followUpMessage = followUpData.choices[0]?.message;
+    const additionalToolCalls = followUpMessage?.tool_calls || [];
+
+    if (additionalToolCalls.length > 0) {
+      // Recursive case: more tool calls detected
+      console.log(`🔄 OpenRouter follow-up contains ${additionalToolCalls.length} additional tool calls, processing recursively...`);
+
+      const intermediateContent = followUpMessage?.content || '';
+      if (onStream && intermediateContent) {
+        onStream('\n\n' + intermediateContent);
+      }
+
+      const mockStreamResult = {
+        content: intermediateContent,
+        toolCalls: additionalToolCalls.map((tc: any) => ({
+          id: tc.id,
+          name: tc.function?.name || tc.name,
+          arguments: typeof tc.function?.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function?.arguments || {}
+        })),
+        usage: {
+          promptTokens: followUpData.usage?.prompt_tokens || 0,
+          completionTokens: followUpData.usage?.completion_tokens || 0,
+          totalTokens: followUpData.usage?.total_tokens || 0
+        }
+      };
+
+      const additionalMessages = [
+        ...toolConversationHistory,
+        {
+          role: 'assistant',
+          content: intermediateContent,
+          tool_calls: additionalToolCalls
+        }
+      ];
+
+      const recursiveResult = await this.processOpenRouterToolCalls(
+        mockStreamResult,
+        additionalMessages,
+        settings,
+        provider,
+        onStream,
+        signal
+      );
+
+      return {
+        content: (streamResult.content || '') + '\n\n' + (intermediateContent || '') + '\n\n' + (recursiveResult.content || ''),
+        usage: {
+          promptTokens: (streamResult.usage?.promptTokens || 0) + (recursiveResult.usage?.promptTokens || 0),
+          completionTokens: (streamResult.usage?.completionTokens || 0) + (recursiveResult.usage?.completionTokens || 0),
+          totalTokens: (streamResult.usage?.totalTokens || 0) + (recursiveResult.usage?.totalTokens || 0)
+        },
+        toolCalls: [...(streamResult.toolCalls || []), ...(recursiveResult.toolCalls || [])]
+      };
+    } else {
+      // Base case: no more tool calls
+      const followUpContent = followUpMessage?.content || 'Tool execution completed.';
+      if (onStream && followUpContent) {
+        onStream('\n\n' + followUpContent);
+      }
+
+      return {
+        content: (streamResult.content || '') + '\n\n' + followUpContent,
+        usage: {
+          promptTokens: (streamResult.usage?.promptTokens || 0) + (followUpData.usage?.prompt_tokens || 0),
+          completionTokens: (streamResult.usage?.completionTokens || 0) + (followUpData.usage?.completion_tokens || 0),
+          totalTokens: (streamResult.usage?.totalTokens || 0) + (followUpData.usage?.total_tokens || 0)
+        },
+        toolCalls: streamResult.toolCalls
+      };
+    }
   }
 
   private async handleOpenRouterStreamResponse(
@@ -6852,44 +7139,49 @@ USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
       fullContent += toolSummary;
       onStream(toolSummary);
 
-      // Check if this might be an incomplete request that needs more tools
-      const originalUserMessage = conversationHistory?.[conversationHistory.length - 1]?.content;
-      console.log(`🔍 Checking for incomplete request. Original message:`, originalUserMessage);
+      // Log tool execution for debugging
       console.log(`🔍 Executed tools:`, parallelResults.map(r => r.name));
-
-      const needsMoreTools = this.detectIncompleteRequest(originalUserMessage, parallelResults);
-      console.log(`🔍 Incomplete request detection result:`, needsMoreTools);
-
-      if (needsMoreTools.incomplete) {
-        console.log(`🔄 Detected incomplete request. Missing: ${needsMoreTools.missing.join(', ')}`);
-        // Add a strong prompt to continue with remaining tools
-        const continuationPrompt = `\n\n**🚨 CRITICAL: INCOMPLETE REQUEST DETECTED**\n\nYou have only provided ${parallelResults.length} piece(s) of information, but the user requested multiple items. You MUST continue and provide: ${needsMoreTools.missing.join(', ')}.\n\nCall the necessary tools NOW to complete the full request. Do not respond until you have ALL the requested information.`;
-        fullContent += continuationPrompt;
-        onStream(continuationPrompt);
-      }
+      console.log(`🔍 Tool execution completed, proceeding with follow-up call`);
 
       console.log(`🔄 Making follow-up Anthropic streaming call with ${parallelResults.length} tool results`);
 
       // Reconstruct the conversation with tool results
       const messages = conversationHistory ? [...conversationHistory] : [];
 
-      // Add the assistant's message with tool calls
+      // Add the assistant's message with tool calls (proper Anthropic format)
       messages.push({
         role: 'assistant',
-        content: JSON.stringify(assistantContent)
+        content: assistantContent as unknown as Array<ContentItem>
       });
 
-      // Add tool results as user message using parallel execution results
-      const toolResults = parallelResults.map(result => ({
-        type: 'tool_result',
-        tool_use_id: result.id || '',
-        content: result.result,
-        is_error: !result.success
-      }));
+      // Add tool results as user message using parallel execution results (proper Anthropic format)
+      const toolResults = parallelResults.map(result => {
+        let content = result.result;
+
+        // Parse JSON results and format them properly for Claude
+        try {
+          const parsedResult = JSON.parse(result.result);
+          content = this.formatToolResult(result.name, parsedResult);
+        } catch {
+          // If not JSON, use as-is but clean up quotes
+          content = result.result.replace(/^"|"$/g, '');
+        }
+
+
+
+        return {
+          type: 'tool_result',
+          tool_use_id: result.id || '',
+          content: content,
+          is_error: !result.success
+        };
+      });
+
+
 
       messages.push({
         role: 'user',
-        content: JSON.stringify(toolResults)
+        content: toolResults as unknown as Array<ContentItem>
       });
 
       // Make follow-up streaming call
@@ -7011,36 +7303,23 @@ USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
                   if (part.functionCall) {
                     console.log(`🔧 Gemini streaming function call:`, part.functionCall);
 
-                    // Show tool usage in chat
-                    const toolMessage = `\n\n🔧 **Using tool: ${part.functionCall.name}**\n`;
+                    // Show minimal tool usage in chat
+                    const toolMessage = `\n\n🔧 **Using tool: ${part.functionCall.name}**\n⚙️ Executing...\n`;
                     fullContent += toolMessage;
                     onStream(toolMessage);
 
                     try {
-                      // Show tool execution in chat
-                      const executingMessage = `⚙️ Executing ${part.functionCall.name}...\n`;
-                      fullContent += executingMessage;
-                      onStream(executingMessage);
-
                       // Execute the tool
                       const toolResult = await this.executeMCPTool(
                         part.functionCall.name,
                         part.functionCall.args
                       );
 
-                      // Show tool completion in chat
-                      const completedMessage = `✅ Tool ${part.functionCall.name} completed\n\n`;
+                      // Show brief completion in chat
+                      const completedMessage = `✅ Completed\n\n`;
                       fullContent += completedMessage;
                       onStream(completedMessage);
 
-                      toolCalls.push({
-                        id: `gemini-${Date.now()}`,
-                        name: part.functionCall.name,
-                        arguments: part.functionCall.args,
-                        result: toolResult
-                      });
-
-                      // Store tool call for follow-up
                       toolCalls.push({
                         id: `gemini-${Date.now()}`,
                         name: part.functionCall.name,
@@ -7133,58 +7412,38 @@ USE THESE TOOLS ACTIVELY AND COMPREHENSIVELY.`;
 
         console.log('🔍 Gemini follow-up request:', JSON.stringify(followupBody, null, 2));
 
-        const url = `${provider.baseUrl}/models/${settings.model}:streamGenerateContent?alt=sse`;
+        // Use non-streaming follow-up call to prevent double replies
+        const url = `${provider.baseUrl}/models/${settings.model}:generateContent?key=${settings.apiKey}`;
         const followupResponse = await fetch(url, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': settings.apiKey
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify(followupBody)
         });
 
         if (followupResponse.ok) {
-          console.log(`✅ Starting Gemini follow-up streaming response`);
+          console.log(`✅ Getting Gemini follow-up response (non-streaming)`);
 
-          // Stream the follow-up response
-          const followupReader = followupResponse.body?.getReader();
-          if (followupReader) {
-            const followupDecoder = new TextDecoder();
+          // Get the follow-up response as JSON instead of streaming
+          const followupData = await followupResponse.json();
 
-            try {
-              // eslint-disable-next-line no-constant-condition
-              while (true) {
-                const { done, value } = await followupReader.read();
-                if (done) break;
+          // Process the follow-up response as a single chunk to prevent double replies
+          if (followupData.candidates && followupData.candidates[0]?.content?.parts) {
+            const parts = followupData.candidates[0].content.parts;
 
-                const chunk = followupDecoder.decode(value);
-                const lines = chunk.split('\n');
-
-                for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                    const data = line.slice(6).trim();
-                    if (!data || data === '[DONE]') continue;
-
-                    try {
-                      const parsed = JSON.parse(data);
-                      if (parsed.candidates && parsed.candidates[0]?.content?.parts) {
-                        const parts = parsed.candidates[0].content.parts;
-
-                        for (const part of parts) {
-                          if (part.text) {
-                            fullContent += part.text;
-                            onStream(part.text);
-                          }
-                        }
-                      }
-                    } catch (e) {
-                      console.warn('Failed to parse Gemini follow-up chunk:', e);
-                    }
-                  }
-                }
+            // Collect all text from the follow-up response
+            let followupText = '';
+            for (const part of parts) {
+              if (part.text) {
+                followupText += part.text;
               }
-            } finally {
-              followupReader.releaseLock();
+            }
+
+            // Add the follow-up content as a single chunk to avoid double replies
+            if (followupText.trim()) {
+              fullContent += '\n\n' + followupText;
+              onStream('\n\n' + followupText);
             }
           }
         } else {

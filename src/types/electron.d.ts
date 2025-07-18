@@ -58,9 +58,8 @@ export interface ElectronAPI {
   getCurrentWindowSize: () => Promise<{ width: number; height: number }>;
   takeScreenshot: () => Promise<string>;
 
-  // Window dragging
-  startDrag: () => Promise<{ offsetX: number; offsetY: number } | null>;
-  dragWindow: (x: number, y: number, offsetX: number, offsetY: number) => Promise<void>;
+  // Window dragging is now handled by CSS -webkit-app-region
+  // No methods needed for CSS-based dragging
 
   // Overlay windows
   openActionMenu: () => Promise<void>;
@@ -68,6 +67,10 @@ export interface ElectronAPI {
   sendPromptToMain: (promptText: string) => Promise<void>;
   openSettingsOverlay: () => Promise<void>;
   closeSettingsOverlay: () => Promise<void>;
+  openChatWindow: () => Promise<void>;
+  closeChatWindow: () => Promise<void>;
+  syncMessagesToChat: (messages: unknown[]) => Promise<void>;
+  requestCurrentMessages: () => Promise<void>;
   notifyThemeChange: (themeId: string) => Promise<void>;
 
   // Dropdown operations
@@ -82,6 +85,9 @@ export interface ElectronAPI {
   onSettingsChanged: (callback: (settings: unknown) => void) => void;
   onPromptReceived: (callback: (prompt: string) => void) => void;
   onThemeChanged: (callback: (themeId: string) => void) => void;
+  onMessagesUpdate: (callback: (messages: unknown[]) => void) => void;
+  onRequestCurrentMessages: (callback: () => void) => void;
+  removeAllListeners: (channel: string) => void;
 
   // Memory operations
   loadMemoryIndex: () => Promise<MemoryIndex>;

@@ -124,18 +124,19 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
               {parsed.thinking.map((thinkingText, index) => (
                 <div
                   key={index}
-                  className="bg-muted/50 border border-border/50 rounded-md p-3 text-sm"
+                  className="bg-muted border border-border rounded-2xl p-3 text-sm"
                 >
                   <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
                     <Brain className="h-3 w-3" />
                     <span>Thinking {parsed.thinking.length > 1 ? `${index + 1}` : ''}</span>
                   </div>
                   <div
-                    className="whitespace-pre-wrap text-muted-foreground select-text"
+                    className="whitespace-pre-wrap text-foreground select-text"
                     style={{
                       WebkitAppRegion: 'no-drag',
                       userSelect: 'text',
-                      WebkitUserSelect: 'text'
+                      WebkitUserSelect: 'text',
+                      textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
                     } as React.CSSProperties & { WebkitAppRegion?: string }}
                   >
                     {thinkingText}
@@ -170,18 +171,19 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
               {parsed.toolExecution.map((toolText, index) => (
                 <div
                   key={index}
-                  className="bg-muted/50 border border-border/50 rounded-md p-3 text-sm"
+                  className="bg-muted border border-border rounded-2xl p-3 text-sm"
                 >
                   <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
                     <Wrench className="h-3 w-3" />
                     <span>Tool Execution {parsed.toolExecution.length > 1 ? `${index + 1}` : ''}</span>
                   </div>
                   <div
-                    className="whitespace-pre-wrap text-muted-foreground select-text"
+                    className="whitespace-pre-wrap text-foreground select-text"
                     style={{
                       WebkitAppRegion: 'no-drag',
                       userSelect: 'text',
-                      WebkitUserSelect: 'text'
+                      WebkitUserSelect: 'text',
+                      textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
                     } as React.CSSProperties & { WebkitAppRegion?: string }}
                   >
                     {toolText}
@@ -216,9 +218,13 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
               {toolCalls.map((toolCall, index) => (
                 <div
                   key={toolCall.id || index}
-                  className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-md p-3 text-sm"
+                  className="bg-card border border-border rounded-2xl p-3 text-sm"
+                  style={{
+                    backgroundColor: 'rgba(79, 193, 255, 0.1)',
+                    borderColor: 'rgba(79, 193, 255, 0.3)'
+                  }}
                 >
-                  <div className="flex items-center gap-2 mb-2 text-xs text-blue-600 dark:text-blue-400">
+                  <div className="flex items-center gap-2 mb-2 text-xs" style={{ color: 'var(--info)' }}>
                     <Wrench className="h-3 w-3" />
                     <span className="font-medium">{toolCall.name}</span>
                     <span className="text-muted-foreground">#{toolCall.id}</span>
@@ -228,11 +234,12 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                   <div className="mb-2">
                     <div className="text-xs font-medium text-muted-foreground mb-1">Arguments:</div>
                     <div
-                      className="bg-muted/50 rounded p-2 text-xs font-mono whitespace-pre-wrap text-muted-foreground select-text"
+                      className="bg-muted rounded p-2 text-xs font-mono whitespace-pre-wrap text-foreground select-text"
                       style={{
                         WebkitAppRegion: 'no-drag',
                         userSelect: 'text',
-                        WebkitUserSelect: 'text'
+                        WebkitUserSelect: 'text',
+                        textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
                       } as React.CSSProperties & { WebkitAppRegion?: string }}
                     >
                       {JSON.stringify(toolCall.arguments, null, 2)}

@@ -35,6 +35,7 @@ import { mcpService, type MCPServer } from '../services/mcpService';
 import { MemoryManagement } from './MemoryManagement';
 
 export function SettingsOverlay() {
+  const [activeTab, setActiveTab] = useState('api-keys');
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [customPrompts, setCustomPrompts] = useState<Prompt[]>([]);
   const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
@@ -62,6 +63,36 @@ export function SettingsOverlay() {
   const [mcpConfigText, setMcpConfigText] = useState('');
 
   // const { theme, setTheme, themes } = useTheme(); // Theme system disabled
+
+  // Handle URL parameters and IPC messages for tab changes
+  useEffect(() => {
+    // Check URL parameters for initial tab
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+
+    // Listen for tab change messages from main process
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      const handleTabChange = (tab: string) => {
+        setActiveTab(tab);
+      };
+
+      // Add listener for tab change events (if available)
+      let listener: any = null;
+      if (window.electronAPI.onTabChange) {
+        listener = window.electronAPI.onTabChange(handleTabChange);
+      }
+
+      return () => {
+        // Cleanup listener if available
+        if (listener && window.electronAPI.removeTabChangeListener) {
+          window.electronAPI.removeTabChangeListener(listener);
+        }
+      };
+    }
+  }, []);
 
   // Load settings and prompts
   useEffect(() => {
@@ -180,6 +211,7 @@ export function SettingsOverlay() {
           toggleWindow: 'CommandOrControl+Shift+L',
           processClipboard: 'CommandOrControl+Shift+V',
           actionMenu: 'CommandOrControl+Shift+Space',
+          openShortcuts: 'CommandOrControl+Shift+K',
         },
         general: {
           autoStartWithSystem: false,
@@ -280,52 +312,20 @@ export function SettingsOverlay() {
   };
 
   const handleEditPrompt = (prompt: Prompt) => {
-    const isCustom = promptsService.isCustomPrompt(prompt.id);
-
-    if (!isCustom) {
-      // For built-in prompts, check if a custom copy already exists
-      const existingCustomCopy = promptsService.findCustomCopyOfBuiltinPrompt(prompt);
-
-      if (existingCustomCopy) {
-        // Edit the existing custom copy instead of the built-in prompt
-        setEditingPrompt(existingCustomCopy);
-        setNewPrompt({
-          name: existingCustomCopy.name,
-          description: existingCustomCopy.description,
-          prompt: existingCustomCopy.prompt,
-          category: existingCustomCopy.category,
-          icon: existingCustomCopy.icon
-        });
-      } else {
-        // No custom copy exists, prepare to create one
-        setEditingPrompt(prompt);
-        setNewPrompt({
-          name: `${prompt.name} (Custom)`,
-          description: prompt.description,
-          prompt: prompt.prompt,
-          category: prompt.category,
-          icon: prompt.icon
-        });
-      }
-    } else {
-      // Editing an existing custom prompt
-      setEditingPrompt(prompt);
-      setNewPrompt({
-        name: prompt.name,
-        description: prompt.description,
-        prompt: prompt.prompt,
-        category: prompt.category,
-        icon: prompt.icon
-      });
-    }
-
+    // Edit any prompt directly (built-in or custom)
+    setEditingPrompt(prompt);
+    setNewPrompt({
+      name: prompt.name,
+      description: prompt.description,
+      prompt: prompt.prompt,
+      category: prompt.category,
+      icon: prompt.icon
+    });
     setShowAddPrompt(true);
   };
 
   const handleUpdatePrompt = async () => {
     if (editingPrompt && newPrompt.name && newPrompt.prompt) {
-      const isCustom = promptsService.isCustomPrompt(editingPrompt.id);
-
       const promptData = {
         name: newPrompt.name,
         description: newPrompt.description,
@@ -334,23 +334,9 @@ export function SettingsOverlay() {
         icon: newPrompt.icon
       };
 
-      if (isCustom) {
-        // Update existing custom prompt
-        await promptsService.updateCustomPrompt(editingPrompt.id, promptData);
-      } else {
-        // Check if a custom copy of this built-in prompt already exists
-        const existingCustomCopy = promptsService.findCustomCopyOfBuiltinPrompt(editingPrompt);
-
-        if (existingCustomCopy) {
-          // Update the existing custom copy instead of creating a duplicate
-          await promptsService.updateCustomPrompt(existingCustomCopy.id, promptData);
-          console.log('Updated existing custom copy of built-in prompt:', existingCustomCopy.id);
-        } else {
-          // Create new custom prompt from built-in prompt
-          await promptsService.addCustomPrompt(promptData);
-          console.log('Created new custom copy of built-in prompt');
-        }
-      }
+      // Update the prompt directly (built-in or custom)
+      await promptsService.updatePrompt(editingPrompt.id, promptData);
+      console.log('Updated prompt:', editingPrompt.id);
 
       loadCustomPrompts();
       setEditingPrompt(null);
@@ -583,7 +569,7 @@ export function SettingsOverlay() {
             </Button>
           </div>
         ) : (
-          <Tabs defaultValue="api-keys" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="api-keys">API Keys</TabsTrigger>
               <TabsTrigger value="shortcuts">Shortcuts</TabsTrigger>
@@ -926,6 +912,22 @@ export function SettingsOverlay() {
                   </p>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="open-shortcuts-shortcut">Open Shortcuts Settings</Label>
+                  <Input
+                    id="open-shortcuts-shortcut"
+                    value={settings.shortcuts.openShortcuts}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      shortcuts: { ...settings.shortcuts, openShortcuts: e.target.value }
+                    })}
+                    placeholder="CommandOrControl+Shift+K"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Shortcut to open this shortcuts settings window
+                  </p>
+                </div>
+
                 <div className="text-sm text-muted-foreground">
                   <p>Use modifiers: CommandOrControl, Alt, Shift</p>
                   <p>Examples: CommandOrControl+K, Alt+Space, Shift+F1</p>
@@ -1173,7 +1175,7 @@ export function SettingsOverlay() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEditPrompt(prompt)}
-                            title={isCustom ? "Edit prompt" : "Edit prompt (will create a custom copy)"}
+                            title="Edit prompt"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -1196,26 +1198,14 @@ export function SettingsOverlay() {
                 {/* Add/Edit Prompt Dialog */}
                 {showAddPrompt && (
                   <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-background border rounded-lg p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <div className="bg-background border p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto" style={{ borderRadius: '20px' }}>
                       <h3 className="text-lg font-medium mb-4">
                         {editingPrompt
                           ? (promptsService.isCustomPrompt(editingPrompt.id)
                               ? 'Edit Custom Prompt'
-                              : 'Edit Built-in Prompt (Custom Copy)')
+                              : 'Edit Built-in Prompt')
                           : 'Add New Prompt'}
                       </h3>
-
-                      {editingPrompt && !promptsService.isCustomPrompt(editingPrompt.id) && (
-                        <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-4">
-                          <p className="text-sm text-blue-800 dark:text-blue-200">
-                            <strong>Note:</strong> You&apos;re editing a built-in prompt. {
-                              promptsService.findCustomCopyOfBuiltinPrompt(editingPrompt)
-                                ? 'This will update your existing custom copy of this prompt.'
-                                : 'This will create a new custom copy that you can modify. The original built-in prompt will remain unchanged.'
-                            }
-                          </p>
-                        </div>
-                      )}
 
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
@@ -1298,13 +1288,7 @@ export function SettingsOverlay() {
                           onClick={editingPrompt ? handleUpdatePrompt : handleAddPrompt}
                           disabled={!newPrompt.name || !newPrompt.prompt}
                         >
-                          {editingPrompt
-                            ? (promptsService.isCustomPrompt(editingPrompt.id)
-                                ? 'Update Prompt'
-                                : (promptsService.findCustomCopyOfBuiltinPrompt(editingPrompt)
-                                    ? 'Update Custom Copy'
-                                    : 'Create Custom Copy'))
-                            : 'Add Prompt'}
+                          {editingPrompt ? 'Update Prompt' : 'Add Prompt'}
                         </Button>
                       </div>
                     </div>
@@ -1447,7 +1431,7 @@ export function SettingsOverlay() {
                 {/* Add/Edit MCP Server Modal */}
                 {(showAddMcpServer || editingMcpServer) && (
                   <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-background border border-border rounded-lg p-6 w-full max-w-md max-h-[80vh] overflow-y-auto">
+                    <div className="bg-background border border-border p-6 w-full max-w-md max-h-[80vh] overflow-y-auto" style={{ borderRadius: '20px' }}>
                       <h3 className="text-lg font-medium mb-4">
                         {editingMcpServer ? 'Edit MCP Server' : 'Add MCP Server'}
                       </h3>

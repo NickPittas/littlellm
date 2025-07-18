@@ -119,6 +119,28 @@ class PromptsService {
     return true;
   }
 
+  async updateBuiltinPrompt(id: string, updates: Partial<Omit<Prompt, 'id'>>): Promise<boolean> {
+    const index = this.prompts.findIndex(prompt => prompt.id === id);
+    if (index === -1) {
+      return false;
+    }
+
+    this.prompts[index] = { ...this.prompts[index], ...updates };
+    // Note: Built-in prompts are modified in memory only
+    // They will revert to original values on app restart
+    return true;
+  }
+
+  async updatePrompt(id: string, updates: Partial<Omit<Prompt, 'id'>>): Promise<boolean> {
+    // Check if it's a custom prompt first
+    if (this.isCustomPrompt(id)) {
+      return this.updateCustomPrompt(id, updates);
+    } else {
+      // It's a built-in prompt
+      return this.updateBuiltinPrompt(id, updates);
+    }
+  }
+
   async deleteCustomPrompt(id: string): Promise<boolean> {
     const index = this.customPrompts.findIndex(prompt => prompt.id === id);
     if (index === -1) {

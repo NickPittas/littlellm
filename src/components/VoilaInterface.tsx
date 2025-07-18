@@ -8,7 +8,7 @@ declare global {
     triggerToolThinking?: (toolName: string) => void;
   }
 }
-import { X, Minus, Send, Paperclip, Camera } from 'lucide-react';
+import { X, Send, Paperclip, Camera } from 'lucide-react';
 import { Button } from './ui/button';
 import { ToolCallingToggle } from './ui/tool-calling-toggle';
 import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag';
@@ -24,9 +24,7 @@ import { settingsService } from '../services/settingsService';
 import { conversationHistoryService } from '../services/conversationHistoryService';
 import { sessionService } from '../services/sessionService';
 import { stateService } from '../services/stateService';
-import { MessageWithThinking } from './MessageWithThinking';
-import { UserMessage } from './UserMessage';
-import { ThinkingIndicator } from './ThinkingIndicator';
+
 // Theme system disabled
 
 
@@ -44,9 +42,59 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   const [showChat, setShowChat] = useState(false); // Hide chat until first message
   const [isLoading, setIsLoading] = useState(false); // Loading state for thinking indicator
 
+  // Sync messages to chat window whenever they change
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.electronAPI && messages.length > 0) {
+      window.electronAPI.syncMessagesToChat(messages);
 
-  const [windowExpanded, setWindowExpanded] = useState(false); // Track if window has been expanded
-  const [sessionStats, setSessionStats] = useState(sessionService.getSessionStats());
+      // Auto-open chat window when first message is sent
+      if (messages.length === 1) {
+        window.electronAPI.openChatWindow();
+      }
+    }
+  }, [messages]);
+
+  // Listen for conversation loading events from the chat button
+  useEffect(() => {
+    const handleLoadConversation = (event: CustomEvent) => {
+      const { conversation } = event.detail;
+      if (conversation && conversation.messages) {
+        setMessages(conversation.messages);
+        setShowChat(true);
+        // Set the current conversation ID
+        conversationHistoryService.setCurrentConversationId(conversation.id);
+      }
+    };
+
+    window.addEventListener('loadConversation', handleLoadConversation as EventListener);
+    return () => {
+      window.removeEventListener('loadConversation', handleLoadConversation as EventListener);
+    };
+  }, []);
+
+  // Listen for requests for current messages from chat window
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      const handleRequestCurrentMessages = () => {
+        // Send current messages to chat window
+        if (messages.length > 0) {
+          window.electronAPI.syncMessagesToChat(messages);
+        }
+      };
+
+      // Listen for requests from chat window
+      window.electronAPI.onRequestCurrentMessages?.(handleRequestCurrentMessages);
+
+      return () => {
+        window.electronAPI.removeAllListeners?.('request-current-messages');
+      };
+    }
+  }, [messages]);
+
+
+
+
+
   // Theme system disabled
 
   // Initialize enhanced window dragging
@@ -54,86 +102,16 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
   // Ref for auto-resizing textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // Ref for chat messages container
-  const chatMessagesRef = useRef<HTMLDivElement>(null);
-  // Track if user has manually scrolled up
-  const [isUserScrolling, setIsUserScrolling] = useState(false);
-  const [isAutoScrolling, setIsAutoScrolling] = useState(false);
 
-  // Dynamic window height management based on chat state
-  const updateWindowHeight = useCallback((hasChatContent: boolean) => {
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      const baseWidth = 570; // Keep width unchanged
 
-      if (hasChatContent) {
-        // Expanded height for active chat
-        const expandedHeight = 600; // Height when chat is active
-        console.log('🔧 Expanding window for active chat:', { width: baseWidth, height: expandedHeight });
-        window.electronAPI.resizeWindow(baseWidth, expandedHeight);
-      } else {
-        // Compact height for no chat - minimal size
-        const compactHeight = 120; // Very small height when no chat
-        console.log('🔧 Compacting window for no chat:', { width: baseWidth, height: compactHeight });
-        window.electronAPI.resizeWindow(baseWidth, compactHeight);
-      }
-    }
-  }, []);
 
-  // Calculate total tokens for current chat
-  const calculateChatTokens = () => {
-    let totalTokens = 0;
-    let promptTokens = 0;
-    let completionTokens = 0;
 
-    messages.forEach(message => {
-      if (message.usage) {
-        // Normalize token usage format (different providers use different field names)
-        const usage = message.usage as {
-          promptTokens?: number;
-          prompt_tokens?: number;
-          input_tokens?: number;
-          completionTokens?: number;
-          completion_tokens?: number;
-          output_tokens?: number;
-          totalTokens?: number;
-          total_tokens?: number;
-        };
-        const normalizedUsage = {
-          promptTokens: usage.promptTokens || usage.prompt_tokens || usage.input_tokens || 0,
-          completionTokens: usage.completionTokens || usage.completion_tokens || usage.output_tokens || 0,
-          totalTokens: usage.totalTokens || usage.total_tokens ||
-                      (usage.promptTokens || usage.prompt_tokens || usage.input_tokens || 0) +
-                      (usage.completionTokens || usage.completion_tokens || usage.output_tokens || 0)
-        };
 
-        totalTokens += normalizedUsage.totalTokens;
-        promptTokens += normalizedUsage.promptTokens;
-        completionTokens += normalizedUsage.completionTokens;
-      }
-    });
 
-    return { totalTokens, promptTokens, completionTokens };
-  };
 
-  // Dynamic window height management based on chat state
-  useEffect(() => {
-    const hasChatContent = messages.length > 0 || showChat;
-    updateWindowHeight(hasChatContent);
-  }, [messages.length, showChat, updateWindowHeight]);
 
-  // Update session stats when messages change
-  useEffect(() => {
-    setSessionStats(sessionService.getSessionStats());
 
-    // Debug: Log last message usage
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage.role === 'assistant') {
-        console.log('🔍 Last assistant message usage:', lastMessage.usage);
-        console.log('🔍 Current session stats:', sessionService.getSessionStats());
-      }
-    }
-  }, [messages]);
+
 
   // Reset chat function
   const handleResetChat = async () => {
@@ -141,8 +119,19 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     setShowChat(false);
     setInput('');
     setAttachedFiles([]);
+
+    // Clear the current conversation ID
+    conversationHistoryService.setCurrentConversationId(null);
+
+    // Clear localStorage for chat window
+    localStorage.removeItem('chatWindowMessages');
+
+    // Sync empty state to chat window
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      window.electronAPI.syncMessagesToChat([]);
+    }
+
     await sessionService.resetSession();
-    setSessionStats(sessionService.getSessionStats());
     console.log('Chat reset');
   };
   const [settings, setSettings] = useState<ChatSettings>({
@@ -354,39 +343,9 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  // Calculate total window height needed
-  const calculateWindowHeight = useCallback((textareaHeight: number = 40) => {
-    const baseHeight = 165; // Base height (padding, borders, etc.)
-    const chatHeight = showChat && messages.length > 0 ? 450 : 0; // Chat area height
-    const textareaExtraHeight = Math.max(0, textareaHeight - 40); // Extra height beyond minimum
 
-    return baseHeight + chatHeight + textareaExtraHeight;
-  }, [showChat, messages.length]);
 
-  // Auto-context window resizing - grows based on content, never shrinks unless cleared
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      const baseWidth = 570; // Minimum width for UI elements
 
-      // Get current textarea height
-      const currentTextareaHeight = textareaRef.current?.style.height
-        ? parseInt(textareaRef.current.style.height)
-        : 40;
-
-      const targetHeight = calculateWindowHeight(currentTextareaHeight);
-
-      // Only resize if we're changing to a larger size or going back to compact (no messages)
-      if (showChat && messages.length > 0 && !windowExpanded) {
-        console.log('Auto-expanding window for chat content');
-        window.electronAPI.resizeWindow(baseWidth, targetHeight);
-        setWindowExpanded(true);
-      } else if (messages.length === 0 && windowExpanded) {
-        console.log('Auto-compacting window - no content');
-        window.electronAPI.resizeWindow(baseWidth, targetHeight);
-        setWindowExpanded(false);
-      }
-    }
-  }, [showChat, messages.length, windowExpanded, calculateWindowHeight]);
 
   // Theme system disabled
 
@@ -469,47 +428,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     return () => clearTimeout(timer);
   }, [input, autoResizeTextarea]);
 
-  // Auto-scroll to bottom when new messages are added (unless user is scrolling)
-  useEffect(() => {
-    if (!isUserScrolling && chatMessagesRef.current) {
-      const scrollContainer = chatMessagesRef.current;
 
-      // Use requestAnimationFrame for smoother auto-scroll
-      requestAnimationFrame(() => {
-        const targetScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
-        const currentScrollTop = scrollContainer.scrollTop;
-        const distance = targetScrollTop - currentScrollTop;
-
-        // If the distance is small, use instant scroll
-        if (Math.abs(distance) < 100) {
-          scrollContainer.scrollTop = targetScrollTop;
-        } else {
-          // For larger distances, use smooth animated scroll
-          setIsAutoScrolling(true);
-          const startTime = performance.now();
-          const duration = Math.min(400, Math.abs(distance) * 0.6); // Slightly longer for smoother feel
-
-          const animateScroll = (currentTime: number) => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-
-            // Ultra-smooth easing function (ease-out-expo)
-            const easeOutExpo = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
-
-            scrollContainer.scrollTop = currentScrollTop + distance * easeOutExpo;
-
-            if (progress < 1) {
-              requestAnimationFrame(animateScroll);
-            } else {
-              setIsAutoScrolling(false);
-            }
-          };
-
-          requestAnimationFrame(animateScroll);
-        }
-      });
-    }
-  }, [messages, isUserScrolling]);
 
   // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -574,6 +493,14 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
+
+    // Immediately sync user message to chat window and ensure it's open
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      window.electronAPI.syncMessagesToChat(updatedMessages);
+      // Always open chat window when user sends a new message (re-opens if closed)
+      window.electronAPI.openChatWindow();
+    }
+
     setInput('');
     setIsLoading(true); // Start thinking indicator
     console.log('🧠 Started thinking indicator - user message sent');
@@ -683,31 +610,44 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
 
 
-      // Check if this is a follow-up response replacing a thinking bubble
-      setMessages(prev => {
-        const lastMessage = prev[prev.length - 1];
+      // Only update the message if streaming didn't occur (to prevent double content)
+      if (assistantContent === '') {
+        // No streaming occurred, update with the final response
+        setMessages(prev => {
+          const lastMessage = prev[prev.length - 1];
 
-        if (lastMessage && lastMessage.isThinking) {
-          // Replace the thinking bubble with the actual response
-          console.log(`🔄 Replacing thinking bubble with follow-up response`);
-          return prev.slice(0, -1).concat([{
-            id: lastMessage.id,
-            content: response.content,
-            role: 'assistant' as const,
-            timestamp: new Date(),
-            usage: response.usage,
-            toolCalls: response.toolCalls,
-            isThinking: false, // No longer thinking
-          }]);
-        } else {
-          // Update the original assistant message
-          return prev.map(msg =>
+          if (lastMessage && lastMessage.isThinking) {
+            // Replace the thinking bubble with the actual response
+            console.log(`🔄 Replacing thinking bubble with follow-up response`);
+            return prev.slice(0, -1).concat([{
+              id: lastMessage.id,
+              content: response.content,
+              role: 'assistant' as const,
+              timestamp: new Date(),
+              usage: response.usage,
+              toolCalls: response.toolCalls,
+              isThinking: false, // No longer thinking
+            }]);
+          } else {
+            // Update the original assistant message
+            return prev.map(msg =>
+              msg.id === assistantMessage.id
+                ? { ...msg, content: response.content, usage: response.usage, toolCalls: response.toolCalls }
+                : msg
+            );
+          }
+        });
+      } else {
+        // Streaming occurred, just update usage and toolCalls without changing content
+        console.log(`🔄 Streaming occurred, updating only usage and toolCalls`);
+        setMessages(prev =>
+          prev.map(msg =>
             msg.id === assistantMessage.id
-              ? { ...msg, content: response.content, usage: response.usage, toolCalls: response.toolCalls }
+              ? { ...msg, usage: response.usage, toolCalls: response.toolCalls }
               : msg
-          );
-        }
-      });
+          )
+        );
+      }
 
       // Stop thinking indicator when final response is complete
       if (isLoading) {
@@ -745,7 +685,11 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
       // Ensure all loading indicators are reset
       setIsLoading(false);
-      console.log('🔄 Message handling completed, reset all loading states');
+
+      // Remove any remaining thinking bubbles that might have been added during tool execution
+      setMessages(prev => prev.filter(msg => !msg.isThinking));
+
+      console.log('🔄 Message handling completed, reset all loading states and cleared thinking bubbles');
     }
   };
 
@@ -758,55 +702,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     }
   };
 
-  // Handle clearing chat
-  const handleClearChat = async () => {
-    // Save the current conversation before clearing
-    if (messages.length > 0) {
-      try {
-        const currentConversationId = conversationHistoryService.getCurrentConversationId();
-        if (currentConversationId) {
-          await conversationHistoryService.updateConversation(currentConversationId, messages);
-        } else if (messages.length > 0) {
-          // Create a new conversation if there isn't one
-          await conversationHistoryService.createNewConversation(messages);
-          // Don't set as current since we're clearing it
-        }
-      } catch (error) {
-        console.error('Failed to save conversation before clearing:', error);
-      }
-    }
 
-    // Clear the current conversation ID
-    conversationHistoryService.setCurrentConversationId(null);
-
-    // Clear the UI
-    setMessages([]);
-    setInput('');
-    setAttachedFiles([]);
-    setShowChat(false);
-  };
-
-  // Handle minimizing chat (save current state)
-  const handleMinimizeChat = async () => {
-    // Save the current conversation before minimizing
-    if (messages.length > 0) {
-      try {
-        const currentConversationId = conversationHistoryService.getCurrentConversationId();
-        if (currentConversationId) {
-          await conversationHistoryService.updateConversation(currentConversationId, messages);
-        } else {
-          // Create a new conversation if there isn't one
-          const newConversationId = await conversationHistoryService.createNewConversation(messages);
-          conversationHistoryService.setCurrentConversationId(newConversationId);
-        }
-      } catch (error) {
-        console.error('Failed to save conversation before minimizing:', error);
-      }
-    }
-
-    // Hide the chat
-    setShowChat(false);
-  };
 
 
 
@@ -901,7 +797,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
   return (
     <div
-      className={`h-screen w-full flex flex-col ${isDragging ? 'cursor-grabbing' : ''}`}
+      className={`h-full w-full flex flex-col ${isDragging ? 'cursor-grabbing' : ''}`}
       style={{
         userSelect: isDragging ? 'none' : 'auto',
         overflow: 'hidden',
@@ -1070,137 +966,9 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         </Card>
       </div>
 
-      {/* Chat Interface - Only show after first message - Positioned between input and bottom toolbar */}
-      {messages.length > 0 && showChat && (
-        <div className="flex-1 flex flex-col p-2 overflow-hidden">
-          <Card className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px' }}>
-            {/* Chat Header with Controls - FIXED POSITION */}
-            <div className="flex-none flex items-center justify-between p-2 border-b border-border bg-background">
-              <div className="flex items-center gap-3">
-                <div className="text-sm font-medium text-muted-foreground">Chat</div>
-                {(() => {
-                  const chatTokens = calculateChatTokens();
-                  return chatTokens.totalTokens > 0 ? (
-                    <div className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded">
-                      📊 {chatTokens.totalTokens} tokens ({chatTokens.promptTokens} in, {chatTokens.completionTokens} out)
-                    </div>
-                  ) : null;
-                })()}
-              </div>
-              <div className="flex items-center gap-1">
-                {/* Minimize Button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleMinimizeChat}
-                  className="h-6 w-6 p-0 hover:bg-muted"
-                  data-interactive="true"
-                >
-                  <Minus className="h-3 w-3" />
-                </Button>
-                {/* Close Button */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleClearChat}
-                  className="h-6 w-6 p-0 hover:bg-destructive/20"
-                  data-interactive="true"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
 
-            {/* Chat Messages */}
-            <div
-              ref={chatMessagesRef}
-              className="flex-1 p-4 space-y-4 hide-scrollbar overlay-scroll chat-messages"
 
-              data-interactive="true"
-              onScroll={(e) => {
-                // Don't interfere with auto-scrolling
-                if (isAutoScrolling) return;
 
-                const element = e.currentTarget;
-                const { scrollTop, scrollHeight, clientHeight } = element;
-
-                // Check if user is near the bottom (within 50px)
-                const isNearBottom = scrollHeight - scrollTop - clientHeight < 50;
-
-                // If user scrolled up from bottom, disable auto-scroll
-                // If user scrolled back to bottom, re-enable auto-scroll
-                setIsUserScrolling(!isNearBottom);
-              }}
-
-            >
-              {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex ${
-                    message.role === 'user' ? 'justify-end' : 'justify-start'
-                  }`}
-                  data-interactive="true"
-                >
-                  <div
-                    className={`max-w-[80%] p-3 rounded-lg ${
-                      message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-foreground'
-                    }`}
-                    data-interactive="true"
-                  >
-                    {message.role === 'assistant' ? (
-                      <>
-                        {message.isThinking ? (
-                          <ThinkingIndicator />
-                        ) : (
-                          <>
-                            <MessageWithThinking
-                              content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
-                              usage={message.usage}
-                              timing={message.timing}
-                              toolCalls={message.toolCalls}
-                            />
-                            {/* Debug tool calls */}
-                            {message.toolCalls && console.log('🔍 UI received toolCalls for message:', {
-                              messageId: message.id,
-                              toolCallsCount: message.toolCalls.length,
-                              toolNames: message.toolCalls.map((tc: { name: string }) => tc.name)
-                            })}
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <UserMessage content={typeof message.content === 'string' ? message.content : JSON.stringify(message.content)} />
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {/* Show thinking indicator when loading */}
-              {isLoading && (
-                <div className="flex justify-start p-2">
-                  <div className="max-w-[80%]">
-                    <ThinkingIndicator />
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Session Stats Display - Only show when there are messages */}
-      {messages.length > 0 && (
-        <div className="flex-none px-2 pb-1">
-          <div className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded text-center">
-            Session: {sessionStats.totalTokens} tokens • {sessionStats.messagesCount} messages • {sessionService.formatSessionDuration()}
-            {sessionStats.totalTokens === 0 && (
-              <span className="text-yellow-500 ml-2">[DEBUG: No tokens tracked yet]</span>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Bottom Toolbar - TESTING MINIMAL VERSION */}
       <div

@@ -66,9 +66,12 @@ export function SquircleWindow({
       }
 
       /* Ensure all child elements respect the rounded container */
+      #__next {
+        overflow: hidden !important;
+      }
+
       #__next > * {
         border-radius: inherit;
-        overflow: hidden;
       }
 
       /* Special handling for dialogs and overlays */
