@@ -187,7 +187,7 @@ async function checkAndFixMacOSPermissions(command: string): Promise<string> {
   }
 }
 
-function setupMacOSEnvironment(env: Record<string, string>): Record<string, string> {
+function setupMacOSEnvironment(env: Record<string, string>): NodeJS.ProcessEnv {
   if (process.platform !== 'darwin') {
     // Windows/Linux environment setup
     return setupCrossPlatformEnvironment(env);
@@ -226,13 +226,13 @@ function setupMacOSEnvironment(env: Record<string, string>): Record<string, stri
     PYTHONPATH: env.PYTHONPATH || process.env.PYTHONPATH || '',
 
     // Node.js environment
-    NODE_ENV: env.NODE_ENV || process.env.NODE_ENV || 'production'
+    NODE_ENV: (env.NODE_ENV || process.env.NODE_ENV || 'production') as 'development' | 'production' | 'test'
   };
 
   return macOSEnv;
 }
 
-function setupCrossPlatformEnvironment(env: Record<string, string>): Record<string, string> {
+function setupCrossPlatformEnvironment(env: Record<string, string>): NodeJS.ProcessEnv {
   // Windows/Linux environment setup
   const isWindows = process.platform === 'win32';
   const pathSeparator = isWindows ? ';' : ':';
@@ -266,9 +266,10 @@ function setupCrossPlatformEnvironment(env: Record<string, string>): Record<stri
   }
 
   return {
+    ...process.env,
     ...env,
     PATH: commonPaths.filter(Boolean).join(pathSeparator),
-    NODE_ENV: env.NODE_ENV || process.env.NODE_ENV || 'production'
+    NODE_ENV: (env.NODE_ENV || process.env.NODE_ENV || 'production') as 'development' | 'production' | 'test'
   };
 }
 
@@ -316,7 +317,7 @@ async function validateMacOSCommand(server: MCPServerConfig): Promise<{ valid: b
       }
     }, 3000); // 3 second timeout
 
-    testProcess.on('error', (error) => {
+    testProcess.on('error', (error: Error) => {
       if (!hasResponded) {
         hasResponded = true;
         clearTimeout(timeout);
@@ -374,7 +375,7 @@ async function validateWindowsCommand(server: MCPServerConfig): Promise<{ valid:
       }
     }, 3000);
 
-    testProcess.on('error', (error) => {
+    testProcess.on('error', (error: Error) => {
       if (!hasResponded) {
         hasResponded = true;
         clearTimeout(timeout);
@@ -387,7 +388,7 @@ async function validateWindowsCommand(server: MCPServerConfig): Promise<{ valid:
       }
     });
 
-    testProcess.on('close', (code) => {
+    testProcess.on('close', (code: number | null) => {
       if (!hasResponded) {
         hasResponded = true;
         clearTimeout(timeout);
@@ -434,7 +435,7 @@ async function validateLinuxCommand(server: MCPServerConfig): Promise<{ valid: b
       }
     }, 3000);
 
-    testProcess.on('error', (error) => {
+    testProcess.on('error', (error: Error) => {
       if (!hasResponded) {
         hasResponded = true;
         clearTimeout(timeout);
@@ -447,7 +448,7 @@ async function validateLinuxCommand(server: MCPServerConfig): Promise<{ valid: b
       }
     });
 
-    testProcess.on('close', (code) => {
+    testProcess.on('close', (code: number | null) => {
       if (!hasResponded) {
         hasResponded = true;
         clearTimeout(timeout);

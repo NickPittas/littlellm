@@ -117,7 +117,8 @@ describe('Settings Reload Behavior', () => {
         shortcuts: {
           toggleWindow: 'Ctrl+L',
           processClipboard: 'CommandOrControl+Shift+V',
-          actionMenu: 'CommandOrControl+Shift+Space'
+          actionMenu: 'CommandOrControl+Shift+Space',
+          openShortcuts: 'CommandOrControl+Shift+K'
         },
         general: {
           autoStartWithSystem: false,

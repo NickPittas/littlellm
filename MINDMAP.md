@@ -3,15 +3,17 @@
 ## 🏗️ Project Overview
 LittleLLM is an Electron-based desktop AI chat application built with Next.js, React, and TypeScript. It provides a native Windows experience for AI conversations with multiple providers.
 
-**Current Version: 1.7.0**
-**Release Date: January 2025**
+**Current Version: 1.9.0**
+**Release Date: July 2025**
 
-### Version 1.7.0 Key Features
-- **Enhanced Vision Support**: Fixed Ollama vision models with native API integration
-- **Improved n8n Integration**: Proper multipart/form-data image handling and response parsing
-- **Advanced Response Parsing**: Automatic cleanup of XML tags and structured responses
-- **Comprehensive Debugging**: Enhanced settings save/reload with detailed logging
-- **Image Processing Optimization**: Removed unnecessary image conversion for all APIs
+### Version 1.9.0 Key Features
+- **Fixed Chat Window Visibility**: Resolved global shortcut issues with window restoration
+- **Enhanced Window State Management**: Improved tracking and restoration of window states
+- **Reliable UI Controls**: Fixed "Open Chat" button to work unconditionally
+- **MCP Integration Stability**: Improved MCP server management and tool execution
+- **Memory Context Enhancements**: Enhanced memory tools and context retrieval
+- **Tool Calling Improvements**: Better streaming tool assembly and error handling
+- **Performance Optimizations**: Reduced overhead and improved response times
 
 ## 📁 Directory Structure
 
@@ -180,7 +182,7 @@ LittleLLM uses a dual-dropdown system:
 **Core Services:**
 
 - `llmService.ts` - **LLM PROVIDER MANAGEMENT & UNIVERSAL TOOL CALLING**
-  - Manages 10 AI providers: OpenAI, Anthropic, Gemini, Mistral, DeepSeek, LMStudio, Ollama, OpenRouter, Requesty, Replicate
+  - Manages 11 AI providers: OpenAI, Anthropic, Gemini, Mistral, DeepSeek, LMStudio, Ollama, OpenRouter, Requesty, Replicate, n8n
   - Dynamic model fetching with caching
   - Provider-specific API implementations
   - Streaming response handling
@@ -616,48 +618,50 @@ const detectedTools = this.detectTextBasedToolCalls(responseContent, mcpTools);
 
 ---
 
-## 📋 Version 1.7.0 Changelog (January 2025)
+## 📋 Version 1.9.0 Changelog (July 2025)
 
-### 🖼️ Vision Model Fixes
-- **Fixed Ollama Vision Support**: Proper pattern matching for vision models (llama3.2-vision, llava, etc.)
-- **Native API Integration**: Ollama vision models now use native `/api/chat` endpoint instead of OpenAI-compatible
-- **Dual Response Handling**: Support for both native Ollama and OpenAI-compatible response formats
-- **Image Processing Optimization**: Removed unnecessary image conversion - all APIs now receive original image data
+### 🔧 **Major Bug Fixes**
+- **Fixed Chat Window Visibility Issues**: Resolved problems with global shortcuts not properly restoring chat windows
+- **Enhanced Window State Management**: Improved tracking and restoration of window visibility states
+- **Reliable Open Chat Button**: Button now works unconditionally regardless of previous hide/show cycles
+- **Global Shortcut Improvements**: Both main and chat windows now restore properly when using global shortcuts
 
-### 🔗 n8n Integration Improvements
-- **Multipart Form Data**: Images now sent as proper binary attachments instead of JSON
-- **POST Request Fix**: All n8n requests now use POST method (was incorrectly using GET for text-only)
-- **Response Parser**: Advanced parsing system for cleaning up structured responses
-- **XML Tag Removal**: Automatic cleanup of `<Simple>`, `<Complex>` and other XML-like tags
-- **JSON Array Handling**: Proper extraction from responses like `[{"output":"content"}]`
+### 🎯 **MCP Integration Stability**
+- **Improved Server Management**: Enhanced MCP server configuration and connection handling
+- **Better Tool Execution**: More reliable tool calling and result processing
+- **Enhanced Error Handling**: Better error messages and fallback mechanisms for MCP operations
+- **Connection Status Tracking**: Improved monitoring of MCP server connection states
 
-### 🛠️ Response Processing Engine
-- **ResponseParser Class**: Comprehensive utility for cleaning structured responses
-- **Multi-Format Support**: Handles JSON arrays, objects, XML tags, and mixed formats
-- **Field Detection**: Automatically extracts from `output`, `response`, `message`, `content`, `text`, `result` fields
-- **Fallback Safety**: Always falls back to original response if parsing fails
-- **Debug Logging**: Detailed console output for troubleshooting response issues
+### 🧠 **Memory Context Enhancements**
+- **Enhanced Memory Tools**: Improved memory storage and retrieval functionality
+- **Better Context Retrieval**: More accurate and relevant memory context for conversations
+- **Memory Export/Import**: Enhanced memory management with better file handling
+- **Performance Optimizations**: Faster memory operations and reduced overhead
 
-### 🔧 Settings & Debugging
-- **Enhanced Logging**: Comprehensive debug output for settings save/reload operations
-- **Electron API Validation**: Detailed checks for API availability and function existence
-- **Settings Structure Logging**: Full JSON output for troubleshooting configuration issues
-- **Listener Tracking**: Monitor how many components are listening to settings changes
-- **Force Update Method**: Improved settings reload with proper listener notification
+### 🛠️ **Tool Calling Improvements**
+- **Streaming Tool Assembly**: Better handling of tool calls in streaming responses
+- **Error Recovery**: Improved error handling and retry mechanisms for tool execution
+- **Clean Context Management**: Better follow-up processing without system message pollution
+- **Provider Compatibility**: Enhanced tool calling support across all providers
 
-### 🏗️ Technical Improvements
-- **Image Format Preservation**: No more unnecessary base64 conversion or image optimization
-- **API Endpoint Selection**: Smart switching between native and compatible APIs based on content
-- **Error Handling**: Better error messages and fallback mechanisms
-- **Type Safety**: Improved TypeScript definitions for response parsing
-- **Performance**: Reduced image processing overhead for all providers
+### 🎨 **UI/UX Improvements**
+- **Window Management**: Fixed issues with window visibility and state tracking
+- **Better User Feedback**: Improved visual indicators for tool execution and system status
+- **Enhanced Settings**: Better settings persistence and error handling
+- **Performance**: Reduced UI lag and improved responsiveness
 
-### 🐛 Bug Fixes
-- Fixed vision model detection for Ollama providers
-- Resolved n8n webhook 404 errors (GET vs POST method)
-- Corrected image data format for multipart uploads
-- Fixed settings persistence issues with detailed debugging
-- Improved response parsing for wrapped/structured content
+### 🏗️ **Technical Improvements**
+- **TypeScript Enhancements**: Improved type safety and error handling
+- **Build Process**: Better build configuration and error reporting
+- **Testing**: Enhanced test coverage and reliability
+- **Documentation**: Updated documentation to reflect current features and architecture
+
+### 🐛 **Bug Fixes**
+- Fixed chat window not restoring after global hide/show operations
+- Resolved "Open Chat" button becoming unresponsive after hide/show cycles
+- Improved window state tracking and restoration logic
+- Fixed various TypeScript and ESLint errors
+- Enhanced error handling throughout the application
 
 ---
 *This mindmap serves as the single source of truth for understanding the LittleLLM codebase architecture and should be consulted before any development work.*

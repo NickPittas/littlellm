@@ -369,7 +369,7 @@ export const chatService = {
 
         console.log('Has images:', hasImages, 'Has PDFs:', hasPDFs, 'Has visual content:', hasVisualContent, 'Provider:', provider, 'Model supports vision:', modelSupportsVision);
 
-        if (hasVisualContent && modelSupportsVision && (provider === 'openrouter' || provider === 'openai' || provider === 'requesty')) {
+        if (hasVisualContent && modelSupportsVision) {
           // Use vision API format for providers that support it
           console.log('Using vision API format for provider:', provider);
 

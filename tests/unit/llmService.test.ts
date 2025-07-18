@@ -99,7 +99,7 @@ describe('LLMService Multi-Tool Functionality', () => {
 
       const result = (llmService as any).validateToolCallsForProvider(toolCalls, 'openai');
       expect(result.valid).toBe(false);
-      expect(result.errors.some(error => error.includes('Tool name too long'))).toBe(true);
+      expect(result.errors.some((error: string) => error.includes('Tool name too long'))).toBe(true);
     });
 
     it('should detect invalid tool name characters', () => {
@@ -113,7 +113,7 @@ describe('LLMService Multi-Tool Functionality', () => {
 
       const result = (llmService as any).validateToolCallsForProvider(toolCalls, 'openai');
       expect(result.valid).toBe(false);
-      expect(result.errors.some(error => error.includes('invalid characters'))).toBe(true);
+      expect(result.errors.some((error: string) => error.includes('invalid characters'))).toBe(true);
     });
   });
 

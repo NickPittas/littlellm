@@ -107,7 +107,7 @@ export function MCPDropdown({
         setIsLoading(false)
       }, 500) // 500ms debounce
     }
-  }, [])
+  }, [isLoading])
 
   // Load MCP servers on mount only (no auto-refresh)
   React.useEffect(() => {

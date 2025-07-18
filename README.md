@@ -1,6 +1,6 @@
-# LittleLLM v1.5.5 🤖💬
+# LittleLLM v1.9.0 🤖💬
 
-A powerful, lightweight desktop chat application for Windows that provides seamless access to multiple AI providers with advanced features like model persistence, thinking sections, and clipboard integration.
+A powerful, lightweight desktop chat application for Windows that provides seamless access to multiple AI providers with advanced features like MCP (Model Context Protocol) integration, tool calling, memory context, and enhanced vision support.
 
 ![LittleLLM Screenshot](assets/icon.png)
 
@@ -13,12 +13,13 @@ A powerful, lightweight desktop chat application for Windows that provides seaml
 - **Mistral AI**: Mistral Large, Medium, Small, Codestral ✅
 - **DeepSeek**: DeepSeek Chat, DeepSeek Coder ✅
 - **LM Studio**: Local server for any GGUF model (free) ✅
-- **Ollama**: Local models support (free) ✅
+- **Ollama**: Local models support with enhanced vision capabilities ✅
 - **OpenRouter**: 150+ models from multiple providers ✅
 - **Requesty**: 80+ models with smart routing ✅
 - **Replicate**: Cloud-hosted models ✅
+- **n8n**: Custom workflow integration with multipart form data support ✅
 
-> **All providers fully implemented with streaming support and vision capabilities where available**
+> **All 11 providers fully implemented with streaming support, vision capabilities, and tool calling integration**
 
 ### 🖼️ **Vision Support**
 - Send images directly to vision-capable models
@@ -36,6 +37,9 @@ A powerful, lightweight desktop chat application for Windows that provides seaml
 - ESC key to close window
 
 ### 🛠️ **Advanced Features**
+- **MCP (Model Context Protocol) Integration**: Full support for MCP servers and tools ✨
+- **Tool Calling**: User-controlled tool execution with native provider support ✨
+- **Memory Context**: Intelligent conversation memory with automatic context retrieval ✨
 - **Model Persistence**: Each provider remembers your last selected model across restarts
 - **Thinking Sections**: Collapsible display of model reasoning for `<think>` tags
 - **Clipboard Integration**: Prompts automatically include clipboard content via `{content}` placeholder
@@ -46,6 +50,8 @@ A powerful, lightweight desktop chat application for Windows that provides seaml
 - **Token limits**: Prevent runaway generation
 - **System prompts**: Customize AI behavior
 - **Dark mode**: Multiple themes available
+- **Token Tracking**: Real-time tokens/second and total usage display ✨
+- **Enhanced Response Parsing**: Automatic cleanup of structured responses ✨
 
 ### 📁 **File Support**
 - **Images**: PNG, JPG, GIF, WebP
@@ -58,17 +64,17 @@ A powerful, lightweight desktop chat application for Windows that provides seaml
 ### Download & Install
 
 **Windows Installer (Recommended)**
-1. Download `LittleLLM-Setup-1.5.5.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
+1. Download `LittleLLM-Setup-1.9.0.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
 2. Run the installer (may need "Run as administrator")
 3. Follow installation wizard
 4. Launch from Desktop shortcut or Start Menu
 
 **Portable Version**
-1. Download `LittleLLM-Portable-1.5.5.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
+1. Download `LittleLLM-Portable-1.9.0.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
 2. Place anywhere (Desktop, USB drive, etc.)
 3. Double-click to run - no installation needed
 
-> **✅ Latest builds include all 10 AI providers with full streaming and vision support**
+> **✅ Latest builds include all 11 AI providers with MCP integration, tool calling, and enhanced vision support**
 
 📖 **[Full Installation Guide](INSTALLATION.md)**
 
@@ -87,12 +93,14 @@ A powerful, lightweight desktop chat application for Windows that provides seaml
    - **Ollama**: No API key needed (local models)
 
 ### Start Chatting
-1. Press **Ctrl+`** to open the chat window
+1. Press **Ctrl+Shift+L** to open the chat window
 2. Select a provider and model from the bottom dropdowns
 3. Type your message and press Enter
 4. Attach images by clicking the paperclip icon or pasting from clipboard
 5. Use **Ctrl+Shift+Space** to access quick actions and prompts
-6. Copy text from clipboard, then select prompts with `{content}` for automatic insertion
+6. Toggle tool calling with the 🔧 button next to attachments
+7. Manage MCP servers with the 🖥️ dropdown
+8. Copy text from clipboard, then select prompts with `{content}` for automatic insertion
 
 ## 🔧 Development
 
@@ -131,13 +139,14 @@ npm run dist:linux  # Linux
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+`` | Open/Show LittleLLM |
+| `Ctrl+Shift+L` | Open/Show LittleLLM |
 | `Ctrl+Shift+Space` | Open Action Menu |
 | `Ctrl+Shift+V` | Process Clipboard |
 | `Esc` | Close window |
 | `Enter` | Send message |
 | `Shift+Enter` | New line in chat input |
 | `Ctrl+V` | Paste (including images) |
+| `Ctrl+R` | Reset chat conversation |
 
 ## 🎨 Themes
 
@@ -213,45 +222,57 @@ npm run dist:mac            # macOS (.dmg)
 npm run dist:linux          # Linux (AppImage)
 ```
 
-## 🆕 What's New in v1.5.5
+## 🆕 What's New in v1.9.0
 
-### Enhanced User Interface ✨
-- **Prompts Button**: New 🪄 button next to attachments for quick access to prompts
-- **Draggable Windows**: Settings and prompts overlays can now be moved around the screen
-- **Better Positioning**: Overlay windows automatically stay within screen boundaries
-- **Improved Accessibility**: No more cropped windows at screen edges
+### 🔧 **Major Bug Fixes**
+- **Fixed Chat Window Visibility**: Resolved issues with global shortcuts not properly restoring chat windows
+- **Enhanced Window State Management**: Improved tracking and restoration of window visibility states
+- **Reliable Open Chat Button**: Button now works unconditionally regardless of previous hide/show cycles
 
-### Fixed Keyboard Shortcuts 🔧
-- **Ctrl+Shift+Space**: Now properly opens the prompts/action menu
-- **Global Shortcuts**: Reliable shortcut registration across app restarts
-- **Action Menu**: Shows all available prompts and quick actions
+### 🎯 **MCP (Model Context Protocol) Integration** ✨
+- **Full MCP SDK Integration**: Complete implementation of Model Context Protocol
+- **Server Management**: Add, configure, and manage MCP servers through UI
+- **Tool Discovery**: Automatic detection and formatting of available MCP tools
+- **Per-Chat Control**: Enable/disable MCP servers per conversation
+- **Security Architecture**: MCP SDK isolated in main process with IPC bridge
 
-### Enhanced Settings Experience 🛠️
-- **Robust Loading**: Better error handling and fallback to default settings
-- **Retry Functionality**: Manual retry button if settings fail to load
-- **Debug Information**: Improved logging for troubleshooting
+### 🛠️ **Tool Calling System** ✨
+- **User-Controlled Tool Calling**: Toggle switch next to attachment buttons
+- **Native Tool Support**: Works with models that natively support structured tool calling
+- **Streaming Tool Assembly**: Assembles tool calls from streaming chunks
+- **Clean Follow-up Processing**: Tool results processed without system message pollution
 
-## 🐛 Recent Fixes
+### 🧠 **Memory Context System** ✨
+- **Intelligent Memory**: Automatic conversation memory with context retrieval
+- **Memory Tools**: Built-in memory management tools for storing and retrieving information
+- **Context-Aware Responses**: AI responses enhanced with relevant memory context
 
-### Windows Installer & Distribution ✅
-Created full Windows installer with setup wizard:
-- **NSIS Installer**: Full installation with uninstaller, shortcuts, and Windows integration
-- **Portable Version**: Single executable that runs without installation
-- **Both versions**: Include the Windows taskbar icon fix
+### 🖼️ **Enhanced Vision Support** ✨
+- **Fixed Ollama Vision**: Proper pattern matching and native API integration for vision models
+- **Multipart Form Data**: n8n provider sends images as proper binary attachments
+- **Response Parser**: Advanced parsing system for cleaning up structured responses
+- **No Image Conversion**: Direct base64 handling for all providers (optimized performance)
 
-### Windows Taskbar Icon Issue ✅
-Fixed the blank taskbar icon issue on Windows by:
-- Regenerating ICO files with multiple sizes (16x16, 32x32, 48x48, 64x64, 128x128, 256x256)
-- Implementing robust icon path resolution for different build environments
-- Adding Windows-specific icon handling with `setIcon()` and `setAppUserModelId()`
-- Configuring electron-builder for proper icon embedding in executables
+### 🎨 **UI/UX Improvements** ✨
+- **Token Tracking**: Real-time tokens/second and total usage display
+- **Reset Chat**: One-click conversation clearing with 🔄 button
+- **MCP Dropdown**: Bottom toolbar control for MCP server management
+- **Enhanced Settings**: Dedicated MCP configuration section with raw JSON editor
+- **Tool Call Indicators**: Visual feedback when tools are being executed
 
-### Tech Stack
+### 🔧 **Technical Improvements**
+- **Enhanced Logging**: Comprehensive debug output for settings and MCP operations
+- **Better Error Handling**: Improved error messages and fallback mechanisms
+- **Performance Optimizations**: Reduced image processing overhead
+- **Type Safety**: Improved TypeScript definitions throughout the codebase
+
+## 🏗️ **Tech Stack**
 - **Frontend**: Next.js 14, React 18, TypeScript
-- **Desktop**: Electron 37
+- **Desktop**: Electron 37.1.0
 - **Styling**: Tailwind CSS, Radix UI components
 - **Build**: Electron Builder for cross-platform distribution
-- **Icons**: Multi-size ICO files for Windows compatibility
+- **MCP Integration**: @modelcontextprotocol/sdk v1.15.1
+- **Testing**: Vitest with comprehensive test coverage
 
 ## 📄 License
 
@@ -266,34 +287,10 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**LittleLLM v1.5** - Your intelligent AI companion with advanced features 🚀
+**LittleLLM v1.9.0** - Your intelligent AI companion with MCP integration, tool calling, and memory context 🚀
 
-## 🆕 What's New in v1.5.5
-
-### 🚀 **Complete Provider Implementation**
-- **✅ All 10 AI Providers Fully Working**: OpenAI, Anthropic, Gemini, Mistral, DeepSeek, LM Studio, Ollama, OpenRouter, Requesty, Replicate
-- **🔧 Fixed Anthropic & Gemini APIs**: Proper authentication, streaming, and vision support
-- **📡 Streaming Support**: Real-time responses for all providers
-- **🖼️ Vision Models**: Image support for Claude 4, GPT-4o, Gemini, and more
-- **🆕 Latest Models**: Claude 4 Sonnet/Opus, Gemini 2.5 Flash/Pro, and more
-
-### 📦 **Production Builds**
-- **Windows Installer**: `LittleLLM-Setup-1.5.5.exe` with proper installation
-- **Portable Version**: `LittleLLM-Portable-1.5.5.exe` for USB/standalone use
+## 📦 **Production Builds**
+- **Windows Installer**: `LittleLLM-Setup-1.9.0.exe` with proper installation
+- **Portable Version**: `LittleLLM-Portable-1.9.0.exe` for USB/standalone use
 - **No CORS Issues**: All APIs work perfectly in the executable builds
-
-## 🆕 What's New in v1.5
-
-### ✨ Major Features
-- **Model Persistence**: Each provider now remembers your last selected model across app restarts
-- **Thinking Sections**: AI responses with `<think>` tags now display collapsible reasoning sections
-- **Enhanced Clipboard Integration**: Prompts with `{content}` automatically include clipboard text
-- **Copy Functionality**: Hover over any message to copy entire content, or select text for partial copying
-- **Improved UI**: Better message bubbles, copy buttons, and text selection
-
-### 🔧 Technical Improvements
-- Auto-save model selections to disk for persistence
-- Enhanced prompt processing with clipboard content replacement
-- Improved message rendering with thinking section parsing
-- Better text selection and copy functionality across all interfaces
-- Optimized dropdown scrolling and model selection
+- **Enhanced Features**: MCP integration, tool calling, and memory context included
