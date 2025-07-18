@@ -1425,6 +1425,9 @@ let settingsWindow: BrowserWindow | null = null;
 let chatWindow: BrowserWindow | null = null;
 let dropdownWindow: BrowserWindow | null = null;
 let historyWindow: BrowserWindow | null = null;
+
+// State tracking for window visibility before global hide
+let chatWindowWasVisible = false;
 let tray: Tray | null = null;
 let staticServerPort: number = 3001;
 let isQuitting = false;
@@ -1996,8 +1999,12 @@ function registerGlobalShortcuts() {
                            (dropdownWindow && dropdownWindow.isFocused());
 
     if (anyWindowVisible && anyWindowFocused) {
-      // Hide ALL windows
+      // Hide ALL windows and track chat window state
       console.log('Hiding all application windows');
+
+      // Track if chat window was visible before hiding
+      chatWindowWasVisible = !!(chatWindow && chatWindow.isVisible());
+
       if (mainWindow && mainWindow.isVisible()) mainWindow.hide();
       if (chatWindow && chatWindow.isVisible()) chatWindow.hide();
       if (settingsWindow && settingsWindow.isVisible()) settingsWindow.hide();
@@ -2013,8 +2020,14 @@ function registerGlobalShortcuts() {
         createWindow().catch(console.error);
       }
 
-      // Note: We don't automatically restore other windows as they should be opened by user action
-      // The main window is the primary interface
+      // Restore chat window if it was visible before hiding
+      if (chatWindowWasVisible && chatWindow) {
+        console.log('Restoring chat window that was previously visible');
+        chatWindow.show();
+        chatWindow.focus();
+        // Reset the tracking state
+        chatWindowWasVisible = false;
+      }
     }
   });
 
@@ -3003,6 +3016,10 @@ function setupIPC() {
     if (!mainWindow) return;
 
     if (chatWindow) {
+      // Always show and focus the chat window, even if it was hidden
+      if (!chatWindow.isVisible()) {
+        chatWindow.show();
+      }
       chatWindow.focus();
       return;
     }
