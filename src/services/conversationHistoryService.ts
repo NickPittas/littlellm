@@ -301,19 +301,35 @@ class ConversationHistoryService {
 
   async deleteConversation(conversationId: string) {
     await this.initialize();
+    console.log(`🗑️ Deleting conversation: ${conversationId}`);
+
+    // Remove from in-memory array
     this.conversations = this.conversations.filter(c => c.id !== conversationId);
-    
+
     if (this.currentConversationId === conversationId) {
       this.currentConversationId = null;
     }
-    
+
+    // Update the index (file deletion is now handled by IPC handler)
     await this.saveConversationIndex();
+    console.log(`✅ Conversation ${conversationId} deleted from memory`);
   }
 
   async clearAllHistory() {
+    console.log('🗑️ ConversationHistoryService.clearAllHistory() called');
+    await this.initialize();
+    console.log('🗑️ Service initialized, current conversations count:', this.conversations.length);
+
+    // Clear in-memory data (file deletion is now handled by IPC handler)
+    console.log('🗑️ Clearing in-memory conversations');
     this.conversations = [];
     this.currentConversationId = null;
+
+    // Save empty index
+    console.log('🗑️ Saving empty conversation index');
     await this.saveConversationIndex();
+
+    console.log('✅ All chat history cleared from memory');
   }
 
   getCurrentConversationId(): string | null {

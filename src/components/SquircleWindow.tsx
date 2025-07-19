@@ -43,26 +43,15 @@ export function SquircleWindow({
     const style = document.createElement('style');
     style.id = styleId;
     style.textContent = `
-      /* Enhanced squircle styling for Electron windows */
+      /* Simple rounded corners with no borders */
       html, body, #__next {
         border-radius: ${cornerRadius}px !important;
         -electron-corner-smoothing: ${Math.round(cornerSmoothing * 100)}% !important;
         overflow: hidden !important;
-      }
-
-      /* Fallback masking for non-Electron environments */
-      @supports not (-electron-corner-smoothing: 60%) {
-        html, body, #__next {
-          -webkit-mask-image: 
-            radial-gradient(circle at ${cornerRadius}px ${cornerRadius}px, transparent ${cornerRadius}px, black ${cornerRadius}px),
-            radial-gradient(circle at calc(100% - ${cornerRadius}px) ${cornerRadius}px, transparent ${cornerRadius}px, black ${cornerRadius}px),
-            radial-gradient(circle at ${cornerRadius}px calc(100% - ${cornerRadius}px), transparent ${cornerRadius}px, black ${cornerRadius}px),
-            radial-gradient(circle at calc(100% - ${cornerRadius}px) calc(100% - ${cornerRadius}px), transparent ${cornerRadius}px, black ${cornerRadius}px);
-          -webkit-mask-size: ${cornerRadius * 2}px ${cornerRadius * 2}px;
-          -webkit-mask-position: top left, top right, bottom left, bottom right;
-          -webkit-mask-repeat: no-repeat;
-          -webkit-mask-composite: intersect;
-        }
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+        background: var(--background) !important;
       }
 
       /* Ensure all child elements respect the rounded container */

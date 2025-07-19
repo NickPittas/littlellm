@@ -12,14 +12,14 @@
     --background: #181829;
     --foreground: #d4d4d4;
     --card: #181829;
-    --card-foreground: #eba5a5;
+    --card-foreground: #ffffff;
     --primary: #569cd6;
     --primary-foreground: #ffffff;
     --secondary: #4fc1ff;
     --secondary-foreground: #adadad;
-    --accent: #e04539;
+    --accent: rgba(86, 156, 214, 0.811);
     --accent-foreground: #ffffff;
-    --muted: #201e31;
+    --muted: #211f32;
     --muted-foreground: #9ca3af;
     --border: #3b3b68;
     --input: #949494;
@@ -40,7 +40,7 @@
 
 @layer base {
   * {
-    @apply border-border;
+    /* Removed global border - was causing thick borders everywhere */
   }
 
   /* Hide scrollbars but keep scrolling functionality */
@@ -76,37 +76,44 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* More rounded corners implementation */
+  /* Big rounded corners with no borders - simplified */
   html {
     background: var(--background) !important;
     margin: 0 !important;
     padding: 0 !important;
-    border-radius: 20px !important;
-    -electron-corner-smoothing: 80% !important; /* More rounded squircle corners */
+    border-radius: 32px !important;
     overflow: hidden !important;
     width: 100% !important;
     height: 100% !important;
     position: relative !important;
+    border: 0px solid transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
   }
 
   body {
     background-color: var(--background) !important;
     color: var(--foreground) !important;
-    border-radius: 20px !important;
+    border-radius: 32px !important;
     overflow: hidden !important;
     margin: 0 !important;
     padding: 0 !important;
+    border: 0px solid transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
   }
 
   #__next {
     background: var(--background) !important;
-    border-radius: 20px !important;
-    -electron-corner-smoothing: 80% !important; /* More rounded squircle corners */
+    border-radius: 32px !important;
     overflow: hidden !important;
     width: 100% !important;
-    height: 100% !important;
+    height: auto !important;
     position: relative !important;
-    min-height: 100% !important;
+    min-height: 0 !important;
+    border: 0px solid transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
   }
 
   /* Force main app container background */
@@ -127,9 +134,17 @@
   }
 
   /* Simplified styling using CSS variables */
-  .card, [data-radix-dialog-content] {
+  .card {
     background: var(--card) !important;
-    border: 1px solid var(--border) !important;
+    border: none !important;
+    color: var(--card-foreground) !important;
+    border-radius: 16px !important;
+  }
+
+  /* Dialog content styling */
+  [data-radix-dialog-content] {
+    background: var(--card) !important;
+    border: none !important;
     color: var(--card-foreground) !important;
     border-radius: 16px !important;
   }
@@ -138,8 +153,18 @@
   button, input, textarea, select {
     background: var(--muted) !important;
     color: var(--foreground) !important;
-    border: 1px solid var(--border) !important;
+    border: none !important;
     border-radius: 12px !important;
+  }
+
+  /* Specifically target action menu buttons to remove borders */
+  .space-y-1 button,
+  [class*="space-y"] button,
+  button[class*="w-full"],
+  button[class*="justify-start"] {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
   }
 
   button:hover {
@@ -217,7 +242,7 @@
   [data-radix-select-content],
   [data-radix-popover-content] {
     background-color: var(--card) !important;
-    border: 1px solid var(--border) !important;
+    border: none !important;
     color: var(--card-foreground) !important;
     border-radius: 12px !important;
   }

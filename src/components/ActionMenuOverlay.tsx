@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Input } from './ui/input';
-import { Button } from './ui/button';
+
 import {
   Search,
   Wand2,
@@ -43,7 +43,7 @@ export function ActionMenuOverlay() {
     };
 
     loadPrompts();
-    
+
     // Focus search input
     setTimeout(() => {
       searchInputRef.current?.focus();
@@ -149,14 +149,14 @@ export function ActionMenuOverlay() {
   // Filter items based on search query
   const filteredItems = createActionItems().filter(item => {
     if (!searchQuery.trim()) return true;
-    
+
     const query = searchQuery.toLowerCase();
     const searchableText = [
       item.title,
       item.description,
       ...(item.keywords || [])
     ].join(' ').toLowerCase();
-    
+
     return searchableText.includes(query);
   });
 
@@ -190,19 +190,46 @@ export function ActionMenuOverlay() {
   }, [searchQuery]);
 
   return (
-    <div className="h-full w-full bg-background flex flex-col overflow-hidden">
-      {/* Custom Title Bar - macOS style */}
+    <div className="h-full w-full flex flex-col overflow-hidden" style={{ backgroundColor: '#000000' }}>
+      {/* Draggable Title Bar */}
       <div
-        className="h-8 w-full bg-background/80 backdrop-blur-md border-b border-border/50 flex items-center justify-center relative flex-none cursor-move"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        className="flex items-center justify-between px-3 py-2 border-b border-border cursor-grab active:cursor-grabbing bg-gray-800 hover:bg-gray-700 transition-colors"
+        style={{
+          backgroundColor: '#374151',
+          borderBottom: '1px solid #4b5563',
+          WebkitAppRegion: 'drag',
+          minHeight: '40px'
+        }}
+        onMouseDown={(e) => {
+          // Enable dragging for the entire title bar area
+          e.currentTarget.style.cursor = 'grabbing';
+        }}
+        onMouseUp={(e) => {
+          e.currentTarget.style.cursor = 'grab';
+        }}
       >
-        <div className="absolute left-4 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}>
-          <div className="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 cursor-pointer" onClick={handleClose} />
-          <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-          <div className="w-3 h-3 rounded-full bg-green-500/80" />
+        <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-0.5">
+            <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+            <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+            <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+          </div>
+          <h2 className="text-sm font-medium text-white select-none">
+            Actions & Prompts
+          </h2>
         </div>
-        <div className="text-sm font-medium text-foreground/80">Quick Actions</div>
+        <button
+          onClick={handleClose}
+          className="h-6 w-6 p-0 hover:bg-gray-600 rounded flex items-center justify-center text-gray-300 hover:text-white transition-colors"
+          style={{ WebkitAppRegion: 'no-drag' }}
+        >
+          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
+
+
 
 
 
@@ -233,29 +260,45 @@ export function ActionMenuOverlay() {
           ) : (
             <div className="space-y-1">
               {filteredItems.map((item, index) => (
-                <Button
+                <div
                   key={item.id}
-                  variant={index === selectedIndex ? "secondary" : "ghost"}
-                  className="w-full justify-start h-auto p-3 text-left"
                   onClick={item.action}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '12px',
+                    cursor: 'pointer',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    boxShadow: 'none',
+                    borderRadius: '0',
+                    margin: '0'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
                 >
-                  <div className="flex items-start gap-3 w-full">
-                    <div className="flex-shrink-0 mt-0.5">
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', width: '100%' }}>
+                    <div style={{ flexShrink: 0, marginTop: '2px' }}>
                       {item.icon}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">{item.title}</span>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground capitalize">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: 500, fontSize: '14px', color: 'white' }}>{item.title}</span>
+                        <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '9999px', color: '#9ca3af', textTransform: 'capitalize' }}>
                           {item.category}
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground line-clamp-2">
+                      <p style={{ fontSize: '12px', color: '#9ca3af', lineHeight: '1.4' }}>
                         {item.description}
                       </p>
                     </div>
                   </div>
-                </Button>
+                </div>
               ))}
             </div>
           )}

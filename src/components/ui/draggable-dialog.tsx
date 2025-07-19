@@ -81,18 +81,20 @@ export function DraggableDialog({
 
   if (!isOpen) return null;
 
+  console.log('DraggableDialog rendering with title:', title);
+
   return (
     <>
       {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/50 z-50"
+      <div
+        className="fixed inset-0 bg-black/50 z-[9998]"
         onClick={onClose}
       />
-      
+
       {/* Dialog */}
       <div
         ref={dialogRef}
-        className={`fixed z-50 bg-background border border-border rounded-lg shadow-lg ${width} ${height} ${className}`}
+        className={`fixed z-[9999] bg-background border border-border rounded-lg shadow-lg ${width} ${height} ${className}`}
         style={{
           left: `${position.x}px`,
           top: `${position.y}px`,
@@ -101,17 +103,25 @@ export function DraggableDialog({
       >
         {/* Draggable Header */}
         <div
-          className="drag-handle flex items-center justify-between p-4 border-b border-border cursor-grab active:cursor-grabbing"
+          className="drag-handle flex items-center justify-between p-4 border-b-2 border-border cursor-grab active:cursor-grabbing bg-gray-100 hover:bg-gray-200 transition-colors min-h-[60px]"
           onMouseDown={handleMouseDown}
+          style={{ backgroundColor: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}
         >
-          <h2 className="text-lg font-semibold text-foreground select-none">
-            {title}
-          </h2>
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-1">
+              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full"></div>
+              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full"></div>
+              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full"></div>
+            </div>
+            <h2 className="text-lg font-bold text-gray-800 select-none">
+              {title}
+            </h2>
+          </div>
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="h-8 w-8 p-0 hover:bg-muted"
+            className="h-8 w-8 p-0 hover:bg-gray-300 text-gray-600"
           >
             <X className="h-4 w-4" />
           </Button>

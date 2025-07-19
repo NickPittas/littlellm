@@ -76,8 +76,8 @@ export function useSquircle<T extends HTMLElement = HTMLDivElement>(
  */
 export function useWindowSquircle(options: UseSquircleOptions = {}) {
   const {
-    cornerRadius = 12,
-    cornerSmoothing = 0.6,
+    cornerRadius = 32,
+    cornerSmoothing = 0.9,
     enabled = true,
   } = options;
 

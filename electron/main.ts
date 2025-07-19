@@ -1505,12 +1505,20 @@ async function openSettingsOverlay(tab?: string) {
 
 // Global function to open action menu
 async function openActionMenu() {
-  if (!mainWindow) return;
-
-  if (actionMenuWindow) {
-    actionMenuWindow.focus();
+  console.log('Open action menu requested');
+  if (!mainWindow) {
+    console.log('No main window available');
     return;
   }
+
+  // Force close any existing action menu window first
+  if (actionMenuWindow) {
+    console.log('Closing existing action menu window...');
+    actionMenuWindow.close();
+    actionMenuWindow = null;
+  }
+
+  console.log('Creating new action menu window...');
 
   // Calculate position using multi-monitor aware utility
   const windowWidth = 600;
@@ -1527,7 +1535,7 @@ async function openActionMenu() {
     height: windowHeight,
     x: x,
     y: y,
-    show: false,
+    show: true, // Show immediately instead of waiting
     frame: false, // Remove native frame completely
     resizable: true, // Allow resizing
     alwaysOnTop: true,
@@ -1536,7 +1544,7 @@ async function openActionMenu() {
     titleBarStyle: 'hidden', // Hide title bar completely
     title: 'LittleLLM - Quick Actions',
     autoHideMenuBar: true, // Hide menu bar
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#000000',
     roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
     hasShadow: false,
     webPreferences: {
@@ -1564,11 +1572,24 @@ async function openActionMenu() {
   });
 
   actionMenuWindow.on('closed', () => {
+    console.log('Action menu window closed, cleaning up...');
     actionMenuWindow = null;
   });
 
+  actionMenuWindow.on('close', () => {
+    console.log('Action menu window closing...');
+  });
+
+  // Additional cleanup handlers
+  actionMenuWindow.webContents.on('destroyed', () => {
+    console.log('Action menu window webContents destroyed');
+    if (actionMenuWindow) {
+      actionMenuWindow = null;
+    }
+  });
+
   actionMenuWindow.once('ready-to-show', () => {
-    actionMenuWindow?.show();
+    console.log('Action menu window ready to show');
     actionMenuWindow?.focus();
   });
 }
@@ -1707,14 +1728,14 @@ function saveMCPServers(mcpData: MCPData) {
 
 async function createWindow() {
   const appSettings = loadAppSettings();
-  const bounds = appSettings.ui?.windowBounds || { width: 570, height: 157 }; // Increased by 15px for draggable header
+  const bounds = appSettings.ui?.windowBounds || { width: 570, height: 80 }; // Very minimal height for content
 
   // Prepare window options with size
   const windowOptions: BrowserWindowConstructorOptions = {
-    width: Math.max(bounds.width, 350), // Ensure minimum width for all UI elements
-    height: Math.max(bounds.height, 157), // Increased by 15px for draggable header
-    minWidth: 350, // Ensure all bottom toolbar buttons are visible (calculated from UI elements)
-    minHeight: 157, // Increased by 15px for draggable header
+    width: Math.max(bounds.width, 380), // Ensure minimum width for all UI elements
+    height: Math.max(bounds.height, 100), // Minimum height for input + toolbar
+    minWidth: 380, // Calculated minimum: input area (300px) + padding + buttons (80px)
+    minHeight: 100, // Calculated minimum: single-line input (32px) + toolbar (40px) + padding (28px)
     maxWidth: 1400,
     maxHeight: 1000,
     show: !appSettings.ui?.startMinimized,
@@ -1724,10 +1745,13 @@ async function createWindow() {
     skipTaskbar: true, // Show in taskbar
     autoHideMenuBar: true, // Hide menu bar
     titleBarStyle: 'hidden', // Hide title bar completely
-    transparent: false, // Keep solid background for better compatibility
-    backgroundColor: '#1e1e1e', // VS Code background
-    roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
-    hasShadow: false, // Disable shadow to help with rounded corners
+    transparent: false, // Solid window for better compatibility
+    backgroundColor: '#181829', // Match app background
+    roundedCorners: false, // Disable native rounded corners - using custom SquircleWindow
+    hasShadow: false, // Disable shadow and borders
+    thickFrame: false, // Disable thick window frame
+    useContentSize: true, // Use content size instead of window size
+    simpleFullscreen: false, // Disable fullscreen mode
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -1877,6 +1901,27 @@ async function createWindow() {
       saveAppSettings(updatedSettings);
     }
   };
+
+  // Enforce minimum size constraints on manual resize
+  mainWindow.on('will-resize', (event, newBounds) => {
+    const minWidth = 380;
+    const minHeight = 120;
+
+    if (newBounds.width < minWidth || newBounds.height < minHeight) {
+      console.log(`Preventing resize below minimum: ${newBounds.width}x${newBounds.height}`);
+      event.preventDefault();
+
+      // Set to minimum size if user tries to go below
+      const constrainedWidth = Math.max(newBounds.width, minWidth);
+      const constrainedHeight = Math.max(newBounds.height, minHeight);
+
+      setTimeout(() => {
+        if (mainWindow) {
+          mainWindow.setSize(constrainedWidth, constrainedHeight);
+        }
+      }, 0);
+    }
+  });
 
   mainWindow.on('resize', saveWindowBounds);
   mainWindow.on('move', saveWindowBounds);
@@ -2870,7 +2915,14 @@ function setupIPC() {
 
   ipcMain.handle('resize-window', (_, width: number, height: number) => {
     if (mainWindow) {
-      mainWindow.setSize(width, height);
+      // Enforce minimum constraints to prevent UI cropping
+      const minWidth = 380;
+      const minHeight = 120;
+      const constrainedWidth = Math.max(width, minWidth);
+      const constrainedHeight = Math.max(height, minHeight);
+
+      console.log(`Resize request: ${width}x${height} -> constrained: ${constrainedWidth}x${constrainedHeight}`);
+      mainWindow.setSize(constrainedWidth, constrainedHeight);
     }
   });
 
@@ -2879,7 +2931,7 @@ function setupIPC() {
       const [width, height] = mainWindow.getSize();
       return { width, height };
     }
-    return { width: 570, height: 195 }; // Default size (increased by 15px for draggable header)
+    return { width: 570, height: 80 }; // Default very minimal size
   });
 
   ipcMain.handle('get-window-position', () => {
@@ -2926,8 +2978,19 @@ function setupIPC() {
   ipcMain.handle('open-action-menu', openActionMenu);
 
   ipcMain.handle('close-action-menu', () => {
+    console.log('Close action menu requested');
     if (actionMenuWindow) {
+      console.log('Closing action menu window...');
       actionMenuWindow.close();
+      // Force cleanup in case the closed event doesn't fire
+      setTimeout(() => {
+        if (actionMenuWindow) {
+          console.log('Force cleaning up action menu window reference');
+          actionMenuWindow = null;
+        }
+      }, 1000);
+    } else {
+      console.log('No action menu window to close');
     }
   });
 
@@ -2943,12 +3006,20 @@ function setupIPC() {
   });
 
   ipcMain.handle('open-settings-overlay', async () => {
-    if (!mainWindow) return;
-
-    if (settingsWindow) {
-      settingsWindow.focus();
+    console.log('Open settings overlay requested');
+    if (!mainWindow) {
+      console.log('No main window available');
       return;
     }
+
+    // Force close any existing settings window first
+    if (settingsWindow) {
+      console.log('Closing existing settings window...');
+      settingsWindow.close();
+      settingsWindow = null;
+    }
+
+    console.log('Creating new settings window...');
 
     // Calculate position using multi-monitor aware utility
     const windowWidth = 800;
@@ -2965,7 +3036,7 @@ function setupIPC() {
       height: windowHeight,
       x: x,
       y: y,
-      show: false,
+      show: true, // Show immediately instead of waiting
       frame: false, // Remove native frame completely
       resizable: true,
       alwaysOnTop: true,
@@ -2994,21 +3065,53 @@ function setupIPC() {
       startUrl = `http://localhost:${detectedPort}`;
     }
     const settingsUrl = `${startUrl}?overlay=settings`;
-    settingsWindow.loadURL(settingsUrl);
+    console.log('Loading settings URL:', settingsUrl);
+
+    settingsWindow.loadURL(settingsUrl).catch((error) => {
+      console.error('Failed to load settings URL:', error);
+    });
 
     settingsWindow.on('closed', () => {
+      console.log('Settings window closed, cleaning up...');
       settingsWindow = null;
     });
 
+    settingsWindow.on('close', () => {
+      console.log('Settings window closing...');
+    });
+
+    // Additional cleanup handlers
+    settingsWindow.webContents.on('destroyed', () => {
+      console.log('Settings window webContents destroyed');
+      if (settingsWindow) {
+        settingsWindow = null;
+      }
+    });
+
+    settingsWindow.on('hide', () => {
+      console.log('Settings window hidden');
+    });
+
     settingsWindow.once('ready-to-show', () => {
-      settingsWindow?.show();
+      console.log('Settings window ready to show');
       settingsWindow?.focus();
     });
   });
 
   ipcMain.handle('close-settings-overlay', () => {
+    console.log('Close settings overlay requested');
     if (settingsWindow) {
+      console.log('Closing settings window...');
       settingsWindow.close();
+      // Force cleanup in case the closed event doesn't fire
+      setTimeout(() => {
+        if (settingsWindow) {
+          console.log('Force cleaning up settings window reference');
+          settingsWindow = null;
+        }
+      }, 1000);
+    } else {
+      console.log('No settings window to close');
     }
   });
 
@@ -3181,20 +3284,25 @@ function setupIPC() {
       <html>
       <head>
         <style>
+          /* FORCE WHITE TEXT EVERYWHERE - NO VARIABLES */
+          * {
+            color: #ffffff !important;
+          }
+
           :root {
-            /* Custom theme colors - matching globals.css */
+            /* Custom theme colors - all white text */
             --background: #181829;
-            --foreground: #d4d4d4;
+            --foreground: #ffffff;
             --card: #181829;
-            --card-foreground: #eba5a5;
+            --card-foreground: #ffffff;
             --primary: #569cd6;
             --primary-foreground: #ffffff;
             --secondary: #4fc1ff;
-            --secondary-foreground: #adadad;
+            --secondary-foreground: #ffffff;
             --accent: #e04539;
             --accent-foreground: #ffffff;
             --muted: #201e31;
-            --muted-foreground: #9ca3af;
+            --muted-foreground: #ffffff;
             --border: #3b3b68;
             --input: #949494;
             --ring: #569cd6;
@@ -3240,7 +3348,7 @@ function setupIPC() {
           .history-title {
             font-size: 16px;
             font-weight: 600;
-            color: var(--card-foreground);
+            color: #ffffff !important;
             flex: 1;
           }
 
@@ -3375,6 +3483,16 @@ function setupIPC() {
           </div>
         </div>
         <script>
+          // Use direct ipcRenderer since preload isn't working
+          const { ipcRenderer } = require('electron');
+
+          // Helper function to log to main process terminal
+          function logToTerminal(message) {
+            ipcRenderer.invoke('log-to-terminal', message);
+          }
+
+          // History window loaded successfully
+
           // Handle conversation item clicks
           document.addEventListener('click', function(e) {
             const historyItem = e.target.closest('.history-item');
@@ -3383,19 +3501,32 @@ function setupIPC() {
             if (deleteButton) {
               e.stopPropagation();
               const conversationId = deleteButton.dataset.conversationId;
-              if (confirm('Delete this conversation?')) {
-                window.electronAPI?.deleteHistoryItem?.(conversationId);
+              if (window.confirm('Delete this conversation?')) {
+                try {
+                  ipcRenderer.invoke('delete-history-item', conversationId);
+                } catch (error) {
+                  logToTerminal('❌ Error deleting conversation: ' + error.message);
+                }
               }
             } else if (historyItem) {
               const conversationId = historyItem.dataset.conversationId;
-              window.electronAPI?.selectHistoryItem?.(conversationId);
+              logToTerminal('📂 Opening conversation: ' + conversationId);
+              try {
+                ipcRenderer.invoke('select-history-item', conversationId);
+              } catch (error) {
+                logToTerminal('❌ Error calling select-history-item: ' + error.message);
+              }
             }
           });
 
           // Handle clear all history
           function clearAllHistory() {
-            if (confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
-              window.electronAPI?.clearAllHistory?.();
+            if (window.confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
+              try {
+                ipcRenderer.invoke('clear-all-history');
+              } catch (error) {
+                logToTerminal('❌ Error clearing all history: ' + error.message);
+              }
             }
           }
         </script>
@@ -3499,12 +3630,12 @@ function setupIPC() {
             --background: #181829;
             --foreground: #d4d4d4;
             --card: #181829;
-            --card-foreground: #eba5a5;
+            --card-foreground: #ffffff;
             --primary: #569cd6;
             --primary-foreground: #ffffff;
             --secondary: #4fc1ff;
             --secondary-foreground: #adadad;
-            --accent: #e04539;
+            --accent: rgba(86, 156, 214, 0.1);
             --accent-foreground: #ffffff;
             --muted: #201e31;
             --muted-foreground: #9ca3af;
@@ -3581,7 +3712,7 @@ function setupIPC() {
             display: flex;
             align-items: center;
             padding: 8px 12px;
-            color: var(--card-foreground);
+            color: white;
             cursor: pointer;
             border-radius: 4px;
             margin: 1px 0;
@@ -3594,16 +3725,16 @@ function setupIPC() {
             min-width: 0;
           }
           .dropdown-item:hover {
-            background: var(--accent);
-            color: var(--accent-foreground);
+            background: rgba(86, 156, 214, 0.1);
+            color: white;
           }
           .dropdown-item.selected {
-            background: var(--accent);
-            color: var(--accent-foreground);
+            background: rgba(86, 156, 214, 0.2);
+            color: white;
           }
           .dropdown-item.keyboard-selected {
-            background: var(--accent);
-            color: var(--accent-foreground);
+            background: rgba(86, 156, 214, 0.15);
+            color: white;
           }
           .check-icon {
             margin-right: 8px;
@@ -3786,28 +3917,8 @@ function setupIPC() {
       historyWindow = null;
     }
 
-    // Get current CSS variables from main window
-    let cssVariables = '';
-    try {
-      cssVariables = await mainWindow.webContents.executeJavaScript(`
-        (() => {
-          const root = document.documentElement;
-          const computedStyle = getComputedStyle(root);
-          const variables = [];
-          for (let i = 0; i < computedStyle.length; i++) {
-            const property = computedStyle[i];
-            if (property.startsWith('--')) {
-              const value = computedStyle.getPropertyValue(property);
-              variables.push(\`\${property}: \${value};\`);
-            }
-          }
-          return variables.join('\\n            ');
-        })()
-      `);
-      console.log('🎨 Retrieved CSS variables from main window:', cssVariables ? 'Success' : 'Empty');
-    } catch (error) {
-      console.warn('Failed to retrieve CSS variables:', error);
-    }
+    // Skip dynamic CSS variables for history window to ensure white text
+    console.log('🎨 Using hardcoded CSS variables for history window to ensure white text');
 
     // Calculate window size and position using multi-monitor aware utility
     const windowWidth = 400;
@@ -3834,9 +3945,8 @@ function setupIPC() {
       focusable: true,
       parent: mainWindow,
       webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js'),
+        nodeIntegration: true,
+        contextIsolation: false,
         webSecurity: false,
       },
     });
@@ -3904,24 +4014,113 @@ function setupIPC() {
   });
 
   // Handle history item deletion
-  ipcMain.handle('delete-history-item', (_, conversationId: string) => {
-    // Send deletion request to main window
-    if (mainWindow) {
-      mainWindow.webContents.send('history-item-deleted', conversationId);
+  ipcMain.handle('delete-history-item', async (_, conversationId: string) => {
+    console.log(`🗑️ Deleting conversation: ${conversationId}`);
+
+    try {
+      // Delete the conversation file from disk
+      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      const filePath = path.join(conversationsDir, `${conversationId}.json`);
+
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log(`🗑️ Deleted conversation file: ${conversationId}.json`);
+      } else {
+        console.log(`⚠️ Conversation file not found: ${conversationId}.json`);
+      }
+
+      // Update the conversation index by removing this conversation
+      const indexPath = path.join(conversationsDir, 'index.json');
+      if (fs.existsSync(indexPath)) {
+        try {
+          const indexData = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
+          if (Array.isArray(indexData)) {
+            const updatedIndex = indexData.filter((conv: { id: string }) => conv.id !== conversationId);
+            fs.writeFileSync(indexPath, JSON.stringify(updatedIndex, null, 2));
+            console.log(`🗑️ Updated conversation index, removed conversation: ${conversationId}`);
+          }
+        } catch (error) {
+          console.error('❌ Failed to update conversation index:', error);
+        }
+      }
+
+      // Send deletion notification to main window
+      if (mainWindow) {
+        mainWindow.webContents.send('history-item-deleted', conversationId);
+      }
+
+      // Close and reopen history window with updated data
+      if (historyWindow) {
+        historyWindow.close();
+        historyWindow = null;
+      }
+
+      console.log(`✅ Successfully deleted conversation: ${conversationId}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Error deleting conversation ${conversationId}:`, error);
+      return false;
     }
   });
 
   // Handle clear all history
-  ipcMain.handle('clear-all-history', () => {
-    // Send clear all request to main window
-    if (mainWindow) {
-      mainWindow.webContents.send('clear-all-history');
+  ipcMain.handle('clear-all-history', async () => {
+    console.log('🗑️ Clearing all chat history');
+
+    try {
+      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      console.log('🗑️ Clearing all conversation files from:', conversationsDir);
+
+      let deletedCount = 0;
+
+      // Check if conversations directory exists
+      if (fs.existsSync(conversationsDir)) {
+        console.log('🗑️ Conversations directory exists, reading files...');
+        const files = fs.readdirSync(conversationsDir);
+        console.log('🗑️ Found files:', files);
+
+        for (const file of files) {
+          if (file.endsWith('.json')) {
+            const filePath = path.join(conversationsDir, file);
+            try {
+              fs.unlinkSync(filePath);
+              deletedCount++;
+              console.log(`🗑️ Deleted conversation file: ${file}`);
+            } catch (error) {
+              console.error(`❌ Failed to delete file ${file}:`, error);
+            }
+          }
+        }
+      } else {
+        console.log('ℹ️ Conversations directory does not exist');
+      }
+
+      // Send clear all notification to main window
+      if (mainWindow) {
+        mainWindow.webContents.send('clear-all-history');
+      }
+
+      // Close history window
+      if (historyWindow) {
+        historyWindow.close();
+        historyWindow = null;
+      }
+
+      console.log(`✅ Successfully cleared all history - deleted ${deletedCount} files`);
+      return deletedCount;
+    } catch (error) {
+      console.error('❌ Error clearing all history:', error);
+      throw error;
     }
-    // Close history window
-    if (historyWindow) {
-      historyWindow.close();
-      historyWindow = null;
-    }
+  });
+
+  // Removed duplicate delete-all-conversation-files handler - functionality moved to clear-all-history
+
+  // Removed duplicate delete-conversation-file handler - functionality moved to delete-history-item
+
+  // Handle logging from history window to terminal
+  ipcMain.handle('log-to-terminal', (_, message: string) => {
+    console.log('[HISTORY WINDOW]', message);
   });
 }
 
