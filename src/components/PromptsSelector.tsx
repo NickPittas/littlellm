@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { DraggableDialog } from './ui/draggable-dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
@@ -155,24 +156,27 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
   };
 
   return (
-    <Dialog open={showDialog} onOpenChange={setShowDialog}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" title="Use pre-made prompt">
-          <Wand2 className="h-4 w-4" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto hide-scrollbar">
-        <DialogHeader>
-          <DialogTitle>
-            Select a Prompt Template
-            {isReadingClipboard && (
-              <span className="ml-2 text-sm text-muted-foreground">
-                (Reading clipboard...)
-              </span>
-            )}
-          </DialogTitle>
-        </DialogHeader>
-        
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        title="Use pre-made prompt"
+        onClick={() => {
+          console.log('Button clicked, setting showDialog to true');
+          setShowDialog(true);
+        }}
+      >
+        <Wand2 className="h-4 w-4" />
+      </Button>
+
+      <DraggableDialog
+        isOpen={showDialog}
+        onClose={() => setShowDialog(false)}
+        title={`Select a Prompt Template${isReadingClipboard ? ' (Reading clipboard...)' : ''}`}
+        width="w-[800px]"
+        height="max-h-[80vh]"
+        className="hide-scrollbar"
+      >
         <div className="space-y-4">
           {/* Category Filter */}
           <div className="flex items-center gap-2">
@@ -190,7 +194,7 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
                 ))}
               </SelectContent>
             </Select>
-            
+
             <div className="ml-auto flex gap-2">
               <Button
                 variant="outline"
@@ -230,7 +234,8 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
             {filteredPrompts.map((prompt) => (
               <div
                 key={prompt.id}
-                className={`p-3 border rounded-lg hover:bg-gray-50 cursor-pointer group ${isReadingClipboard ? 'opacity-50 pointer-events-none' : ''}`}
+                className={`p-3 rounded-lg hover:bg-gray-50 cursor-pointer group ${isReadingClipboard ? 'opacity-50 pointer-events-none' : ''}`}
+                style={{ border: 'none' }}
                 onClick={() => handlePromptSelect(prompt)}
               >
                 <div className="flex items-start justify-between">
@@ -246,12 +251,12 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
                     </div>
                     <p className="text-xs text-gray-600 mb-2">{prompt.description}</p>
                     <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded">
-                      {prompt.prompt.length > 100 
-                        ? `${prompt.prompt.substring(0, 100)}...` 
+                      {prompt.prompt.length > 100
+                        ? `${prompt.prompt.substring(0, 100)}...`
                         : prompt.prompt}
                     </div>
                   </div>
-                  
+
                   {promptsService.isCustomPrompt(prompt.id) && (
                     <div className="opacity-0 group-hover:opacity-100 flex gap-1 ml-2">
                       <Button
@@ -281,103 +286,103 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
             ))}
           </div>
         </div>
+      </DraggableDialog>
 
-        {/* Add/Edit Prompt Dialog */}
-        <Dialog open={showAddPrompt || !!editingPrompt} onOpenChange={(open) => {
-          if (!open) {
-            setShowAddPrompt(false);
-            setEditingPrompt(null);
-            setNewPrompt({
-              name: '',
-              description: '',
-              prompt: '',
-              category: 'text',
-              icon: '📝'
-            });
-          }
-        }}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editingPrompt ? 'Edit Prompt' : 'Add New Prompt'}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  value={newPrompt.name}
-                  onChange={(e) => setNewPrompt(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Prompt name"
-                />
-              </div>
-              <div>
-                <Label htmlFor="description">Description</Label>
-                <Input
-                  id="description"
-                  value={newPrompt.description}
-                  onChange={(e) => setNewPrompt(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Brief description"
-                />
-              </div>
-              <div>
-                <Label htmlFor="category">Category</Label>
-                <Select
-                  value={newPrompt.category}
-                  onValueChange={(value) => setNewPrompt(prev => ({ ...prev, category: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="text">Text</SelectItem>
-                    <SelectItem value="code">Code</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="icon">Icon (emoji)</Label>
-                <Input
-                  id="icon"
-                  value={newPrompt.icon}
-                  onChange={(e) => setNewPrompt(prev => ({ ...prev, icon: e.target.value }))}
-                  placeholder="✏️"
-                  maxLength={2}
-                />
-              </div>
-              <div>
-                <Label htmlFor="prompt">Prompt Template</Label>
-                <Textarea
-                  id="prompt"
-                  value={newPrompt.prompt}
-                  onChange={(e) => setNewPrompt(prev => ({ ...prev, prompt: e.target.value }))}
-                  placeholder="Your prompt template. Use {content} where the clipboard content should be inserted."
-                  rows={4}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowAddPrompt(false);
-                    setEditingPrompt(null);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={editingPrompt ? handleUpdatePrompt : handleAddPrompt}
-                >
-                  {editingPrompt ? 'Update' : 'Add'} Prompt
-                </Button>
-              </div>
+      {/* Add/Edit Prompt Dialog - Separate dialog, not nested */}
+      <Dialog open={showAddPrompt || !!editingPrompt} onOpenChange={(open) => {
+        if (!open) {
+          setShowAddPrompt(false);
+          setEditingPrompt(null);
+          setNewPrompt({
+            name: '',
+            description: '',
+            prompt: '',
+            category: 'text',
+            icon: '📝'
+          });
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingPrompt ? 'Edit Prompt' : 'Add New Prompt'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                value={newPrompt.name}
+                onChange={(e) => setNewPrompt(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Prompt name"
+              />
             </div>
-          </DialogContent>
-        </Dialog>
-      </DialogContent>
-    </Dialog>
+            <div>
+              <Label htmlFor="description">Description</Label>
+              <Input
+                id="description"
+                value={newPrompt.description}
+                onChange={(e) => setNewPrompt(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Brief description"
+              />
+            </div>
+            <div>
+              <Label htmlFor="category">Category</Label>
+              <Select
+                value={newPrompt.category}
+                onValueChange={(value) => setNewPrompt(prev => ({ ...prev, category: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text">Text</SelectItem>
+                  <SelectItem value="code">Code</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="icon">Icon (emoji)</Label>
+              <Input
+                id="icon"
+                value={newPrompt.icon}
+                onChange={(e) => setNewPrompt(prev => ({ ...prev, icon: e.target.value }))}
+                placeholder="✏️"
+                maxLength={2}
+              />
+            </div>
+            <div>
+              <Label htmlFor="prompt">Prompt Template</Label>
+              <Textarea
+                id="prompt"
+                value={newPrompt.prompt}
+                onChange={(e) => setNewPrompt(prev => ({ ...prev, prompt: e.target.value }))}
+                placeholder="Your prompt template. Use {content} where the clipboard content should be inserted."
+                rows={4}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowAddPrompt(false);
+                  setEditingPrompt(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={editingPrompt ? handleUpdatePrompt : handleAddPrompt}
+              >
+                {editingPrompt ? 'Update' : 'Add'} Prompt
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

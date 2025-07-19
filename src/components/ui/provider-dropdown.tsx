@@ -321,7 +321,7 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
       .dropdown-header {
         padding: 8px 12px;
         font-size: 12px;
-        color: var(--muted-foreground);
+        color: rgba(255, 255, 255, 0.8);
         border-bottom: 1px solid var(--border);
         background: var(--muted);
         position: sticky;
@@ -332,7 +332,7 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
         display: flex;
         align-items: center;
         padding: 8px 12px;
-        color: var(--card-foreground);
+        color: white;
         cursor: pointer;
         border-radius: 4px;
         margin: 1px 0;
@@ -346,12 +346,12 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
         transition: background-color 0.2s;
       }
       .dropdown-item:hover {
-        background: var(--accent);
-        color: var(--accent-foreground);
+        background: rgba(86, 156, 214, 0.1);
+        color: white;
       }
       .dropdown-item.selected {
-        background: var(--accent);
-        color: var(--accent-foreground);
+        background: rgba(86, 156, 214, 0.2);
+        color: white;
       }
       .check-icon {
         margin-right: 8px;

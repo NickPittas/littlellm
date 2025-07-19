@@ -19,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" style={{ borderRadius: '20px', overflow: 'hidden', backgroundColor: 'var(--background)' }}>
+    <html lang="en" style={{ borderRadius: '32px', overflow: 'hidden', backgroundColor: 'var(--background)', border: '0px solid transparent', outline: 'none', boxShadow: 'none' }}>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -30,27 +30,35 @@ export default function RootLayout({
                 const body = document.body;
                 const next = document.getElementById('__next');
 
-                // Apply responsive styling with rounded corners (match globals.css)
+                // Apply styling with much bigger rounded corners but no borders (match globals.css)
                 if (html) {
-                  html.style.borderRadius = '20px';
+                  html.style.borderRadius = '32px';
                   html.style.overflow = 'hidden';
                   html.style.backgroundColor = 'var(--background)';
+                  html.style.border = '0px solid transparent';
+                  html.style.outline = 'none';
+                  html.style.boxShadow = 'none';
                 }
 
                 if (body) {
                   body.style.backgroundColor = 'var(--background)';
                   body.style.color = 'var(--foreground)';
-                  body.style.borderRadius = '20px';
+                  body.style.borderRadius = '32px';
                   body.style.overflow = 'hidden';
                   body.style.margin = '0';
                   body.style.padding = '0';
+                  body.style.border = '0px solid transparent';
+                  body.style.outline = 'none';
+                  body.style.boxShadow = 'none';
                 }
 
                 if (next) {
                   next.style.backgroundColor = 'var(--background)';
-                  next.style.borderRadius = '20px';
-                  next.style.setProperty('-electron-corner-smoothing', '80%');
+                  next.style.borderRadius = '32px';
                   next.style.overflow = 'hidden';
+                  next.style.border = '0px solid transparent';
+                  next.style.outline = 'none';
+                  next.style.boxShadow = 'none';
                 }
               });
             `,
@@ -62,10 +70,13 @@ export default function RootLayout({
         style={{
           backgroundColor: 'var(--background)',
           color: 'var(--foreground)',
-          borderRadius: '20px',
+          borderRadius: '32px',
           overflow: 'hidden',
           margin: '0',
-          padding: '0'
+          padding: '0',
+          border: '0px solid transparent',
+          outline: 'none',
+          boxShadow: 'none'
         }}
       >
         {children}

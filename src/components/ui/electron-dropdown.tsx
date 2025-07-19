@@ -291,6 +291,71 @@ function generateOptionsDropdownHTML(options: string[], selectedValue?: string, 
   `).join('');
 
   return `
+    <style>
+      .search-section {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        background: var(--muted);
+      }
+      .search-input {
+        width: 100%;
+        padding: 6px 8px;
+        background: var(--background);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        color: white;
+        font-size: 14px;
+        outline: none;
+      }
+      .search-input::placeholder {
+        color: rgba(255, 255, 255, 0.5);
+      }
+      .dropdown-content {
+        max-height: 250px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .dropdown-content::-webkit-scrollbar {
+        display: none;
+      }
+      .dropdown-item {
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        color: white;
+        cursor: pointer;
+        border-radius: 4px;
+        margin: 1px 0;
+        font-size: 14px;
+        user-select: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-sizing: border-box;
+        min-width: 0;
+        transition: background-color 0.2s;
+      }
+      .dropdown-item:hover {
+        background: rgba(86, 156, 214, 0.1);
+        color: white;
+      }
+      .dropdown-item.selected {
+        background: rgba(86, 156, 214, 0.2);
+        color: white;
+      }
+      .check-icon {
+        margin-right: 8px;
+        width: 16px;
+        height: 16px;
+        opacity: 0;
+        color: var(--primary);
+      }
+      .check-icon.visible {
+        opacity: 1;
+      }
+    </style>
     ${searchSection}
     <div class="dropdown-content">
       ${optionItems}

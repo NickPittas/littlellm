@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { Server, Check, X, RefreshCw } from "lucide-react"
+import { Server, Check, X, RefreshCw, Zap } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { Button } from "./button"
+import { ToggleSwitch } from "./toggle-switch"
 import { mcpService, type MCPServer } from "../../services/mcpService"
 
 interface MCPDropdownProps {
@@ -120,7 +121,7 @@ export function MCPDropdown({
         clearTimeout(loadingTimeoutRef.current)
       }
     }
-  }, [loadServers])
+  }, []) // Empty dependency array - only run on mount
 
   const toggleServer = React.useCallback(async (serverId: string, currentlyEnabled: boolean) => {
     try {
@@ -240,18 +241,33 @@ export function MCPDropdown({
     const handleSelection = (selectedValue: string) => {
       console.log('🔥 MCP DROPDOWN: Item selected:', selectedValue);
 
-      // ONLY handle values that are actually MCP server IDs
-      // This prevents intercepting provider/model selections
-      const server = servers.find(s => s.id === selectedValue);
-      if (!server) {
-        console.log('🔥 MCP DROPDOWN: Ignoring selection not in our servers:', selectedValue);
-        return;
+      // Try to parse as JSON for toggle switch events
+      try {
+        const parsed = JSON.parse(selectedValue);
+        if (parsed.type === 'mcp-toggle') {
+          console.log('🔥 MCP DROPDOWN: Toggle switch clicked:', parsed.serverId);
+          toggleServer(parsed.serverId, parsed.currentlyEnabled);
+          return; // Don't close dropdown for toggle switches
+        }
+      } catch (e) {
+        // Not JSON, handle as regular string selection
       }
 
-      console.log('🔥 MCP DROPDOWN: Toggling server:', server.name);
-      const currentlyEnabled = enabledServers.has(server.id);
-      toggleServer(server.id, currentlyEnabled);
-      setOpen(false);
+      // Handle regular server selection (string)
+      if (typeof selectedValue === 'string') {
+        // ONLY handle values that are actually MCP server IDs
+        // This prevents intercepting provider/model selections
+        const server = servers.find(s => s.id === selectedValue);
+        if (!server) {
+          console.log('🔥 MCP DROPDOWN: Ignoring selection not in our servers:', selectedValue);
+          return;
+        }
+
+        console.log('🔥 MCP DROPDOWN: Toggling server:', server.name);
+        const currentlyEnabled = enabledServers.has(server.id);
+        toggleServer(server.id, currentlyEnabled);
+        setOpen(false);
+      }
     };
 
     window.electronAPI.onDropdownItemSelected(handleSelection);
@@ -266,7 +282,7 @@ export function MCPDropdown({
     const serverItems = servers.map(server => {
       const isEnabled = enabledServers.has(server.id)
       return `
-        <div class="dropdown-item" data-value="${server.id}">
+        <div class="dropdown-item">
           <div class="server-info">
             <div class="server-icon">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -293,9 +309,11 @@ export function MCPDropdown({
                 </svg>`
               }
             </div>
-            <span class="status-text ${isEnabled ? 'status-enabled' : 'status-disabled'}">
-              ${isEnabled ? 'ON' : 'OFF'}
-            </span>
+            <div class="toggle-switch ${isEnabled ? 'toggle-enabled' : 'toggle-disabled'}" data-server-id="${server.id}" data-enabled="${isEnabled}">
+              <div class="toggle-track">
+                <div class="toggle-thumb"></div>
+              </div>
+            </div>
           </div>
         </div>
       `
@@ -307,24 +325,24 @@ export function MCPDropdown({
         .dropdown-header {
           padding: 8px 12px;
           font-size: 12px;
-          color: var(--muted-foreground);
+          color: rgba(255, 255, 255, 0.8);
           border-bottom: 1px solid var(--border);
           background: var(--muted);
         }
         .dropdown-item {
           padding: 8px 12px;
           border-bottom: 1px solid hsl(var(--border));
-          cursor: pointer;
+          cursor: default;
           transition: background-color 0.2s;
           display: flex;
           align-items: center;
           justify-content: space-between;
           min-height: 48px;
-          color: var(--card-foreground);
+          color: white;
         }
         .dropdown-item:hover {
-          background: var(--accent);
-          color: var(--accent-foreground);
+          background: rgba(59, 130, 246, 0.1);
+          color: white;
         }
         .dropdown-item:last-child {
           border-bottom: none;
@@ -352,14 +370,14 @@ export function MCPDropdown({
         .server-name {
           font-size: 14px;
           font-weight: 500;
-          color: var(--card-foreground);
+          color: white;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
         .server-description {
           font-size: 12px;
-          color: var(--muted-foreground);
+          color: rgba(255, 255, 255, 0.7);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -379,6 +397,46 @@ export function MCPDropdown({
           font-size: 11px;
           font-weight: 500;
           white-space: nowrap;
+        }
+
+        /* iOS-style toggle switch */
+        .toggle-switch {
+          cursor: pointer;
+          user-select: none;
+        }
+        .toggle-track {
+          width: 36px;
+          height: 20px;
+          border-radius: 10px;
+          position: relative;
+          transition: all 0.3s ease;
+          border: 2px solid transparent;
+        }
+        .toggle-enabled .toggle-track {
+          background-color: #22c55e;
+        }
+        .toggle-disabled .toggle-track {
+          background-color: #d1d5db;
+        }
+        .toggle-thumb {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background-color: white;
+          position: absolute;
+          top: 2px;
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        .toggle-enabled .toggle-thumb {
+          transform: translateX(16px);
+        }
+        .toggle-disabled .toggle-thumb {
+          transform: translateX(2px);
+        }
+        .toggle-switch:hover .toggle-track {
+          opacity: 0.9;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
         }
         .status-enabled {
           color: hsl(142.1 76.2% 36.3%);
@@ -414,6 +472,32 @@ export function MCPDropdown({
           display: none;
         }
       </style>
+      <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          // Handle toggle switch clicks
+          document.querySelectorAll('.toggle-switch').forEach(toggle => {
+            toggle.addEventListener('click', function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+
+              const serverId = this.getAttribute('data-server-id');
+              const currentEnabled = this.getAttribute('data-enabled') === 'true';
+
+              console.log('Toggle clicked:', serverId, 'currently enabled:', currentEnabled);
+
+              // Send toggle event to main process
+              if (window.electronAPI && window.electronAPI.selectDropdownItem) {
+                // Send as JSON string since selectDropdownItem expects a string
+                window.electronAPI.selectDropdownItem(JSON.stringify({
+                  type: 'mcp-toggle',
+                  serverId: serverId,
+                  currentlyEnabled: currentEnabled
+                }));
+              }
+            });
+          });
+        });
+      </script>
       <div class="dropdown-container">
         ${servers.length === 0 ?
           '<div class="empty-state">No MCP servers configured</div>' :
@@ -509,11 +593,11 @@ export function MCPDropdown({
     <div className="relative" style={{ zIndex: 1 }}>
       <Button
         ref={triggerRef}
-        variant="outline"
+        variant="ghost"
         role="combobox"
         aria-expanded={open}
         className={cn(
-          "justify-between font-normal h-8 w-8 p-0",
+          "justify-center items-center font-normal h-8 w-8 p-0 bg-transparent",
           className
         )}
         disabled={disabled}
@@ -521,9 +605,7 @@ export function MCPDropdown({
         title={`MCP Servers: ${enabledCount}/${totalCount} enabled, ${connectedServers.size} connected`}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
-        <div className="flex items-center justify-center w-full">
-          <Server className="h-4 w-4" />
-        </div>
+        <Zap className="h-4 w-4 transition-colors" />
       </Button>
 
       {open && !isElectron && (
@@ -637,34 +719,25 @@ export function MCPDropdown({
                               </button>
                             )}
 
-                            {/* Enable/disable toggle button */}
-                            <button
-                              onClick={async (e) => {
-                                console.log('🔄 MCP Toggle button clicked:', server.id, 'currently enabled:', isEnabled);
-                                e.preventDefault();
-                                e.stopPropagation();
-
-                                // Call toggle function directly
-                                await toggleServer(server.id, isEnabled);
-                              }}
+                            {/* iPhone-style toggle switch */}
+                            <div
                               onMouseDown={(e) => {
-                                console.log('🔄 MCP Toggle button mousedown:', server.id);
+                                console.log('🔄 MCP Toggle switch mousedown:', server.id);
                                 // Prevent dropdown from closing
                                 e.stopPropagation();
                               }}
-                              className={`p-1 rounded transition-colors ${
-                                isEnabled
-                                  ? 'bg-green-100 hover:bg-green-200 text-green-700'
-                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-500'
-                              }`}
-                              title={isEnabled ? 'Click to disable' : 'Click to enable'}
                             >
-                              {isEnabled ? (
-                                <Check className="h-4 w-4" />
-                              ) : (
-                                <X className="h-4 w-4" />
-                              )}
-                            </button>
+                              <ToggleSwitch
+                                enabled={isEnabled}
+                                onToggle={async (enabled) => {
+                                  console.log('🔄 MCP Toggle switch clicked:', server.id, 'currently enabled:', isEnabled, 'new state:', enabled);
+                                  // Call toggle function directly
+                                  await toggleServer(server.id, isEnabled);
+                                }}
+                                size="sm"
+                                className="focus:ring-offset-0"
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>

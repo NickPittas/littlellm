@@ -24,8 +24,7 @@ interface BottomToolbarProps {
   onResetChat?: () => void;
   settings: ChatSettings;
   onSettingsChange: (settings: Partial<ChatSettings>) => void;
-  showHistory?: boolean;
-  onHistoryChange?: (show: boolean) => void;
+  onHistoryClick?: () => void;
 }
 
 export function BottomToolbar({
@@ -35,8 +34,7 @@ export function BottomToolbar({
   onResetChat,
   settings,
   onSettingsChange,
-  showHistory,
-  onHistoryChange
+  onHistoryClick
 }: BottomToolbarProps) {
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
@@ -480,7 +478,7 @@ export function BottomToolbar({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => onHistoryChange?.(!showHistory)}
+          onClick={onHistoryClick}
           className="h-8 w-8 p-0"
           title="Chat History"
           data-interactive="true"

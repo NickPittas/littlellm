@@ -41,6 +41,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [showChat, setShowChat] = useState(false); // Hide chat until first message
   const [isLoading, setIsLoading] = useState(false); // Loading state for thinking indicator
+  const [userResizedWindow, setUserResizedWindow] = useState(false); // Track if user manually resized
 
   // Sync messages to chat window whenever they change
   useEffect(() => {
@@ -390,33 +391,187 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     }
   }, []); // EMPTY DEPENDENCY ARRAY - ONLY SETUP ONCE
 
+  // Listen for window resize events to detect manual resizing
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      let resizeTimeout: NodeJS.Timeout;
 
+      const handleWindowResize = () => {
+        // Debounce resize events to avoid excessive state updates
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+          setUserResizedWindow(true);
+          console.log('User manually resized window - disabling auto-resize');
+        }, 500); // 500ms delay to distinguish from auto-resize
+      };
 
-  // Auto-resize textarea height only (no window resizing)
+      // Listen for window resize events
+      window.addEventListener('resize', handleWindowResize);
+
+      return () => {
+        window.removeEventListener('resize', handleWindowResize);
+        clearTimeout(resizeTimeout);
+      };
+    }
+  }, []);
+
+  // Calculate minimum window size based on UI elements
+  const calculateMinimumWindowSize = useCallback(() => {
+    const inputArea = document.getElementById('input-area');
+    const bottomToolbar = document.getElementById('bottom-toolbar');
+
+    if (inputArea && bottomToolbar) {
+      // Get the minimum width needed for the bottom toolbar buttons
+      const toolbarRect = bottomToolbar.getBoundingClientRect();
+      const minWidth = Math.max(380, Math.ceil(toolbarRect.width + 40)); // Add padding
+
+      // Get minimum height for single-line input + toolbar
+      const singleLineHeight = 40; // Actual single-line textarea height (matches button height)
+      const toolbarHeight = toolbarRect.height;
+      const minHeight = Math.max(90, singleLineHeight + toolbarHeight + 25); // Minimum for 1-line + toolbar
+
+      // Note: Maximum will be handled by the 600px limit to accommodate 10-line textarea
+
+      return { minWidth, minHeight };
+    }
+
+    return { minWidth: 380, minHeight: 120 }; // Fallback values
+  }, []);
+
+  // Auto-resize window based on actual content measurements
+  const autoResizeWindow = useCallback(() => {
+    if (typeof window !== 'undefined' && window.electronAPI && !userResizedWindow) {
+      // Wait for DOM to be fully rendered and measured
+      setTimeout(() => {
+        // Get the main container that holds all content
+        const mainContainer = document.querySelector('.voila-interface-container') as HTMLElement;
+
+        if (mainContainer) {
+          // Force a layout recalculation
+          mainContainer.style.height = 'auto';
+
+          // Use getBoundingClientRect for more accurate measurements
+          const containerRect = mainContainer.getBoundingClientRect();
+          const actualContentHeight = containerRect.height;
+
+          // Add minimal padding for window chrome
+          const windowChrome = 8; // Minimal window padding
+          const newHeight = Math.ceil(actualContentHeight + windowChrome);
+
+          // Calculate dynamic minimum size based on actual UI elements
+          const { minHeight } = calculateMinimumWindowSize();
+
+          // Set reasonable bounds - allow for 10-line textarea + toolbar + attachments
+          const maxHeight = 600; // Increased to accommodate 10-line textarea + toolbar + attachments
+          const boundedHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
+
+          console.log('Window auto-resize (content-aware):', {
+            actualContentHeight: Math.round(actualContentHeight),
+            newHeight,
+            boundedHeight,
+            minHeight,
+            attachedFilesCount: attachedFiles.length,
+            textareaHeight: textareaRef.current?.offsetHeight || 0,
+            containerRect: {
+              width: Math.round(containerRect.width),
+              height: Math.round(containerRect.height)
+            }
+          });
+
+          // Get current window size and resize if needed
+          window.electronAPI.getCurrentWindowSize().then((currentSize: { width: number; height: number }) => {
+            // Only resize if height changed significantly
+            if (Math.abs(currentSize.height - boundedHeight) > 5) {
+              console.log(`Resizing window from ${currentSize.height}px to ${boundedHeight}px`);
+              window.electronAPI.resizeWindow(currentSize.width, boundedHeight);
+            }
+          }).catch((error: unknown) => {
+            console.error('Failed to get current window size:', error);
+          });
+        }
+      }, 50); // Small delay to ensure DOM is updated
+    }
+  }, [attachedFiles.length, userResizedWindow, calculateMinimumWindowSize]);
+
+  // Auto-resize textarea height and window
   const autoResizeTextarea = useCallback(() => {
     if (textareaRef.current) {
       const textarea = textareaRef.current;
 
-      // Reset height to get accurate scrollHeight
-      textarea.style.height = '40px'; // Reset to minimum height first
+      // For empty input, always set to single line height
+      if (input.trim() === '') {
+        textarea.style.height = '40px';
+        textarea.style.overflowY = 'hidden';
+        setTimeout(() => {
+          autoResizeWindow();
+        }, 10);
+        return;
+      }
 
-      // Force a reflow to get accurate scrollHeight
-      void textarea.offsetHeight;
+      // Get computed styles for accurate calculations
+      const computedStyle = getComputedStyle(textarea);
+      const fontSize = parseInt(computedStyle.fontSize) || 14;
+      const lineHeight = computedStyle.lineHeight === 'normal' ? fontSize * 1.4 : parseInt(computedStyle.lineHeight) || (fontSize * 1.4);
+      const paddingTop = parseInt(computedStyle.paddingTop) || 6;
+      const paddingBottom = parseInt(computedStyle.paddingBottom) || 6;
 
-      // Calculate the new height based on content
-      const minHeight = 40; // Minimum height (40px)
-      const maxHeight = 200; // Maximum height before scrolling
+      // Calculate minimum height for 1 line of text (precise calculation)
+      const minHeight = 40; // Fixed to match initial height (1 line) and button height
+      const maxHeight = Math.ceil(lineHeight * 10 + paddingTop + paddingBottom); // Max 10 lines as requested
 
-      // Get the scroll height
-      const scrollHeight = textarea.scrollHeight;
-      const contentHeight = Math.max(minHeight, Math.min(maxHeight, scrollHeight));
+      // Create a hidden clone to measure content without affecting the visible textarea
+      const clone = textarea.cloneNode(true) as HTMLTextAreaElement;
+      clone.style.position = 'absolute';
+      clone.style.visibility = 'hidden';
+      clone.style.height = 'auto';
+      clone.style.minHeight = 'auto';
+      clone.style.maxHeight = 'none';
+      clone.style.overflow = 'hidden';
+      clone.value = textarea.value;
 
-      // Set the new height (textarea only, no window resizing)
-      textarea.style.height = `${contentHeight}px`;
+      // Append to body temporarily to get measurements
+      document.body.appendChild(clone);
+      const scrollHeight = clone.scrollHeight;
+      document.body.removeChild(clone);
 
-      console.log('Textarea auto-resize:', { scrollHeight, contentHeight, inputLength: input.length });
+      // Calculate final height with hysteresis to prevent jittering
+      const currentHeight = parseInt(textarea.style.height) || minHeight;
+      let finalHeight = Math.max(minHeight, Math.min(maxHeight, scrollHeight));
+
+      // Add hysteresis: only change height if the difference is significant enough
+      const heightDifference = Math.abs(finalHeight - currentHeight);
+      const threshold = lineHeight * 0.3; // 30% of line height threshold
+
+      if (heightDifference < threshold && currentHeight >= minHeight && currentHeight <= maxHeight) {
+        // Keep current height if change is too small (prevents jittering)
+        finalHeight = currentHeight;
+      }
+
+      // Set the new height smoothly
+      textarea.style.height = `${finalHeight}px`;
+
+      // Enable/disable scrolling based on content
+      textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
+
+      console.log('Textarea auto-resize:', {
+        scrollHeight,
+        finalHeight,
+        currentHeight,
+        heightDifference,
+        threshold,
+        minHeight,
+        maxHeight,
+        lineHeight,
+        inputLength: input.length,
+        lineCount: Math.ceil((scrollHeight - paddingTop - paddingBottom) / lineHeight)
+      });
+
+      // Trigger window resize after textarea resize
+      setTimeout(() => {
+        autoResizeWindow();
+      }, 10);
     }
-  }, [input]);
+  }, [input, autoResizeWindow]);
 
   // Auto-resize textarea when input changes
   useEffect(() => {
@@ -427,6 +582,92 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
     return () => clearTimeout(timer);
   }, [input, autoResizeTextarea]);
+
+  // Additional effect to handle immediate textarea changes for better responsiveness
+  useEffect(() => {
+    if (textareaRef.current) {
+      // Immediate resize for better user experience
+      autoResizeTextarea();
+    }
+  }, [input.length, autoResizeTextarea]); // Trigger on length changes for immediate feedback
+
+  // Auto-resize window when attached files change
+  useEffect(() => {
+    console.log('Attached files changed, triggering resize. Count:', attachedFiles.length);
+
+    // Always trigger resize, but with different timing based on file count
+    if (attachedFiles.length === 0) {
+      // Quick resize when all attachments are removed
+      const quickTimer = setTimeout(() => {
+        console.log('No attachments, quick resize down');
+        autoResizeWindow();
+      }, 30);
+      return () => clearTimeout(quickTimer);
+    } else {
+      // Multiple timers for file additions to handle image loading
+      const quickTimer = setTimeout(() => {
+        console.log('Attachments present, quick resize');
+        autoResizeWindow();
+      }, 50);
+
+      const delayedTimer = setTimeout(() => {
+        console.log('Attachments present, delayed resize for image loading');
+        autoResizeWindow();
+      }, 300);
+
+      return () => {
+        clearTimeout(quickTimer);
+        clearTimeout(delayedTimer);
+      };
+    }
+  }, [attachedFiles.length, autoResizeWindow]); // Use .length to trigger on count changes
+
+  // Initial window resize on component mount
+  useEffect(() => {
+    // Ensure textarea starts with correct single-line height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '40px';
+    }
+
+    // Initial resize with longer delay to ensure everything is rendered
+    const timer = setTimeout(() => {
+      autoResizeTextarea(); // First resize the textarea
+      setTimeout(() => {
+        autoResizeWindow(); // Then resize the window
+      }, 100);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [autoResizeWindow, autoResizeTextarea]);
+
+  // Additional resize trigger when user stops resizing manually
+  useEffect(() => {
+    if (userResizedWindow) {
+      // If user manually resized, we can re-enable auto-resize after a delay
+      const timer = setTimeout(() => {
+        console.log('Re-enabling auto-resize after manual resize');
+        setUserResizedWindow(false);
+      }, 5000); // Re-enable after 5 seconds of no manual resizing
+
+      return () => clearTimeout(timer);
+    }
+  }, [userResizedWindow]);
+
+  // Listen for clear all history event from history window
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      window.electronAPI.onClearAllHistory(async () => {
+        console.log('🗑️ Main window received clear-all-history event');
+        try {
+          // Clear the current conversation and messages
+          await handleResetChat();
+          console.log('✅ Main window cleared chat after history clear');
+        } catch (error) {
+          console.error('❌ Failed to clear chat in main window:', error);
+        }
+      });
+    }
+  }, []);
 
 
 
@@ -797,35 +1038,33 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
   return (
     <div
-      className={`h-full w-full flex flex-col ${isDragging ? 'cursor-grabbing' : ''}`}
+      className={`voila-interface-container min-h-0 w-full flex flex-col ${isDragging ? 'cursor-grabbing' : ''}`}
       style={{
         userSelect: isDragging ? 'none' : 'auto',
         overflow: 'hidden',
         background: 'var(--background)',
         color: 'var(--foreground)',
-        borderRadius: '12px'
+        borderRadius: '32px',
+        border: '0px solid transparent',
+        boxShadow: 'none'
       }}
     >
-      {/* Minimal visual header for window identification */}
-      <div
-        className="h-1 w-full bg-primary/20 flex-none"
-        title="LittleLLM Chat Window"
-      />
+      {/* No visual header - completely eliminated for maximum compactness */}
 
-      {/* Content wrapper - Fixed height container */}
-      <div className="flex-1 flex flex-col min-h-0" style={{ overflow: 'visible' }}>
+      {/* Content wrapper - Auto-sized container */}
+      <div className="flex flex-col" style={{ overflow: 'visible', minHeight: 'auto', height: 'auto' }}>
 
         {/* Input Area with Attachment Preview */}
       <div
         id="input-area"
-        className="flex-none p-2"
+        className="flex-none p-1"
       >
-        <Card className="p-2" style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px' }}>
+        <Card className="p-2" style={{ backgroundColor: 'var(--card)', border: 'none', borderRadius: '8px' }}>
           {/* Attachment Preview */}
           {attachedFiles.length > 0 && (
             <div
               id="attachment-preview"
-              className="mb-3 p-3 bg-muted rounded-lg"
+              className="mb-3 p-2 bg-muted rounded-lg max-h-32 overflow-y-auto"
               data-interactive="true"
             >
               <div className="flex flex-wrap gap-2">
@@ -837,6 +1076,10 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                         src={URL.createObjectURL(file)}
                         alt={file.name}
                         className="w-8 h-8 object-cover rounded"
+                        onLoad={() => {
+                          // Trigger window resize when image loads to account for any layout changes
+                          setTimeout(() => autoResizeWindow(), 50);
+                        }}
                       />
                     ) : (
                       <div className="w-8 h-8 bg-primary/20 rounded flex items-center justify-center">
@@ -858,7 +1101,26 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
+                      onClick={() => {
+                        console.log('Removing attachment at index:', index);
+                        setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+
+                        // Multiple resize triggers for immediate feedback when removing attachments
+                        setTimeout(() => {
+                          console.log('Immediate resize after attachment removal');
+                          autoResizeWindow();
+                        }, 5);
+
+                        setTimeout(() => {
+                          console.log('Secondary resize after attachment removal');
+                          autoResizeWindow();
+                        }, 50);
+
+                        // Final resize to ensure window scales down properly
+                        setTimeout(() => {
+                          autoResizeWindow();
+                        }, 150);
+                      }}
                       className="h-6 w-6 p-0 hover:bg-destructive/20"
                       data-interactive="true"
                     >
@@ -882,13 +1144,21 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               }}
               onKeyDown={handleKeyDown}
               placeholder="Type your message..."
-              className="flex-1 min-h-[40px] p-2 resize-none focus:outline-none cursor-text overflow-y-auto"
+              className="flex-1 resize-none focus:outline-none cursor-text"
               style={{
-                lineHeight: '1.5',
+                lineHeight: '1.4',
                 backgroundColor: 'var(--input)',
-                border: '1px solid var(--border)',
+                border: 'none',
                 color: 'var(--foreground)',
-                borderRadius: '8px'
+                borderRadius: '8px',
+                verticalAlign: 'top',
+                fontFamily: 'inherit',
+                fontSize: '14px',
+                padding: '8px 12px', // Proper padding to match button height
+                height: '40px', // Match button height (h-10)
+                minHeight: '40px', // Ensure it doesn't go smaller
+                overflowY: 'hidden', // Start with no scrollbar
+                transition: 'height 0.1s ease-out' // Smooth height transitions
               }}
               data-interactive="true"
             />
@@ -973,14 +1243,13 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       {/* Bottom Toolbar - TESTING MINIMAL VERSION */}
       <div
         id="bottom-toolbar"
-        className="flex-none cursor-default p-2"
+        className="flex-none cursor-default"
       >
-        <Card className="rounded-lg" style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', borderRadius: '12px' }}>
+        <Card className="rounded-lg m-0" style={{ backgroundColor: 'var(--card)', border: 'none', borderRadius: '0 0 12px 12px', margin: 0 }}>
             <BottomToolbar
               settings={settings}
               onSettingsChange={handleSettingsChange}
-              showHistory={false}
-              onHistoryChange={openHistory}
+              onHistoryClick={openHistory}
               onFileUpload={handleFileUpload}
               onScreenshotCapture={handleScreenshotCapture}
               onPromptsClick={handlePromptsClick}

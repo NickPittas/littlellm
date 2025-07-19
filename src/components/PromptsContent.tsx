@@ -285,7 +285,8 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
         {filteredPrompts.map((prompt) => (
           <div
             key={prompt.id}
-            className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 cursor-pointer"
+            className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 cursor-pointer"
+            style={{ border: '1px solid var(--border)' }}
             onClick={() => handlePromptSelect(prompt)}
           >
             <div className="flex items-center gap-3 flex-1">
