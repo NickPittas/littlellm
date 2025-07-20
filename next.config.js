@@ -18,6 +18,7 @@ const nextConfig = {
     if (dev) {
       config.cache = false;
     }
+
     return config;
   },
   // Only use export mode when building for production

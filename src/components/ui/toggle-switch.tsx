@@ -44,11 +44,11 @@ export function ToggleSwitch({
       disabled={disabled}
       onClick={() => !disabled && onToggle(!enabled)}
       className={cn(
-        "relative inline-flex items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 border-2 border-transparent",
+        "relative inline-flex items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 border-2 border-transparent",
         currentSize.container,
         enabled
-          ? "bg-green-500 hover:bg-green-600"
-          : "bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500",
+          ? "bg-green-500 hover:bg-green-400 shadow-lg shadow-green-500/25 border-green-400/50 focus:ring-green-400"
+          : "bg-gray-500 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 border-gray-400/30 focus:ring-gray-400",
         disabled && "opacity-50 cursor-not-allowed",
         !disabled && "cursor-pointer",
         className
@@ -56,9 +56,11 @@ export function ToggleSwitch({
     >
       <span
         className={cn(
-          "inline-block rounded-full bg-white shadow-lg transform transition-all duration-300 ease-in-out",
+          "inline-block rounded-full bg-white transform transition-all duration-300 ease-in-out",
           currentSize.thumb,
-          enabled ? currentSize.translate : "translate-x-0.5"
+          enabled
+            ? `${currentSize.translate} shadow-lg shadow-green-200/50`
+            : "translate-x-0.5 shadow-md shadow-gray-300/50"
         )}
       />
     </button>

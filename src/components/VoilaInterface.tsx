@@ -415,230 +415,56 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     }
   }, []);
 
-  // Calculate minimum window size based on UI elements
-  const calculateMinimumWindowSize = useCallback(() => {
-    const inputArea = document.getElementById('input-area');
-    const bottomToolbar = document.getElementById('bottom-toolbar');
 
-    if (inputArea && bottomToolbar) {
-      // Get the minimum width needed for the bottom toolbar buttons
-      const toolbarRect = bottomToolbar.getBoundingClientRect();
-      const minWidth = Math.max(380, Math.ceil(toolbarRect.width + 40)); // Add padding
 
-      // Get minimum height for single-line input + toolbar
-      const singleLineHeight = 40; // Actual single-line textarea height (matches button height)
-      const toolbarHeight = toolbarRect.height;
-      const minHeight = Math.max(90, singleLineHeight + toolbarHeight + 25); // Minimum for 1-line + toolbar
-
-      // Note: Maximum will be handled by the 600px limit to accommodate 10-line textarea
-
-      return { minWidth, minHeight };
-    }
-
-    return { minWidth: 380, minHeight: 120 }; // Fallback values
-  }, []);
-
-  // Auto-resize window based on actual content measurements
+  // Simplified window auto-resize - only for attachment changes
   const autoResizeWindow = useCallback(() => {
     if (typeof window !== 'undefined' && window.electronAPI && !userResizedWindow) {
-      // Wait for DOM to be fully rendered and measured
-      setTimeout(() => {
-        // Get the main container that holds all content
-        const mainContainer = document.querySelector('.voila-interface-container') as HTMLElement;
+      // Only resize for significant content changes (attachments), not text input
+      const mainContainer = document.querySelector('.voila-interface-container') as HTMLElement;
+      if (mainContainer) {
+        const containerHeight = mainContainer.scrollHeight;
+        const newHeight = Math.min(Math.max(containerHeight + 20, 120), 600);
 
-        if (mainContainer) {
-          // Force a layout recalculation
-          mainContainer.style.height = 'auto';
-
-          // Use getBoundingClientRect for more accurate measurements
-          const containerRect = mainContainer.getBoundingClientRect();
-          const actualContentHeight = containerRect.height;
-
-          // Add minimal padding for window chrome
-          const windowChrome = 8; // Minimal window padding
-          const newHeight = Math.ceil(actualContentHeight + windowChrome);
-
-          // Calculate dynamic minimum size based on actual UI elements
-          const { minHeight } = calculateMinimumWindowSize();
-
-          // Set reasonable bounds - allow for 10-line textarea + toolbar + attachments
-          const maxHeight = 600; // Increased to accommodate 10-line textarea + toolbar + attachments
-          const boundedHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
-
-          console.log('Window auto-resize (content-aware):', {
-            actualContentHeight: Math.round(actualContentHeight),
-            newHeight,
-            boundedHeight,
-            minHeight,
-            attachedFilesCount: attachedFiles.length,
-            textareaHeight: textareaRef.current?.offsetHeight || 0,
-            containerRect: {
-              width: Math.round(containerRect.width),
-              height: Math.round(containerRect.height)
-            }
-          });
-
-          // Get current window size and resize if needed
-          window.electronAPI.getCurrentWindowSize().then((currentSize: { width: number; height: number }) => {
-            // Only resize if height changed significantly
-            if (Math.abs(currentSize.height - boundedHeight) > 5) {
-              console.log(`Resizing window from ${currentSize.height}px to ${boundedHeight}px`);
-              window.electronAPI.resizeWindow(currentSize.width, boundedHeight);
-            }
-          }).catch((error: unknown) => {
-            console.error('Failed to get current window size:', error);
-          });
-        }
-      }, 50); // Small delay to ensure DOM is updated
+        window.electronAPI.getCurrentWindowSize().then((currentSize: { width: number; height: number }) => {
+          if (Math.abs(currentSize.height - newHeight) > 20) { // Only for significant changes
+            window.electronAPI.resizeWindow(currentSize.width, newHeight);
+          }
+        }).catch(() => {
+          // Silently handle errors
+        });
+      }
     }
-  }, [attachedFiles.length, userResizedWindow, calculateMinimumWindowSize]);
+  }, [attachedFiles.length, userResizedWindow]);
 
-  // Auto-resize textarea height and window
+  // Simple CSS-based textarea auto-resize
   const autoResizeTextarea = useCallback(() => {
     if (textareaRef.current) {
       const textarea = textareaRef.current;
-
-      // For empty input, always set to single line height
-      if (input.trim() === '') {
-        textarea.style.height = '40px';
-        textarea.style.overflowY = 'hidden';
-        setTimeout(() => {
-          autoResizeWindow();
-        }, 10);
-        return;
-      }
-
-      // Get computed styles for accurate calculations
-      const computedStyle = getComputedStyle(textarea);
-      const fontSize = parseInt(computedStyle.fontSize) || 14;
-      const lineHeight = computedStyle.lineHeight === 'normal' ? fontSize * 1.4 : parseInt(computedStyle.lineHeight) || (fontSize * 1.4);
-      const paddingTop = parseInt(computedStyle.paddingTop) || 6;
-      const paddingBottom = parseInt(computedStyle.paddingBottom) || 6;
-
-      // Calculate minimum height for 1 line of text (precise calculation)
-      const minHeight = 40; // Fixed to match initial height (1 line) and button height
-      const maxHeight = Math.ceil(lineHeight * 10 + paddingTop + paddingBottom); // Max 10 lines as requested
-
-      // Create a hidden clone to measure content without affecting the visible textarea
-      const clone = textarea.cloneNode(true) as HTMLTextAreaElement;
-      clone.style.position = 'absolute';
-      clone.style.visibility = 'hidden';
-      clone.style.height = 'auto';
-      clone.style.minHeight = 'auto';
-      clone.style.maxHeight = 'none';
-      clone.style.overflow = 'hidden';
-      clone.value = textarea.value;
-
-      // Append to body temporarily to get measurements
-      document.body.appendChild(clone);
-      const scrollHeight = clone.scrollHeight;
-      document.body.removeChild(clone);
-
-      // Calculate final height with hysteresis to prevent jittering
-      const currentHeight = parseInt(textarea.style.height) || minHeight;
-      let finalHeight = Math.max(minHeight, Math.min(maxHeight, scrollHeight));
-
-      // Add hysteresis: only change height if the difference is significant enough
-      const heightDifference = Math.abs(finalHeight - currentHeight);
-      const threshold = lineHeight * 0.3; // 30% of line height threshold
-
-      if (heightDifference < threshold && currentHeight >= minHeight && currentHeight <= maxHeight) {
-        // Keep current height if change is too small (prevents jittering)
-        finalHeight = currentHeight;
-      }
-
-      // Set the new height smoothly
-      textarea.style.height = `${finalHeight}px`;
-
-      // Enable/disable scrolling based on content
-      textarea.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
-
-      console.log('Textarea auto-resize:', {
-        scrollHeight,
-        finalHeight,
-        currentHeight,
-        heightDifference,
-        threshold,
-        minHeight,
-        maxHeight,
-        lineHeight,
-        inputLength: input.length,
-        lineCount: Math.ceil((scrollHeight - paddingTop - paddingBottom) / lineHeight)
-      });
-
-      // Trigger window resize after textarea resize
-      setTimeout(() => {
-        autoResizeWindow();
-      }, 10);
+      // Let CSS handle the auto-sizing - just reset height to trigger recalculation
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
     }
-  }, [input, autoResizeWindow]);
+  }, []);
 
-  // Auto-resize textarea when input changes
+  // Debounced textarea auto-resize on input change
   useEffect(() => {
-    // Use setTimeout to ensure DOM is updated
     const timer = setTimeout(() => {
       autoResizeTextarea();
-    }, 0);
-
+    }, 100); // Debounce to reduce frequency
     return () => clearTimeout(timer);
   }, [input, autoResizeTextarea]);
 
-  // Additional effect to handle immediate textarea changes for better responsiveness
+  // Window resize only for attachment changes
   useEffect(() => {
-    if (textareaRef.current) {
-      // Immediate resize for better user experience
-      autoResizeTextarea();
-    }
-  }, [input.length, autoResizeTextarea]); // Trigger on length changes for immediate feedback
-
-  // Auto-resize window when attached files change
-  useEffect(() => {
-    console.log('Attached files changed, triggering resize. Count:', attachedFiles.length);
-
-    // Always trigger resize, but with different timing based on file count
-    if (attachedFiles.length === 0) {
-      // Quick resize when all attachments are removed
-      const quickTimer = setTimeout(() => {
-        console.log('No attachments, quick resize down');
+    if (attachedFiles.length > 0) {
+      // Only resize when attachments are added/removed, not for text changes
+      const timer = setTimeout(() => {
         autoResizeWindow();
-      }, 30);
-      return () => clearTimeout(quickTimer);
-    } else {
-      // Multiple timers for file additions to handle image loading
-      const quickTimer = setTimeout(() => {
-        console.log('Attachments present, quick resize');
-        autoResizeWindow();
-      }, 50);
-
-      const delayedTimer = setTimeout(() => {
-        console.log('Attachments present, delayed resize for image loading');
-        autoResizeWindow();
-      }, 300);
-
-      return () => {
-        clearTimeout(quickTimer);
-        clearTimeout(delayedTimer);
-      };
+      }, 200);
+      return () => clearTimeout(timer);
     }
-  }, [attachedFiles.length, autoResizeWindow]); // Use .length to trigger on count changes
-
-  // Initial window resize on component mount
-  useEffect(() => {
-    // Ensure textarea starts with correct single-line height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = '40px';
-    }
-
-    // Initial resize with longer delay to ensure everything is rendered
-    const timer = setTimeout(() => {
-      autoResizeTextarea(); // First resize the textarea
-      setTimeout(() => {
-        autoResizeWindow(); // Then resize the window
-      }, 100);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [autoResizeWindow, autoResizeTextarea]);
+  }, [attachedFiles.length, autoResizeWindow]);
 
   // Additional resize trigger when user stops resizing manually
   useEffect(() => {
@@ -1154,11 +980,13 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 verticalAlign: 'top',
                 fontFamily: 'inherit',
                 fontSize: '14px',
-                padding: '8px 12px', // Proper padding to match button height
-                height: '40px', // Match button height (h-10)
-                minHeight: '40px', // Ensure it doesn't go smaller
-                overflowY: 'hidden', // Start with no scrollbar
-                transition: 'height 0.1s ease-out' // Smooth height transitions
+                padding: '8px 12px',
+                minHeight: '40px', // Single line minimum
+                maxHeight: '200px', // Max 10 lines approximately
+                height: 'auto', // Let content determine height
+                overflowY: 'auto', // Show scrollbar when needed
+                resize: 'none', // Disable manual resize
+                transition: 'none' // Remove transitions for better performance
               }}
               data-interactive="true"
             />

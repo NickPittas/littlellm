@@ -1,0 +1,762 @@
+// Anthropic provider implementation
+
+import { BaseProvider } from './BaseProvider';
+import { 
+  LLMSettings, 
+  LLMResponse, 
+  MessageContent, 
+  ContentItem, 
+  LLMProvider,
+  ToolObject,
+  ProviderCapabilities
+} from './types';
+import { FALLBACK_MODELS } from './constants';
+import { ToolNameUtils } from './utils';
+import { ANTHROPIC_SYSTEM_PROMPT, generateAnthropicToolPrompt } from './prompts/anthropic';
+
+export class AnthropicProvider extends BaseProvider {
+  readonly id = 'anthropic';
+  readonly name = 'Anthropic';
+  readonly capabilities: ProviderCapabilities = {
+    supportsVision: true,
+    supportsTools: true,
+    supportsStreaming: true,
+    supportsSystemMessages: true,
+    maxToolNameLength: 64,
+    toolFormat: 'anthropic'
+  };
+
+  // Injected methods from main service
+  private _executeMultipleToolsParallel?: (
+    toolCalls: Array<{ id?: string; name: string; arguments: Record<string, unknown> }>,
+    provider?: string
+  ) => Promise<Array<{ id?: string; name: string; result: string; success: boolean; executionTime: number }>>;
+
+  private _summarizeToolResultsForModel?: (
+    results: Array<{ id?: string; name: string; result: string; success: boolean; executionTime: number }>
+  ) => string;
+
+  private _aggregateToolResults?: (
+    results: Array<{ id?: string; name: string; result: string; success: boolean; executionTime: number }>
+  ) => string;
+
+  private _formatToolResult?: (toolName: string, result: unknown) => string;
+
+  private _getMCPToolsForProvider?: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
+
+  // Method to inject dependencies from main service
+  injectDependencies(dependencies: {
+    executeMultipleToolsParallel?: (
+      toolCalls: Array<{ id?: string; name: string; arguments: Record<string, unknown> }>,
+      provider?: string
+    ) => Promise<Array<{ id?: string; name: string; result: string; success: boolean; executionTime: number }>>;
+    summarizeToolResultsForModel?: (
+      results: Array<{ id?: string; name: string; result: string; success: boolean; executionTime: number }>
+    ) => string;
+    aggregateToolResults?: (
+      results: Array<{ id?: string; name: string; result: string; success: boolean; executionTime: number }>
+    ) => string;
+    formatToolResult?: (toolName: string, result: unknown) => string;
+    getMCPToolsForProvider?: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
+  }) {
+    this._executeMultipleToolsParallel = dependencies.executeMultipleToolsParallel;
+    this._summarizeToolResultsForModel = dependencies.summarizeToolResultsForModel;
+    this._aggregateToolResults = dependencies.aggregateToolResults;
+    this._formatToolResult = dependencies.formatToolResult;
+    this._getMCPToolsForProvider = dependencies.getMCPToolsForProvider;
+  }
+
+  async sendMessage(
+    message: MessageContent,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal,
+    conversationId?: string
+  ): Promise<LLMResponse> {
+    // Debug API key details
+    console.log('🔍 Anthropic API key debug:', {
+      hasApiKey: !!settings.apiKey,
+      keyLength: settings.apiKey?.length || 0,
+      keyStart: settings.apiKey?.substring(0, 10) || 'undefined',
+      keyType: typeof settings.apiKey,
+      startsWithSkAnt: settings.apiKey?.startsWith('sk-ant-') || false
+    });
+
+    // Validate API key format
+    if (!settings.apiKey || !settings.apiKey.startsWith('sk-ant-')) {
+      console.error('❌ Anthropic API key validation failed:', {
+        apiKey: settings.apiKey,
+        hasApiKey: !!settings.apiKey,
+        startsWithSkAnt: settings.apiKey?.startsWith('sk-ant-')
+      });
+      throw new Error('Invalid Anthropic API key format. Key should start with "sk-ant-"');
+    }
+
+    // Adjust max_tokens based on Claude model limits
+    let maxTokens = settings.maxTokens;
+    if (settings.model.includes('claude-3-5-haiku')) {
+      maxTokens = Math.min(maxTokens, 8192);
+    } else if (settings.model.includes('claude-3-opus') || settings.model.includes('claude-3-sonnet') || settings.model.includes('claude-3-haiku')) {
+      // Claude 3 models have 4096 max output tokens
+      maxTokens = Math.min(maxTokens, 4096);
+    } else if (settings.model.includes('claude-3-5-sonnet')) {
+      maxTokens = Math.min(maxTokens, 8192);
+    } else {
+      // Default Claude limit
+      maxTokens = Math.min(maxTokens, 4096);
+    }
+
+    const messages = [];
+
+    // Add conversation history - filter out empty messages for Anthropic
+    for (const historyMessage of conversationHistory) {
+      let content: string;
+      if (typeof historyMessage.content === 'string') {
+        content = historyMessage.content.trim();
+      } else if (Array.isArray(historyMessage.content)) {
+        // Extract text from array format
+        content = historyMessage.content.map((item: ContentItem | string) => {
+          if (typeof item === 'string') return item;
+          if (item.type === 'text') return item.text;
+          return '[Non-text content]';
+        }).join(' ').trim();
+      } else {
+        content = String(historyMessage.content).trim();
+      }
+
+      // Only add messages with non-empty content
+      if (content) {
+        messages.push({
+          role: historyMessage.role,
+          content: content
+        });
+      } else {
+        console.warn(`⚠️ Skipping empty message in Anthropic conversation history:`, historyMessage);
+      }
+    }
+
+    // Add current message
+    if (typeof message === 'string') {
+      messages.push({ role: 'user', content: message });
+    } else if (Array.isArray(message)) {
+      // Handle ContentItem array format (from chatService.ts)
+      const anthropicContent = message.map((item: ContentItem) => {
+        if (item.type === 'text') {
+          return { type: 'text', text: item.text };
+        } else if (item.type === 'image_url') {
+          // Convert OpenAI format to Anthropic format
+          const imageUrl = item.image_url?.url || '';
+
+          // Determine media type from data URL
+          const mediaType = imageUrl.includes('data:image/png') ? 'image/png' :
+                           imageUrl.includes('data:image/gif') ? 'image/gif' :
+                           imageUrl.includes('data:image/webp') ? 'image/webp' : 'image/jpeg';
+
+          return {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: mediaType,
+              data: imageUrl.split(',')[1] // Remove data:image/jpeg;base64, prefix
+            }
+          };
+        } else if (item.type === 'document') {
+          // Handle document format for Anthropic
+          return {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: item.document?.media_type || 'application/pdf',
+              data: item.document?.data || ''
+            }
+          };
+        }
+        return item; // Pass through other types as-is
+      });
+
+      messages.push({ role: 'user', content: anthropicContent });
+    } else {
+      // Handle legacy vision format (for backward compatibility)
+      const messageWithImages = message as { text: string; images: string[] };
+      const content = [];
+      content.push({ type: 'text', text: messageWithImages.text });
+
+      // Add images in Anthropic format
+      for (const imageUrl of messageWithImages.images) {
+        // Determine media type from data URL
+        const mediaType = imageUrl.includes('data:image/png') ? 'image/png' :
+                         imageUrl.includes('data:image/gif') ? 'image/gif' :
+                         imageUrl.includes('data:image/webp') ? 'image/webp' : 'image/jpeg';
+
+        content.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            media_type: mediaType,
+            data: imageUrl.split(',')[1] // Remove data:image/jpeg;base64, prefix
+          }
+        });
+      }
+      messages.push({ role: 'user', content });
+    }
+
+    // Get MCP tools for Anthropic
+    console.log('🔍 [DEBUG] Getting MCP tools for Anthropic...');
+    const mcpTools = this._getMCPToolsForProvider ? await this._getMCPToolsForProvider('anthropic', settings) : [];
+    console.log('🔍 [DEBUG] MCP tools result:', { count: mcpTools.length, tools: mcpTools });
+
+    // Build enhanced system prompt with tool instructions
+    let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
+    if (mcpTools.length > 0) {
+      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mcpTools as ToolObject[]);
+      systemPrompt += `\n\n## Available Tools Summary\n\nYou have access to ${mcpTools.length} specialized tools. Use them as needed to accomplish user objectives.`;
+    }
+
+    const requestBody: Record<string, unknown> = {
+      model: settings.model,
+      max_tokens: maxTokens,
+      temperature: settings.temperature,
+      system: systemPrompt || undefined,
+      messages: messages,
+      stream: !!onStream
+    };
+
+    // Add tools if available
+    if (mcpTools.length > 0) {
+      requestBody.tools = mcpTools;
+
+      // For Claude 3.7 Sonnet, encourage parallel tool use
+      if (settings.model.includes('claude-3-7-sonnet') || settings.model.includes('claude-sonnet-3-7')) {
+        // Don't disable parallel tool use to encourage multiple tool calls
+      }
+
+      // Use auto tool choice to allow Claude to decide when to use tools
+      requestBody.tool_choice = { type: "auto" };
+
+      console.log(`🚀 Anthropic API call with ${mcpTools.length} tools:`, {
+        model: settings.model,
+        toolCount: mcpTools.length,
+        toolChoice: requestBody.tool_choice
+      });
+    } else {
+      console.log(`🚀 Anthropic API call without tools (no MCP tools available)`);
+    }
+
+    console.log('🔍 Anthropic request body:', JSON.stringify(requestBody, null, 2));
+
+    const response = await fetch(`${provider.baseUrl}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': settings.apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(requestBody),
+      signal
+    });
+
+    console.log('🔍 Anthropic response status:', response.status, response.statusText);
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('❌ Anthropic API error response:', error);
+      if (response.status === 401) {
+        throw new Error(`Anthropic API authentication failed. Please check your API key in Settings. The key may be expired or invalid. Error: ${error}`);
+      }
+      throw new Error(`Anthropic API error: ${error}`);
+    }
+
+    if (onStream) {
+      return this.handleStreamResponse(response, onStream, settings, provider, conversationHistory, signal);
+    } else {
+      return this.handleNonStreamResponse(response, settings, conversationHistory, conversationId);
+    }
+  }
+
+  async fetchModels(apiKey: string): Promise<string[]> {
+    if (!apiKey) {
+      console.log('🔍 No Anthropic API key provided, using fallback models');
+      return FALLBACK_MODELS.anthropic;
+    }
+
+    try {
+      console.log('🔍 Fetching Anthropic models from API...');
+      const response = await fetch('https://api.anthropic.com/v1/models', {
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.warn(`Anthropic API error: ${response.status} ${response.statusText}, using fallback models`);
+        return FALLBACK_MODELS.anthropic;
+      }
+
+      const data = await response.json() as { data: Array<{ id: string; display_name: string }> };
+      const models = data.data?.map((model) => model.id)?.sort() || [];
+
+      console.log(`🔍 Fetched ${models.length} Anthropic models from API:`, models);
+      return models.length > 0 ? models : FALLBACK_MODELS.anthropic;
+    } catch (error) {
+      console.warn('Failed to fetch Anthropic models from API, using fallback:', error);
+      return FALLBACK_MODELS.anthropic;
+    }
+  }
+
+  formatTools(tools: ToolObject[]): unknown[] {
+    // Anthropic format with name length validation (max 64 characters)
+    return tools.map(tool => {
+      const originalName = tool.name || tool.function?.name || '';
+      const truncatedName = originalName.length > 64
+        ? ToolNameUtils.truncateToolNameForAnthropic(originalName)
+        : originalName;
+
+      if (originalName !== truncatedName) {
+        console.warn(`⚠️ Truncated tool name for Anthropic: "${originalName}" -> "${truncatedName}"`);
+      }
+
+      return {
+        name: truncatedName,
+        description: tool.description || tool.function?.description,
+        input_schema: tool.parameters || tool.function?.parameters || {
+          type: 'object',
+          properties: {},
+          required: []
+        }
+      };
+    });
+  }
+
+  getSystemPrompt(): string {
+    return ANTHROPIC_SYSTEM_PROMPT;
+  }
+
+  enhanceSystemPromptWithTools(basePrompt: string, tools: ToolObject[]): string {
+    if (tools.length === 0) {
+      return basePrompt;
+    }
+
+    const toolInstructions = generateAnthropicToolPrompt(tools);
+    return basePrompt + toolInstructions;
+  }
+
+  validateToolCall(toolCall: { id?: string; name: string; arguments: Record<string, unknown> }): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (!toolCall.name || typeof toolCall.name !== 'string') {
+      errors.push('Tool call must have a valid name');
+    }
+
+    // Anthropic uses tool_use blocks with specific format
+    if (toolCall.arguments && typeof toolCall.arguments !== 'object') {
+      errors.push(`Anthropic tool call arguments must be object: ${toolCall.name}`);
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  validateTool(tool: unknown): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    if (!tool || typeof tool !== 'object') {
+      errors.push('Tool must be an object');
+      return { valid: false, errors };
+    }
+
+    const toolObj = tool as Record<string, unknown>;
+
+    if (!toolObj.name) {
+      errors.push('Anthropic tools must have name property');
+    }
+
+    if (!toolObj.description) {
+      errors.push('Anthropic tools must have description property');
+    }
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  // Legacy methods for backward compatibility (now use injected dependencies)
+  private async getMCPToolsForProvider(providerId: string, settings: LLMSettings): Promise<unknown[]> {
+    return this._getMCPToolsForProvider ? await this._getMCPToolsForProvider(providerId, settings) : [];
+  }
+
+  private async executeMultipleToolsParallel(
+    toolCalls: Array<{ id?: string; name: string; arguments: Record<string, unknown> }>,
+    provider?: string
+  ): Promise<Array<{ id?: string; name: string; result: string; success: boolean; executionTime: number }>> {
+    return this._executeMultipleToolsParallel ? await this._executeMultipleToolsParallel(toolCalls, provider) : [];
+  }
+
+  private summarizeToolResultsForModel(
+    results: Array<{ id?: string; name: string; result: string; success: boolean; executionTime: number }>
+  ): string {
+    return this._summarizeToolResultsForModel ? this._summarizeToolResultsForModel(results) : '';
+  }
+
+  private aggregateToolResults(
+    results: Array<{ id?: string; name: string; result: string; success: boolean; executionTime: number }>
+  ): string {
+    return this._aggregateToolResults ? this._aggregateToolResults(results) : '';
+  }
+
+  private formatToolResult(toolName: string, result: unknown): string {
+    return this._formatToolResult ? this._formatToolResult(toolName, result) : JSON.stringify(result);
+  }
+
+  private async handleStreamResponse(
+    response: Response,
+    onStream: (chunk: string) => void,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    signal?: AbortSignal
+  ): Promise<LLMResponse> {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    let fullContent = '';
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
+    const decoder = new TextDecoder();
+    const toolCalls: Array<{ id?: string; name?: string; arguments?: unknown; result?: string; isError?: boolean; parseError?: string }> = [];
+    const toolInputBuffers: { [index: number]: string } = {};
+    const currentToolBlocks: { [index: number]: Record<string, unknown> } = {};
+    const assistantContent: Array<Record<string, unknown>> = [];
+
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            // Skip event type lines
+            continue;
+          }
+
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim();
+            if (!data || data === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(data);
+
+              // Handle content_block_start for text
+              if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'text') {
+                assistantContent.push({ type: 'text', text: '' });
+              }
+
+              // Handle content_block_start for tool_use
+              if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'tool_use') {
+                console.log(`🔧 Anthropic streaming tool use started:`, parsed.content_block);
+                currentToolBlocks[parsed.index] = parsed.content_block;
+                toolInputBuffers[parsed.index] = '';
+                assistantContent.push({
+                  type: 'tool_use',
+                  id: parsed.content_block.id,
+                  name: parsed.content_block.name,
+                  input: {}
+                });
+
+                // Show tool usage in chat
+                const toolMessage = `\n\n🔧 **Using tool: ${parsed.content_block.name}**\n`;
+                fullContent += toolMessage;
+                onStream(toolMessage);
+              }
+
+              // Handle content_block_delta events with text_delta
+              if (parsed.type === 'content_block_delta' &&
+                  parsed.delta?.type === 'text_delta' &&
+                  parsed.delta?.text) {
+                const content = parsed.delta.text;
+                fullContent += content;
+                onStream(content);
+
+                // Update assistant content
+                if (assistantContent[parsed.index] && assistantContent[parsed.index].type === 'text') {
+                  assistantContent[parsed.index].text += content;
+                }
+              }
+
+              // Handle content_block_delta events with input_json_delta (tool parameters)
+              if (parsed.type === 'content_block_delta' &&
+                  parsed.delta?.type === 'input_json_delta' &&
+                  parsed.delta?.partial_json !== undefined) {
+                const index = parsed.index;
+                toolInputBuffers[index] += parsed.delta.partial_json;
+                console.log(`🔧 Anthropic streaming tool input:`, { index, partial: parsed.delta.partial_json });
+              }
+
+              // Handle content_block_stop for tool_use
+              if (parsed.type === 'content_block_stop' && currentToolBlocks[parsed.index]?.type === 'tool_use') {
+                const index = parsed.index;
+                const toolBlock = currentToolBlocks[index];
+                const inputJson = toolInputBuffers[index];
+
+                console.log(`🔧 Anthropic streaming tool use completed:`, { toolBlock, inputJson });
+
+                try {
+                  const toolInput = JSON.parse(inputJson);
+                  console.log(`🔧 Collected streaming tool for parallel execution:`, toolBlock.name, toolInput);
+
+                  // Update assistant content with final input
+                  if (assistantContent[index] && assistantContent[index].type === 'tool_use') {
+                    assistantContent[index].input = toolInput;
+                  }
+
+                  // Collect tool for parallel execution (don't execute yet)
+                  toolCalls.push({
+                    id: toolBlock.id as string,
+                    name: toolBlock.name as string,
+                    arguments: toolInput
+                  });
+
+                  // Show that we're preparing the tool (don't execute yet)
+                  const preparingMessage = `⚙️ Preparing ${toolBlock.name}...\n`;
+                  fullContent += preparingMessage;
+                  onStream(preparingMessage);
+
+                } catch (error) {
+                  console.error(`❌ Anthropic streaming tool input parsing failed:`, error);
+
+                  // Show parsing error in chat
+                  const errorMessage = `❌ Tool ${toolBlock.name} input parsing failed: ${error instanceof Error ? error.message : String(error)}\n`;
+                  fullContent += errorMessage;
+                  onStream(errorMessage);
+
+                  // Still collect the tool call for potential execution
+                  toolCalls.push({
+                    id: toolBlock.id as string,
+                    name: toolBlock.name as string,
+                    arguments: {},
+                    parseError: error instanceof Error ? error.message : String(error)
+                  });
+                }
+
+                // Clean up
+                delete currentToolBlocks[index];
+                delete toolInputBuffers[index];
+              }
+
+              // Handle message_delta events with usage data
+              if (parsed.type === 'message_delta' && parsed.usage) {
+                usage = {
+                  prompt_tokens: parsed.usage.input_tokens,
+                  completion_tokens: parsed.usage.output_tokens,
+                  total_tokens: parsed.usage.input_tokens + parsed.usage.output_tokens
+                };
+              }
+            } catch (e) {
+              // Skip invalid JSON
+              console.warn('Failed to parse streaming event:', e);
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    // If we have tool calls, execute them in parallel and make a follow-up streaming call
+    if (toolCalls.length > 0 && this._executeMultipleToolsParallel && this._summarizeToolResultsForModel && this._aggregateToolResults && this._formatToolResult) {
+      console.log(`🚀 Executing ${toolCalls.length} Anthropic tools in parallel before follow-up`);
+
+      // Show parallel execution message
+      const parallelMessage = `\n🚀 Executing ${toolCalls.length} tools in parallel...\n`;
+      fullContent += parallelMessage;
+      onStream(parallelMessage);
+
+      // Filter and prepare tool calls for parallel execution
+      const validToolCalls = toolCalls
+        .filter(tc => tc.id && tc.name && tc.arguments !== undefined)
+        .map(tc => ({
+          id: tc.id!,
+          name: tc.name!,
+          arguments: tc.arguments as Record<string, unknown>
+        }));
+
+      // Execute all tools in parallel
+      const parallelResults = await this._executeMultipleToolsParallel(validToolCalls, 'anthropic');
+
+      // Show completion message
+      const successCount = parallelResults.filter(r => r.success).length;
+      const completionMessage = `✅ Parallel execution completed: ${successCount}/${parallelResults.length} successful\n\n`;
+      fullContent += completionMessage;
+      onStream(completionMessage);
+
+      // Add user-friendly summary for the model to work with (not the detailed debug output)
+      const toolSummary = this._summarizeToolResultsForModel(parallelResults);
+
+      // Log detailed results for debugging (not shown to user)
+      console.log('🔧 Detailed tool execution results:', this._aggregateToolResults(parallelResults));
+
+      // Only add the clean summary to the content stream
+      fullContent += toolSummary;
+      onStream(toolSummary);
+
+      // Log tool execution for debugging
+      console.log(`🔍 Executed tools:`, parallelResults.map(r => r.name));
+      console.log(`🔍 Tool execution completed, proceeding with follow-up call`);
+
+      console.log(`🔄 Making follow-up Anthropic streaming call with ${parallelResults.length} tool results`);
+
+      // Reconstruct the conversation with tool results
+      const messages = conversationHistory ? [...conversationHistory] : [];
+
+      // Add the assistant's message with tool calls (proper Anthropic format)
+      messages.push({
+        role: 'assistant',
+        content: assistantContent as unknown as Array<ContentItem>
+      });
+
+      // Add tool results as user message using parallel execution results (proper Anthropic format)
+      const toolResults = parallelResults.map(result => {
+        let content = result.result;
+
+        // Parse JSON results and format them properly for Claude
+        try {
+          const parsedResult = JSON.parse(result.result);
+          content = this._formatToolResult!(result.name, parsedResult);
+        } catch {
+          // If not JSON, use as-is but clean up quotes
+          content = result.result.replace(/^"|"$/g, '');
+        }
+
+        return {
+          type: 'tool_result',
+          tool_use_id: result.id || '',
+          content: content,
+          is_error: !result.success
+        };
+      });
+
+      messages.push({
+        role: 'user',
+        content: toolResults as unknown as Array<ContentItem>
+      });
+
+      // Make follow-up streaming call
+      const followUpResponse = await fetch(`${provider.baseUrl}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': settings.apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: settings.model,
+          max_tokens: settings.maxTokens,
+          temperature: settings.temperature,
+          system: settings.systemPrompt || undefined,
+          messages: messages,
+          stream: true
+        }),
+        signal
+      });
+
+      if (followUpResponse.ok) {
+        console.log(`✅ Starting follow-up streaming response`);
+
+        // Stream the follow-up response
+        const followUpResult = await this.handleStreamResponse(
+          followUpResponse,
+          (chunk: string) => {
+            onStream(chunk);
+          },
+          settings,
+          provider,
+          conversationHistory,
+          signal
+        );
+
+        return {
+          content: fullContent + followUpResult.content,
+          usage: followUpResult.usage ? {
+            promptTokens: (usage?.prompt_tokens || 0) + (followUpResult.usage?.promptTokens || 0),
+            completionTokens: (usage?.completion_tokens || 0) + (followUpResult.usage?.completionTokens || 0),
+            totalTokens: (usage?.total_tokens || 0) + (followUpResult.usage?.totalTokens || 0)
+          } : usage ? {
+            promptTokens: usage.prompt_tokens || 0,
+            completionTokens: usage.completion_tokens || 0,
+            totalTokens: usage.total_tokens || 0
+          } : undefined,
+          toolCalls: toolCalls
+            .filter(tc => tc.id && tc.name)
+            .map(tc => ({
+              id: tc.id!,
+              name: tc.name!,
+              arguments: tc.arguments as Record<string, unknown>
+            }))
+        };
+      } else {
+        console.error(`❌ Anthropic follow-up streaming call failed:`, await followUpResponse.text());
+      }
+    }
+
+    return {
+      content: fullContent,
+      usage: usage ? {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0
+      } : undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls
+        .filter(tc => tc.id && tc.name)
+        .map(tc => ({
+          id: tc.id!,
+          name: tc.name!,
+          arguments: tc.arguments as Record<string, unknown>
+        })) : undefined
+    };
+  }
+
+  private async handleNonStreamResponse(
+    response: Response,
+    settings: LLMSettings,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    conversationId?: string
+  ): Promise<LLMResponse> {
+    const data = await response.json();
+    console.log('🔍 Anthropic raw response:', JSON.stringify(data, null, 2));
+
+    // Handle tool calls in Anthropic format
+    let content = '';
+    const toolUseBlocks = [];
+
+    // First pass: collect text content and tool use blocks
+    for (const contentBlock of data.content) {
+      if (contentBlock.type === 'text') {
+        content += contentBlock.text;
+      } else if (contentBlock.type === 'tool_use') {
+        toolUseBlocks.push(contentBlock);
+      }
+    }
+
+    // Create toolCalls array for compatibility
+    const toolCalls = toolUseBlocks.map(block => ({
+      id: block.id,
+      name: block.name,
+      arguments: block.input || {}
+    }));
+
+    return {
+      content,
+      usage: data.usage ? {
+        promptTokens: data.usage.input_tokens,
+        completionTokens: data.usage.output_tokens,
+        totalTokens: data.usage.input_tokens + data.usage.output_tokens
+      } : undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+    };
+  }
+}

@@ -140,9 +140,11 @@ class MCPService {
       }
     } catch (error) {
       console.error('Failed to call MCP tool:', error);
-      throw error;
+      // Enhance error with more context
+      const enhancedError = this.enhanceMCPError(toolName, error, args);
+      throw enhancedError;
     }
-    throw new Error(`Tool ${toolName} not found in any connected MCP server`);
+    throw new Error(`🔧 Tool Unavailable: The ${toolName} tool is not currently available. This might be due to a service configuration issue or the tool being temporarily disabled.`);
   }
 
   /**
@@ -215,6 +217,35 @@ class MCPService {
     console.log(`✅ MCP Service: Concurrent execution completed in ${totalTime}ms: ${successCount}/${toolCalls.length} successful`);
 
     return processedResults;
+  }
+
+  /**
+   * Enhanced error handling for MCP tool execution
+   */
+  private enhanceMCPError(toolName: string, error: unknown, args: Record<string, unknown>): Error {
+    const errorStr = error instanceof Error ? error.message : String(error);
+    const errorLower = errorStr.toLowerCase();
+
+    // MCP-specific error patterns
+    if (errorLower.includes('server not connected') || errorLower.includes('connection closed')) {
+      return new Error(`🔌 Connection Error: The MCP server for ${toolName} is not connected. Please check the server configuration.`);
+    }
+
+    if (errorLower.includes('method not found') || errorLower.includes('unknown method')) {
+      return new Error(`🔧 Tool Error: The ${toolName} tool method is not available on the MCP server. The server might need to be updated.`);
+    }
+
+    if (errorLower.includes('invalid params') || errorLower.includes('parameter validation')) {
+      const argsList = Object.keys(args).length > 0 ? `\nProvided: ${JSON.stringify(args, null, 2)}` : '\nNo arguments provided.';
+      return new Error(`📝 Parameter Error: Invalid parameters for ${toolName}.${argsList}`);
+    }
+
+    if (errorLower.includes('server error') || errorLower.includes('internal error')) {
+      return new Error(`🚫 Server Error: The MCP server encountered an internal error while executing ${toolName}. Please try again.`);
+    }
+
+    // Return enhanced error with context
+    return new Error(`❌ MCP Tool Error: ${toolName} execution failed.\nDetails: ${errorStr}`);
   }
 
   /**

@@ -19,7 +19,8 @@ import {
   RotateCw,
   MessageSquare,
   Paperclip,
-  X
+  X,
+  ChevronDown
 } from 'lucide-react';
 import { promptsService } from '../services/promptsService';
 import { chatService, type Message, type ChatSettings } from '../services/chatService';
@@ -75,6 +76,7 @@ export function ChatInterface({
   const [isLoading, setIsLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [internalAttachedFiles, setInternalAttachedFiles] = useState<AttachedFile[]>([]);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   // Use external attached files if provided, otherwise use internal state
   const attachedFiles = externalAttachedFiles
@@ -103,6 +105,7 @@ export function ChatInterface({
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Load settings on component mount
   useEffect(() => {
@@ -123,9 +126,43 @@ export function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Check if user is at bottom of scroll
+  const checkScrollPosition = () => {
+    if (!scrollContainerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
+    setShowScrollToBottom(!isAtBottom && messages.length > 0);
+  };
+
+  // Auto-scroll to bottom when messages change (only if user was already at bottom)
   useEffect(() => {
-    scrollToBottom();
+    if (!scrollContainerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const wasAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+
+    if (wasAtBottom) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
   }, [messages]);
+
+  // Add scroll listener
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    scrollContainer.addEventListener('scroll', checkScrollPosition);
+
+    // Initial check
+    checkScrollPosition();
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', checkScrollPosition);
+    };
+  }, [messages.length]);
 
   // Close action menu when clicking outside
   useEffect(() => {
@@ -377,7 +414,10 @@ export function ChatInterface({
   return (
     <div className="flex flex-col h-full relative">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar scrollable">
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar scrollable relative"
+      >
         {messages.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
             <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -412,6 +452,7 @@ export function ChatInterface({
                       }
                       usage={message.usage}
                       timing={message.timing}
+                      toolCalls={message.toolCalls}
                     />
                   ) : (
                     <UserMessage
@@ -477,8 +518,33 @@ export function ChatInterface({
           </div>
         )}
 
-        
+
         <div ref={messagesEndRef} />
+
+        {/* Scroll to bottom button */}
+        {showScrollToBottom && (
+          <Button
+            onClick={scrollToBottom}
+            className="absolute bottom-4 left-1/2 transform -translate-x-1/2 h-12 w-12 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 z-10 flex items-center justify-center p-0"
+            style={{
+              WebkitAppRegion: 'no-drag',
+              backdropFilter: 'blur(8px)',
+              minWidth: '48px',
+              minHeight: '48px'
+            } as React.CSSProperties & { WebkitAppRegion?: string }}
+          >
+            <ChevronDown
+              className="text-primary-foreground"
+              size={24}
+              style={{
+                width: '24px',
+                height: '24px',
+                minWidth: '24px',
+                minHeight: '24px'
+              }}
+            />
+          </Button>
+        )}
       </div>
 
       {/* Quick Actions Menu */}

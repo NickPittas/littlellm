@@ -1747,11 +1747,7 @@ async function createWindow() {
     titleBarStyle: 'hidden', // Hide title bar completely
     transparent: false, // Solid window for better compatibility
     backgroundColor: '#181829', // Match app background
-    roundedCorners: false, // Disable native rounded corners - using custom SquircleWindow
-    hasShadow: false, // Disable shadow and borders
-    thickFrame: false, // Disable thick window frame
-    useContentSize: true, // Use content size instead of window size
-    simpleFullscreen: false, // Disable fullscreen mode
+    roundedCorners: true, // Enable rounded corners to match chat window
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -1864,10 +1860,10 @@ async function createWindow() {
     console.error('Failed to load page:', errorCode, errorDescription, validatedURL);
   });
 
-  // Only open DevTools in development mode (detached for transparency)
-  if (!isProduction) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
-  }
+  // DevTools disabled - can be opened manually with F12 if needed
+  // if (!isProduction) {
+  //   mainWindow.webContents.openDevTools({ mode: 'detach' });
+  // }
 
   // Handle window events
   mainWindow.on('close', (event) => {

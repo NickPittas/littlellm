@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from './ui/button';
 import { ElectronDropdown } from './ui/electron-dropdown';
 import { ProviderDropdown } from './ui/provider-dropdown';
@@ -72,7 +72,8 @@ export function BottomToolbar({
     console.log('fetchModelsForProvider called with:', providerId);
     setIsLoadingModels(true);
     try {
-      const providerSettings = settings.providers?.[providerId] || { apiKey: '' };
+      const currentSettings = settingsRef.current;
+      const providerSettings = currentSettings.providers?.[providerId] || { apiKey: '' };
       console.log('Provider settings:', providerSettings);
 
       // Only fetch models if we have an API key (except for Ollama, LM Studio, and n8n which don't require one)
@@ -83,9 +84,9 @@ export function BottomToolbar({
         setAvailableModels(models);
 
         // ONLY restore model if it exists in the fetched models list
-        const lastSelectedModel = settings.providers?.[providerId]?.lastSelectedModel;
+        const lastSelectedModel = currentSettings.providers?.[providerId]?.lastSelectedModel;
 
-        if (!settings.model && lastSelectedModel && models.includes(lastSelectedModel)) {
+        if (!currentSettings.model && lastSelectedModel && models.includes(lastSelectedModel)) {
           console.log('✅ RESTORING valid model for provider (no API key):', providerId, '->', lastSelectedModel);
           onSettingsChange({ model: lastSelectedModel });
         } else if (lastSelectedModel && !models.includes(lastSelectedModel)) {
@@ -107,9 +108,9 @@ export function BottomToolbar({
       setAvailableModels(models);
 
       // ONLY restore model if it exists in the fetched models list
-      const lastSelectedModel = settings.providers?.[providerId]?.lastSelectedModel;
+      const lastSelectedModel = currentSettings.providers?.[providerId]?.lastSelectedModel;
 
-      if (!settings.model && lastSelectedModel && models.includes(lastSelectedModel)) {
+      if (!currentSettings.model && lastSelectedModel && models.includes(lastSelectedModel)) {
         console.log('✅ RESTORING valid model for provider (with API key):', providerId, '->', lastSelectedModel);
         onSettingsChange({ model: lastSelectedModel });
       } else if (lastSelectedModel && !models.includes(lastSelectedModel)) {
@@ -121,34 +122,66 @@ export function BottomToolbar({
     } finally {
       setIsLoadingModels(false);
     }
-  }, [settings, onSettingsChange]);
+  }, [onSettingsChange]); // Remove settings dependency to prevent constant recreation
 
-  // Fetch models when provider changes
+  // Fetch models when provider changes - use ref to access current settings
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
   useEffect(() => {
-    console.log('🔄 Provider useEffect triggered! settings.provider:', settings.provider);
+    // Only log when provider actually changes, not on every render
     if (settings.provider) {
-      console.log('Fetching models for provider:', settings.provider);
+      console.log('🔄 Provider changed, fetching models for:', settings.provider);
       fetchModelsForProvider(settings.provider);
-    } else {
-      console.log('❌ No provider set, skipping model fetch');
     }
-  }, [settings.provider, fetchModelsForProvider]);
+  }, [settings.provider]); // Only watch provider changes, not the callback
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleFileUpload = () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = true;
-    // Only allow: jpg, png, txt, pdf, md, log (general text files only)
-    input.accept = '.jpg,.jpeg,.png,.txt,.pdf,.md,.log';
+
+    // Provider-specific file type support
+    let acceptedTypes = '.jpg,.jpeg,.png,.txt,.pdf,.md,.log';
+    let allowedExtensions = ['.jpg', '.jpeg', '.png', '.txt', '.pdf', '.md', '.log'];
+
+    if (settings.provider === 'mistral') {
+      // Mistral supports additional formats through its Document AI and Vision
+      acceptedTypes = '.jpg,.jpeg,.png,.webp,.gif,.txt,.pdf,.md,.log,.csv,.json,.docx,.xlsx,.pptx,.doc,.xls,.ppt';
+      allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.txt', '.pdf', '.md', '.log', '.csv', '.json', '.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt'];
+    }
+
+    input.accept = acceptedTypes;
     input.onchange = (e) => {
       const files = (e.target as HTMLInputElement).files;
       if (files && onFileUpload) {
-        // Additional validation to ensure only allowed file types
-        const allowedExtensions = ['.jpg', '.jpeg', '.png', '.txt', '.pdf', '.md', '.log'];
+        // Provider-specific file validation
         const validFiles = Array.from(files).filter(file => {
           const extension = '.' + file.name.split('.').pop()?.toLowerCase();
-          return allowedExtensions.includes(extension);
+
+          // Basic extension check
+          if (!allowedExtensions.includes(extension)) {
+            return false;
+          }
+
+          // Mistral-specific validation
+          if (settings.provider === 'mistral') {
+            // Import MistralFileService for validation
+            try {
+              // Dynamic import to avoid circular dependencies
+              import('../services/mistralFileService').then(({ MistralFileService }) => {
+                const validation = MistralFileService.isFileSupported(file);
+                if (!validation.supported) {
+                  console.warn(`❌ Mistral file validation failed: ${validation.reason}`);
+                }
+              });
+            } catch (error) {
+              console.warn('Could not validate file for Mistral:', error);
+            }
+          }
+
+          return true;
         });
 
         if (validFiles.length > 0) {
@@ -203,16 +236,43 @@ export function BottomToolbar({
               filePreview.appendChild(icon);
             }
 
-            // Add file name
+            // Add file name and provider-specific info
+            const fileInfo = document.createElement('div');
+            fileInfo.style.flex = '1';
+            fileInfo.style.display = 'flex';
+            fileInfo.style.flexDirection = 'column';
+            fileInfo.style.overflow = 'hidden';
+
             const fileName = document.createElement('div');
-            fileName.style.flex = '1';
             fileName.style.overflow = 'hidden';
             fileName.style.textOverflow = 'ellipsis';
             fileName.style.whiteSpace = 'nowrap';
             fileName.style.fontSize = '12px';
             fileName.style.color = '#e2e8f0';
             fileName.textContent = file.name;
-            filePreview.appendChild(fileName);
+            fileInfo.appendChild(fileName);
+
+            // Add provider-specific processing info
+            if (settings.provider === 'mistral') {
+              const processingInfo = document.createElement('div');
+              processingInfo.style.fontSize = '10px';
+              processingInfo.style.color = '#94a3b8';
+              processingInfo.style.marginTop = '2px';
+
+              if (file.type === 'application/pdf' || file.type.includes('document') || file.type.includes('word') || file.type.includes('excel') || file.type.includes('powerpoint')) {
+                processingInfo.textContent = '📄 Mistral Document AI';
+              } else if (file.type.startsWith('image/')) {
+                processingInfo.textContent = '🖼️ Mistral Vision';
+              } else if (file.type.startsWith('text/')) {
+                processingInfo.textContent = '📝 Text Processing';
+              } else {
+                processingInfo.textContent = '🔍 Mistral Processing';
+              }
+
+              fileInfo.appendChild(processingInfo);
+            }
+
+            filePreview.appendChild(fileInfo);
 
             previewContainer.appendChild(filePreview);
           });
@@ -233,7 +293,10 @@ export function BottomToolbar({
           onFileUpload(fileList.files);
           console.log('Files uploaded:', validFiles.map(f => f.name));
         } else {
-          console.warn('No valid files selected. Allowed types: jpg, png, txt, pdf, md, log');
+          const providerInfo = settings.provider === 'mistral'
+            ? 'Mistral supports: images (jpg, png, webp, gif), documents (pdf, docx, xlsx, pptx), text files (txt, md, csv, json)'
+            : 'Allowed types: jpg, png, txt, pdf, md, log';
+          console.warn(`No valid files selected. ${providerInfo}`);
         }
       }
     };
