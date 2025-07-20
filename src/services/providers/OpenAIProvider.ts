@@ -13,6 +13,7 @@ import {
 } from './types';
 import { FALLBACK_MODELS } from './constants';
 import { OPENAI_SYSTEM_PROMPT, generateOpenAIToolPrompt } from './prompts/openai';
+import { OpenAIFileService, OpenAIFileUpload } from '../OpenAIFileService';
 
 export class OpenAIProvider extends BaseProvider {
   readonly id = 'openai';
@@ -26,6 +27,11 @@ export class OpenAIProvider extends BaseProvider {
     toolFormat: 'openai'
   };
 
+  private fileService?: OpenAIFileService;
+  private assistantId?: string;
+  private vectorStoreId?: string;
+  private threadMap = new Map<string, string>(); // Maps conversationId to threadId
+
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
@@ -35,6 +41,10 @@ export class OpenAIProvider extends BaseProvider {
     signal?: AbortSignal,
     conversationId?: string
   ): Promise<LLMResponse> {
+    // Initialize file service if not already done
+    if (!this.fileService && settings.apiKey) {
+      this.fileService = new OpenAIFileService(settings.apiKey, provider.baseUrl);
+    }
     const messages = [];
 
     // Get MCP tools for this provider first
@@ -54,7 +64,64 @@ export class OpenAIProvider extends BaseProvider {
     messages.push(...conversationHistory);
 
     // Add current message (handle both string and array formats)
-    messages.push({ role: 'user', content: message });
+    // Assistants API workflow
+    if (!this.assistantId || !this.vectorStoreId) {
+      const { assistantId, vectorStoreId } = await this.getOrCreateAssistantAndVectorStore(settings);
+      this.assistantId = assistantId;
+      this.vectorStoreId = vectorStoreId;
+    }
+
+    const threadId = await this.getOrCreateThread(conversationId, settings);
+
+    let textContent = '';
+    const attachments: { file_id: string; tools: { type: string; }[] }[] = [];
+
+    if (typeof message === 'string') {
+      textContent = message;
+    } else if (Array.isArray(message)) {
+      for (const item of message) {
+        if (item.type === 'text') {
+          textContent += item.text + '\n';
+        } else if (item.type === 'document' && this.fileService && item.document?.data) {
+          try {
+            const binaryString = atob(item.document.data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            const file = new File([bytes], item.document.name || 'document', {
+              type: item.document.media_type || 'application/octet-stream'
+            });
+            // Upload the file and add it to the vector store
+            const uploadedFile = await this.fileService.uploadFile(file, 'assistants');
+            await this.addFileToVectorStore(this.vectorStoreId!, uploadedFile.id, settings);
+            attachments.push({ file_id: uploadedFile.id, tools: [{ type: 'file_search' }] });
+          } catch (error) {
+            console.error('Error uploading document to OpenAI:', error);
+            textContent += `\n[Error uploading document: ${item.document.name}]`;
+          }
+        }
+      }
+    }
+
+    await this.addMessageToThread(threadId, textContent.trim(), attachments, settings);
+
+    const run = await this.createAndPollRun(threadId, this.assistantId!, settings);
+
+    if (run.status !== 'completed') {
+      throw new Error(`Run failed with status: ${run.status}`);
+    }
+
+    const responseContent = await this.getAssistantResponse(threadId, settings);
+
+    return {
+      content: responseContent,
+      usage: {
+        promptTokens: run.usage?.prompt_tokens || 0,
+        completionTokens: run.usage?.completion_tokens || 0,
+        totalTokens: run.usage?.total_tokens || 0
+      }
+    };
 
     const requestBody: Record<string, unknown> = {
       model: settings.model,
@@ -78,30 +145,136 @@ export class OpenAIProvider extends BaseProvider {
       console.log(`🚀 OpenAI API call without tools (${mcpTools.length} available, shouldSend: ${shouldSendTools})`);
     }
 
-    console.log(`🔍 OpenAI request body:`, JSON.stringify(requestBody, null, 2));
+  }
 
-    const response = await fetch(`${provider.baseUrl}/chat/completions`, {
+  private async getOrCreateAssistantAndVectorStore(settings: LLMSettings): Promise<{ assistantId: string, vectorStoreId: string }> {
+    // Create a vector store
+    console.log('Creating a new vector store...');
+    const vectorStoreResponse = await fetch('https://api.openai.com/v1/vector_stores', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${settings.apiKey}`
+        'Authorization': `Bearer ${settings.apiKey}`,
+        'OpenAI-Beta': 'assistants=v2'
       },
-      body: JSON.stringify(requestBody),
-      signal
+      body: JSON.stringify({ name: 'Document Store' })
+    });
+    if (!vectorStoreResponse.ok) {
+      throw new Error('Failed to create vector store');
+    }
+    const vectorStore = await vectorStoreResponse.json();
+    console.log(`Vector store created with ID: ${vectorStore.id}`);
+
+    // Create an assistant linked to the vector store
+    console.log('Creating a new assistant with file search...');
+    const assistantResponse = await fetch('https://api.openai.com/v1/assistants', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`,
+        'OpenAI-Beta': 'assistants=v2'
+      },
+      body: JSON.stringify({
+        name: 'File Search Assistant',
+        instructions: 'You are a helpful assistant that can search and analyze documents.',
+        tools: [{ type: 'file_search' }],
+        tool_resources: { file_search: { vector_store_ids: [vectorStore.id] } },
+        model: settings.model
+      })
+    });
+    if (!assistantResponse.ok) {
+      throw new Error('Failed to create assistant');
+    }
+    const assistant = await assistantResponse.json();
+    console.log(`Assistant created with ID: ${assistant.id}`);
+
+    return { assistantId: assistant.id, vectorStoreId: vectorStore.id };
+  }
+
+  private async getOrCreateThread(conversationId: string | undefined, settings: LLMSettings): Promise<string> {
+    if (conversationId && this.threadMap.has(conversationId)) {
+      return this.threadMap.get(conversationId)!;
+    }
+
+    const response = await fetch('https://api.openai.com/v1/threads', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`,
+        'OpenAI-Beta': 'assistants=v2'
+      }
+    });
+    const thread = await response.json();
+    if (conversationId) {
+      this.threadMap.set(conversationId, thread.id);
+    }
+    return thread.id;
+  }
+
+  private async addMessageToThread(threadId: string, content: string, attachments: any[], settings: LLMSettings) {
+    await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`,
+        'OpenAI-Beta': 'assistants=v2'
+      },
+      body: JSON.stringify({ role: 'user', content, attachments })
+    });
+  }
+
+  private async addFileToVectorStore(vectorStoreId: string, fileId: string, settings: LLMSettings) {
+    await fetch(`https://api.openai.com/v1/vector_stores/${vectorStoreId}/files`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`,
+        'OpenAI-Beta': 'assistants=v2'
+      },
+      body: JSON.stringify({ file_id: fileId })
+    });
+    console.log(`File ${fileId} added to vector store ${vectorStoreId}`);
+  }
+
+  private async createAndPollRun(threadId: string, assistantId: string, settings: LLMSettings): Promise<any> {
+    const runResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`,
+        'OpenAI-Beta': 'assistants=v2'
+      },
+      body: JSON.stringify({ assistant_id: assistantId })
     });
 
-    console.log(`🔍 OpenAI response status:`, response.status, response.statusText);
+    let run = await runResponse.json();
+    const pollInterval = 1000; // 1 second
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`OpenAI API error: ${error}`);
+    while (['queued', 'in_progress'].includes(run.status)) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      const pollResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${run.id}`, {
+        headers: {
+          'Authorization': `Bearer ${settings.apiKey}`,
+          'OpenAI-Beta': 'assistants=v2'
+        }
+      });
+      run = await pollResponse.json();
     }
 
-    if (onStream && typeof onStream === 'function') {
-      return this.handleStreamResponse(response, onStream, settings, provider, conversationHistory, conversationId);
-    } else {
-      return this.handleNonStreamResponse(response, settings, conversationHistory, conversationId);
-    }
+    return run;
+  }
+
+  private async getAssistantResponse(threadId: string, settings: LLMSettings): Promise<string> {
+    const messagesResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
+      headers: {
+        'Authorization': `Bearer ${settings.apiKey}`,
+        'OpenAI-Beta': 'assistants=v2'
+      }
+    });
+    const messages = await messagesResponse.json();
+    const assistantMessage = messages.data.find((m: any) => m.role === 'assistant');
+    // @ts-ignore
+    return assistantMessage?.content[0]?.text?.value || 'No response from assistant.';
   }
 
   async fetchModels(apiKey: string): Promise<string[]> {
