@@ -26,7 +26,7 @@ export interface LLMSettings {
 
 // Type for content array items used in vision API
 export interface ContentItem {
-  type: 'text' | 'image_url' | 'document';
+  type: 'text' | 'image_url' | 'document' | 'file';
   text?: string;
   image_url?: {
     url: string;
@@ -36,6 +36,8 @@ export interface ContentItem {
     media_type?: string;
     data?: string;
   };
+  fileName?: string;
+  fileContent?: string;
 }
 
 export type MessageContent = string | Array<ContentItem> | { text: string; images: string[] };

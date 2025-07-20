@@ -36,11 +36,11 @@ export class OpenRouterProvider extends BaseProvider {
     signal?: AbortSignal,
     conversationId?: string
   ): Promise<LLMResponse> {
-    // OpenRouter uses OpenAI-compatible API
-    const messages = [];
+    // Construct messages, handling file content
+    const messages = await this.constructMessagesWithFiles(message, conversationHistory, settings.systemPrompt || this.getSystemPrompt());
 
     // Get MCP tools for OpenRouter (fix: use correct signature)
-    const mcpTools = await this.getMCPToolsForProvider('openrouter', settings);
+    const mcpTools = (await this.getMCPToolsForProvider('openrouter', settings)) || [];
 
     // Build system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
@@ -48,15 +48,7 @@ export class OpenRouterProvider extends BaseProvider {
       systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mcpTools as ToolObject[]);
     }
 
-    if (systemPrompt) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
 
-    // Add conversation history
-    messages.push(...conversationHistory);
-
-    // Add current message
-    messages.push({ role: 'user', content: message });
 
     const requestBody: Record<string, unknown> = {
       model: settings.model,
@@ -166,11 +158,68 @@ export class OpenRouterProvider extends BaseProvider {
       errors.push('Tool call must have a name');
     }
 
-    if (toolCall.name && toolCall.name.length > this.capabilities.maxToolNameLength) {
+    if (toolCall.name && typeof this.capabilities.maxToolNameLength === 'number' && toolCall.name.length > this.capabilities.maxToolNameLength) {
       errors.push(`Tool name must be ≤${this.capabilities.maxToolNameLength} characters`);
     }
 
     return { valid: errors.length === 0, errors };
+  }
+
+  private async constructMessagesWithFiles(
+    message: MessageContent,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    systemPrompt: string
+  ): Promise<Array<{role: string, content: string | Array<ContentItem>}>> {
+    const messages: Array<{role: string, content: string | Array<ContentItem>}> = [];
+
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt });
+    }
+
+    messages.push(...conversationHistory);
+
+    if (typeof message === 'string') {
+      messages.push({ role: 'user', content: message });
+    } else if (Array.isArray(message)) {
+      const userContent: Array<ContentItem> = [];
+      for (const item of message) {
+        if (item.type === 'file' && item.fileContent) {
+          const fileExtension = item.fileName?.split('.').pop()?.toLowerCase() || '';
+          let mimeType = 'application/octet-stream';
+          if (fileExtension) {
+            switch (fileExtension) {
+              case 'pdf':
+                mimeType = 'application/pdf';
+                break;
+              case 'doc':
+              case 'docx':
+                mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                break;
+              case 'csv':
+                mimeType = 'text/csv';
+                break;
+              case 'md':
+                mimeType = 'text/markdown';
+                break;
+              case 'txt':
+                mimeType = 'text/plain';
+                break;
+            }
+          }
+          userContent.push({
+            type: 'image_url',
+            image_url: {
+              url: `data:${mimeType};base64,${item.fileContent}`
+            }
+          });
+        } else {
+          userContent.push(item);
+        }
+      }
+      messages.push({ role: 'user', content: userContent });
+    }
+
+    return messages;
   }
 
   validateTool(tool: unknown): { valid: boolean; errors: string[] } {
