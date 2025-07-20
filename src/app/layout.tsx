@@ -1,6 +1,6 @@
 import './globals.css';
 import { Inter } from 'next/font/google';
-// import SquircleWindow from '@/components/SquircleWindow';
+import SquircleWindow from '@/components/SquircleWindow';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -79,7 +79,10 @@ export default function RootLayout({
           boxShadow: 'none'
         }}
       >
-        {children}
+        {/* Disable SquircleWindow for overlay windows to prevent content clipping */}
+        <SquircleWindow cornerRadius={32} cornerSmoothing={0.9} enabled={false}>
+          {children}
+        </SquircleWindow>
       </body>
     </html>
   );

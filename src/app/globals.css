@@ -6,7 +6,7 @@
 @layer base {
   :root {
     /* Static CSS variables - no dynamic theming */
-    --radius: 5.8rem;
+    --radius: 0.5rem;
 
     /* VS Code theme colors - Direct hex values */
     --background: #181829;
@@ -139,6 +139,8 @@
     border: none !important;
     color: var(--card-foreground) !important;
     border-radius: 16px !important;
+    word-wrap: break-word !important; /* Ensure text wrapping */
+    overflow-wrap: break-word !important; /* Ensure text wrapping */
   }
 
   /* Dialog content styling */
@@ -146,15 +148,82 @@
     background: var(--card) !important;
     border: none !important;
     color: var(--card-foreground) !important;
-    border-radius: 16px !important;
+    border-radius: 8px !important;
   }
 
-  /* Force buttons and inputs to be solid */
-  button, input, textarea, select {
+  /* Force buttons and inputs to be solid with better contrast */
+  button:not([role="switch"]) {
     background: var(--muted) !important;
     color: var(--foreground) !important;
     border: none !important;
-    border-radius: 12px !important;
+    border-radius: 6px !important;
+  }
+
+  /* Exception for toggle switches - allow custom styling */
+  button[role="switch"] {
+    background: unset !important;
+    border: unset !important;
+    border-radius: 9999px !important; /* Keep it fully rounded */
+  }
+
+  /* Specific styling for enabled toggle switches */
+  button[role="switch"][aria-checked="true"] {
+    background: #22c55e !important; /* Bright green */
+    box-shadow: 0 4px 14px 0 rgba(34, 197, 94, 0.3) !important;
+    border: 2px solid rgba(34, 197, 94, 0.5) !important;
+    border-radius: 9999px !important; /* Fully rounded */
+  }
+
+  button[role="switch"][aria-checked="true"]:hover {
+    background: #16a34a !important; /* Darker green on hover */
+    box-shadow: 0 6px 20px 0 rgba(34, 197, 94, 0.4) !important;
+    border-radius: 9999px !important; /* Fully rounded */
+  }
+
+  button[role="switch"][aria-checked="false"] {
+    background: #6b7280 !important; /* Gray when disabled */
+    border: 2px solid rgba(107, 114, 128, 0.3) !important;
+    border-radius: 9999px !important; /* Fully rounded */
+  }
+
+  /* Input fields with much better visibility */
+  input, textarea, select {
+    background: #1a1a2e !important; /* Much darker than background */
+    color: var(--foreground) !important;
+    border: 2px solid var(--border) !important;
+    border-radius: 6px !important;
+  }
+
+  /* Focus states for input fields */
+  input:focus, textarea:focus, select:focus {
+    background: #16213e !important; /* Even darker on focus */
+    border-color: var(--ring) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 2px rgba(86, 156, 214, 0.2) !important;
+  }
+
+  /* Hover states for input fields */
+  input:hover, textarea:hover, select:hover {
+    background: #1e1e3f !important;
+    border-color: var(--accent) !important;
+  }
+
+  /* Settings window input fields - brighter background for better visibility */
+  .settings-input input,
+  .settings-input textarea,
+  .settings-input select,
+  .settings-input [data-radix-select-trigger] {
+    background: #3a3a4e !important; /* Brighter than previous #2a2a3e */
+    color: var(--foreground) !important;
+    border: none !important;
+    border-radius: 8px !important;
+  }
+
+  /* Auto-resize textarea using CSS field-sizing */
+  textarea {
+    field-sizing: content !important; /* Native CSS auto-resize */
+    resize: none !important; /* Disable manual resize */
+    overflow-y: auto !important; /* Show scrollbar when needed */
   }
 
   /* Specifically target action menu buttons to remove borders */
@@ -191,6 +260,25 @@
   .thinking-dot:nth-child(2) { animation-delay: -0.16s; }
   .thinking-dot:nth-child(3) { animation-delay: 0s; }
 
+  /* Scroll to bottom button animations */
+  @keyframes scroll-button-bounce {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-2px);
+    }
+  }
+
+  .scroll-to-bottom-button {
+    animation: scroll-button-bounce 2s infinite ease-in-out;
+  }
+
+  .scroll-to-bottom-button:hover {
+    animation: none;
+    transform: scale(1.05);
+  }
+
   /* Chat bubble colors use Tailwind classes - no overrides needed */
 
   /* Message bubble specific styling - override card defaults */
@@ -199,22 +287,34 @@
     background: rgba(86, 156, 214, 0.8) !important; /* More subtle blue */
     color: var(--primary-foreground) !important;
     border-radius: 16px !important; /* Match main app */
+    border: none !important; /* Remove all borders */
+    word-wrap: break-word !important; /* Fix text overflow */
+    overflow-wrap: break-word !important; /* Fix text overflow */
+    max-width: 100% !important; /* Ensure proper containment */
   }
 
   .assistant-message,
   .bg-secondary {
-    background: rgba(32, 30, 49, 0.9) !important; /* Subtle dark purple, similar to muted but slightly different */
+    background: rgba(45, 42, 65, 0.7) !important; /* Lighter/more muted color between background and user message */
     color: #d4d4d4 !important; /* Use foreground color for better readability */
     border-radius: 16px !important; /* Match main app */
+    border: none !important; /* Remove all borders */
+    word-wrap: break-word !important; /* Fix text overflow */
+    overflow-wrap: break-word !important; /* Fix text overflow */
+    max-width: 100% !important; /* Ensure proper containment */
   }
 
-  /* Ensure card content inherits colors */
+  /* Ensure card content inherits colors and proper text wrapping */
   .user-message .card-content,
   .user-message [data-radix-card-content],
   .bg-primary .card-content,
   .bg-primary [data-radix-card-content] {
     background: transparent !important;
     color: white !important;
+    border: none !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    white-space: pre-wrap !important; /* Preserve formatting while allowing wrapping */
   }
 
   .assistant-message .card-content,
@@ -223,6 +323,10 @@
   .bg-secondary [data-radix-card-content] {
     background: transparent !important;
     color: white !important;
+    border: none !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+    white-space: pre-wrap !important; /* Preserve formatting while allowing wrapping */
   }
 
   /* Prevent scaling during drag operations */
@@ -244,7 +348,7 @@
     background-color: var(--card) !important;
     border: none !important;
     color: var(--card-foreground) !important;
-    border-radius: 12px !important;
+    border-radius: 6px !important;
   }
 
   /* Ensure input fields have solid backgrounds */
@@ -345,5 +449,40 @@
 
   .custom-scrollbar::-webkit-scrollbar-thumb:active {
     background: var(--primary);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-corner {
+    background: var(--muted);
+  }
+
+  /* Apply custom scrollbar globally to all scrollable elements */
+  * {
+    /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) var(--muted);
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: var(--muted);
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+    border: 1px solid var(--muted);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: var(--muted);
   }
 }

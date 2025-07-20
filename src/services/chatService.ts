@@ -2,62 +2,17 @@ import { llmService, type LLMSettings } from './llmService';
 import { sessionService } from './sessionService';
 import { settingsService } from './settingsService';
 
-// Type definitions for PDF.js
-interface PDFDocumentProxy {
-  numPages: number;
-  getPage(pageNumber: number): Promise<PDFPageProxy>;
-}
-
-interface PDFPageProxy {
-  getTextContent(): Promise<TextContent>;
-  render(params: RenderParameters): RenderTask;
-  getViewport(params: { scale: number }): PageViewport;
-}
-
-interface TextContent {
-  items: (TextItem | TextMarkedContent)[];
-}
-
-interface TextItem {
-  str: string;
-  dir?: string;
-  width?: number;
-  height?: number;
-  transform?: number[];
-  fontName?: string;
-}
-
-interface TextMarkedContent {
-  type: string;
-}
-
-interface RenderParameters {
-  canvasContext: CanvasRenderingContext2D;
-  viewport: PageViewport;
-}
-
-interface RenderTask {
-  promise: Promise<void>;
-}
-
-interface PageViewport {
-  width: number;
-  height: number;
-  scale: number;
-}
-
-// Type for PDF.js getDocument parameters
-interface PDFDocumentInitParameters {
-  data: ArrayBuffer;
-  verbosity?: number;
-}
-
 // Type for content array items used in vision API
 interface ContentItem {
-  type: 'text' | 'image_url';
+  type: 'text' | 'image_url' | 'document';
   text?: string;
   image_url?: {
     url: string;
+  };
+  document?: {
+    name: string;
+    media_type: string;
+    data: string;
   };
 }
 
@@ -122,64 +77,7 @@ export const chatService = {
     return true;
   },
 
-  // Helper function to convert PDF pages to images
-  async pdfToImages(file: File): Promise<string[]> {
-    try {
-      console.log('Converting PDF to images:', file.name);
 
-      const arrayBuffer = await file.arrayBuffer();
-      const pdfjsLib = await import('pdfjs-dist');
-
-      // Use local worker to avoid CORS issues
-      pdfjsLib.GlobalWorkerOptions.workerSrc = '/js/pdf.worker.min.js';
-
-      const loadingTask = pdfjsLib.getDocument({
-        data: arrayBuffer,
-        verbosity: 0
-      } as PDFDocumentInitParameters);
-
-      const pdf: PDFDocumentProxy = await loadingTask.promise;
-      console.log('PDF loaded for image conversion, pages:', pdf.numPages);
-
-      const images: string[] = [];
-      const maxPages = Math.min(pdf.numPages, 10); // Limit to first 10 pages
-
-      for (let i = 1; i <= maxPages; i++) {
-        try {
-          const page = await pdf.getPage(i);
-          const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better quality
-
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
-
-          if (context) {
-            const renderContext = {
-              canvasContext: context,
-              viewport: viewport
-            };
-
-            await page.render(renderContext).promise;
-
-            // Convert canvas to base64 image
-            const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-            images.push(imageDataUrl);
-
-            console.log(`Converted PDF page ${i} to image, size: ${imageDataUrl.length}`);
-          }
-        } catch (pageError) {
-          console.error(`Error converting PDF page ${i} to image:`, pageError);
-        }
-      }
-
-      console.log(`PDF converted to ${images.length} images`);
-      return images;
-    } catch (error) {
-      console.error('PDF to image conversion failed:', error);
-      return [];
-    }
-  },
 
   // Helper function to convert file to base64 (no processing needed)
   fileToBase64(file: File): Promise<string> {
@@ -211,112 +109,11 @@ export const chatService = {
         reader.readAsText(file);
       });
     } else if (file.type === 'application/pdf') {
-      // For PDFs, try to extract text using PDF.js (browser-compatible)
-      try {
-        console.log('Starting PDF text extraction for:', file.name);
+      // Skip PDF text extraction - let providers handle PDFs directly
+      console.log('Skipping PDF text extraction, letting provider handle directly:', file.name);
+      return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: PDF will be processed by the AI provider directly.`;
 
-        // Use PDF.js for client-side PDF parsing
-        const arrayBuffer = await file.arrayBuffer();
-        console.log('PDF arrayBuffer size:', arrayBuffer.byteLength);
 
-        // Import PDF.js dynamically for browser compatibility
-        const pdfjsLib = await import('pdfjs-dist');
-
-        // Use local worker to avoid CORS issues
-        pdfjsLib.GlobalWorkerOptions.workerSrc = '/js/pdf.worker.min.js';
-
-        console.log('PDF.js configured with local worker:', pdfjsLib.GlobalWorkerOptions.workerSrc);
-
-        const loadingTask = pdfjsLib.getDocument({
-          data: arrayBuffer,
-          verbosity: 0 // Reduce console noise
-        } as PDFDocumentInitParameters);
-
-        const pdf: PDFDocumentProxy = await loadingTask.promise;
-        console.log('PDF loaded successfully, pages:', pdf.numPages);
-
-        let fullText = '';
-        const maxPages = Math.min(pdf.numPages, 10); // Limit to first 10 pages
-
-        // Extract text from each page
-        for (let i = 1; i <= maxPages; i++) {
-          try {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items
-              .map((item: TextItem | TextMarkedContent) => ('str' in item ? item.str : '') || '')
-              .filter(str => str.trim().length > 0)
-              .join(' ');
-
-            if (pageText.trim()) {
-              fullText += `Page ${i}:\n${pageText.trim()}\n\n`;
-            }
-            console.log(`Extracted text from page ${i}, length:`, pageText.length);
-          } catch (pageError) {
-            console.error(`Error extracting text from page ${i}:`, pageError);
-            fullText += `Page ${i}: [Error extracting text from this page]\n\n`;
-          }
-        }
-
-        if (fullText.trim()) {
-          console.log('PDF text extraction successful, total length:', fullText.length);
-          return `[PDF Document: ${file.name}]\n\n${fullText.trim()}`;
-        } else {
-          console.log('No text extracted from PDF');
-          return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Could not extract text from this PDF. It may contain only images, be password protected, or be a scanned document.`;
-        }
-      } catch (pdfError) {
-        console.error('PDF parsing error:', pdfError);
-
-        // Try fallback without worker if worker-related error
-        if (pdfError instanceof Error && pdfError.message && pdfError.message.includes('worker')) {
-          try {
-            console.log('Retrying PDF parsing without worker...');
-            const pdfjsLib = await import('pdfjs-dist');
-
-            // Disable worker completely
-            pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-
-            const fallbackArrayBuffer = await file.arrayBuffer();
-            const fallbackLoadingTask = pdfjsLib.getDocument({
-              data: fallbackArrayBuffer,
-              verbosity: 0
-            } as PDFDocumentInitParameters);
-
-            const fallbackPdf: PDFDocumentProxy = await fallbackLoadingTask.promise;
-            console.log('PDF loaded successfully without worker, pages:', fallbackPdf.numPages);
-
-            let fallbackText = '';
-            const maxPages = Math.min(fallbackPdf.numPages, 10);
-
-            for (let i = 1; i <= maxPages; i++) {
-              try {
-                const page = await fallbackPdf.getPage(i);
-                const textContent = await page.getTextContent();
-                const pageText = textContent.items
-                  .map((item: TextItem | TextMarkedContent) => ('str' in item ? item.str : '') || '')
-                  .filter(str => str.trim().length > 0)
-                  .join(' ');
-
-                if (pageText.trim()) {
-                  fallbackText += `Page ${i}:\n${pageText.trim()}\n\n`;
-                }
-              } catch (pageError) {
-                console.error(`Error extracting text from page ${i} (fallback):`, pageError);
-              }
-            }
-
-            if (fallbackText.trim()) {
-              console.log('PDF text extraction successful (fallback), total length:', fallbackText.length);
-              return `[PDF Document: ${file.name}]\n\n${fallbackText.trim()}`;
-            }
-          } catch (fallbackError) {
-            console.error('PDF fallback parsing also failed:', fallbackError);
-          }
-        }
-
-        return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Could not extract text from this PDF due to an error: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}. Please describe the content you'd like me to analyze.`;
-      }
     } else if (file.type.includes('word') || file.type.includes('document')) {
       // For Word documents, provide placeholder
       return `[Word Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Word document text extraction not yet implemented. Please describe the content you'd like me to analyze.`;
@@ -361,227 +158,138 @@ export const chatService = {
       if (files && files.length > 0) {
         console.log('Processing files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
 
-        const hasImages = files.some(file => file.type.startsWith('image/'));
-        const hasPDFs = files.some(file => file.type === 'application/pdf');
-        const hasVisualContent = hasImages || hasPDFs;
         const provider = settings.provider;
-        const modelSupportsVision = this.supportsVision(provider, settings.model);
+        console.log('Processing files for provider:', provider, 'Files:', files.map(f => ({ name: f.name, type: f.type })));
 
-        console.log('Has images:', hasImages, 'Has PDFs:', hasPDFs, 'Has visual content:', hasVisualContent, 'Provider:', provider, 'Model supports vision:', modelSupportsVision);
+        // Send files directly to providers in their expected format
+        console.log('Sending files directly to provider:', provider);
 
-        if (hasVisualContent && modelSupportsVision) {
-          // Use vision API format for providers that support it
-          console.log('Using vision API format for provider:', provider);
+        if (provider === 'mistral') {
+          // Use Mistral's native file processing capabilities
+          console.log('🔍 Using Mistral native file processing');
+          const mistralProvider = this.getProviderInstance('mistral');
+          console.log('🔍 Mistral provider instance:', mistralProvider);
+          console.log('🔍 Has processFiles method:', mistralProvider && 'processFiles' in mistralProvider);
 
-          const contentArray: Array<ContentItem> = [
-            {
-              type: 'text',
-              text: message || 'Please analyze the attached content.'
-            }
-          ];
-
-          // Process each file
-          for (const file of files) {
-            console.log('Processing file:', file.name, file.type);
-
-            if (file.type.startsWith('image/')) {
-              // Convert image to base64 data URL
-              console.log('Converting image to base64...');
-              const base64 = await this.fileToBase64(file);
-              console.log('Image converted, base64 length:', base64.length);
-
-              contentArray.push({
-                type: 'image_url',
-                image_url: {
-                  url: base64
-                }
+          if (mistralProvider && 'processFiles' in mistralProvider) {
+            try {
+              console.log('🔍 Calling Mistral processFiles with:', {
+                filesCount: files.length,
+                fileNames: Array.from(files).map(f => f.name),
+                provider: this.getProviderConfig(provider)
               });
-            } else if (file.type === 'application/pdf') {
-              // Convert PDF pages to images for vision models
-              console.log('Converting PDF to images for vision analysis...');
-              const pdfImages = await this.pdfToImages(file);
 
-              if (pdfImages.length > 0) {
-                console.log(`PDF converted to ${pdfImages.length} images`);
+              const processedFiles = await (mistralProvider as any).processFiles(
+                Array.from(files),
+                settings,
+                this.getProviderConfig(provider)
+              );
 
-                // Add each PDF page as an image
-                pdfImages.forEach((imageDataUrl) => {
-                  contentArray.push({
-                    type: 'image_url',
-                    image_url: {
-                      url: imageDataUrl
-                    }
-                  });
-                });
+              const contentArray: Array<ContentItem> = [
+                {
+                  type: 'text',
+                  text: message || 'Please analyze the attached content.'
+                },
+                ...processedFiles
+              ];
 
-                // Add a note about the PDF
-                contentArray[0].text += `\n\n[PDF Document: ${file.name} - ${pdfImages.length} pages converted to images for visual analysis]`;
-              } else {
-                // Fallback to text extraction if image conversion fails
-                console.log('PDF image conversion failed, falling back to text extraction...');
-                const textContent = await this.extractTextFromFile(file);
-                console.log('Text extracted, length:', textContent.length);
-                contentArray[0].text += `\n\n${textContent}`;
-              }
-            } else {
-              // Extract text from other documents
-              console.log('Extracting text from document...');
-              const textContent = await this.extractTextFromFile(file);
-              console.log('Text extracted, length:', textContent.length);
-              contentArray[0].text += `\n\n${textContent}`;
+              messageContent = contentArray;
+              console.log('✅ Mistral files processed successfully:', {
+                processedCount: processedFiles.length,
+                contentTypes: processedFiles.map(f => f.type)
+              });
+            } catch (error) {
+              console.error('❌ Mistral file processing failed:', error);
+              // Fallback to generic processing
+              console.log('🔄 Falling back to generic processing');
+              messageContent = await this.processFilesGeneric(files, message, provider);
             }
-          }
-
-          messageContent = contentArray;
-          console.log('Final vision message content structure:', {
-            type: 'array',
-            length: contentArray.length,
-            hasText: contentArray[0]?.type === 'text',
-            hasImages: contentArray.some(item => item.type === 'image_url')
-          });
-        } else {
-          // For providers without vision support or text-only files
-          if (provider === 'ollama' && hasVisualContent) {
-            // Ollama vision models use a different format
-            console.log('Using Ollama vision format');
-
-            let textContent = message || 'Please analyze the attached content.';
-            const images: string[] = [];
-
-            for (const file of files) {
-              if (file.type.startsWith('image/')) {
-                // Convert image to base64 for Ollama
-                console.log('Converting image for Ollama:', file.name);
-                const base64 = await this.fileToBase64(file);
-                // Extract just the base64 data without the data URL prefix
-                const base64Data = base64.split(',')[1];
-                images.push(base64Data);
-                console.log('Added image to Ollama format, base64 length:', base64Data.length);
-              } else if (file.type === 'application/pdf') {
-                // Convert PDF pages to images for Ollama vision models
-                console.log('Converting PDF to images for Ollama:', file.name);
-                const pdfImages = await this.pdfToImages(file);
-
-                if (pdfImages.length > 0) {
-                  console.log(`PDF converted to ${pdfImages.length} images for Ollama`);
-
-                  // Add each PDF page as an image (extract base64 data only)
-                  pdfImages.forEach((imageDataUrl) => {
-                    const base64Data = imageDataUrl.split(',')[1];
-                    images.push(base64Data);
-                  });
-
-                  textContent += `\n\n[PDF Document: ${file.name} - ${pdfImages.length} pages converted to images for visual analysis]`;
-                } else {
-                  // Fallback to text extraction if image conversion fails
-                  console.log('PDF image conversion failed for Ollama, falling back to text extraction...');
-                  const extractedText = await this.extractTextFromFile(file);
-                  textContent += `\n\n${extractedText}`;
-                  console.log('Added text content, total length:', textContent.length);
-                }
-              } else {
-                // Extract and include text content
-                console.log('Extracting text for Ollama:', file.name);
-                const extractedText = await this.extractTextFromFile(file);
-                textContent += `\n\n${extractedText}`;
-                console.log('Added text content, total length:', textContent.length);
-              }
-            }
-
-            // Ollama expects a simple message format with images array
-            messageContent = {
-              text: textContent,
-              images: images
-            };
-            console.log('Final Ollama message format:', { textLength: textContent.length, imageCount: images.length });
-          } else if (provider === 'n8n' && hasVisualContent) {
-            // n8n webhook format with images
-            console.log('Using n8n webhook format with images');
-
-            let textContent = message || 'Please analyze the attached content.';
-            const images: string[] = [];
-
-            for (const file of files) {
-              if (file.type.startsWith('image/')) {
-                // Convert image to base64 data URL for n8n
-                console.log('Converting image for n8n:', file.name);
-                const base64 = await this.fileToBase64(file);
-                images.push(base64); // Keep full data URL for n8n
-                console.log('Added image to n8n format, base64 length:', base64.length);
-              } else if (file.type === 'application/pdf') {
-                // Convert PDF pages to images for n8n
-                console.log('Converting PDF to images for n8n:', file.name);
-                const pdfImages = await this.pdfToImages(file);
-
-                if (pdfImages.length > 0) {
-                  console.log(`PDF converted to ${pdfImages.length} images for n8n`);
-                  images.push(...pdfImages); // Add all PDF page images
-                  textContent += `\n\n[PDF Document: ${file.name} - ${pdfImages.length} pages converted to images for analysis]`;
-                } else {
-                  // Fallback to text extraction if image conversion fails
-                  console.log('PDF image conversion failed for n8n, falling back to text extraction...');
-                  const extractedText = await this.extractTextFromFile(file);
-                  textContent += `\n\n${extractedText}`;
-                  console.log('Added text content, total length:', textContent.length);
-                }
-              } else {
-                // Extract and include text content
-                console.log('Extracting text for n8n:', file.name);
-                const extractedText = await this.extractTextFromFile(file);
-                textContent += `\n\n${extractedText}`;
-                console.log('Added text content, total length:', textContent.length);
-              }
-            }
-
-            // n8n expects a message format with images array (similar to Ollama but with full data URLs)
-            messageContent = {
-              text: textContent,
-              images: images
-            };
-            console.log('Final n8n message format:', { textLength: textContent.length, imageCount: images.length });
           } else {
-            // For other providers or models without vision support
-            if (hasVisualContent && !modelSupportsVision) {
-              console.log(`Model ${settings.model} does not support vision - falling back to text extraction`);
-            } else {
-              console.log('Using text-only format for provider:', provider);
-            }
-
-            let combinedText = message;
-
-            for (const file of files) {
-              if (file.type.startsWith('image/')) {
-                if (!modelSupportsVision) {
-                  console.log('Model does not support vision, adding image placeholder:', file.name);
-                  combinedText += `\n\n[Image attached: ${file.name} - This model (${settings.model}) does not support vision. Please switch to a vision-capable model like gpt-4o, gpt-4o-mini, or gpt-4-turbo to analyze images.]`;
-                } else {
-                  console.log('Adding image placeholder for non-vision provider:', file.name);
-                  combinedText += `\n\n[Image attached: ${file.name} - Vision analysis not supported for this provider]`;
-                }
-              } else if (file.type === 'application/pdf') {
-                if (!modelSupportsVision) {
-                  console.log('Model does not support vision, extracting PDF text only:', file.name);
-                  const textContent = await this.extractTextFromFile(file);
-                  combinedText += `\n\n${textContent}`;
-                  combinedText += `\n\n[Note: PDF visual content (images, charts, diagrams) cannot be analyzed with ${settings.model}. Switch to a vision-capable model like gpt-4o to see visual content.]`;
-                } else {
-                  // Extract text from PDF for non-vision providers
-                  console.log('Extracting PDF text for non-vision provider:', file.name);
-                  const textContent = await this.extractTextFromFile(file);
-                  combinedText += `\n\n${textContent}`;
-                }
-              } else {
-                // Extract and include text content
-                console.log('Extracting text content:', file.name);
-                const textContent = await this.extractTextFromFile(file);
-                combinedText += `\n\n${textContent}`;
-                console.log('Added text content, total length:', combinedText.length);
-              }
-            }
-
-            messageContent = combinedText;
-            console.log('Final text-only message length:', combinedText.length);
+            // Fallback to generic processing
+            console.log('🔄 No Mistral provider or processFiles method, using generic processing');
+            messageContent = await this.processFilesGeneric(files, message, provider);
           }
+        } else if (provider === 'openai' || provider === 'anthropic' || provider === 'gemini' || provider === 'deepseek' || provider === 'openrouter' || provider === 'replicate' || provider === 'requesty') {
+          messageContent = await this.processFilesGeneric(files, message, provider);
+        } else if (provider === 'ollama') {
+          // Ollama uses a different format with separate images array
+          console.log('Using Ollama format');
+
+          let textContent = message || 'Please analyze the attached content.';
+          const images: string[] = [];
+
+          for (const file of files) {
+            if (file.type.startsWith('image/')) {
+              // Convert image to base64 for Ollama
+              console.log('Converting image for Ollama:', file.name);
+              const base64 = await this.fileToBase64(file);
+              // Extract just the base64 data without the data URL prefix
+              const base64Data = base64.split(',')[1];
+              images.push(base64Data);
+              console.log('Added image to Ollama format, base64 length:', base64Data.length);
+            } else {
+              // For all other files (PDF, TXT, CSV, etc.), extract text content
+              console.log('Extracting text for Ollama:', file.name);
+              const extractedText = await this.extractTextFromFile(file);
+              textContent += `\n\n[File: ${file.name}]\n${extractedText}`;
+              console.log('Added text content, total length:', textContent.length);
+            }
+          }
+
+          // Ollama expects a simple message format with images array
+          messageContent = {
+            text: textContent,
+            images: images
+          };
+          console.log('Final Ollama message format:', { textLength: textContent.length, imageCount: images.length });
+        } else if (provider === 'n8n') {
+          // n8n webhook format
+          console.log('Using n8n webhook format');
+
+          let textContent = message || 'Please analyze the attached content.';
+          const images: string[] = [];
+
+          for (const file of files) {
+            if (file.type.startsWith('image/')) {
+              // Convert image to base64 data URL for n8n
+              console.log('Converting image for n8n:', file.name);
+              const base64 = await this.fileToBase64(file);
+              images.push(base64); // Keep full data URL for n8n
+              console.log('Added image to n8n format, base64 length:', base64.length);
+            } else {
+              // For all other files, extract text content
+              const extractedText = await this.extractTextFromFile(file);
+              textContent += `\n\n[File: ${file.name}]\n${extractedText}`;
+              console.log('Added text content, total length:', textContent.length);
+            }
+          }
+
+          // n8n expects a message format with images array (similar to Ollama but with full data URLs)
+          messageContent = {
+            text: textContent,
+            images: images
+          };
+          console.log('Final n8n message format:', { textLength: textContent.length, imageCount: images.length });
+        } else {
+          // For all other providers, use simple text format
+          console.log('Using simple text format for provider:', provider);
+
+          let combinedText = message || 'Please analyze the attached content.';
+
+          for (const file of files) {
+            if (file.type.startsWith('image/')) {
+              console.log('Adding image placeholder for text-only provider:', file.name);
+              combinedText += `\n\n[Image attached: ${file.name} - Please describe what you'd like me to analyze about this image.]`;
+            } else {
+              // Extract text from all other files
+              console.log('Extracting text from file:', file.name);
+              const textContent = await this.extractTextFromFile(file);
+              combinedText += `\n\n[File: ${file.name}]\n${textContent}`;
+            }
+          }
+
+          messageContent = combinedText;
+          console.log('Final text message content length:', combinedText.length);
         }
       }
 
@@ -661,8 +369,7 @@ export const chatService = {
         llmHistory,
         useStreaming ? onStream : undefined,
         signal,
-        conversationId,
-        projectId
+        conversationId
       );
 
       const endTime = performance.now();
@@ -775,5 +482,77 @@ export const chatService = {
 
   async fetchModels(providerId: string, apiKey?: string, baseUrl?: string): Promise<string[]> {
     return await llmService.fetchModels(providerId, apiKey, baseUrl);
+  },
+
+  // Helper method to get provider instance
+  getProviderInstance(providerId: string) {
+    // Get the actual provider instance from ProviderFactory via llmService's adapter
+    return llmService.getProviderAdapter().getProvider(providerId);
+  },
+
+  // Helper method to get provider config
+  getProviderConfig(providerId: string) {
+    const providers = llmService.getProviders();
+    return providers.find(p => p.id === providerId);
+  },
+
+  // Generic file processing for non-Mistral providers
+  async processFilesGeneric(files: File[], message: string, provider: string): Promise<Array<ContentItem>> {
+    const contentArray: Array<ContentItem> = [
+      {
+        type: 'text',
+        text: message || 'Please analyze the attached content.'
+      }
+    ];
+
+    // Process each file
+    for (const file of files) {
+      console.log('Processing file:', file.name, file.type);
+
+      if (file.type.startsWith('image/')) {
+        // Convert image to base64 data URL
+        console.log('Converting image to base64...');
+        const base64 = await this.fileToBase64(file);
+        console.log('Image converted, base64 length:', base64.length);
+
+        contentArray.push({
+          type: 'image_url',
+          image_url: {
+            url: base64
+          }
+        });
+      } else if (file.type === 'application/pdf' || file.type.startsWith('text/') || file.type === 'text/csv') {
+        // Send documents directly to providers that support them
+        if (provider === 'anthropic') {
+          // Anthropic supports native document handling
+          console.log('Sending document to Anthropic:', file.name);
+          const base64 = await this.fileToBase64(file);
+          const base64Data = base64.split(',')[1]; // Remove data URL prefix
+
+          contentArray.push({
+            type: 'document',
+            document: {
+              name: file.name,
+              media_type: file.type,
+              data: base64Data
+            }
+          } as ContentItem);
+        } else {
+          // For other providers, extract text content
+          console.log('Extracting text content for provider:', provider, file.name);
+          const textContent = await this.extractTextFromFile(file);
+          console.log('Text extracted, length:', textContent.length);
+          contentArray[0].text += `\n\n[File: ${file.name}]\n${textContent}`;
+        }
+      } else {
+        // For other file types, extract text content
+        console.log('Extracting text content from file:', file.name);
+        const textContent = await this.extractTextFromFile(file);
+        console.log('Text extracted, length:', textContent.length);
+        contentArray[0].text += `\n\n[File: ${file.name}]\n${textContent}`;
+      }
+    }
+
+    return contentArray;
   }
 };

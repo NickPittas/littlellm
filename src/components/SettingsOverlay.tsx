@@ -4,287 +4,35 @@ import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Badge } from './ui/badge';
-import {
-  Key,
-  Keyboard,
-  Wand2,
-  Plus,
-  Edit,
-  Trash2,
-  Download,
-  Upload,
-  Save,
-  X,
-  Palette,
-  Cog,
-  RefreshCw,
-  RotateCcw,
-  Server,
-  Play,
-  Square,
-  Brain
-} from 'lucide-react';
+import { ToggleSwitch } from './ui/toggle-switch';
+import { Textarea } from './ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { settingsService, type AppSettings } from '../services/settingsService';
-import { promptsService, type Prompt } from '../services/promptsService';
-import { mcpService, type MCPServer } from '../services/mcpService';
-// import { useTheme } from '../contexts/ThemeContext'; // Theme system disabled
 import { MemoryManagement } from './MemoryManagement';
+import { mcpService, type MCPServer } from '../services/mcpService';
+import { PromptsContent } from './PromptsContent';
+import { Plus, Trash2, Server, Zap, Edit, FileText } from 'lucide-react';
 
 export function SettingsOverlay() {
   const [activeTab, setActiveTab] = useState('api-keys');
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [customPrompts, setCustomPrompts] = useState<Prompt[]>([]);
-  const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
-  const [showAddPrompt, setShowAddPrompt] = useState(false);
-  const [newPrompt, setNewPrompt] = useState({
-    name: '',
-    description: '',
-    prompt: '',
-    category: 'text',
-    icon: '📝'
-  });
-
-  // MCP state
+  const [formData, setFormData] = useState<AppSettings | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([]);
-  const [editingMcpServer, setEditingMcpServer] = useState<MCPServer | null>(null);
   const [showAddMcpServer, setShowAddMcpServer] = useState(false);
+  const [editingMcpServer, setEditingMcpServer] = useState<MCPServer | null>(null);
+  const [showMcpJsonEditor, setShowMcpJsonEditor] = useState(false);
+  const [mcpJsonContent, setMcpJsonContent] = useState('');
   const [newMcpServer, setNewMcpServer] = useState({
     name: '',
-    description: '',
     command: '',
     args: [] as string[],
-    env: {} as Record<string, string>,
-    enabled: true
+    description: '',
+    enabled: true,
+    env: {} as Record<string, string>
   });
-  const [mcpConfigText, setMcpConfigText] = useState('');
-
-  // const { theme, setTheme, themes } = useTheme(); // Theme system disabled
-
-  // Handle URL parameters and IPC messages for tab changes
-  useEffect(() => {
-    // Check URL parameters for initial tab
-    const urlParams = new URLSearchParams(window.location.search);
-    const tabParam = urlParams.get('tab');
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
-
-    // Listen for tab change messages from main process
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      const handleTabChange = (tab: string) => {
-        setActiveTab(tab);
-      };
-
-      // Add listener for tab change events (if available)
-      let listener: unknown = null;
-      if (window.electronAPI.onTabChange) {
-        listener = window.electronAPI.onTabChange(handleTabChange);
-      }
-
-      return () => {
-        // Cleanup listener if available
-        if (listener && window.electronAPI.removeTabChangeListener) {
-          window.electronAPI.removeTabChangeListener(listener);
-        }
-      };
-    }
-  }, []);
-
-  // Load settings and prompts
-  useEffect(() => {
-    console.log('SettingsOverlay component mounted');
-    // console.log('Theme context available:', theme); // Theme system disabled
-    loadSettings();
-    loadCustomPrompts();
-    loadMcpServers();
-
-    // Listen for MCP server connection events for immediate UI updates
-    const handleMcpServerConnected = (serverId: string) => {
-      console.log('🔌 MCP server connected:', serverId);
-      loadMcpServers(); // Refresh the server list immediately
-    };
-
-    const handleMcpServerDisconnected = (serverId: string) => {
-      console.log('🔌 MCP server disconnected:', serverId);
-      loadMcpServers(); // Refresh the server list immediately
-    };
-
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      // Add event listeners for immediate MCP server updates
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const electronAPI = window.electronAPI as any;
-      electronAPI.onMcpServerConnected?.(handleMcpServerConnected);
-      electronAPI.onMcpServerDisconnected?.(handleMcpServerDisconnected);
-    }
-
-    return () => {
-      // Cleanup event listeners
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const electronAPI = window.electronAPI as any;
-        electronAPI.removeMcpServerListeners?.();
-      }
-    };
-  }, []); // Theme system disabled - no dependencies
-
-  const loadSettings = async () => {
-    try {
-      console.log('=== LOADING SETTINGS IN OVERLAY ===');
-
-      // Try to get settings from electron API first
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        console.log('Getting settings from electronAPI...');
-        const electronSettings = await window.electronAPI.getAppSettings() as any;
-        console.log('Electron settings:', electronSettings);
-        if (electronSettings) {
-          // Ensure providers object exists
-          if (!electronSettings.chat) {
-            electronSettings.chat = {};
-          }
-          if (!electronSettings.chat.providers) {
-            electronSettings.chat.providers = {
-              openai: { apiKey: '', lastSelectedModel: '' },
-              anthropic: { apiKey: '', lastSelectedModel: '' },
-              gemini: { apiKey: '', lastSelectedModel: '' },
-              mistral: { apiKey: '', lastSelectedModel: '' },
-              deepseek: { apiKey: '', lastSelectedModel: '' },
-              lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
-              ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-              openrouter: { apiKey: '', lastSelectedModel: '' },
-              requesty: { apiKey: '', lastSelectedModel: '' },
-              replicate: { apiKey: '', lastSelectedModel: '' },
-              n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-            };
-          }
-          setSettings(electronSettings);
-          return;
-        }
-      }
-
-      // Fallback to settings service
-      console.log('Getting settings from settingsService...');
-      const appSettings = settingsService.getSettings();
-      console.log('Loaded settings in overlay:', appSettings);
-      setSettings(appSettings);
-    } catch (error) {
-      console.error('Failed to load settings:', error);
-      // Set default settings if loading fails
-      const defaultSettings: AppSettings = {
-        chat: {
-          provider: '',
-          model: '',
-          temperature: 0.3,
-          maxTokens: 8192,
-          systemPrompt: '',
-          toolCallingEnabled: true,
-          providers: {
-            openai: { apiKey: '', lastSelectedModel: '' },
-            anthropic: { apiKey: '', lastSelectedModel: '' },
-            gemini: { apiKey: '', lastSelectedModel: '' },
-            mistral: { apiKey: '', lastSelectedModel: '' },
-            deepseek: { apiKey: '', lastSelectedModel: '' },
-            lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
-            ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-            openrouter: { apiKey: '', lastSelectedModel: '' },
-            requesty: { apiKey: '', lastSelectedModel: '' },
-            replicate: { apiKey: '', lastSelectedModel: '' },
-            n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-          },
-        },
-        ui: {
-          theme: 'dark' as const, // Force dark theme
-          alwaysOnTop: true,
-          startMinimized: false,
-          fontSize: 'small' as const,
-          windowBounds: {
-            width: 400,
-            height: 615, // Increased by 15px for draggable header
-            x: undefined, // Let Electron choose initial position
-            y: undefined, // Let Electron choose initial position
-          },
-        },
-        shortcuts: {
-          toggleWindow: 'CommandOrControl+Shift+L',
-          processClipboard: 'CommandOrControl+Shift+V',
-          actionMenu: 'CommandOrControl+Shift+Space',
-          openShortcuts: 'CommandOrControl+Shift+K',
-        },
-        general: {
-          autoStartWithSystem: false,
-          showNotifications: true,
-          saveConversationHistory: true,
-          conversationHistoryLength: 10,
-        },
-      };
-      console.log('Using default settings:', defaultSettings);
-      setSettings(defaultSettings);
-    }
-  };
-
-  const loadCustomPrompts = () => {
-    const allPrompts = promptsService.getAllPrompts();
-    setCustomPrompts(allPrompts); // Show all prompts, not just custom ones
-  };
-
-  const handleSaveSettings = async () => {
-    if (!settings) return;
-
-    try {
-      console.log('=== SAVING SETTINGS FROM OVERLAY ===');
-      console.log('Settings to save:', settings);
-      console.log('AutoStart value:', settings.general.autoStartWithSystem);
-
-      await settingsService.updateSettings(settings);
-      console.log('=== SETTINGS SAVED FROM OVERLAY ===');
-
-      // Force theme update in main window by triggering a settings change event
-      // if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.notifyThemeChange) {
-      //   window.electronAPI.notifyThemeChange(theme.id);
-      // } // Theme system disabled
-
-      handleClose();
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-    }
-  };
-
-  const handleReloadSettings = async () => {
-    console.log('🔄 Reload Settings button clicked!');
-    try {
-      console.log('=== RELOADING SETTINGS FROM DISK ===');
-
-      // Force reload from disk
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const savedSettings = await window.electronAPI.getSettings() as any;
-        if (savedSettings) {
-          console.log('Settings reloaded from disk:', savedSettings);
-
-          // Update the overlay UI
-          setSettings(savedSettings);
-
-          // IMPORTANT: Force update the settings service AND notify all subscribers
-          // This will update VoilaInterface and all other components
-          settingsService.forceUpdateSettings(savedSettings);
-
-          console.log('=== SETTINGS RELOADED SUCCESSFULLY ===');
-          alert('Settings reloaded successfully! All components updated.');
-        } else {
-          console.log('No settings found on disk');
-          alert('No settings found on disk');
-        }
-      } else {
-        console.log('Electron API not available');
-        alert('Electron API not available');
-      }
-    } catch (error) {
-      console.error('Failed to reload settings:', error);
-      alert(`Failed to reload settings: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
 
   const handleClose = () => {
     if (typeof window !== 'undefined' && window.electronAPI) {
@@ -292,109 +40,38 @@ export function SettingsOverlay() {
     }
   };
 
-  // Prompt management functions
-  const handleAddPrompt = () => {
-    if (newPrompt.name && newPrompt.prompt) {
-      const prompt: Prompt = {
-        id: `custom-${Date.now()}`,
-        name: newPrompt.name,
-        description: newPrompt.description,
-        prompt: newPrompt.prompt,
-        category: newPrompt.category,
-        icon: newPrompt.icon
-      };
-
-      promptsService.addCustomPrompt(prompt);
-      loadCustomPrompts();
-      setNewPrompt({ name: '', description: '', prompt: '', category: 'text', icon: '📝' });
-      setShowAddPrompt(false);
-    }
+  const handleTitleBarMouseDown = () => {
+    // Enable window dragging via CSS
+    // The title bar will use -webkit-app-region: drag
   };
 
-  const handleEditPrompt = (prompt: Prompt) => {
-    // Edit any prompt directly (built-in or custom)
-    setEditingPrompt(prompt);
-    setNewPrompt({
-      name: prompt.name,
-      description: prompt.description,
-      prompt: prompt.prompt,
-      category: prompt.category,
-      icon: prompt.icon
-    });
-    setShowAddPrompt(true);
-  };
-
-  const handleUpdatePrompt = async () => {
-    if (editingPrompt && newPrompt.name && newPrompt.prompt) {
-      const promptData = {
-        name: newPrompt.name,
-        description: newPrompt.description,
-        prompt: newPrompt.prompt,
-        category: newPrompt.category,
-        icon: newPrompt.icon
-      };
-
-      // Update the prompt directly (built-in or custom)
-      await promptsService.updatePrompt(editingPrompt.id, promptData);
-      console.log('Updated prompt:', editingPrompt.id);
-
-      loadCustomPrompts();
-      setEditingPrompt(null);
-      setNewPrompt({ name: '', description: '', prompt: '', category: 'text', icon: '📝' });
-      setShowAddPrompt(false);
-    }
-  };
-
-  const handleDeletePrompt = (promptId: string) => {
-    promptsService.deleteCustomPrompt(promptId);
-    loadCustomPrompts();
-  };
-
-  const handleExportPrompts = () => {
+  const loadSettings = async () => {
+    setIsLoading(true);
     try {
-      const exported = promptsService.exportPrompts();
-      const blob = new Blob([exported], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'prompts.json';
-      a.click();
-      URL.revokeObjectURL(url);
+      let loadedSettings: AppSettings;
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const electronSettings = await window.electronAPI.getAppSettings();
+        loadedSettings = electronSettings as AppSettings;
+      } else {
+        loadedSettings = settingsService.getSettings();
+      }
+      setSettings(loadedSettings);
+      setFormData(JSON.parse(JSON.stringify(loadedSettings))); // Deep copy
+      setHasChanges(false);
+
+      // Load MCP servers
+      await loadMcpServers();
     } catch (error) {
-      console.error('Failed to export prompts:', error);
+      console.error('Failed to load settings:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleImportPrompts = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        try {
-          const text = await file.text();
-          await promptsService.importPrompts(text);
-          loadCustomPrompts();
-        } catch (error) {
-          console.error('Failed to import prompts:', error);
-        }
-      }
-    };
-    input.click();
-  };
-
-  // MCP Server Management Functions
   const loadMcpServers = async () => {
     try {
       const servers = await mcpService.getServers();
       setMcpServers(servers);
-
-      // Load MCP config as text for editing
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const mcpData = await window.electronAPI.getMCPServers();
-        setMcpConfigText(JSON.stringify(mcpData, null, 2));
-      }
     } catch (error) {
       console.error('Failed to load MCP servers:', error);
     }
@@ -402,1284 +79,1236 @@ export function SettingsOverlay() {
 
   const handleAddMcpServer = async () => {
     try {
-      console.log('🔄 Adding new MCP server:', newMcpServer);
-
       const server = await mcpService.addServer({
         name: newMcpServer.name,
-        description: newMcpServer.description,
         command: newMcpServer.command,
-        args: newMcpServer.args.filter(arg => arg.trim()), // Remove empty args
-        env: Object.fromEntries(
-          Object.entries(newMcpServer.env).filter(([key, value]) => key.trim() && value.trim())
-        ), // Remove empty env vars
-        enabled: newMcpServer.enabled
+        args: newMcpServer.args,
+        description: newMcpServer.description,
+        enabled: newMcpServer.enabled,
+        env: newMcpServer.env
       });
-
-      console.log('✅ MCP server added:', server);
-
-      // If enabled, try to connect the server immediately
-      if (server.enabled) {
-        console.log('🔌 Auto-connecting new MCP server:', server.id);
-        try {
-          const connected = await mcpService.connectServer(server.id);
-          console.log('🔌 Auto-connection result:', connected);
-        } catch (connectError) {
-          console.warn('⚠️ Failed to auto-connect new server:', connectError);
-        }
-      }
-
-      setMcpServers([...mcpServers, server]);
-      setShowAddMcpServer(false);
+      setMcpServers(prev => [...prev, server]);
       setNewMcpServer({
         name: '',
-        description: '',
         command: '',
         args: [],
-        env: {},
-        enabled: true
+        description: '',
+        enabled: true,
+        env: {}
+      });
+      setShowAddMcpServer(false);
+    } catch (error) {
+      console.error('Failed to add MCP server:', error);
+    }
+  };
+
+  const handleRemoveMcpServer = async (serverId: string) => {
+    try {
+      const success = await mcpService.removeServer(serverId);
+      if (success) {
+        setMcpServers(prev => prev.filter(s => s.id !== serverId));
+      }
+    } catch (error) {
+      console.error('Failed to remove MCP server:', error);
+    }
+  };
+
+  const handleToggleMcpServer = async (serverId: string, enabled: boolean) => {
+    try {
+      const success = await mcpService.updateServer(serverId, { enabled });
+      if (success) {
+        setMcpServers(prev => prev.map(s =>
+          s.id === serverId ? { ...s, enabled } : s
+        ));
+      }
+    } catch (error) {
+      console.error('Failed to toggle MCP server:', error);
+    }
+  };
+
+  const handleEditMcpServer = (server: MCPServer) => {
+    setEditingMcpServer(server);
+    setNewMcpServer({
+      name: server.name,
+      command: server.command,
+      args: server.args || [],
+      description: server.description || '',
+      enabled: server.enabled,
+      env: (server as any).env || {}
+    });
+    setShowAddMcpServer(true);
+  };
+
+  const handleUpdateMcpServer = async () => {
+    if (!editingMcpServer) return;
+
+    try {
+      const success = await mcpService.updateServer(editingMcpServer.id, {
+        name: newMcpServer.name,
+        command: newMcpServer.command,
+        args: newMcpServer.args,
+        description: newMcpServer.description,
+        enabled: newMcpServer.enabled,
+        env: newMcpServer.env
       });
 
-      // Reload config text and trigger settings reload
-      loadMcpServers();
-
-      // Trigger settings reload for MCP server change
-      await settingsService.reloadForMCPChange();
-
-      console.log('🎉 MCP server setup completed');
+      if (success) {
+        setMcpServers(prev => prev.map(s =>
+          s.id === editingMcpServer.id
+            ? { ...s, ...newMcpServer }
+            : s
+        ));
+        setEditingMcpServer(null);
+        setNewMcpServer({
+          name: '',
+          command: '',
+          args: [],
+          description: '',
+          enabled: true,
+          env: {}
+        });
+        setShowAddMcpServer(false);
+      }
     } catch (error) {
-      console.error('❌ Failed to add MCP server:', error);
+      console.error('Failed to update MCP server:', error);
     }
   };
 
-  const handleUpdateMcpServer = async (id: string, updates: Partial<MCPServer>) => {
+  const handleOpenMcpJsonEditor = async () => {
     try {
-      console.log('🔄 Updating MCP server:', id, updates);
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const mcpData = await window.electronAPI.getMCPServers();
+        setMcpJsonContent(JSON.stringify(mcpData, null, 2));
+        setShowMcpJsonEditor(true);
+      }
+    } catch (error) {
+      console.error('Failed to load MCP JSON:', error);
+    }
+  };
 
-      const currentServer = mcpServers.find(s => s.id === id);
-      const wasEnabled = currentServer?.enabled;
-      const willBeEnabled = updates.enabled !== undefined ? updates.enabled : wasEnabled;
-
-      await mcpService.updateServer(id, updates);
-
-      // Handle connection changes
-      if (wasEnabled !== willBeEnabled) {
-        if (willBeEnabled) {
-          console.log('🔌 Connecting MCP server after enable:', id);
-          try {
-            await mcpService.connectServer(id);
-          } catch (connectError) {
-            console.warn('⚠️ Failed to connect server after enable:', connectError);
-          }
-        } else {
-          console.log('🔌 Disconnecting MCP server after disable:', id);
-          try {
-            await mcpService.disconnectServer(id);
-          } catch (disconnectError) {
-            console.warn('⚠️ Failed to disconnect server after disable:', disconnectError);
-          }
+  const handleSaveMcpJson = async () => {
+    try {
+      const parsedData = JSON.parse(mcpJsonContent);
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const success = await window.electronAPI.saveMCPServers(parsedData);
+        if (success) {
+          setShowMcpJsonEditor(false);
+          await loadMcpServers(); // Reload the servers list
         }
       }
+    } catch (error) {
+      console.error('Failed to save MCP JSON:', error);
+      alert('Invalid JSON format. Please check your syntax.');
+    }
+  };
 
-      setMcpServers(mcpServers.map(server =>
-        server.id === id ? { ...server, ...updates } : server
-      ));
+  // Helper functions for managing arguments and environment variables
+  const addArgument = () => {
+    setNewMcpServer(prev => ({
+      ...prev,
+      args: [...prev.args, '']
+    }));
+  };
 
-      // Reload config text
-      loadMcpServers();
+  const removeArgument = (index: number) => {
+    setNewMcpServer(prev => ({
+      ...prev,
+      args: prev.args.filter((_, i) => i !== index)
+    }));
+  };
 
-      // If enabled state changed, trigger settings reload (explicit requirement)
-      if ('enabled' in updates) {
-        await settingsService.reloadForMCPChange();
+  const updateArgument = (index: number, value: string) => {
+    setNewMcpServer(prev => ({
+      ...prev,
+      args: prev.args.map((arg, i) => i === index ? value : arg)
+    }));
+  };
+
+  const addEnvVariable = () => {
+    const key = `ENV_VAR_${Object.keys(newMcpServer.env).length + 1}`;
+    setNewMcpServer(prev => ({
+      ...prev,
+      env: { ...prev.env, [key]: '' }
+    }));
+  };
+
+  const removeEnvVariable = (key: string) => {
+    setNewMcpServer(prev => {
+      const newEnv = { ...prev.env };
+      delete newEnv[key];
+      return { ...prev, env: newEnv };
+    });
+  };
+
+  const updateEnvVariable = (oldKey: string, newKey: string, value: string) => {
+    setNewMcpServer(prev => {
+      const newEnv = { ...prev.env };
+      if (oldKey !== newKey) {
+        delete newEnv[oldKey];
       }
-
-      console.log('✅ MCP server update completed');
-    } catch (error) {
-      console.error('❌ Failed to update MCP server:', error);
-    }
+      newEnv[newKey] = value;
+      return { ...prev, env: newEnv };
+    });
   };
 
-  const handleDeleteMcpServer = async (id: string) => {
-    try {
-      await mcpService.removeServer(id);
-      setMcpServers(mcpServers.filter(server => server.id !== id));
+  const handleSave = async () => {
+    if (!formData) return;
 
-      // Reload config text
-      loadMcpServers();
-    } catch (error) {
-      console.error('Failed to delete MCP server:', error);
-    }
-  };
-
-  const handleSaveMcpConfig = async () => {
+    setIsLoading(true);
     try {
-      const mcpData = JSON.parse(mcpConfigText);
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        await window.electronAPI.saveMCPServers(mcpData);
-        loadMcpServers(); // Reload to sync UI
+      const success = await settingsService.updateSettings(formData);
+      if (success) {
+        setSettings(formData);
+        setHasChanges(false);
+        // Optional: Show success message
+      } else {
+        console.error('Failed to save settings');
+        // Optional: Show error message
       }
     } catch (error) {
-      console.error('Failed to save MCP config:', error);
-      alert('Invalid JSON format. Please check your configuration.');
+      console.error('Error saving settings:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleRestartMcpServers = async () => {
-    try {
-      console.log('🔄 Restarting all MCP servers...');
-      await mcpService.restartAllServers();
-      console.log('✅ All MCP servers restarted');
-      // Trigger settings reload for MCP server change
-      await settingsService.reloadForMCPChange();
-    } catch (error) {
-      console.error('❌ Failed to restart MCP servers:', error);
+  const handleCancel = () => {
+    if (settings) {
+      setFormData(JSON.parse(JSON.stringify(settings))); // Reset to original
+      setHasChanges(false);
     }
   };
+
+  const handleReload = async () => {
+    await loadSettings();
+  };
+
+  const updateFormData = (updates: Partial<AppSettings>) => {
+    if (!formData) return;
+    const newFormData = { ...formData, ...updates };
+    setFormData(newFormData);
+    setHasChanges(true);
+  };
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
 
   return (
-    <div className="h-full w-full bg-background flex flex-col overflow-hidden">
-      {/* Custom Title Bar - macOS style */}
+    <div
+      style={{ height: '100vh', width: '100vw' }}
+      className="bg-background flex flex-col overflow-hidden"
+    >
+      {/* Custom Title Bar */}
       <div
-        className="h-8 w-full bg-background/80 backdrop-blur-md border-b border-border/50 flex items-center justify-center relative flex-none cursor-move"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        className="h-10 w-full bg-background/95 backdrop-blur-sm border-b border-border/30 flex items-center justify-center relative flex-none select-none"
+        style={{
+          WebkitAppRegion: 'drag',
+          borderRadius: '8px 8px 0 0'
+        } as React.CSSProperties & { WebkitAppRegion?: string }}
+        onMouseDown={handleTitleBarMouseDown}
       >
-        <div className="absolute left-4 flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}>
-          <div className="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 cursor-pointer" onClick={handleClose} />
+        <div
+          className="absolute left-4 flex items-center gap-2"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        >
+          <div
+            className="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 cursor-pointer transition-colors"
+            onClick={handleClose}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          />
           <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
           <div className="w-3 h-3 rounded-full bg-green-500/80" />
         </div>
-        <div className="text-sm font-medium text-foreground/80">Settings</div>
+        <div className="text-sm font-medium text-foreground">Settings</div>
       </div>
 
-
-
       {/* Settings Content */}
-      <div className="flex-1 overflow-y-auto hide-scrollbar overlay-scroll p-6">
-        {!settings || !settings.chat || !settings.chat.providers ? (
-          <div className="text-center space-y-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-            <p>Loading settings...</p>
-            <Button
-              onClick={() => {
-                console.log('Retry button clicked');
-                loadSettings();
-              }}
-              variant="outline"
+      <div className="flex-1 flex flex-col min-h-0">
+        {/* SIMPLE MANUAL TABS - NO RADIX */}
+        <div className="flex-1 flex flex-col min-h-0 p-6">
+          {/* Tab Navigation */}
+          <div className="grid w-full grid-cols-8 bg-muted p-1 rounded-md flex-none mb-6">
+            <button
+              onClick={() => setActiveTab('api-keys')}
+              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'api-keys' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
             >
-              Retry
-            </Button>
+              API Keys
+            </button>
+            <button
+              onClick={() => setActiveTab('shortcuts')}
+              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'shortcuts' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Shortcuts
+            </button>
+            <button
+              onClick={() => setActiveTab('prompts')}
+              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'prompts' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Prompts
+            </button>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'chat' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Chat
+            </button>
+            <button
+              onClick={() => setActiveTab('mcp')}
+              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'mcp' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              MCP
+            </button>
+            <button
+              onClick={() => setActiveTab('memory')}
+              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'memory' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Memory
+            </button>
+            <button
+              onClick={() => setActiveTab('appearance')}
+              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'appearance' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Appearance
+            </button>
+            <button
+              onClick={() => setActiveTab('general')}
+              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'general' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              General
+            </button>
           </div>
-        ) : (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-7">
-              <TabsTrigger value="api-keys">API Keys</TabsTrigger>
-              <TabsTrigger value="shortcuts">Shortcuts</TabsTrigger>
-              <TabsTrigger value="prompts">Prompts</TabsTrigger>
-              <TabsTrigger value="mcp">MCP</TabsTrigger>
-              <TabsTrigger value="memory">Memory</TabsTrigger>
-              <TabsTrigger value="appearance">Appearance</TabsTrigger>
-              <TabsTrigger value="general">General</TabsTrigger>
-            </TabsList>
 
-            {/* API Keys Tab */}
-            <TabsContent value="api-keys" className="space-y-4">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <Key className="h-4 w-4" />
-                  <h3 className="text-lg font-medium">API Configuration</h3>
-                </div>
-
-                {/* OpenAI */}
-                <div className="space-y-2">
-                  <Label htmlFor="openai-key">OpenAI API Key</Label>
-                  <Input
-                    id="openai-key"
-                    type="password"
-                    value={settings.chat.providers?.openai?.apiKey || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: {
-                        ...settings.chat,
-                        providers: {
-                          ...settings.chat.providers,
-                          openai: { ...(settings.chat.providers?.openai || {}), apiKey: e.target.value }
-                        }
-                      }
-                    })}
-                    placeholder="sk-..."
-                  />
-                </div>
-
-                {/* Anthropic */}
-                <div className="space-y-2">
-                  <Label htmlFor="anthropic-key">Anthropic API Key</Label>
-                  <Input
-                    id="anthropic-key"
-                    type="password"
-                    value={settings.chat.providers.anthropic?.apiKey || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: {
-                        ...settings.chat,
-                        providers: {
-                          ...settings.chat.providers,
-                          anthropic: { ...(settings.chat.providers.anthropic || {}), apiKey: e.target.value }
-                        }
-                      }
-                    })}
-                    placeholder="sk-ant-..."
-                  />
-                </div>
-
-                {/* Google Gemini */}
-                <div className="space-y-2">
-                  <Label htmlFor="gemini-key">Google Gemini API Key</Label>
-                  <Input
-                    id="gemini-key"
-                    type="password"
-                    value={settings.chat.providers.gemini?.apiKey || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: {
-                        ...settings.chat,
-                        providers: {
-                          ...settings.chat.providers,
-                          gemini: { ...(settings.chat.providers.gemini || {}), apiKey: e.target.value }
-                        }
-                      }
-                    })}
-                    placeholder="AIza..."
-                  />
-                </div>
-
-                {/* Mistral AI */}
-                <div className="space-y-2">
-                  <Label htmlFor="mistral-key">Mistral AI API Key</Label>
-                  <Input
-                    id="mistral-key"
-                    type="password"
-                    value={settings.chat.providers?.mistral?.apiKey || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: {
-                        ...settings.chat,
-                        providers: {
-                          ...settings.chat.providers,
-                          mistral: { ...(settings.chat.providers?.mistral || {}), apiKey: e.target.value }
-                        }
-                      }
-                    })}
-                    placeholder="..."
-                  />
-                </div>
-
-                {/* DeepSeek */}
-                <div className="space-y-2">
-                  <Label htmlFor="deepseek-key">DeepSeek API Key</Label>
-                  <Input
-                    id="deepseek-key"
-                    type="password"
-                    value={settings.chat.providers?.deepseek?.apiKey || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: {
-                        ...settings.chat,
-                        providers: {
-                          ...settings.chat.providers,
-                          deepseek: { ...(settings.chat.providers?.deepseek || {}), apiKey: e.target.value }
-                        }
-                      }
-                    })}
-                    placeholder="sk-..."
-                  />
-                </div>
-
-                {/* OpenRouter */}
-                <div className="space-y-2">
-                  <Label htmlFor="openrouter-key">OpenRouter API Key</Label>
-                  <Input
-                    id="openrouter-key"
-                    type="password"
-                    value={settings.chat.providers?.openrouter?.apiKey || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: {
-                        ...settings.chat,
-                        providers: {
-                          ...settings.chat.providers,
-                          openrouter: { ...(settings.chat.providers?.openrouter || {}), apiKey: e.target.value }
-                        }
-                      }
-                    })}
-                    placeholder="sk-or-..."
-                  />
-                </div>
-
-                {/* Requesty */}
-                <div className="space-y-2">
-                  <Label htmlFor="requesty-key">Requesty API Key</Label>
-                  <Input
-                    id="requesty-key"
-                    type="password"
-                    value={settings.chat.providers?.requesty?.apiKey || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: {
-                        ...settings.chat,
-                        providers: {
-                          ...settings.chat.providers,
-                          requesty: { ...(settings.chat.providers?.requesty || {}), apiKey: e.target.value }
-                        }
-                      }
-                    })}
-                    placeholder="req-..."
-                  />
-                </div>
-
-                {/* Replicate */}
-                <div className="space-y-2">
-                  <Label htmlFor="replicate-key">Replicate API Key</Label>
-                  <Input
-                    id="replicate-key"
-                    type="password"
-                    value={settings.chat.providers?.replicate?.apiKey || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: {
-                        ...settings.chat,
-                        providers: {
-                          ...settings.chat.providers,
-                          replicate: { ...(settings.chat.providers?.replicate || {}), apiKey: e.target.value }
-                        }
-                      }
-                    })}
-                    placeholder="r8_..."
-                  />
-                </div>
-
-                {/* n8n Workflow */}
-                <div className="space-y-2">
-                  <Label htmlFor="n8n-webhook">n8n Webhook URL</Label>
-                  <Input
-                    id="n8n-webhook"
-                    value={settings.chat.providers.n8n?.baseUrl || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: {
-                        ...settings.chat,
-                        providers: {
-                          ...settings.chat.providers,
-                          n8n: { ...(settings.chat.providers.n8n || {}), baseUrl: e.target.value }
-                        }
-                      }
-                    })}
-                    placeholder="https://your-n8n-instance.com/webhook/your-workflow-name"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Enter your n8n webhook URL. The workflow will receive the message and conversation history.
-                  </p>
-                </div>
-
-                {/* LM Studio */}
-                <div className="space-y-2">
-                  <Label htmlFor="lmstudio-url">LM Studio Base URL</Label>
-                  <Input
-                    id="lmstudio-url"
-                    value={settings.chat.providers.lmstudio?.baseUrl || 'http://localhost:1234/v1'}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: {
-                        ...settings.chat,
-                        providers: {
-                          ...settings.chat.providers,
-                          lmstudio: { ...(settings.chat.providers.lmstudio || {}), baseUrl: e.target.value }
-                        }
-                      }
-                    })}
-                    placeholder="http://localhost:1234/v1"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Make sure LM Studio server is running and accessible at this URL.
-                  </p>
-                </div>
-
-                {/* Ollama */}
-                <div className="space-y-2">
-                  <Label htmlFor="ollama-url">Ollama Base URL</Label>
-                  <Input
-                    id="ollama-url"
-                    value={settings.chat.providers?.ollama?.baseUrl || 'http://localhost:11434'}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: {
-                        ...settings.chat,
-                        providers: {
-                          ...settings.chat.providers,
-                          ollama: { ...(settings.chat.providers?.ollama || {}), baseUrl: e.target.value }
-                        }
-                      }
-                    })}
-                    placeholder="http://localhost:11434"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Make sure Ollama is running and accessible at this URL.
-                  </p>
-                </div>
-
-                {/* Default Model */}
-                <div className="space-y-2">
-                  <Label htmlFor="default-model">Default Model</Label>
-                  <Select
-                    value={settings.chat.model}
-                    onValueChange={(value) => setSettings({
-                      ...settings,
-                      chat: { ...settings.chat, model: value }
-                    })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="gpt-4">GPT-4</SelectItem>
-                      <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
-                      <SelectItem value="mistralai/mistral-7b-instruct:free">Mistral 7B (Free)</SelectItem>
-                      <SelectItem value="anthropic/claude-3-sonnet">Claude 3 Sonnet</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* System Prompt */}
-                <div className="space-y-2">
-                  <Label htmlFor="system-prompt">System Prompt</Label>
-                  <Textarea
-                    id="system-prompt"
-                    value={settings.chat.systemPrompt}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: { ...settings.chat, systemPrompt: e.target.value }
-                    })}
-                    placeholder="You are a helpful AI assistant..."
-                    rows={3}
-                  />
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Shortcuts Tab */}
-            <TabsContent value="shortcuts" className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <Keyboard className="h-4 w-4" />
-                  <h3 className="text-lg font-medium">Keyboard Shortcuts</h3>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Toggle Window</Label>
-                  <Input
-                    value={settings.shortcuts.toggleWindow}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      shortcuts: { ...settings.shortcuts, toggleWindow: e.target.value }
-                    })}
-                    placeholder="CommandOrControl+\\"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Process Clipboard</Label>
-                  <Input
-                    value={settings.shortcuts.processClipboard}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      shortcuts: { ...settings.shortcuts, processClipboard: e.target.value }
-                    })}
-                    placeholder="CommandOrControl+Shift+V"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="action-menu-shortcut">Action Menu</Label>
-                  <Input
-                    id="action-menu-shortcut"
-                    value={settings.shortcuts.actionMenu}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      shortcuts: { ...settings.shortcuts, actionMenu: e.target.value }
-                    })}
-                    placeholder="CommandOrControl+Shift+Space"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Shortcut to open the action menu in chat mode
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="open-shortcuts-shortcut">Open Shortcuts Settings</Label>
-                  <Input
-                    id="open-shortcuts-shortcut"
-                    value={settings.shortcuts.openShortcuts}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      shortcuts: { ...settings.shortcuts, openShortcuts: e.target.value }
-                    })}
-                    placeholder="CommandOrControl+Shift+K"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Shortcut to open this shortcuts settings window
-                  </p>
-                </div>
-
-                <div className="text-sm text-muted-foreground">
-                  <p>Use modifiers: CommandOrControl, Alt, Shift</p>
-                  <p>Examples: CommandOrControl+K, Alt+Space, Shift+F1</p>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Memory Tab */}
-            <TabsContent value="memory" className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <Brain className="h-4 w-4" />
-                  <h3 className="text-lg font-medium">Memory System</h3>
-                </div>
-                <MemoryManagement />
-              </div>
-            </TabsContent>
-
-            {/* Appearance Tab */}
-            <TabsContent value="appearance" className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <Palette className="h-4 w-4" />
-                  <h3 className="text-lg font-medium">Appearance</h3>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Theme</Label>
-                  <div className="p-4 border rounded-lg bg-muted/50">
-                    <p className="text-sm text-muted-foreground">
-                      Theme system is disabled. Using static dark theme for optimal rounded corners.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Window Opacity</Label>
-                  <div className="p-4 border rounded-lg bg-muted/50">
-                    <p className="text-sm text-muted-foreground">
-                      Window opacity is disabled for optimal rounded corners. Using solid background.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Font Size</Label>
-                  <Select
-                    value={settings.ui.fontSize || 'medium'}
-                    onValueChange={(value) => setSettings({
-                      ...settings,
-                      ui: { ...settings.ui, fontSize: value as 'small' | 'medium' | 'large' }
-                    })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="small">Small</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="large">Large</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Always on Top</Label>
-                  <Select
-                    value={settings.ui.alwaysOnTop ? 'true' : 'false'}
-                    onValueChange={(value) => setSettings({
-                      ...settings,
-                      ui: { ...settings.ui, alwaysOnTop: value === 'true' }
-                    })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="true">Yes</SelectItem>
-                      <SelectItem value="false">No</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* General Tab */}
-            <TabsContent value="general" className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-4">
-                  <Cog className="h-4 w-4" />
-                  <h3 className="text-lg font-medium">General Settings</h3>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Temperature</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="2"
-                    step="0.1"
-                    value={settings.chat.temperature}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: { ...settings.chat, temperature: parseFloat(e.target.value) }
-                    })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Controls randomness in responses (0 = deterministic, 2 = very creative)
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Max Tokens</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="32000"
-                    value={settings.chat.maxTokens}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      chat: { ...settings.chat, maxTokens: parseInt(e.target.value) }
-                    })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Maximum number of tokens in the response
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Auto Start with System</Label>
-                  <Select
-                    value={settings.general.autoStartWithSystem ? 'true' : 'false'}
-                    onValueChange={(value) => setSettings({
-                      ...settings,
-                      general: { ...settings.general, autoStartWithSystem: value === 'true' }
-                    })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="true">Yes</SelectItem>
-                      <SelectItem value="false">No</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Show Notifications</Label>
-                  <Select
-                    value={settings.general.showNotifications ? 'true' : 'false'}
-                    onValueChange={(value) => setSettings({
-                      ...settings,
-                      general: { ...settings.general, showNotifications: value === 'true' }
-                    })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="true">Yes</SelectItem>
-                      <SelectItem value="false">No</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Conversation History Length</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="50"
-                    value={settings.general.conversationHistoryLength || 10}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      general: { ...settings.general, conversationHistoryLength: parseInt(e.target.value) }
-                    })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Number of previous messages to include in AI context (1-50). Higher values provide more context but use more tokens.
-                  </p>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Prompts Tab */}
-            <TabsContent value="prompts" className="space-y-4">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Wand2 className="h-4 w-4" />
-                    <h3 className="text-lg font-medium">Custom Prompts</h3>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={handleImportPrompts}>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Import
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={handleExportPrompts}>
-                      <Download className="h-4 w-4 mr-2" />
-                      Export
-                    </Button>
-                    <Button size="sm" onClick={() => setShowAddPrompt(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Prompt
-                    </Button>
-                  </div>
-                </div>
-
-                {/* All Prompts List */}
-                <div className="space-y-2 flex-1 overflow-y-auto hide-scrollbar overlay-scroll" style={{ maxHeight: 'calc(100vh - 300px)' }}>
-                  {customPrompts.map((prompt) => {
-                    const isCustom = promptsService.isCustomPrompt(prompt.id);
-                    return (
-                      <div key={prompt.id} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex items-center gap-3 flex-1">
-                          <span className="text-lg">{prompt.icon}</span>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-medium">{prompt.name}</h4>
-                              {!isCustom && (
-                                <Badge variant="outline" className="text-xs">
-                                  Built-in
-                                </Badge>
-                              )}
-                              {isCustom && (
-                                <Badge variant="secondary" className="text-xs">
-                                  Custom
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-sm text-muted-foreground">{prompt.description}</p>
-                            <Badge variant="secondary" className="text-xs mt-1">
-                              {prompt.category}
-                            </Badge>
-                            <div className="text-xs text-muted-foreground mt-1 bg-muted p-2 rounded max-h-16 overflow-y-auto">
-                              {prompt.prompt.length > 150
-                                ? `${prompt.prompt.substring(0, 150)}...`
-                                : prompt.prompt}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditPrompt(prompt)}
-                            title="Edit prompt"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          {isCustom && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeletePrompt(prompt.id)}
-                              title="Delete custom prompt"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Add/Edit Prompt Dialog */}
-                {showAddPrompt && (
-                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-background border p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto" style={{ borderRadius: '20px' }}>
-                      <h3 className="text-lg font-medium mb-4">
-                        {editingPrompt
-                          ? (promptsService.isCustomPrompt(editingPrompt.id)
-                              ? 'Edit Custom Prompt'
-                              : 'Edit Built-in Prompt')
-                          : 'Add New Prompt'}
-                      </h3>
-
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="prompt-name">Name</Label>
-                            <Input
-                              id="prompt-name"
-                              value={newPrompt.name}
-                              onChange={(e) => setNewPrompt({ ...newPrompt, name: e.target.value })}
-                              placeholder="Prompt name"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="prompt-icon">Icon</Label>
-                            <Input
-                              id="prompt-icon"
-                              value={newPrompt.icon}
-                              onChange={(e) => setNewPrompt({ ...newPrompt, icon: e.target.value })}
-                              placeholder="📝"
-                            />
-                          </div>
-                        </div>
-
+          {/* Content Area */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {activeTab === 'api-keys' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-4">API Configuration</h3>
+                  <div className="space-y-4">
+                    {formData?.chat?.providers && (
+                      <>
                         <div className="space-y-2">
-                          <Label htmlFor="prompt-description">Description</Label>
+                          <Label htmlFor="openai-key">OpenAI API Key</Label>
                           <Input
-                            id="prompt-description"
-                            value={newPrompt.description}
-                            onChange={(e) => setNewPrompt({ ...newPrompt, description: e.target.value })}
-                            placeholder="Brief description of what this prompt does"
+                            id="openai-key"
+                            type="password"
+                            value={formData.chat.providers.openai?.apiKey || ''}
+                            placeholder="sk-..."
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  openai: { ...formData.chat.providers.openai, apiKey: e.target.value }
+                                }
+                              }
+                            })}
                           />
                         </div>
-
                         <div className="space-y-2">
-                          <Label htmlFor="prompt-category">Category</Label>
-                          <Select
-                            value={newPrompt.category}
-                            onValueChange={(value) => setNewPrompt({ ...newPrompt, category: value })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="text">Text</SelectItem>
-                              <SelectItem value="code">Code</SelectItem>
-                              <SelectItem value="creative">Creative</SelectItem>
-                              <SelectItem value="analysis">Analysis</SelectItem>
-                              <SelectItem value="productivity">Productivity</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <Label htmlFor="anthropic-key">Anthropic API Key</Label>
+                          <Input
+                            id="anthropic-key"
+                            type="password"
+                            value={formData.chat.providers.anthropic?.apiKey || ''}
+                            placeholder="sk-ant-..."
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  anthropic: { ...formData.chat.providers.anthropic, apiKey: e.target.value }
+                                }
+                              }
+                            })}
+                          />
                         </div>
-
                         <div className="space-y-2">
-                          <Label htmlFor="prompt-content">Prompt Content</Label>
+                          <Label htmlFor="gemini-key">Google Gemini API Key</Label>
+                          <Input
+                            id="gemini-key"
+                            type="password"
+                            value={formData.chat.providers.gemini?.apiKey || ''}
+                            placeholder="AI..."
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  gemini: { ...formData.chat.providers.gemini, apiKey: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="mistral-key">Mistral AI API Key</Label>
+                          <Input
+                            id="mistral-key"
+                            type="password"
+                            value={formData.chat.providers.mistral?.apiKey || ''}
+                            placeholder="API Key..."
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  mistral: { ...formData.chat.providers.mistral, apiKey: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="deepseek-key">DeepSeek API Key</Label>
+                          <Input
+                            id="deepseek-key"
+                            type="password"
+                            value={formData.chat.providers.deepseek?.apiKey || ''}
+                            placeholder="sk-..."
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  deepseek: { ...formData.chat.providers.deepseek, apiKey: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="openrouter-key">OpenRouter API Key</Label>
+                          <Input
+                            id="openrouter-key"
+                            type="password"
+                            value={formData.chat.providers.openrouter?.apiKey || ''}
+                            placeholder="sk-or-..."
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  openrouter: { ...formData.chat.providers.openrouter, apiKey: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="lmstudio-key">LM Studio API Key</Label>
+                          <Input
+                            id="lmstudio-key"
+                            type="password"
+                            value={formData.chat.providers.lmstudio?.apiKey || ''}
+                            placeholder="API Key..."
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  lmstudio: { ...formData.chat.providers.lmstudio, apiKey: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="lmstudio-url">LM Studio Base URL</Label>
+                          <Input
+                            id="lmstudio-url"
+                            type="text"
+                            value={formData.chat.providers.lmstudio?.baseUrl || ''}
+                            placeholder="http://localhost:1234/v1"
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  lmstudio: { ...formData.chat.providers.lmstudio, baseUrl: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ollama-key">Ollama API Key</Label>
+                          <Input
+                            id="ollama-key"
+                            type="password"
+                            value={formData.chat.providers.ollama?.apiKey || ''}
+                            placeholder="API Key..."
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  ollama: { ...formData.chat.providers.ollama, apiKey: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ollama-url">Ollama Base URL</Label>
+                          <Input
+                            id="ollama-url"
+                            type="text"
+                            value={formData.chat.providers.ollama?.baseUrl || ''}
+                            placeholder="http://localhost:11434"
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  ollama: { ...formData.chat.providers.ollama, baseUrl: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="requesty-key">Requesty API Key</Label>
+                          <Input
+                            id="requesty-key"
+                            type="password"
+                            value={formData.chat.providers.requesty?.apiKey || ''}
+                            placeholder="API Key..."
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  requesty: { ...formData.chat.providers.requesty, apiKey: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="replicate-key">Replicate API Key</Label>
+                          <Input
+                            id="replicate-key"
+                            type="password"
+                            value={formData.chat.providers.replicate?.apiKey || ''}
+                            placeholder="r8_..."
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  replicate: { ...formData.chat.providers.replicate, apiKey: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="n8n-key">N8N API Key</Label>
+                          <Input
+                            id="n8n-key"
+                            type="password"
+                            value={formData.chat.providers.n8n?.apiKey || ''}
+                            placeholder="API Key..."
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  n8n: { ...formData.chat.providers.n8n, apiKey: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="n8n-url">N8N Base URL</Label>
+                          <Input
+                            id="n8n-url"
+                            type="text"
+                            value={formData.chat.providers.n8n?.baseUrl || ''}
+                            placeholder="https://your-n8n-instance.com"
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: {
+                                ...formData.chat,
+                                providers: {
+                                  ...formData.chat.providers,
+                                  n8n: { ...formData.chat.providers.n8n, baseUrl: e.target.value }
+                                }
+                              }
+                            })}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'shortcuts' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-4">Keyboard Shortcuts</h3>
+                  <div className="space-y-4">
+                    {formData?.shortcuts && (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="toggle-window">Toggle Window</Label>
+                          <Input
+                            id="toggle-window"
+                            value={formData.shortcuts.toggleWindow}
+                            placeholder="CommandOrControl+Shift+L"
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              shortcuts: { ...formData.shortcuts, toggleWindow: e.target.value }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="process-clipboard">Process Clipboard</Label>
+                          <Input
+                            id="process-clipboard"
+                            value={formData.shortcuts.processClipboard}
+                            placeholder="CommandOrControl+Shift+V"
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              shortcuts: { ...formData.shortcuts, processClipboard: e.target.value }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="action-menu">Action Menu</Label>
+                          <Input
+                            id="action-menu"
+                            value={formData.shortcuts.actionMenu}
+                            placeholder="CommandOrControl+Shift+Space"
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              shortcuts: { ...formData.shortcuts, actionMenu: e.target.value }
+                            })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="open-shortcuts">Open Shortcuts</Label>
+                          <Input
+                            id="open-shortcuts"
+                            value={formData.shortcuts.openShortcuts}
+                            placeholder="CommandOrControl+Shift+K"
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              shortcuts: { ...formData.shortcuts, openShortcuts: e.target.value }
+                            })}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'prompts' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-4">Custom Prompts</h3>
+                  <PromptsContent
+                    onPromptSelect={(prompt) => {
+                      // Handle prompt selection if needed
+                      console.log('Prompt selected:', prompt);
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'chat' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-4">Chat Configuration</h3>
+                  <div className="space-y-4">
+                    {formData?.chat && (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="system-prompt">Default System Prompt</Label>
                           <Textarea
-                            id="prompt-content"
-                            value={newPrompt.prompt}
-                            onChange={(e) => setNewPrompt({ ...newPrompt, prompt: e.target.value })}
-                            placeholder="Enter your prompt here. Use {content} as a placeholder for clipboard content."
+                            id="system-prompt"
+                            value={formData.chat.systemPrompt || ''}
+                            placeholder="Enter your default system prompt that will be used for all conversations..."
                             rows={6}
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              chat: { ...formData.chat, systemPrompt: e.target.value }
+                            })}
                           />
-                          <p className="text-xs text-muted-foreground">
-                            Tip: Use {'{content}'} as a placeholder that will be replaced with clipboard content when the prompt is used.
+                          <p className="text-sm text-muted-foreground">
+                            This prompt will be sent with every conversation to set the AI behavior and personality.
                           </p>
                         </div>
-                      </div>
-
-                      <div className="flex justify-end gap-2 mt-6">
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            setShowAddPrompt(false);
-                            setEditingPrompt(null);
-                            setNewPrompt({ name: '', description: '', prompt: '', category: 'text', icon: '📝' });
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={editingPrompt ? handleUpdatePrompt : handleAddPrompt}
-                          disabled={!newPrompt.name || !newPrompt.prompt}
-                        >
-                          {editingPrompt ? 'Update Prompt' : 'Add Prompt'}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </TabsContent>
-
-            {/* MCP Tab */}
-            <TabsContent value="mcp" className="space-y-4">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Server className="h-4 w-4" />
-                    <h3 className="text-lg font-medium">MCP Servers</h3>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleRestartMcpServers}
-                      size="sm"
-                      variant="outline"
-                      className="cursor-pointer"
-                    >
-                      <RotateCcw className="h-4 w-4 mr-2" />
-                      Restart All
-                    </Button>
-                    <Button
-                      onClick={() => setShowAddMcpServer(true)}
-                      size="sm"
-                      className="cursor-pointer"
-                    >
-                      <Plus className="h-3 w-3 mr-1" />
-                      Add Server
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="text-sm text-muted-foreground">
-                  Configure MCP (Model Context Protocol) servers to extend functionality with tools, resources, and prompts.
-                  <br />
-                  <span className="text-xs">💡 &quot;Method not found&quot; warnings are normal for servers that don&apos;t support all capabilities.</span>
-                </div>
-
-                {/* MCP Servers List */}
-                <div className="space-y-2">
-                  {mcpServers.map((server) => (
-                    <div key={server.id} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                          <div className="relative">
-                            <Server className="h-4 w-4" />
-                            {/* Health indicator */}
-                            {server.enabled && (
-                              <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full"
-                                   title="Server enabled" />
-                            )}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium">{server.name}</span>
-                              {server.enabled && (
-                                <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">
-                                  Enabled
-                                </span>
-                              )}
-                            </div>
-                            {server.description && (
-                              <div className="text-sm text-muted-foreground">{server.description}</div>
-                            )}
-                            <div className="text-xs text-muted-foreground">
-                              {server.command} {server.args.join(' ')}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant={server.enabled ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handleUpdateMcpServer(server.id, { enabled: !server.enabled })}
-                          className="cursor-pointer"
-                        >
-                          {server.enabled ? <Play className="h-3 w-3" /> : <Square className="h-3 w-3" />}
-                          {server.enabled ? 'Enabled' : 'Disabled'}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setEditingMcpServer(server)}
-                          className="cursor-pointer"
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteMcpServer(server.id)}
-                          className="cursor-pointer text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-
-                  {mcpServers.length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No MCP servers configured. Add one to get started.
-                    </div>
-                  )}
-                </div>
-
-                {/* Raw Config Editor */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="mcp-config">Raw Configuration (JSON)</Label>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleSaveMcpConfig}
-                      className="cursor-pointer"
-                    >
-                      <Save className="h-3 w-3 mr-2" />
-                      Save Config
-                    </Button>
-                  </div>
-                  <Textarea
-                    id="mcp-config"
-                    value={mcpConfigText}
-                    onChange={(e) => setMcpConfigText(e.target.value)}
-                    placeholder="MCP configuration in JSON format..."
-                    rows={10}
-                    className="font-mono text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Advanced: Edit the raw MCP configuration. Changes will be applied when you click &quot;Save Config&quot;.
-                  </p>
-                </div>
-
-                {/* Add/Edit MCP Server Modal */}
-                {(showAddMcpServer || editingMcpServer) && (
-                  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div className="bg-background border border-border p-6 w-full max-w-md max-h-[80vh] overflow-y-auto" style={{ borderRadius: '20px' }}>
-                      <h3 className="text-lg font-medium mb-4">
-                        {editingMcpServer ? 'Edit MCP Server' : 'Add MCP Server'}
-                      </h3>
-
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="server-name">Server Name</Label>
-                          <Input
-                            id="server-name"
-                            value={editingMcpServer ? editingMcpServer.name : newMcpServer.name}
-                            onChange={(e) => {
-                              if (editingMcpServer) {
-                                setEditingMcpServer({ ...editingMcpServer, name: e.target.value });
-                              } else {
-                                setNewMcpServer({ ...newMcpServer, name: e.target.value });
-                              }
-                            }}
-                            placeholder="e.g., File System Server"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="server-description">Description (Optional)</Label>
-                          <Input
-                            id="server-description"
-                            value={editingMcpServer ? editingMcpServer.description || '' : newMcpServer.description}
-                            onChange={(e) => {
-                              if (editingMcpServer) {
-                                setEditingMcpServer({ ...editingMcpServer, description: e.target.value });
-                              } else {
-                                setNewMcpServer({ ...newMcpServer, description: e.target.value });
-                              }
-                            }}
-                            placeholder="Brief description of what this server does"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="server-command">Command</Label>
-                          <Input
-                            id="server-command"
-                            value={editingMcpServer ? editingMcpServer.command : newMcpServer.command}
-                            onChange={(e) => {
-                              if (editingMcpServer) {
-                                setEditingMcpServer({ ...editingMcpServer, command: e.target.value });
-                              } else {
-                                setNewMcpServer({ ...newMcpServer, command: e.target.value });
-                              }
-                            }}
-                            placeholder="e.g., npx, python, node"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label>Arguments</Label>
+                        <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            {(editingMcpServer ? editingMcpServer.args : newMcpServer.args).map((arg, index) => (
-                              <div key={index} className="flex gap-2">
-                                <Input
-                                  value={arg}
-                                  onChange={(e) => {
-                                    const newArgs = [...(editingMcpServer ? editingMcpServer.args : newMcpServer.args)];
-                                    newArgs[index] = e.target.value;
-                                    if (editingMcpServer) {
-                                      setEditingMcpServer({ ...editingMcpServer, args: newArgs });
-                                    } else {
-                                      setNewMcpServer({ ...newMcpServer, args: newArgs });
-                                    }
-                                  }}
-                                  placeholder={`Argument ${index + 1}`}
-                                  className="flex-1"
-                                />
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    const newArgs = (editingMcpServer ? editingMcpServer.args : newMcpServer.args).filter((_, i) => i !== index);
-                                    if (editingMcpServer) {
-                                      setEditingMcpServer({ ...editingMcpServer, args: newArgs });
-                                    } else {
-                                      setNewMcpServer({ ...newMcpServer, args: newArgs });
-                                    }
-                                  }}
-                                >
-                                  <X className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            ))}
+                            <Label htmlFor="temperature">Temperature</Label>
+                            <Input
+                              id="temperature"
+                              type="number"
+                              min="0"
+                              max="2"
+                              step="0.1"
+                              value={formData.chat.temperature}
+                              className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                              onChange={(e) => updateFormData({
+                                chat: { ...formData.chat, temperature: parseFloat(e.target.value) || 0 }
+                              })}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Controls randomness (0.0 = focused, 2.0 = creative)
+                            </p>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="max-tokens">Max Tokens</Label>
+                            <Input
+                              id="max-tokens"
+                              type="number"
+                              min="1"
+                              max="32768"
+                              value={formData.chat.maxTokens}
+                              className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                              onChange={(e) => updateFormData({
+                                chat: { ...formData.chat, maxTokens: parseInt(e.target.value) || 8192 }
+                              })}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Maximum response length
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <ToggleSwitch
+                            enabled={formData.chat.toolCallingEnabled}
+                            onToggle={(enabled: boolean) => updateFormData({
+                              chat: { ...formData.chat, toolCallingEnabled: enabled }
+                            })}
+                          />
+                          <div>
+                            <Label>Enable Tool Calling</Label>
+                            <p className="text-sm text-muted-foreground">
+                              Allow the AI to use external tools and functions
+                            </p>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'mcp' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-4">MCP Servers</h3>
+                  <div className="space-y-4">
+                    <p className="text-muted-foreground">
+                      Configure Model Context Protocol (MCP) servers for enhanced functionality.
+                    </p>
+
+                    {/* Add Server Button */}
+                    <div className="flex justify-between items-center">
+                      <div className="text-sm text-muted-foreground">
+                        {mcpServers.length} server{mcpServers.length !== 1 ? 's' : ''} configured
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleOpenMcpJsonEditor}
+                          className="flex items-center gap-2"
+                        >
+                          <FileText className="h-4 w-4" />
+                          Edit JSON
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowAddMcpServer(true)}
+                          className="flex items-center gap-2"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Add Server
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Add/Edit Server Form */}
+                    {showAddMcpServer && (
+                      <div className="border border-border rounded-lg p-4 space-y-4 bg-background">
+                        <h4 className="font-medium">{editingMcpServer ? 'Edit' : 'Add'} MCP Server</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="mcp-name">Server Name</Label>
+                            <Input
+                              id="mcp-name"
+                              value={newMcpServer.name}
+                              placeholder="My MCP Server"
+                              className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                              onChange={(e) => setNewMcpServer(prev => ({ ...prev, name: e.target.value }))}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="mcp-command">Command</Label>
+                            <Input
+                              id="mcp-command"
+                              value={newMcpServer.command}
+                              placeholder="node server.js"
+                              className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                              onChange={(e) => setNewMcpServer(prev => ({ ...prev, command: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="mcp-description">Description (Optional)</Label>
+                          <Input
+                            id="mcp-description"
+                            value={newMcpServer.description}
+                            placeholder="Description of what this server does"
+                            className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                            onChange={(e) => setNewMcpServer(prev => ({ ...prev, description: e.target.value }))}
+                          />
+                        </div>
+
+                        {/* Arguments Section */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label>Arguments</Label>
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => {
-                                const newArgs = [...(editingMcpServer ? editingMcpServer.args : newMcpServer.args), ''];
-                                if (editingMcpServer) {
-                                  setEditingMcpServer({ ...editingMcpServer, args: newArgs });
-                                } else {
-                                  setNewMcpServer({ ...newMcpServer, args: newArgs });
-                                }
-                              }}
-                              className="w-full"
+                              onClick={addArgument}
+                              className="flex items-center gap-1"
                             >
-                              <Plus className="h-3 w-3 mr-1" />
+                              <Plus className="h-3 w-3" />
                               Add Argument
                             </Button>
                           </div>
+                          {newMcpServer.args.map((arg, index) => (
+                            <div key={index} className="flex gap-2">
+                              <Input
+                                value={arg}
+                                placeholder={`Argument ${index + 1}`}
+                                className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                                onChange={(e) => updateArgument(index, e.target.value)}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeArgument(index)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          {newMcpServer.args.length === 0 && (
+                            <p className="text-sm text-muted-foreground">No arguments configured</p>
+                          )}
                         </div>
 
+                        {/* Environment Variables Section */}
                         <div className="space-y-2">
-                          <Label>Environment Variables</Label>
-                          <div className="space-y-2">
-                            {Object.entries(editingMcpServer ? editingMcpServer.env || {} : newMcpServer.env).map(([key, value], index) => (
-                              <div key={index} className="flex gap-2">
-                                <Input
-                                  value={key}
-                                  onChange={(e) => {
-                                    const currentEnv = editingMcpServer ? editingMcpServer.env || {} : newMcpServer.env;
-                                    const newEnv = { ...currentEnv };
-                                    delete newEnv[key];
-                                    newEnv[e.target.value] = value;
-                                    if (editingMcpServer) {
-                                      setEditingMcpServer({ ...editingMcpServer, env: newEnv });
-                                    } else {
-                                      setNewMcpServer({ ...newMcpServer, env: newEnv });
-                                    }
-                                  }}
-                                  placeholder="Variable name"
-                                  className="flex-1"
-                                />
-                                <Input
-                                  value={value}
-                                  onChange={(e) => {
-                                    const currentEnv = editingMcpServer ? editingMcpServer.env || {} : newMcpServer.env;
-                                    const newEnv = { ...currentEnv, [key]: e.target.value };
-                                    if (editingMcpServer) {
-                                      setEditingMcpServer({ ...editingMcpServer, env: newEnv });
-                                    } else {
-                                      setNewMcpServer({ ...newMcpServer, env: newEnv });
-                                    }
-                                  }}
-                                  placeholder="Variable value"
-                                  className="flex-1"
-                                />
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    const currentEnv = editingMcpServer ? editingMcpServer.env || {} : newMcpServer.env;
-                                    const newEnv = { ...currentEnv };
-                                    delete newEnv[key];
-                                    if (editingMcpServer) {
-                                      setEditingMcpServer({ ...editingMcpServer, env: newEnv });
-                                    } else {
-                                      setNewMcpServer({ ...newMcpServer, env: newEnv });
-                                    }
-                                  }}
-                                >
-                                  <X className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            ))}
+                          <div className="flex items-center justify-between">
+                            <Label>Environment Variables</Label>
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => {
-                                const currentEnv = editingMcpServer ? editingMcpServer.env || {} : newMcpServer.env;
-                                const newEnv = { ...currentEnv, '': '' };
-                                if (editingMcpServer) {
-                                  setEditingMcpServer({ ...editingMcpServer, env: newEnv });
-                                } else {
-                                  setNewMcpServer({ ...newMcpServer, env: newEnv });
-                                }
-                              }}
-                              className="w-full"
+                              onClick={addEnvVariable}
+                              className="flex items-center gap-1"
                             >
-                              <Plus className="h-3 w-3 mr-1" />
-                              Add Environment Variable
+                              <Plus className="h-3 w-3" />
+                              Add Variable
                             </Button>
                           </div>
+                          {Object.entries(newMcpServer.env).map(([key, value]) => (
+                            <div key={key} className="flex gap-2">
+                              <Input
+                                value={key}
+                                placeholder="Variable name"
+                                className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                                onChange={(e) => updateEnvVariable(key, e.target.value, value)}
+                              />
+                              <Input
+                                value={value}
+                                placeholder="Variable value"
+                                className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                                onChange={(e) => updateEnvVariable(key, key, e.target.value)}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeEnvVariable(key)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          {Object.keys(newMcpServer.env).length === 0 && (
+                            <p className="text-sm text-muted-foreground">No environment variables configured</p>
+                          )}
                         </div>
-
-
-                      </div>
-
-                      <div className="flex justify-end gap-2 mt-6">
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            setShowAddMcpServer(false);
-                            setEditingMcpServer(null);
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={async () => {
-                            if (editingMcpServer) {
-                              await handleUpdateMcpServer(editingMcpServer.id, {
-                                name: editingMcpServer.name,
-                                description: editingMcpServer.description,
-                                command: editingMcpServer.command,
-                                args: editingMcpServer.args,
-                                env: Object.fromEntries(
-                                  Object.entries(editingMcpServer.env || {}).filter(([key, value]) => key.trim() && value.trim())
-                                )
-                              });
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setShowAddMcpServer(false);
                               setEditingMcpServer(null);
-                            } else {
-                              await handleAddMcpServer();
-                            }
-                          }}
-                        >
-                          {editingMcpServer ? 'Update' : 'Add'} Server
-                        </Button>
+                              setNewMcpServer({
+                                name: '',
+                                command: '',
+                                args: [],
+                                description: '',
+                                enabled: true,
+                                env: {}
+                              });
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={editingMcpServer ? handleUpdateMcpServer : handleAddMcpServer}
+                            disabled={!newMcpServer.name || !newMcpServer.command}
+                          >
+                            {editingMcpServer ? 'Update' : 'Add'} Server
+                          </Button>
+                        </div>
                       </div>
+                    )}
+
+                    {/* Servers List */}
+                    <div className="space-y-2">
+                      {mcpServers.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <Server className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          <p>No MCP servers configured</p>
+                          <p className="text-sm">Add a server to get started</p>
+                        </div>
+                      ) : (
+                        mcpServers.map((server) => (
+                          <div
+                            key={server.id}
+                            className="flex items-center justify-between p-3 border border-border rounded-lg bg-background"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                <Zap className={`h-4 w-4 ${server.enabled ? 'text-green-500' : 'text-muted-foreground'}`} />
+                                <div>
+                                  <div className="font-medium">{server.name}</div>
+                                  <div className="text-sm text-muted-foreground">{server.command}</div>
+                                  {server.description && (
+                                    <div className="text-xs text-muted-foreground">{server.description}</div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <ToggleSwitch
+                                enabled={server.enabled}
+                                onToggle={(enabled) => handleToggleMcpServer(server.id, enabled)}
+                                size="sm"
+                              />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditMcpServer(server)}
+                                className="text-muted-foreground hover:text-foreground"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveMcpServer(server.id)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
-                )}
+                </div>
               </div>
-            </TabsContent>
+            )}
 
-            {/* Action Buttons */}
-            <div className="flex justify-between gap-2 mt-6 pt-4 border-t">
+            {activeTab === 'memory' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-4">Memory System</h3>
+                  <MemoryManagement />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'appearance' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-4">Appearance</h3>
+                  <div className="space-y-4">
+                    {formData?.ui && (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="theme">Theme</Label>
+                          <Select
+                            value={formData.ui.theme}
+                            onValueChange={(value: 'light' | 'dark' | 'system') => updateFormData({
+                              ui: { ...formData.ui, theme: value }
+                            })}
+                          >
+                            <SelectTrigger className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors">
+                              <SelectValue placeholder="Select theme" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="light">Light</SelectItem>
+                              <SelectItem value="dark">Dark</SelectItem>
+                              <SelectItem value="system">System</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Choose your preferred color theme
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="font-size">Font Size</Label>
+                          <Select
+                            value={formData.ui.fontSize || 'small'}
+                            onValueChange={(value: 'small' | 'medium' | 'large') => updateFormData({
+                              ui: { ...formData.ui, fontSize: value }
+                            })}
+                          >
+                            <SelectTrigger className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors">
+                              <SelectValue placeholder="Select font size" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="small">Small</SelectItem>
+                              <SelectItem value="medium">Medium</SelectItem>
+                              <SelectItem value="large">Large</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Adjust the application font size
+                          </p>
+                        </div>
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <Label>Always on Top</Label>
+                              <p className="text-sm text-muted-foreground">
+                                Keep the application window above other windows
+                              </p>
+                            </div>
+                            <ToggleSwitch
+                              enabled={formData.ui.alwaysOnTop}
+                              onToggle={(enabled: boolean) => updateFormData({
+                                ui: { ...formData.ui, alwaysOnTop: enabled }
+                              })}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <Label>Start Minimized</Label>
+                              <p className="text-sm text-muted-foreground">
+                                Start the application minimized to system tray
+                              </p>
+                            </div>
+                            <ToggleSwitch
+                              enabled={formData.ui.startMinimized}
+                              onToggle={(enabled: boolean) => updateFormData({
+                                ui: { ...formData.ui, startMinimized: enabled }
+                              })}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'general' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-4">General Settings</h3>
+                  <div className="space-y-4">
+                    {formData?.general && (
+                      <>
+                        <div className="flex items-center space-x-2">
+                          <ToggleSwitch
+                            enabled={formData.general.autoStartWithSystem}
+                            onToggle={(enabled: boolean) => updateFormData({
+                              general: { ...formData.general, autoStartWithSystem: enabled }
+                            })}
+                          />
+                          <Label>Start with System</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <ToggleSwitch
+                            enabled={formData.general.showNotifications}
+                            onToggle={(enabled: boolean) => updateFormData({
+                              general: { ...formData.general, showNotifications: enabled }
+                            })}
+                          />
+                          <Label>Show Notifications</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <ToggleSwitch
+                            enabled={formData.general.saveConversationHistory}
+                            onToggle={(enabled: boolean) => updateFormData({
+                              general: { ...formData.general, saveConversationHistory: enabled }
+                            })}
+                          />
+                          <Label>Save Conversation History</Label>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="history-length">Conversation History Length</Label>
+                          <Input
+                            id="history-length"
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={formData.general.conversationHistoryLength}
+                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            onChange={(e) => updateFormData({
+                              general: { ...formData.general, conversationHistoryLength: parseInt(e.target.value) }
+                            })}
+                          />
+                          <p className="text-sm text-muted-foreground">
+                            Number of previous messages to include in context
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex-none p-6 pt-4 border-t border-border bg-background/50 backdrop-blur-sm">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
               <Button
                 variant="outline"
-                onClick={handleReloadSettings}
-                className="cursor-pointer"
-                type="button"
+                onClick={handleReload}
+                disabled={isLoading}
+                className="bg-muted/50 border-input hover:bg-muted/70 transition-colors"
               >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Reload Settings
+                {isLoading ? 'Loading...' : 'Reload Settings'}
               </Button>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={handleClose} type="button">
-                  Cancel
-                </Button>
-                <Button onClick={handleSaveSettings} type="button">
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Settings
-                </Button>
-              </div>
+              {hasChanges && (
+                <span className="text-sm text-muted-foreground">
+                  • Unsaved changes
+                </span>
+              )}
             </div>
-          </Tabs>
-        )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={handleCancel}
+                disabled={!hasChanges || isLoading}
+                className="bg-muted/50 border-input hover:bg-muted/70 transition-colors"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={!hasChanges || isLoading}
+                className={hasChanges ? 'bg-primary text-primary-foreground' : ''}
+              >
+                {isLoading ? 'Saving...' : 'Save Settings'}
+              </Button>
+            </div>
+          </div>
+          {hasChanges && (
+            <div className="mt-2 text-xs text-muted-foreground">
+              Changes will be applied immediately after saving
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* MCP JSON Editor Dialog */}
+      <Dialog open={showMcpJsonEditor} onOpenChange={setShowMcpJsonEditor}>
+        <DialogContent className="max-w-5xl w-[90vw] max-h-[85vh] h-[85vh] flex flex-col rounded-lg">
+          <DialogHeader className="flex-none">
+            <DialogTitle>Edit MCP Configuration JSON</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 flex flex-col space-y-4 min-h-0">
+            <p className="text-sm text-muted-foreground flex-none">
+              Edit the raw MCP configuration JSON. Be careful with the syntax.
+            </p>
+            <div className="flex-1 min-h-0">
+              <Textarea
+                value={mcpJsonContent}
+                onChange={(e) => setMcpJsonContent(e.target.value)}
+                placeholder="MCP JSON configuration..."
+                className="w-full h-full resize-none bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 transition-colors font-mono text-sm text-slate-100 custom-scrollbar"
+                style={{ minHeight: '400px' }}
+              />
+            </div>
+            <div className="flex justify-end gap-2 flex-none pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowMcpJsonEditor(false)}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleSaveMcpJson}>
+                Save JSON
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
-import { X, Minus, MessageSquare } from 'lucide-react';
+import { X, Minus, MessageSquare, ChevronDown } from 'lucide-react';
 
 import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag';
 import { MessageWithThinking } from './MessageWithThinking';
@@ -20,7 +20,9 @@ interface ChatOverlayProps {
 export function ChatOverlay({ onClose }: ChatOverlayProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionStats, setSessionStats] = useState<SessionStats>(sessionService.getSessionStats());
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Initialize enhanced window dragging
   const { } = useEnhancedWindowDrag();
@@ -83,10 +85,48 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
     setSessionStats(sessionService.getSessionStats());
   }, [messages]);
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
+  // Scroll to bottom function
+  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Check if user is at bottom of scroll
+  const checkScrollPosition = () => {
+    if (!scrollContainerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
+    setShowScrollToBottom(!isAtBottom && messages.length > 0);
+  };
+
+  // Auto-scroll to bottom when messages change (only if user was already at bottom)
+  useEffect(() => {
+    if (!scrollContainerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const wasAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+
+    if (wasAtBottom) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
   }, [messages]);
+
+  // Add scroll listener
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    scrollContainer.addEventListener('scroll', checkScrollPosition);
+
+    // Initial check
+    checkScrollPosition();
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', checkScrollPosition);
+    };
+  }, [messages.length]);
 
   return (
     <div className="h-full w-full bg-background flex flex-col overflow-hidden min-h-[400px] min-w-[300px]">
@@ -133,7 +173,11 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
               </div>
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar w-full" style={{ maxHeight: '100%' }}>
+            <div
+              ref={scrollContainerRef}
+              className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar w-full relative"
+              style={{ maxHeight: '100%' }}
+            >
               {messages.map((message) => (
                 <div
                   key={message.id}
@@ -185,6 +229,31 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
               ))}
               {/* Scroll anchor */}
               <div ref={messagesEndRef} />
+
+              {/* Scroll to bottom button */}
+              {showScrollToBottom && (
+                <Button
+                  onClick={scrollToBottom}
+                  className="absolute bottom-4 left-1/2 transform -translate-x-1/2 h-12 w-12 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 z-10 flex items-center justify-center p-0"
+                  style={{
+                    WebkitAppRegion: 'no-drag',
+                    backdropFilter: 'blur(8px)',
+                    minWidth: '48px',
+                    minHeight: '48px'
+                  } as React.CSSProperties & { WebkitAppRegion?: string }}
+                >
+                  <ChevronDown
+                    className="text-primary-foreground"
+                    size={24}
+                    style={{
+                      width: '24px',
+                      height: '24px',
+                      minWidth: '24px',
+                      minHeight: '24px'
+                    }}
+                  />
+                </Button>
+              )}
             </div>
           )}
         </div>

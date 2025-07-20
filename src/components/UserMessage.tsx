@@ -54,12 +54,15 @@ export function UserMessage({ content, className = '' }: UserMessageProps) {
       </Button>
 
       {/* Message Content */}
-      <div 
-        className="whitespace-pre-wrap select-text"
-        style={{ 
+      <div
+        className="whitespace-pre-wrap select-text break-words"
+        style={{
           WebkitAppRegion: 'no-drag',
           userSelect: 'text',
-          WebkitUserSelect: 'text'
+          WebkitUserSelect: 'text',
+          wordWrap: 'break-word',
+          overflowWrap: 'break-word',
+          maxWidth: '100%'
         } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
         {content}
