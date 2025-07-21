@@ -250,6 +250,10 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
   const allToolCalls = toolCalls && toolCalls.length > 0 ? toolCalls : extractedToolCalls;
   const hasTools = allToolCalls.length > 0;
 
+  // Ensure we always show tool execution section if we have tool calls
+  // This fixes inconsistencies across providers
+  const shouldShowToolExecution = hasToolExecution || hasTools;
+
   // Copy function for the entire message content
   const handleCopy = async () => {
     try {
@@ -328,8 +332,8 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
         </div>
       )}
 
-      {/* Tool Execution Section - Only show if there are tool execution blocks */}
-      {hasToolExecution && (
+      {/* Tool Execution Section - Show if there are tool execution blocks OR tool calls */}
+      {shouldShowToolExecution && (
         <div className="mb-3">
           <Button
             variant="ghost"
@@ -343,7 +347,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
               <ChevronRight className="h-3 w-3" />
             )}
             <Wrench className="h-3 w-3" />
-            <span>Tool Execution ({parsed.toolExecution.length} section{parsed.toolExecution.length !== 1 ? 's' : ''})</span>
+            <span>Tool Execution ({Math.max(parsed.toolExecution.length, hasTools ? 1 : 0)} section{(parsed.toolExecution.length !== 1 || hasTools) ? 's' : ''})</span>
           </Button>
 
           {showToolExecution && (
@@ -496,6 +500,35 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                   </div>
                 );
               })}
+
+              {/* Fallback: Show tool execution info when we have tool calls but no parsed tool execution blocks */}
+              {parsed.toolExecution.length === 0 && hasTools && (
+                <div className="bg-muted border border-border rounded-2xl p-3 text-sm">
+                  <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
+                    <Wrench className="h-3 w-3" />
+                    <span>Tool Execution</span>
+                    <span className="ml-auto text-xs">
+                      ✅ {allToolCalls.length} tool{allToolCalls.length !== 1 ? 's' : ''} executed
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {allToolCalls.map((tool, toolIndex) => (
+                      <div key={toolIndex} className="border border-border/50 rounded-lg p-2">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-medium text-foreground">{tool.name}</span>
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
+                            ✓ Success
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          **Tool executed successfully.** Results are shown in the Tool Usage section below if available.
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -94,6 +94,112 @@ export class OpenRouterProvider extends BaseProvider {
     }).filter(tool => tool !== null);
   }
 
+  private detectUnderlyingProvider(model: string): string {
+    // Detect underlying provider from OpenRouter model name
+    if (model.startsWith('openai/')) return 'openai';
+    if (model.startsWith('anthropic/')) return 'anthropic';
+    if (model.startsWith('google/')) return 'google';
+    if (model.startsWith('meta-llama/')) return 'meta';
+    if (model.startsWith('mistral/') || model.startsWith('mistralai/')) return 'mistral';
+    if (model.startsWith('cohere/')) return 'cohere';
+    if (model.startsWith('perplexity/')) return 'perplexity';
+
+    // Default to OpenAI format for unknown models (safest)
+    console.log(`⚠️ Unknown OpenRouter model prefix for "${model}", defaulting to OpenAI format`);
+    return 'openai';
+  }
+
+  private modelSupportsStructuredTools(underlyingProvider: string): boolean {
+    // Check if underlying provider supports structured tool calling
+    switch (underlyingProvider) {
+      case 'openai':
+      case 'anthropic':
+      case 'google':
+      case 'mistral':
+        return true;
+      case 'meta':
+      case 'cohere':
+      case 'perplexity':
+      default:
+        return false; // Use text-based tool descriptions
+    }
+  }
+
+  private async buildProviderSpecificRequest(
+    underlyingProvider: string,
+    settings: LLMSettings,
+    systemPrompt: string,
+    tools: unknown[],
+    message: MessageContent,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    onStream?: (chunk: string) => void
+  ): Promise<{ requestBody: Record<string, unknown>; messages: unknown[] }> {
+
+    const supportsStructuredTools = this.modelSupportsStructuredTools(underlyingProvider);
+    console.log(`🔧 OpenRouter underlying provider "${underlyingProvider}" supports structured tools: ${supportsStructuredTools}`);
+
+    // Build messages based on provider format
+    let messages: unknown[];
+    let requestBody: Record<string, unknown>;
+
+    if (underlyingProvider === 'anthropic') {
+      // Anthropic format: system parameter + messages without system role
+      messages = await this.constructMessagesWithFiles(message, conversationHistory, ''); // No system in messages
+      requestBody = {
+        model: settings.model,
+        system: systemPrompt, // Separate system parameter
+        messages,
+        temperature: settings.temperature,
+        max_tokens: settings.maxTokens,
+        stream: !!onStream
+      };
+    } else {
+      // OpenAI format (default): system message first in messages array
+      messages = await this.constructMessagesWithFiles(message, conversationHistory, systemPrompt);
+      requestBody = {
+        model: settings.model,
+        messages,
+        temperature: settings.temperature,
+        max_tokens: settings.maxTokens,
+        stream: !!onStream
+      };
+    }
+
+    // Add tools based on provider capabilities
+    if (supportsStructuredTools && tools.length > 0) {
+      requestBody.tools = tools;
+      requestBody.tool_choice = 'auto';
+      console.log(`🚀 OpenRouter API call with ${tools.length} structured tools for ${underlyingProvider} model`);
+    } else if (tools.length > 0) {
+      // For models without structured tools, include tool descriptions in system prompt
+      const toolDescriptions = this.formatToolsAsText(tools as ToolObject[]);
+      if (underlyingProvider === 'anthropic') {
+        requestBody.system = `${systemPrompt}\n\nAvailable tools:\n${toolDescriptions}`;
+      } else {
+        // Update system message in messages array
+        const systemMessageIndex = (messages as any[]).findIndex(m => m.role === 'system');
+        if (systemMessageIndex >= 0) {
+          (messages as any[])[systemMessageIndex].content = `${systemPrompt}\n\nAvailable tools:\n${toolDescriptions}`;
+        }
+      }
+      console.log(`🚀 OpenRouter API call with ${tools.length} text-based tools for ${underlyingProvider} model (no structured tool support)`);
+    } else {
+      console.log(`🚀 OpenRouter API call without tools for ${underlyingProvider} model`);
+    }
+
+    return { requestBody, messages };
+  }
+
+  private formatToolsAsText(tools: ToolObject[]): string {
+    return tools.map(tool => {
+      const name = tool.name || tool.function?.name || 'unknown_tool';
+      const description = tool.description || tool.function?.description || 'No description';
+      const parameters = tool.parameters || tool.function?.parameters || {};
+
+      return `- ${name}: ${description}\n  Parameters: ${JSON.stringify(parameters, null, 2)}`;
+    }).join('\n\n');
+  }
+
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
@@ -103,42 +209,42 @@ export class OpenRouterProvider extends BaseProvider {
     signal?: AbortSignal,
     conversationId?: string
   ): Promise<LLMResponse> {
-    // Construct messages, handling file content
-    const messages = await this.constructMessagesWithFiles(message, conversationHistory, settings.systemPrompt || this.getSystemPrompt());
+    // Detect underlying provider from model name
+    const underlyingProvider = this.detectUnderlyingProvider(settings.model);
+    console.log(`🔍 OpenRouter model "${settings.model}" detected as underlying provider: ${underlyingProvider}`);
 
     // Get OpenRouter-specific formatted tools
     const openRouterTools = await this.getOpenRouterTools(settings);
 
-    // Build system prompt with tool instructions
-    let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
-    if (openRouterTools.length > 0) {
-      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, openRouterTools as ToolObject[]);
-    }
+    // Use behavioral system prompt only (no tool descriptions)
+    // Check for meaningful system prompt, not just empty string or generic default
+    const hasCustomSystemPrompt = settings.systemPrompt &&
+      settings.systemPrompt.trim() &&
+      settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
+
+    const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
+
+    console.log(`🔍 OpenRouter system prompt source:`, {
+      hasCustom: hasCustomSystemPrompt,
+      usingCustom: hasCustomSystemPrompt,
+      promptLength: systemPrompt?.length || 0,
+      promptStart: systemPrompt?.substring(0, 100) + '...',
+      underlyingProvider
+    });
+
+    // Build request based on underlying provider format
+    const { requestBody, messages } = await this.buildProviderSpecificRequest(
+      underlyingProvider,
+      settings,
+      systemPrompt,
+      openRouterTools,
+      message,
+      conversationHistory,
+      onStream
+    );
 
 
 
-    const requestBody: Record<string, unknown> = {
-      model: settings.model,
-      messages: messages,
-      temperature: settings.temperature,
-      max_tokens: settings.maxTokens,
-      stream: !!onStream
-    };
-
-    // Add tools if available (OpenRouter expects OpenAI format)
-    if (openRouterTools.length > 0) {
-      requestBody.tools = openRouterTools;
-      requestBody.tool_choice = 'auto';
-
-      console.log(`🚀 OpenRouter API call with ${openRouterTools.length} tools:`, {
-        model: settings.model,
-        toolCount: openRouterTools.length,
-        toolChoice: requestBody.tool_choice,
-        formattedTools: requestBody.tools
-      });
-    } else {
-      console.log(`🚀 OpenRouter API call without tools (no tools available)`);
-    }
 
     const response = await fetch(`${provider.baseUrl}/chat/completions`, {
       method: 'POST',

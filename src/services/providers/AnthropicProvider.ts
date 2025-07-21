@@ -254,12 +254,21 @@ export class AnthropicProvider extends BaseProvider {
     // Get Anthropic-specific formatted tools
     const anthropicTools = await this.getAnthropicTools(settings);
 
-    // Build enhanced system prompt with tool instructions
-    let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
-    if (anthropicTools.length > 0) {
-      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, anthropicTools as ToolObject[]);
-      systemPrompt += `\n\n## Available Tools Summary\n\nYou have access to ${anthropicTools.length} specialized tools. Use them as needed to accomplish user objectives.`;
-    }
+    // Use behavioral system prompt only (no tool descriptions)
+    // Tools are sent separately in the tools parameter
+    // Check for meaningful system prompt, not just empty string or generic default
+    const hasCustomSystemPrompt = settings.systemPrompt &&
+      settings.systemPrompt.trim() &&
+      settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
+
+    const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
+
+    console.log(`🔍 Anthropic system prompt source:`, {
+      hasCustom: hasCustomSystemPrompt,
+      usingCustom: hasCustomSystemPrompt,
+      promptLength: systemPrompt?.length || 0,
+      promptStart: systemPrompt?.substring(0, 100) + '...'
+    });
 
     const requestBody: Record<string, unknown> = {
       model: settings.model,
@@ -381,6 +390,8 @@ export class AnthropicProvider extends BaseProvider {
   getSystemPrompt(): string {
     return ANTHROPIC_SYSTEM_PROMPT;
   }
+
+
 
   enhanceSystemPromptWithTools(basePrompt: string, tools: ToolObject[]): string {
     if (tools.length === 0) {
@@ -692,7 +703,35 @@ export class AnthropicProvider extends BaseProvider {
         content: toolResults as unknown as Array<ContentItem>
       });
 
-      // Make follow-up streaming call
+      // Get tools for continued agentic behavior
+      const anthropicTools = await this.getAnthropicTools(settings);
+      console.log(`🔧 Anthropic follow-up call with ${anthropicTools.length} tools available for continued agentic behavior`);
+
+      // Use behavioral system prompt only for follow-up (no tool descriptions)
+      // Tools are sent separately in the tools parameter
+      const hasCustomSystemPromptFollowUp = settings.systemPrompt &&
+        settings.systemPrompt.trim() &&
+        settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
+
+      const baseSystemPrompt = hasCustomSystemPromptFollowUp ? settings.systemPrompt! : this.getSystemPrompt();
+      const followUpSystemPrompt = baseSystemPrompt +
+        `\n\n## Follow-up Context\n\nBased on the tool results provided above, continue the conversation naturally. If you need to use additional tools to better answer the user's question, feel free to do so.`;
+
+      // Make follow-up streaming call with tools enabled for agentic behavior
+      const followUpRequestBody = {
+        model: settings.model,
+        max_tokens: settings.maxTokens,
+        temperature: settings.temperature,
+        system: followUpSystemPrompt,
+        messages: messages,
+        stream: true,
+        // Include tools to allow continued agentic behavior
+        ...(anthropicTools.length > 0 && {
+          tools: anthropicTools,
+          tool_choice: { type: "auto" }
+        })
+      };
+
       const followUpResponse = await fetch(`${provider.baseUrl}/messages`, {
         method: 'POST',
         headers: {
@@ -700,51 +739,63 @@ export class AnthropicProvider extends BaseProvider {
           'x-api-key': settings.apiKey,
           'anthropic-version': '2023-06-01'
         },
-        body: JSON.stringify({
-          model: settings.model,
-          max_tokens: settings.maxTokens,
-          temperature: settings.temperature,
-          system: settings.systemPrompt || undefined,
-          messages: messages,
-          stream: true
-        }),
+        body: JSON.stringify(followUpRequestBody),
         signal
       });
 
       if (followUpResponse.ok) {
         console.log(`✅ Starting follow-up streaming response`);
 
-        // Stream the follow-up response
-        const followUpResult = await this.handleStreamResponse(
-          followUpResponse,
-          (chunk: string) => {
-            onStream(chunk);
-          },
-          settings,
-          provider,
-          conversationHistory,
-          signal
-        );
+        try {
+          // Stream the follow-up response with updated conversation history for agentic behavior
+          const followUpResult = await this.handleStreamResponse(
+            followUpResponse,
+            (chunk: string) => {
+              onStream(chunk);
+            },
+            settings,
+            provider,
+            messages, // Use updated messages that include tool results
+            signal
+          );
 
-        return {
-          content: fullContent + followUpResult.content,
-          usage: followUpResult.usage ? {
-            promptTokens: (usage?.prompt_tokens || 0) + (followUpResult.usage?.promptTokens || 0),
-            completionTokens: (usage?.completion_tokens || 0) + (followUpResult.usage?.completionTokens || 0),
-            totalTokens: (usage?.total_tokens || 0) + (followUpResult.usage?.totalTokens || 0)
-          } : usage ? {
-            promptTokens: usage.prompt_tokens || 0,
-            completionTokens: usage.completion_tokens || 0,
-            totalTokens: usage.total_tokens || 0
-          } : undefined,
-          toolCalls: toolCalls
+          console.log(`✅ Follow-up streaming completed:`, {
+            contentLength: followUpResult.content?.length || 0,
+            hasUsage: !!followUpResult.usage,
+            hasToolCalls: !!followUpResult.toolCalls
+          });
+
+          // Combine tool calls from initial response AND follow-up response
+          const initialToolCalls = toolCalls
             .filter(tc => tc.id && tc.name)
             .map(tc => ({
               id: tc.id!,
               name: tc.name!,
               arguments: tc.arguments as Record<string, unknown>
-            }))
-        };
+            }));
+
+          const followUpToolCalls = followUpResult.toolCalls || [];
+          const allToolCalls = [...initialToolCalls, ...followUpToolCalls];
+
+          console.log(`🔧 Combined tool calls: ${initialToolCalls.length} initial + ${followUpToolCalls.length} follow-up = ${allToolCalls.length} total`);
+
+          return {
+            content: fullContent + followUpResult.content,
+            usage: followUpResult.usage ? {
+              promptTokens: (usage?.prompt_tokens || 0) + (followUpResult.usage?.promptTokens || 0),
+              completionTokens: (usage?.completion_tokens || 0) + (followUpResult.usage?.completionTokens || 0),
+              totalTokens: (usage?.total_tokens || 0) + (followUpResult.usage?.totalTokens || 0)
+            } : usage ? {
+              promptTokens: usage.prompt_tokens || 0,
+              completionTokens: usage.completion_tokens || 0,
+              totalTokens: usage.total_tokens || 0
+            } : undefined,
+            toolCalls: allToolCalls
+          };
+        } catch (error) {
+          console.error(`❌ Anthropic follow-up streaming failed:`, error);
+          // Fall through to return original response
+        }
       } else {
         console.error(`❌ Anthropic follow-up streaming call failed:`, await followUpResponse.text());
       }

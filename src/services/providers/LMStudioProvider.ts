@@ -19,11 +19,11 @@ export class LMStudioProvider extends BaseProvider {
   readonly name = 'LM Studio';
   readonly capabilities: ProviderCapabilities = {
     supportsVision: true,
-    supportsTools: true,
+    supportsTools: true, // Text-based tool descriptions only (no structured tools)
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: undefined,
-    toolFormat: 'openai'
+    toolFormat: 'text' // Text-based tool descriptions in system prompt
   };
 
   async sendMessage(
@@ -39,11 +39,18 @@ export class LMStudioProvider extends BaseProvider {
     const baseUrl = settings.baseUrl || provider.baseUrl;
     const messages = [];
 
-    // Get MCP tools for LMStudio
+    // Get tools for text-based descriptions (LM Studio doesn't support structured tools)
     const mcpTools = await this.getMCPToolsForProvider('lmstudio', settings);
 
-    // Build system prompt with tool instructions if tools are available
-    let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
+    // Use behavioral system prompt + tool descriptions (text-based approach)
+    // Check for meaningful system prompt, not just empty string or generic default
+    const hasCustomSystemPrompt = settings.systemPrompt &&
+      settings.systemPrompt.trim() &&
+      settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
+
+    let systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
+
+    // Add tool descriptions to system prompt (LM Studio doesn't support structured tools)
     if (mcpTools.length > 0) {
       console.log(`🔍 [LM STUDIO DEBUG] Available tools being passed to model:`, mcpTools.map(t => {
         const tool = t as { name?: string; function?: { name?: string } };
@@ -53,10 +60,19 @@ export class LMStudioProvider extends BaseProvider {
       systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mcpTools as ToolObject[]);
       systemPrompt += `\n\nCRITICAL: Only use the tools listed above. DO NOT invent tool names like "get_weather" or "get_news" - they don't exist. If you need weather/news/current info, use web_search with appropriate queries.`;
 
+      console.log(`🔧 LM Studio enhanced system prompt with ${mcpTools.length} text-based tool descriptions`);
       console.log(`🔍 [LM STUDIO DEBUG] System prompt length: ${systemPrompt.length} characters`);
     } else {
       console.warn(`⚠️ [LM STUDIO DEBUG] No tools available for LM Studio!`);
     }
+
+    console.log(`🔍 LM Studio system prompt source:`, {
+      hasCustom: hasCustomSystemPrompt,
+      usingCustom: hasCustomSystemPrompt,
+      promptLength: systemPrompt?.length || 0,
+      promptStart: systemPrompt?.substring(0, 100) + '...',
+      toolsIncluded: mcpTools.length > 0
+    });
 
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
@@ -127,20 +143,16 @@ export class LMStudioProvider extends BaseProvider {
       stream: requestBody.stream
     });
 
-    // Add tools if available
-    if (mcpTools.length > 0) {
-      requestBody.tools = mcpTools;
-      // Try different tool_choice strategies for LMStudio
-      requestBody.tool_choice = 'auto'; // Could also try 'required' or specific tool
-      console.log(`🚀 LMStudio API call with ${mcpTools.length} tools:`, {
-        model: settings.model,
-        toolCount: mcpTools.length,
-        toolNames: mcpTools.map(t => (t as ToolObject).function?.name).filter(Boolean)
-      });
-      console.log(`🔧 LMStudio request body:`, JSON.stringify(requestBody, null, 2));
-    } else {
-      console.log(`🚀 LMStudio API call without tools (no MCP tools available)`);
-    }
+    // LM Studio uses text-based tool descriptions in system prompt (no structured tools)
+    console.log(`🚀 LM Studio API call with text-based tools:`, {
+      model: settings.model,
+      toolDescriptionsInSystemPrompt: mcpTools.length > 0,
+      toolCount: mcpTools.length,
+      note: 'Tools are included as text descriptions in system prompt, not as structured tools parameter'
+    });
+
+    // NOTE: No requestBody.tools - LM Studio doesn't support structured tools
+    // Tool descriptions are already included in the system prompt above
 
     // Use standard OpenAI-compatible endpoint
     const apiUrl = `${baseUrl}/chat/completions`;
@@ -638,11 +650,12 @@ Please provide a natural, helpful response based on the tool results.`;
       { role: 'user', content: followUpPrompt }
     ];
 
-    // Make a direct API call without tool calling for the follow-up
+    // Make a follow-up call with tools enabled for agentic behavior
     const followUpResponse = await this.makeDirectFollowUpCall(
       followUpMessages,
       settings,
-      onStream
+      onStream,
+      true // Enable tools for continued agentic behavior
     );
 
     return {
@@ -1162,11 +1175,12 @@ Please provide a natural, helpful response based on the tool results.`;
       { role: 'user', content: followUpPrompt }
     ];
 
-    // Make a direct API call without tool calling for the follow-up
+    // Make a follow-up call with tools enabled for agentic behavior
     const followUpResponse = await this.makeDirectFollowUpCall(
       followUpMessages,
       settings,
-      onStream
+      onStream,
+      true // Enable tools for continued agentic behavior
     );
 
     return {
@@ -1191,9 +1205,40 @@ Please provide a natural, helpful response based on the tool results.`;
   private async makeDirectFollowUpCall(
     messages: Array<{role: string, content: string | Array<ContentItem>}>,
     settings: LLMSettings,
-    onStream: (chunk: string) => void
+    onStream: (chunk: string) => void,
+    enableTools: boolean = true
   ): Promise<LLMResponse> {
-    console.log(`🔄 Making direct follow-up call without tool calling`);
+    console.log(`🔄 Making follow-up call ${enableTools ? 'with' : 'without'} tool calling`);
+
+    // Get tools if enabled for agentic behavior
+    let tools: unknown[] = [];
+    if (enableTools && this.getMCPToolsForProvider) {
+      try {
+        tools = await this.getMCPToolsForProvider('lmstudio', settings);
+        console.log(`🔧 LM Studio follow-up call with ${tools.length} tools available for continued agentic behavior`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to get tools for LM Studio follow-up call:`, error);
+      }
+    }
+
+    // Update system message with optimized prompt if tools are available
+    if (enableTools && tools.length > 0) {
+      // Use condensed prompt for follow-up calls to avoid token limits
+      const toolNames = tools.map((tool: any) => tool.function?.name || tool.name).filter(Boolean);
+      const followUpPrompt = `You are an AI assistant with access to ${tools.length} tools. Based on the tool results provided, continue the conversation naturally. Use additional tools if needed.
+
+Available tools: ${toolNames.join(', ')}
+
+Continue based on the tool results above. Call additional tools if needed for a comprehensive response.`;
+
+      // Find and update system message, or add one if it doesn't exist
+      const systemMessageIndex = messages.findIndex(msg => msg.role === 'system');
+      if (systemMessageIndex >= 0) {
+        messages[systemMessageIndex].content = followUpPrompt;
+      } else {
+        messages.unshift({ role: 'system', content: followUpPrompt });
+      }
+    }
 
     const requestBody = {
       model: settings.model,
@@ -1201,9 +1246,11 @@ Please provide a natural, helpful response based on the tool results.`;
       stream: true,
       temperature: settings.temperature || 0.7,
       max_tokens: settings.maxTokens || 4000,
-      // Explicitly disable tool calling for follow-up
-      tools: undefined,
-      tool_choice: undefined
+      // Include tools for agentic behavior if available
+      ...(tools.length > 0 && {
+        tools,
+        tool_choice: 'auto'
+      })
     };
 
     // Construct the correct URL - baseUrl might already include /v1
@@ -1228,7 +1275,7 @@ Please provide a natural, helpful response based on the tool results.`;
 
     if (response.body) {
       // Handle the streaming response directly without recursion
-      return this.handleFollowUpStreamResponse(response, onStream);
+      return this.handleFollowUpStreamResponse(response, onStream, enableTools);
     } else {
       throw new Error('No response body received from LM Studio follow-up call');
     }
@@ -1236,7 +1283,8 @@ Please provide a natural, helpful response based on the tool results.`;
 
   private async handleFollowUpStreamResponse(
     response: Response,
-    onStream: (chunk: string) => void
+    onStream: (chunk: string) => void,
+    enableTools: boolean = true
   ): Promise<LLMResponse> {
     console.log(`🔄 Processing follow-up stream response`);
 
@@ -1277,6 +1325,24 @@ Please provide a natural, helpful response based on the tool results.`;
     }
 
     console.log(`✅ Follow-up response completed. Content length: ${fullContent.length}`);
+
+    // Check for additional tool calls in the follow-up response (agentic behavior)
+    if (enableTools && fullContent) {
+      const toolCalls = this.parseToolCallsFromText(fullContent);
+      if (toolCalls.length > 0) {
+        console.log(`🔄 LM Studio follow-up response contains ${toolCalls.length} additional tool calls - continuing agentic workflow`);
+        // Recursively execute additional tool calls
+        return this.executeTextBasedTools(
+          toolCalls,
+          fullContent,
+          undefined,
+          { model: '', provider: 'lmstudio' } as LLMSettings,
+          { id: 'lmstudio', name: 'LM Studio' } as LLMProvider,
+          [],
+          onStream
+        );
+      }
+    }
 
     return {
       content: fullContent,
