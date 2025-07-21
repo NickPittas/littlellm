@@ -1,4 +1,21 @@
-import { app, BrowserWindow, globalShortcut, Tray, Menu, clipboard, ipcMain, nativeImage, protocol, screen, BrowserWindowConstructorOptions, dialog, desktopCapturer, Display } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  shell,
+  dialog,
+  screen,
+  protocol,
+  Tray,
+  Menu,
+  clipboard,
+  globalShortcut,
+  nativeImage,
+  desktopCapturer,
+  type BrowserWindowConstructorOptions,
+  type Display,
+} from 'electron';
+import { KnowledgeBaseService } from '../src/services/KnowledgeBaseService';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
@@ -688,7 +705,8 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     let prompts: { prompts: unknown[] } = { prompts: [] };
 
     try {
-      tools = await client.listTools();
+      const toolsResult = await client.listTools();
+      tools = { tools: toolsResult.tools || [] };
     } catch (error: unknown) {
       const err = error as { code?: number; message?: string };
       if (err.code === -32601) {
@@ -699,7 +717,8 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     }
 
     try {
-      resources = await client.listResources();
+      const resourcesResult = await client.listResources();
+      resources = { resources: resourcesResult.resources || [] };
     } catch (error: unknown) {
       const err = error as { code?: number; message?: string };
       if (err.code === -32601) {
@@ -710,7 +729,8 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     }
 
     try {
-      prompts = await client.listPrompts();
+      const promptsResult = await client.listPrompts();
+      prompts = { prompts: promptsResult.prompts || [] };
     } catch (error: unknown) {
       const err = error as { code?: number; message?: string };
       if (err.code === -32601) {
@@ -2147,6 +2167,68 @@ app.whenReady().then(async () => {
   // Set up IPC handlers
   setupIPC();
 
+  // Initialize the Knowledge Base Service
+  const knowledgeBaseService = KnowledgeBaseService.getInstance();
+  const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+  await knowledgeBaseService.initialize(dbPath);
+  console.log('Knowledge Base Service initialized.');
+
+  // IPC handler for adding a document to the knowledge base
+  ipcMain.handle('knowledge-base:add-document', async (event, filePath) => {
+    try {
+      await knowledgeBaseService.addDocument(filePath);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to add document to knowledge base:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // IPC handler for removing a document from the knowledge base
+  ipcMain.handle('knowledge-base:remove-document', async (event, documentId) => {
+    try {
+      await knowledgeBaseService.removeDocument(documentId);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to remove document from knowledge base:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // IPC handler for getting list of documents in the knowledge base
+  ipcMain.handle('knowledge-base:get-documents', async () => {
+    try {
+      const documents = await knowledgeBaseService.getDocuments();
+      return { success: true, documents };
+    } catch (error) {
+      console.error('Failed to get documents from knowledge base:', error);
+      return { success: false, error: (error as Error).message, documents: [] };
+    }
+  });
+
+  // IPC handler for RAG search in the knowledge base
+  ipcMain.handle('knowledge-base:search', async (event, query, limit) => {
+    try {
+      const results = await knowledgeBaseService.search(query, limit);
+      return { success: true, results };
+    } catch (error) {
+      console.error('Failed to search knowledge base:', error);
+      return { success: false, error: (error as Error).message, results: [] };
+    }
+  });
+
+  // IPC handler for opening a file dialog
+  ipcMain.handle('dialog:open-file', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'PDFs', extensions: ['pdf'] }]
+    });
+    if (!canceled) {
+      return filePaths[0];
+    }
+    return null;
+  });
+
   // Auto-connect enabled MCP servers immediately
   try {
     await connectEnabledMCPServers();
@@ -2969,6 +3051,309 @@ function setupIPC() {
 
   // Window dragging is now handled by CSS -webkit-app-region in the renderer
   // No IPC handlers needed for CSS-based dragging
+
+  // History window management
+  let historyWindow: BrowserWindow | null = null;
+
+  // Handle history window creation
+  ipcMain.handle('open-history', async (_, conversations: any[]) => {
+    try {
+      // Close existing history window if open
+      if (historyWindow) {
+        historyWindow.close();
+        historyWindow = null;
+      }
+
+      // Generate HTML content for history window
+      const generateHistoryHTML = (conversations: any[]): string => {
+        const conversationItems = conversations.length > 0
+          ? conversations.map(conversation => {
+              const messageCount = conversation.messages ? conversation.messages.length : 0;
+              const date = conversation.createdAt ? new Date(conversation.createdAt).toLocaleDateString() : 'Unknown';
+              return `
+                <div class="history-item" data-conversation-id="${conversation.id}">
+                  <div class="history-item-content">
+                    <div class="history-item-title">${conversation.title || 'Untitled Conversation'}</div>
+                    <div class="history-item-meta">${messageCount} messages • ${date}</div>
+                  </div>
+                  <button class="history-item-delete" data-conversation-id="${conversation.id}" title="Delete conversation">
+                    ×
+                  </button>
+                </div>
+              `;
+            }).join('')
+          : '<p>No chat history yet</p>';
+
+        return `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8">
+            <title>Chat History</title>
+            <style>
+              body {
+                margin: 0;
+                padding: 0;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: #181829;
+                color: #d4d4d4;
+                overflow: hidden;
+              }
+              .history-container {
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+              }
+              .history-header {
+                padding: 16px;
+                border-bottom: 1px solid #3b3b68;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                background: #211f32;
+              }
+              .history-title {
+                font-size: 18px;
+                font-weight: 600;
+                color: #d4d4d4;
+              }
+              .history-header-buttons {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+              }
+              .clear-all-button {
+                background: #f44747;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+              }
+              .clear-all-button:hover {
+                background: #d73a49;
+              }
+              .close-button {
+                background: #3b3b68;
+                color: #d4d4d4;
+                border: none;
+                width: 32px;
+                height: 32px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 18px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: background-color 0.2s;
+              }
+              .close-button:hover {
+                background: #569cd6;
+                color: white;
+              }
+              .history-content {
+                flex: 1;
+                overflow-y: auto;
+                padding: 8px;
+              }
+              .history-content::-webkit-scrollbar {
+                width: 6px;
+              }
+              .history-item {
+                display: flex;
+                align-items: center;
+                padding: 12px;
+                margin-bottom: 4px;
+                background: #211f32;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: background-color 0.2s;
+                position: relative;
+              }
+              .history-item:hover {
+                background: #2d2b3e;
+              }
+              .history-item-content {
+                flex: 1;
+                min-width: 0;
+              }
+              .history-item-title {
+                font-size: 14px;
+                font-weight: 500;
+                color: #d4d4d4;
+                margin-bottom: 4px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+              .history-item:hover .history-item-title {
+                color: #569cd6;
+              }
+              .history-item-meta {
+                font-size: 12px;
+                color: #9ca3af;
+              }
+              .history-item:hover .history-item-meta {
+                color: #d4d4d4;
+              }
+              .history-item-delete {
+                background: #f44747;
+                color: white;
+                border: none;
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                cursor: pointer;
+                font-size: 16px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0;
+                transition: opacity 0.2s;
+              }
+              .history-item:hover .history-item-delete {
+                opacity: 1;
+              }
+              .history-item-delete:hover {
+                background: #d73a49;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="history-container">
+              <div class="history-header" style="-webkit-app-region: drag;">
+                <div class="history-title">Chat History</div>
+                <div class="history-header-buttons">
+                  ${conversations.length > 0 ? '<button class="clear-all-button" onclick="clearAllHistory()" style="-webkit-app-region: no-drag;">Clear All</button>' : ''}
+                  <button class="close-button" onclick="closeHistoryWindow()" style="-webkit-app-region: no-drag;" title="Close">&times;</button>
+                </div>
+              </div>
+              <div class="history-content">
+                ${conversationItems}
+              </div>
+            </div>
+            <script>
+              // Wait for window.electronAPI to be available
+              window.addEventListener('DOMContentLoaded', () => {
+                console.log('History window loaded, electronAPI available:', !!window.electronAPI);
+              });
+              
+              // Handle click events
+              document.addEventListener('click', (e) => {
+                const historyItem = e.target.closest('.history-item');
+                const deleteButton = e.target.closest('.history-item-delete');
+                
+                if (deleteButton) {
+                  e.stopPropagation();
+                  const conversationId = deleteButton.dataset.conversationId;
+                  if (conversationId && window.electronAPI) {
+                    console.log('Deleting conversation:', conversationId);
+                    // Use the preload API to send IPC event
+                    window.electronAPI.deleteHistoryItem(conversationId);
+                  }
+                } else if (historyItem) {
+                  const conversationId = historyItem.dataset.conversationId;
+                  if (conversationId && window.electronAPI) {
+                    console.log('Selecting conversation:', conversationId);
+                    // Use the preload API to send IPC event
+                    window.electronAPI.selectHistoryItem(conversationId);
+                  }
+                }
+              });
+              
+              // Handle clear all history
+              function clearAllHistory() {
+                if (confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
+                  if (window.electronAPI) {
+                    console.log('Clearing all history');
+                    // Use the preload API to send IPC event
+                    window.electronAPI.clearAllHistory();
+                  }
+                }
+              }
+              
+              function closeHistoryWindow() {
+                if (window.electronAPI) {
+                  console.log('Closing history window');
+                  // Use the preload API to close the history window
+                  window.electronAPI.closeHistory();
+                }
+              }
+            </script>
+          </body>
+          </html>
+        `;
+      };
+
+      const htmlContent = generateHistoryHTML(conversations);
+
+      // Calculate position for history window
+      const mainBounds = mainWindow?.getBounds() || { x: 100, y: 100, width: 800, height: 600 };
+      const windowWidth = 400;
+      const windowHeight = 600;
+      const historyX = mainBounds.x + mainBounds.width + 10;
+      const historyY = mainBounds.y;
+
+      historyWindow = new BrowserWindow({
+        width: windowWidth,
+        height: windowHeight,
+        x: historyX,
+        y: historyY,
+        show: false,
+        frame: false,
+        resizable: true,
+        alwaysOnTop: true,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          preload: path.join(__dirname, 'preload.js')
+        }
+      });
+
+      historyWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+      historyWindow.show();
+
+      historyWindow.on('closed', () => {
+        historyWindow = null;
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Failed to open history window:', error);
+      return false;
+    }
+  });
+
+  // Handle history window close
+  ipcMain.handle('close-history', () => {
+    if (historyWindow) {
+      historyWindow.close();
+      historyWindow = null;
+    }
+  });
+
+  // Handle history events from history window
+  ipcMain.on('history-item-selected', (event, conversationId: string) => {
+    // Forward to main window renderer process
+    if (mainWindow) {
+      mainWindow.webContents.send('history-item-selected', conversationId);
+    }
+  });
+
+  ipcMain.on('history-item-deleted', (event, conversationId: string) => {
+    // Forward to main window renderer process
+    if (mainWindow) {
+      mainWindow.webContents.send('history-item-deleted', conversationId);
+    }
+  });
+
+  ipcMain.on('clear-all-history', (event) => {
+    // Forward to main window renderer process
+    if (mainWindow) {
+      mainWindow.webContents.send('clear-all-history');
+    }
+  });
 
   // Handle overlay window creation
   ipcMain.handle('open-action-menu', openActionMenu);
@@ -4110,9 +4495,14 @@ function setupIPC() {
     }
   });
 
-  // Removed duplicate delete-all-conversation-files handler - functionality moved to clear-all-history
-
-  // Removed duplicate delete-conversation-file handler - functionality moved to delete-history-item
+  // Handle closing history window
+  ipcMain.handle('close-history', () => {
+    console.log('🔒 Closing history window');
+    if (historyWindow) {
+      historyWindow.close();
+      historyWindow = null;
+    }
+  });
 
   // Handle logging from history window to terminal
   ipcMain.handle('log-to-terminal', (_, message: string) => {

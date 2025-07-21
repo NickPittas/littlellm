@@ -118,9 +118,19 @@ export interface ElectronAPI {
   onTabChange?: (callback: (tab: string) => void) => unknown;
   removeTabChangeListener?: (listener: unknown) => void;
 
+  // Knowledge Base operations
+  addDocument: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  removeDocument: (documentId: string) => Promise<{ success: boolean; error?: string }>;
+  getDocuments: () => Promise<{ success: boolean; documents: string[]; error?: string }>;
+  searchKnowledgeBase: (query: string, limit?: number) => Promise<{ success: boolean; results: any[]; error?: string }>;
+  openFileDialog: () => Promise<string | null>;
+
   // History operations
   openHistory: (conversations: unknown[]) => Promise<void>;
   closeHistory: () => Promise<void>;
+  selectHistoryItem: (conversationId: string) => void;
+  deleteHistoryItem: (conversationId: string) => void;
+  clearAllHistory: () => void;
   onHistoryItemSelected: (callback: (conversationId: string) => void) => void;
   onHistoryItemDeleted: (callback: (conversationId: string) => void) => void;
   onClearAllHistory: (callback: () => void) => void;

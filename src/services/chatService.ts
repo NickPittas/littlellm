@@ -57,6 +57,7 @@ export interface ChatSettings {
   maxTokens: number;
   systemPrompt?: string;
   toolCallingEnabled: boolean;
+  ragEnabled?: boolean;
   providers: {
     [key: string]: ProviderSettings;
   };
@@ -152,8 +153,78 @@ export const chatService = {
     }
 
     try {
+      // RAG Integration: Augment message with knowledge base context if enabled
+      let augmentedMessage = message;
+      if (settings.ragEnabled && typeof window !== 'undefined' && window.electronAPI) {
+        try {
+          console.log('🧠 RAG enabled, searching knowledge base for:', message.substring(0, 100));
+          
+          // Detect if this is a comprehensive query that needs all documents
+          const isComprehensiveQuery = /\b(all|total|sum|add|combine|every|each)\b/i.test(message);
+          const searchLimit = isComprehensiveQuery ? 20 : 5; // Higher limit for comprehensive queries
+          
+          const ragResult = await window.electronAPI.searchKnowledgeBase(message, searchLimit);
+          
+          if (ragResult.success && ragResult.results && ragResult.results.length > 0) {
+            console.log(`🧠 Found ${ragResult.results.length} relevant knowledge base chunks (comprehensive: ${isComprehensiveQuery})`);
+            
+            let selectedChunks;
+            
+            if (isComprehensiveQuery) {
+              // For comprehensive queries, ensure we get chunks from different documents
+              const chunksBySource = new Map<string, any[]>();
+              
+              // Group chunks by source document
+              ragResult.results.forEach((result: any) => {
+                if (!chunksBySource.has(result.source)) {
+                  chunksBySource.set(result.source, []);
+                }
+                chunksBySource.get(result.source)!.push(result);
+              });
+              
+              // Take the best chunk from each document, up to 8 total chunks
+              selectedChunks = [];
+              for (const [source, chunks] of chunksBySource.entries()) {
+                selectedChunks.push(chunks[0]); // Best chunk from this document
+                if (selectedChunks.length >= 8) break;
+              }
+              
+              console.log(`🧠 Selected chunks from ${chunksBySource.size} different documents`);
+            } else {
+              // For specific queries, use top 3 most relevant chunks
+              selectedChunks = ragResult.results.slice(0, 3);
+            }
+            
+            // Extract relevant text chunks and format them as context
+            const contextChunks = selectedChunks
+              .map((result: any, index: number) => 
+                `[Context ${index + 1} from ${result.source}]:\n${result.text}`
+              )
+              .join('\n\n');
+            
+            // Augment the original message with context
+            const contextIntro = isComprehensiveQuery 
+              ? `Based on the following context from ALL documents in your knowledge base`
+              : `Based on the following context from your knowledge base`;
+            
+            augmentedMessage = `${contextIntro}:\n\n${contextChunks}\n\n---\n\nUser Question: ${message}`;
+            
+            console.log('🧠 Message augmented with RAG context:', {
+              originalLength: message.length,
+              augmentedLength: augmentedMessage.length,
+              contextChunks: ragResult.results.length
+            });
+          } else {
+            console.log('🧠 No relevant context found in knowledge base');
+          }
+        } catch (ragError) {
+          console.error('🧠 RAG search failed:', ragError);
+          // Continue with original message if RAG fails
+        }
+      }
+      
       // Handle file attachments with proper OpenRouter vision API format
-      let messageContent: string | Array<ContentItem> | { text: string; images: string[] } = message;
+      let messageContent: string | Array<ContentItem> | { text: string; images: string[] } = augmentedMessage;
 
       if (files && files.length > 0) {
         console.log('Processing files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
@@ -196,7 +267,7 @@ export const chatService = {
               messageContent = contentArray;
               console.log('✅ Mistral files processed successfully:', {
                 processedCount: processedFiles.length,
-                contentTypes: processedFiles.map(f => f.type)
+                contentTypes: processedFiles.map((f: any) => f.type)
               });
             } catch (error) {
               console.error('❌ Mistral file processing failed:', error);

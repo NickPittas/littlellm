@@ -62,6 +62,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteMemoryEntry: (memoryId: string) => ipcRenderer.invoke('delete-memory-entry', memoryId),
   getMemoryStats: () => ipcRenderer.invoke('get-memory-stats'),
 
+  // Knowledge Base operations
+  addDocument: (filePath: string) => ipcRenderer.invoke('knowledge-base:add-document', filePath),
+  removeDocument: (documentId: string) => ipcRenderer.invoke('knowledge-base:remove-document', documentId),
+  getDocuments: () => ipcRenderer.invoke('knowledge-base:get-documents'),
+  searchKnowledgeBase: (query: string, limit?: number) => ipcRenderer.invoke('knowledge-base:search', query, limit),
+  openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
+
   // Memory export/import operations
   saveMemoryExport: (exportData: any, filename: string) => ipcRenderer.invoke('save-memory-export', exportData, filename),
   loadMemoryExport: () => ipcRenderer.invoke('load-memory-export'),
@@ -99,11 +106,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectDropdownItem: (value: string) => ipcRenderer.invoke('select-dropdown-item', value),
 
   // History window operations
-  openHistory: (conversations: any[]) => ipcRenderer.invoke('open-history', { conversations }),
+  openHistory: (conversations: any[]) => ipcRenderer.invoke('open-history', conversations),
   closeHistory: () => ipcRenderer.invoke('close-history'),
-  selectHistoryItem: (conversationId: string) => ipcRenderer.invoke('select-history-item', conversationId),
-  deleteHistoryItem: (conversationId: string) => ipcRenderer.invoke('delete-history-item', conversationId),
-  clearAllHistory: () => ipcRenderer.invoke('clear-all-history'),
+  
+  // History action methods (called from history window to send events)
+  selectHistoryItem: (conversationId: string) => ipcRenderer.send('history-item-selected', conversationId),
+  deleteHistoryItem: (conversationId: string) => ipcRenderer.send('history-item-deleted', conversationId),
+  clearAllHistory: () => ipcRenderer.send('clear-all-history'),
+  
+  // History event handlers (called from history window)
+  onHistoryItemSelected: (callback: (conversationId: string) => void) => {
+    ipcRenderer.on('history-item-selected', (_, conversationId) => callback(conversationId));
+  },
+  onHistoryItemDeleted: (callback: (conversationId: string) => void) => {
+    ipcRenderer.on('history-item-deleted', (_, conversationId) => callback(conversationId));
+  },
+  onClearAllHistory: (callback: () => void) => {
+    ipcRenderer.on('clear-all-history', () => callback());
+  },
 
   // Event listeners
   onClipboardContent: (callback: (content: string) => void) => {
@@ -136,18 +156,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onDropdownItemSelected: (callback: (value: string) => void) => {
     ipcRenderer.on('dropdown-item-selected', (_, value) => callback(value));
-  },
-
-  onHistoryItemSelected: (callback: (conversationId: string) => void) => {
-    ipcRenderer.on('history-item-selected', (_, conversationId) => callback(conversationId));
-  },
-
-  onHistoryItemDeleted: (callback: (conversationId: string) => void) => {
-    ipcRenderer.on('history-item-deleted', (_, conversationId) => callback(conversationId));
-  },
-
-  onClearAllHistory: (callback: () => void) => {
-    ipcRenderer.on('clear-all-history', () => callback());
   },
 
   // Remove listeners

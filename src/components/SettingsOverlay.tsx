@@ -10,6 +10,7 @@ import { Textarea } from './ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { settingsService, type AppSettings } from '../services/settingsService';
 import { MemoryManagement } from './MemoryManagement';
+import KnowledgeBaseSettings from './KnowledgeBaseSettings';
 import { mcpService, type MCPServer } from '../services/mcpService';
 import { PromptsContent } from './PromptsContent';
 import { Plus, Trash2, Server, Zap, Edit, FileText } from 'lucide-react';
@@ -328,7 +329,7 @@ export function SettingsOverlay() {
         {/* SIMPLE MANUAL TABS - NO RADIX */}
         <div className="flex-1 flex flex-col min-h-0 p-6">
           {/* Tab Navigation */}
-          <div className="grid w-full grid-cols-8 bg-muted p-1 rounded-md flex-none mb-6">
+          <div className="grid w-full grid-cols-9 bg-muted p-1 rounded-md flex-none mb-6">
             <button
               onClick={() => setActiveTab('api-keys')}
               className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -376,6 +377,14 @@ export function SettingsOverlay() {
               }`}
             >
               Memory
+            </button>
+            <button
+              onClick={() => setActiveTab('knowledge-base')}
+              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'knowledge-base' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Knowledge Base
             </button>
             <button
               onClick={() => setActiveTab('appearance')}
@@ -1085,6 +1094,10 @@ export function SettingsOverlay() {
                 </div>
               </div>
             )}
+
+            {activeTab === 'knowledge-base' && <KnowledgeBaseSettings />}
+
+
 
             {activeTab === 'appearance' && (
               <div className="space-y-6">

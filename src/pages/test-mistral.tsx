@@ -1,3 +1,4 @@
+'use client';
 // Test page for Mistral file upload functionality
 import React, { useState } from 'react';
 import { MistralFileService } from '../services/mistralFileService';

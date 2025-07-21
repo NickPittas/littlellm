@@ -1,4 +1,4 @@
-import type { ChatSettings } from './chatService';
+
 
 export interface AppSettings {
   chat: ChatSettings;
@@ -13,6 +13,8 @@ export interface AppSettings {
       x?: number;
       y?: number;
     };
+    hotkey: string;
+    screenshotHotkey: string;
   };
   shortcuts: {
     toggleWindow: string;
@@ -28,15 +30,41 @@ export interface AppSettings {
   };
 }
 
+export interface ChatSettings {
+  provider: string;
+  model: string;
+  defaultModel: string;
+  defaultProvider: string;
+  systemPrompt: string;
+  temperature: number;
+  maxTokens: number;
+  toolCallingEnabled: boolean;
+  providers: {
+    [key: string]: any;
+    openai: { apiKey: string; lastSelectedModel: string };
+    anthropic: { apiKey: string; lastSelectedModel: string };
+    gemini: { apiKey: string; lastSelectedModel: string };
+    mistral: { apiKey: string; lastSelectedModel: string };
+    deepseek: { apiKey: string; lastSelectedModel: string };
+    lmstudio: { apiKey: string; baseUrl: string; lastSelectedModel: string };
+    ollama: { apiKey: string; baseUrl: string; lastSelectedModel: string };
+    openrouter: { apiKey: string; lastSelectedModel: string };
+    requesty: { apiKey: string; lastSelectedModel: string };
+    replicate: { apiKey: string; lastSelectedModel: string };
+    n8n: { apiKey: string; baseUrl: string; lastSelectedModel: string };
+  };
+}
+
 const DEFAULT_SETTINGS: AppSettings = {
   chat: {
-    // provider and model are managed by stateService, not saved in main settings
     provider: '', // Will be loaded from stateService
     model: '', // Will be loaded from stateService
+    defaultModel: 'gpt-4-1106-preview',
+    defaultProvider: 'openai',
+    systemPrompt: '',
     temperature: 0.3,
     maxTokens: 8192,
-    systemPrompt: '',
-    toolCallingEnabled: true, // Enable tool calling by default
+    toolCallingEnabled: true,
     providers: {
       openai: { apiKey: '', lastSelectedModel: '' },
       anthropic: { apiKey: '', lastSelectedModel: '' },
@@ -56,6 +84,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     alwaysOnTop: true,
     startMinimized: false,
     fontSize: 'small',
+    hotkey: 'CommandOrControl+Shift+A',
+    screenshotHotkey: 'CommandOrControl+Shift+S',
     windowBounds: {
       width: 400,
       height: 615, // Increased by 15px for draggable header

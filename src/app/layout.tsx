@@ -1,6 +1,10 @@
+'use client';
 import './globals.css';
 import { Inter } from 'next/font/google';
+import { useEffect } from 'react';
 import SquircleWindow from '@/components/SquircleWindow';
+import { ThemeProvider } from '@/contexts/ThemeContext';
+import { TransparencyProvider } from '@/contexts/TransparencyContext';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -8,16 +12,30 @@ const inter = Inter({
   fallback: ['system-ui', 'arial']
 });
 
-export const metadata = {
-  title: 'LittleLLM Chat',
-  description: 'A simple chat interface for LittleLLM',
-};
+// Metadata removed - not allowed in client components
+// Title and description will be set via document.title in useEffect
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  useEffect(() => {
+    // Set document title and meta description since metadata export is not allowed in client components
+    if (typeof document !== 'undefined') {
+      document.title = 'LittleLLM Chat';
+      const metaDescription = document.querySelector('meta[name="description"]');
+      if (metaDescription) {
+        metaDescription.setAttribute('content', 'A simple chat interface for LittleLLM');
+      } else {
+        const meta = document.createElement('meta');
+        meta.name = 'description';
+        meta.content = 'A simple chat interface for LittleLLM';
+        document.head.appendChild(meta);
+      }
+    }
+  }, []);
+
   return (
     <html lang="en" style={{ borderRadius: '32px', overflow: 'hidden', backgroundColor: 'var(--background)', border: '0px solid transparent', outline: 'none', boxShadow: 'none' }}>
       <head>
@@ -80,9 +98,13 @@ export default function RootLayout({
         }}
       >
         {/* Disable SquircleWindow for overlay windows to prevent content clipping */}
-        <SquircleWindow cornerRadius={32} cornerSmoothing={0.9} enabled={false}>
-          {children}
-        </SquircleWindow>
+        <ThemeProvider>
+          <TransparencyProvider>
+            <SquircleWindow cornerRadius={32} cornerSmoothing={0.9} enabled={false}>
+              {children}
+            </SquircleWindow>
+          </TransparencyProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

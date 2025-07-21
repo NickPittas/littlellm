@@ -14,6 +14,7 @@ import {
 import { FALLBACK_MODELS } from './constants';
 import { OPENAI_SYSTEM_PROMPT, generateOpenAIToolPrompt } from './prompts/openai';
 import { OpenAIFileService, OpenAIFileUpload } from '../OpenAIFileService';
+// import { RAGService } from '../RAGService'; // Moved to Electron main process, accessed via IPC
 
 export class OpenAIProvider extends BaseProvider {
   readonly id = 'openai';
@@ -77,7 +78,7 @@ export class OpenAIProvider extends BaseProvider {
     const attachments: { file_id: string; tools: { type: string; }[] }[] = [];
 
     if (typeof message === 'string') {
-      textContent = message;
+      textContent = message; // RAG integration now handled in chatService
     } else if (Array.isArray(message)) {
       for (const item of message) {
         if (item.type === 'text') {

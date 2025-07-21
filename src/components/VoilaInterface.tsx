@@ -11,6 +11,7 @@ declare global {
 import { X, Send, Paperclip, Camera } from 'lucide-react';
 import { Button } from './ui/button';
 import { ToolCallingToggle } from './ui/tool-calling-toggle';
+import { RAGToggle } from './ui/rag-toggle';
 import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag';
 
 import { Card } from './ui/card';
@@ -1050,6 +1051,17 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               }}
               title={settings.toolCallingEnabled ? "Disable Tool Calling" : "Enable Tool Calling"}
               data-interactive="true"
+            />
+
+            <RAGToggle
+              enabled={settings.ragEnabled || false}
+              onToggle={(enabled) => {
+                const updatedSettings = { ...settings, ragEnabled: enabled };
+                setSettings(updatedSettings);
+                settingsService.updateChatSettingsInMemory(updatedSettings);
+                settingsService.saveSettingsToDisk();
+              }}
+              title={settings.ragEnabled ? "Disable RAG (Knowledge Base)" : "Enable RAG (Knowledge Base)"}
             />
 
             <Button

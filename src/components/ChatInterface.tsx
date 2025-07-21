@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 
-import { Card, CardContent } from './ui/card';
 import {
   Send,
   Copy,
@@ -12,7 +11,6 @@ import {
   Volume2,
   Edit3,
   CheckSquare,
-
   Minus,
   Plus,
   Sparkles,
@@ -20,7 +18,8 @@ import {
   MessageSquare,
   Paperclip,
   X,
-  ChevronDown
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { promptsService } from '../services/promptsService';
 import { chatService, type Message, type ChatSettings } from '../services/chatService';
@@ -90,6 +89,7 @@ export function ChatInterface({
     maxTokens: 8192,
     systemPrompt: '',
     toolCallingEnabled: true,
+    ragEnabled: false,
     providers: {
       openai: { apiKey: '' },
       anthropic: { apiKey: '' },
@@ -417,6 +417,7 @@ export function ChatInterface({
       <div
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar scrollable relative"
+        onScroll={checkScrollPosition}
       >
         {messages.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
@@ -431,14 +432,13 @@ export function ChatInterface({
               key={message.id}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <Card
-                className={`max-w-[80%] shadow-lg ${
+              <div
+                className={`max-w-[80%] rounded-lg p-3 ${
                   message.role === 'user'
-                    ? 'bg-primary text-primary-foreground user-message'
-                    : 'bg-secondary text-foreground assistant-message'
+                    ? 'bg-blue-600 text-white user-message'
+                    : 'bg-gray-100 text-gray-900 assistant-message border border-gray-200'
                 }`}
               >
-                <CardContent className="p-3">
                   {message.role === 'assistant' ? (
                     <MessageWithThinking
                       content={
@@ -504,9 +504,8 @@ export function ChatInterface({
                       </div>
                     )}
                   </div>
-                </CardContent>
-              </Card>
-            </div>
+                </div>
+              </div>
           ))
         )}
         
