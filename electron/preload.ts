@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMCPDetailedStatus: () => ipcRenderer.invoke('get-mcp-detailed-status'),
   getConnectedMCPServerIds: () => ipcRenderer.invoke('get-connected-mcp-server-ids'),
 
+
   // macOS MCP server troubleshooting
   fixMacOSMCPServer: (serverId: string) => ipcRenderer.invoke('fix-macos-mcp-server', serverId),
   validateMCPServer: (serverId: string) => ipcRenderer.invoke('validate-mcp-server', serverId),

@@ -293,10 +293,8 @@ export class LMStudioProvider extends BaseProvider {
   }
 
   // Private helper methods
-  private async getMCPToolsForProvider(providerId: string, settings: LLMSettings): Promise<unknown[]> {
-    // This will be injected by the main service
-    return [];
-  }
+  // This method is injected by the ProviderAdapter from the LLMService
+  private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
 
   private async handleStreamResponse(
     response: Response,
@@ -682,37 +680,97 @@ Please provide a natural, helpful response based on the tool results.`;
     const message = data.choices[0].message;
     console.log(`🔍 LMStudio message:`, message);
 
-    // Handle tool calls if present
+    // Handle tool calls if present - execute immediately like Anthropic
     if (message.tool_calls && message.tool_calls.length > 0) {
       console.log(`🔧 LMStudio response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
-      // Tool execution will be handled by the main service
-      return {
-        content: message.content || '',
-        usage: data.usage ? {
-          promptTokens: data.usage.prompt_tokens,
-          completionTokens: data.usage.completion_tokens,
-          totalTokens: data.usage.total_tokens
-        } : undefined,
-        toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => {
+      // Check if we have the parallel execution method injected
+      if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
+        console.log(`🚀 Executing ${message.tool_calls.length} LMStudio tools immediately`);
+        
+        // Format tool calls for execution
+        const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => {
           // Safely parse arguments
           let parsedArgs: Record<string, unknown> = {};
-          if (tc.function.arguments) {
+          if (toolCall.function.arguments) {
             try {
-              parsedArgs = JSON.parse(tc.function.arguments);
+              parsedArgs = JSON.parse(toolCall.function.arguments);
             } catch (parseError) {
-              console.warn(`⚠️ Failed to parse tool arguments in non-stream: ${tc.function.arguments}`, parseError);
-              parsedArgs = this.parseArgumentsFromText(tc.function.arguments);
+              console.warn(`⚠️ Failed to parse tool arguments in non-stream: ${toolCall.function.arguments}`, parseError);
+              parsedArgs = this.parseArgumentsFromText(toolCall.function.arguments);
             }
           }
 
           return {
-            id: tc.id,
-            name: tc.function.name,
+            id: toolCall.id,
+            name: toolCall.function.name,
             arguments: parsedArgs
           };
-        })
-      };
+        });
+
+        // Execute tools in parallel immediately
+        const executeMultipleToolsParallel = (this as any).executeMultipleToolsParallel;
+        const summarizeToolResultsForModel = (this as any).summarizeToolResultsForModel;
+        
+        try {
+          const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'lmstudio');
+          console.log(`✅ LMStudio tool execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
+          
+          // Get tool results summary for the model
+          const toolSummary = summarizeToolResultsForModel(parallelResults);
+          
+          // Return response with tool results included
+          return {
+            content: (message.content || '') + '\n\n' + toolSummary,
+            usage: data.usage ? {
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens
+            } : undefined
+          };
+        } catch (error) {
+          console.error(`❌ LMStudio tool execution failed:`, error);
+          // Fall back to returning tool calls for external handling
+          return {
+            content: message.content || '',
+            usage: data.usage ? {
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens
+            } : undefined,
+            toolCalls: toolCallsForExecution
+          };
+        }
+      } else {
+        console.warn(`⚠️ LMStudio provider missing tool execution methods - falling back to external handling`);
+        // Fall back to external handling if methods not injected
+        return {
+          content: message.content || '',
+          usage: data.usage ? {
+            promptTokens: data.usage.prompt_tokens,
+            completionTokens: data.usage.completion_tokens,
+            totalTokens: data.usage.total_tokens
+          } : undefined,
+          toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => {
+            // Safely parse arguments
+            let parsedArgs: Record<string, unknown> = {};
+            if (tc.function.arguments) {
+              try {
+                parsedArgs = JSON.parse(tc.function.arguments);
+              } catch (parseError) {
+                console.warn(`⚠️ Failed to parse tool arguments in non-stream: ${tc.function.arguments}`, parseError);
+                parsedArgs = this.parseArgumentsFromText(tc.function.arguments);
+              }
+            }
+
+            return {
+              id: tc.id,
+              name: tc.function.name,
+              arguments: parsedArgs
+            };
+          })
+        };
+      }
     }
 
     // Use text-based tool calling for non-stream responses too

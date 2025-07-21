@@ -133,6 +133,23 @@ export function TransparencyProvider({ children }: TransparencyProviderProps) {
 export function useTransparency() {
   const context = useContext(TransparencyContext);
   if (context === undefined) {
+    // During static generation, return default values
+    if (typeof window === 'undefined') {
+      return {
+        isTransparencyEnabled: true,
+        setIsTransparencyEnabled: () => {},
+        config: {
+          opacity: 0.85,
+          vibrancyType: 'under-window' as const,
+          blurRadius: 20,
+          saturation: 180,
+        },
+        setConfig: () => {},
+        capabilities: null,
+        isSupported: false,
+        isInitialized: false
+      };
+    }
     throw new Error('useTransparency must be used within a TransparencyProvider');
   }
   return context;

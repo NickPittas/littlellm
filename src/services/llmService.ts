@@ -384,78 +384,39 @@ class LLMService {
       const memoryTools = getMemoryMCPTools();
       console.log(`🧠 Memory tools available (${memoryTools.length} tools):`, memoryTools.map(t => t.function.name));
 
-      // Combine MCP tools and memory tools
-      const allTools: CombinedTool[] = [...mcpTools, ...memoryTools];
-      console.log(`📋 Total tools available (${allTools.length} tools):`, allTools.map(t =>
-        isMCPTool(t) ? t.name : t.function.name
-      ));
-
-      if (!allTools || allTools.length === 0) {
-        console.log(`⚠️ No MCP tools available for provider: ${provider}`);
-        return [];
-      }
-
-      let formattedTools: unknown[] = [];
-
-      // Format tools based on provider requirements
-      if (provider === 'openai' || provider === 'openrouter' || provider === 'requesty' ||
-          provider === 'mistral' || provider === 'deepseek' ||
-          provider === 'lmstudio' || provider === 'ollama' || provider === 'replicate') {
-        // OpenAI-compatible format (most providers use this)
-        formattedTools = allTools.map(tool => {
-          if (isMemoryToolType(tool)) {
-            // Memory tool format (already in OpenAI format)
-            return tool;
-          } else {
-            // MCP tool format (needs conversion)
-            return {
-              type: 'function',
-              function: {
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.inputSchema || {
-                  type: 'object',
-                  properties: {},
-                  required: []
-                }
-              }
-            };
-          }
-        });
-        console.log(`🔧 Formatted ${formattedTools.length} tools for OpenAI-compatible provider (${provider}):`, formattedTools);
-      } else if (provider === 'gemini') {
-        // Gemini uses provider-specific formatting - pass raw tools
-        formattedTools = allTools;
-        console.log(`🔧 Passing ${formattedTools.length} raw tools to Gemini provider for formatting`);
-      } else if (provider === 'anthropic') {
-        // Anthropic format with name length validation (max 64 characters)
-        formattedTools = allTools.map(tool => {
-          const originalName = isMCPTool(tool) ? tool.name : tool.function.name;
-          const truncatedName = originalName.length > 64
-            ? this.truncateToolNameForAnthropic(originalName)
-            : originalName;
-
-          if (originalName !== truncatedName) {
-            console.warn(`⚠️ Truncated tool name for Anthropic: "${originalName}" -> "${truncatedName}"`);
-          }
-
-          return {
-            name: truncatedName,
-            description: isMCPTool(tool) ? tool.description : tool.function.description,
-            input_schema: isMCPTool(tool) ? tool.inputSchema : tool.function.parameters || {
+      // Convert all tools to a unified format that providers can handle
+      const unifiedTools: any[] = [];
+      
+      // Convert MCP tools to unified format
+      for (const tool of mcpTools) {
+        unifiedTools.push({
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema || {
               type: 'object',
               properties: {},
               required: []
             }
-          };
+          },
+          serverId: tool.serverId // Keep server ID for execution routing
         });
-        console.log(`🔧 Formatted ${formattedTools.length} tools for Anthropic:`, formattedTools);
-      } else {
-        console.log(`⚠️ No tool formatting implemented for provider: ${provider}`);
+      }
+      
+      // Add memory tools (already in unified format)
+      unifiedTools.push(...memoryTools);
+      
+      console.log(`📋 Total unified tools available (${unifiedTools.length} tools):`, unifiedTools.map(t => t.function.name));
+
+      if (!unifiedTools || unifiedTools.length === 0) {
+        console.log(`⚠️ No tools available for provider: ${provider}`);
+        return [];
       }
 
-      console.log(`✅ Returning ${formattedTools.length} formatted tools for ${provider}`);
-      return formattedTools;
+      // Return unified tools - all in the same format for consistent provider handling
+      console.log(`✅ Returning ${unifiedTools.length} unified tools for ${provider} to format`);
+      return unifiedTools;
     } catch (error) {
       console.error('❌ Failed to get MCP tools:', error);
       return [];
@@ -605,8 +566,34 @@ class LLMService {
 
   private async getToolsFromEnabledServers(): Promise<MCPTool[]> {
     try {
+      console.log(`🔍 Attempting to get MCP tools from enabled servers...`);
+      
+      // First, check if we can get the server list
+      const servers = await mcpService.getServers();
+      console.log(`📊 MCP servers found: ${servers.length}`);
+      const enabledServers = servers.filter(s => s.enabled);
+      console.log(`✅ Enabled MCP servers: ${enabledServers.length}`, enabledServers.map(s => s.name));
+      
+      // Check if servers need to be connected first
+      console.log(`🔗 Attempting to connect to enabled MCP servers...`);
+      for (const server of enabledServers) {
+        try {
+          const connected = await mcpService.connectServer(server.id);
+          console.log(`🔗 Server ${server.name} (${server.id}) connection result:`, connected);
+        } catch (connectError) {
+          console.error(`❌ Failed to connect server ${server.name}:`, connectError);
+        }
+      }
+      
+      // Now try to get tools
       const mcpTools = await mcpService.getAvailableTools();
       console.log(`📋 Raw MCP tools from service (${mcpTools.length} tools):`, mcpTools);
+      
+      if (mcpTools.length === 0) {
+        console.warn(`⚠️ No MCP tools retrieved despite enabled servers. This indicates an MCP connectivity issue.`);
+        console.warn(`⚠️ Possible causes: 1) Servers not connected, 2) Tool extraction failing, 3) IPC communication broken`);
+      }
+      
       return mcpTools;
     } catch (error) {
       console.error(`❌ Failed to get tools from enabled servers:`, error);

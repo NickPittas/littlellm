@@ -218,10 +218,8 @@ export class DeepSeekProvider extends BaseProvider {
   }
 
   // Private helper methods
-  private async getMCPToolsForProvider(providerId: string, settings: LLMSettings): Promise<unknown[]> {
-    // This will be injected by the main service
-    return [];
-  }
+  // This method is injected by the ProviderAdapter from the LLMService
+  private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
 
   private async handleStreamResponse(
     response: Response,
@@ -285,24 +283,71 @@ export class DeepSeekProvider extends BaseProvider {
     const choice = data.choices[0];
     const message = choice.message;
 
-    // Handle tool calls (same as OpenAI format)
+    // Handle tool calls (same as OpenAI format) - execute immediately like Anthropic
     if (message.tool_calls && message.tool_calls.length > 0) {
       console.log(`🔧 DeepSeek response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
-      // Tool execution will be handled by the main service
-      return {
-        content: message.content || '',
-        usage: data.usage ? {
-          promptTokens: data.usage.prompt_tokens,
-          completionTokens: data.usage.completion_tokens,
-          totalTokens: data.usage.total_tokens
-        } : undefined,
-        toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
-          id: tc.id,
-          name: tc.function.name,
-          arguments: JSON.parse(tc.function.arguments)
-        }))
-      };
+      // Check if we have the parallel execution method injected
+      if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
+        console.log(`🚀 Executing ${message.tool_calls.length} DeepSeek tools immediately`);
+        
+        // Format tool calls for execution
+        const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
+          id: toolCall.id,
+          name: toolCall.function.name,
+          arguments: JSON.parse(toolCall.function.arguments)
+        }));
+
+        // Execute tools in parallel immediately
+        const executeMultipleToolsParallel = (this as any).executeMultipleToolsParallel;
+        const summarizeToolResultsForModel = (this as any).summarizeToolResultsForModel;
+        
+        try {
+          const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'deepseek');
+          console.log(`✅ DeepSeek tool execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
+          
+          // Get tool results summary for the model
+          const toolSummary = summarizeToolResultsForModel(parallelResults);
+          
+          // Return response with tool results included
+          return {
+            content: (message.content || '') + '\n\n' + toolSummary,
+            usage: data.usage ? {
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens
+            } : undefined
+          };
+        } catch (error) {
+          console.error(`❌ DeepSeek tool execution failed:`, error);
+          // Fall back to returning tool calls for external handling
+          return {
+            content: message.content || '',
+            usage: data.usage ? {
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens
+            } : undefined,
+            toolCalls: toolCallsForExecution
+          };
+        }
+      } else {
+        console.warn(`⚠️ DeepSeek provider missing tool execution methods - falling back to external handling`);
+        // Fall back to external handling if methods not injected
+        return {
+          content: message.content || '',
+          usage: data.usage ? {
+            promptTokens: data.usage.prompt_tokens,
+            completionTokens: data.usage.completion_tokens,
+            totalTokens: data.usage.total_tokens
+          } : undefined,
+          toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
+            id: tc.id,
+            name: tc.function.name,
+            arguments: JSON.parse(tc.function.arguments)
+          }))
+        };
+      }
     }
 
     return {

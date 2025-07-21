@@ -44,6 +44,55 @@ export class AnthropicProvider extends BaseProvider {
 
   private _getMCPToolsForProvider?: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
 
+  // Anthropic-specific tool calling methods
+  private async getAnthropicTools(settings: LLMSettings): Promise<unknown[]> {
+    try {
+      console.log(`🔍 Getting tools for Anthropic provider`);
+      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
+
+      // Check if tool calling is disabled
+      if (settings?.toolCallingEnabled === false) {
+        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
+        return [];
+      }
+
+      // Get raw tools from the centralized service
+      const rawTools = await this._getMCPToolsForProvider!('anthropic', settings);
+      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: any) => t.function?.name));
+
+      // Format tools specifically for Anthropic
+      const formattedTools = this.formatToolsForAnthropic(rawTools);
+      console.log(`🔧 Formatted ${formattedTools.length} tools for Anthropic`);
+
+      return formattedTools;
+    } catch (error) {
+      console.error('❌ Failed to get Anthropic tools:', error);
+      return [];
+    }
+  }
+
+  private formatToolsForAnthropic(rawTools: any[]): unknown[] {
+    return rawTools.map(tool => {
+      // All tools now come in unified format with type: 'function' and function object
+      if (tool.type === 'function' && tool.function) {
+        // Convert to Anthropic's custom tool format
+        return {
+          type: 'custom',
+          name: tool.function.name || 'unknown_tool',
+          description: tool.function.description || 'No description',
+          input_schema: tool.function.parameters || {
+            type: 'object',
+            properties: {},
+            required: []
+          }
+        };
+      }
+      
+      console.warn(`⚠️ Skipping invalid tool (not in unified format):`, tool);
+      return null;
+    }).filter(tool => tool !== null);
+  }
+
   // Method to inject dependencies from main service
   injectDependencies(dependencies: {
     executeMultipleToolsParallel?: (
@@ -202,16 +251,14 @@ export class AnthropicProvider extends BaseProvider {
       messages.push({ role: 'user', content });
     }
 
-    // Get MCP tools for Anthropic
-    console.log('🔍 [DEBUG] Getting MCP tools for Anthropic...');
-    const mcpTools = this._getMCPToolsForProvider ? await this._getMCPToolsForProvider('anthropic', settings) : [];
-    console.log('🔍 [DEBUG] MCP tools result:', { count: mcpTools.length, tools: mcpTools });
+    // Get Anthropic-specific formatted tools
+    const anthropicTools = await this.getAnthropicTools(settings);
 
     // Build enhanced system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
-    if (mcpTools.length > 0) {
-      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mcpTools as ToolObject[]);
-      systemPrompt += `\n\n## Available Tools Summary\n\nYou have access to ${mcpTools.length} specialized tools. Use them as needed to accomplish user objectives.`;
+    if (anthropicTools.length > 0) {
+      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, anthropicTools as ToolObject[]);
+      systemPrompt += `\n\n## Available Tools Summary\n\nYou have access to ${anthropicTools.length} specialized tools. Use them as needed to accomplish user objectives.`;
     }
 
     const requestBody: Record<string, unknown> = {
@@ -224,8 +271,8 @@ export class AnthropicProvider extends BaseProvider {
     };
 
     // Add tools if available
-    if (mcpTools.length > 0) {
-      requestBody.tools = mcpTools;
+    if (anthropicTools.length > 0) {
+      requestBody.tools = anthropicTools;
 
       // For Claude 3.7 Sonnet, encourage parallel tool use
       if (settings.model.includes('claude-3-7-sonnet') || settings.model.includes('claude-sonnet-3-7')) {
@@ -235,13 +282,13 @@ export class AnthropicProvider extends BaseProvider {
       // Use auto tool choice to allow Claude to decide when to use tools
       requestBody.tool_choice = { type: "auto" };
 
-      console.log(`🚀 Anthropic API call with ${mcpTools.length} tools:`, {
+      console.log(`🚀 Anthropic API call with ${anthropicTools.length} tools:`, {
         model: settings.model,
-        toolCount: mcpTools.length,
+        toolCount: anthropicTools.length,
         toolChoice: requestBody.tool_choice
       });
     } else {
-      console.log(`🚀 Anthropic API call without tools (no MCP tools available)`);
+      console.log(`🚀 Anthropic API call without tools (no tools available)`);
     }
 
     console.log('🔍 Anthropic request body:', JSON.stringify(requestBody, null, 2));
