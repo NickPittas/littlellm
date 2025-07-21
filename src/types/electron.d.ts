@@ -135,6 +135,9 @@ export interface ElectronAPI {
   onHistoryItemDeleted: (callback: (conversationId: string) => void) => void;
   onClearAllHistory: (callback: () => void) => void;
 
+  // External link operations
+  openExternalLink: (url: string) => Promise<{ success: boolean; error?: string }>;
+
   // State file operations
   getStateFile: (filename: string) => Promise<unknown>;
   saveStateFile: (filename: string, data: unknown) => Promise<boolean>;

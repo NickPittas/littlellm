@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Button } from './ui/button';
+import { parseTextWithLinks } from '../lib/linkParser';
 
 interface UserMessageProps {
   content: string;
@@ -65,7 +66,7 @@ export function UserMessage({ content, className = '' }: UserMessageProps) {
           maxWidth: '100%'
         } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
-        {content}
+        {parseTextWithLinks(content)}
       </div>
     </div>
   );

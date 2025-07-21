@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Brain, Copy, Check, Wrench } from 'lucide-react';
 import { Button } from './ui/button';
+import { parseTextWithLinks } from '../lib/linkParser';
 
 interface MessageWithThinkingProps {
   content: string;
@@ -318,7 +319,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                       maxWidth: '100%'
                     } as React.CSSProperties & { WebkitAppRegion?: string }}
                   >
-                    {thinkingText}
+                    {parseTextWithLinks(thinkingText)}
                   </div>
                 </div>
               ))}
@@ -465,7 +466,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                                 maxWidth: '100%'
                               } as React.CSSProperties & { WebkitAppRegion?: string }}
                             >
-                              {tool.result || '(no result)'}
+                              {parseTextWithLinks(tool.result || '(no result)')}
                             </div>
                             {tool.status === 'failed' && (
                               <div className="mt-2 text-xs text-red-400/80">
@@ -489,7 +490,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                           maxWidth: '100%'
                         } as React.CSSProperties & { WebkitAppRegion?: string }}
                       >
-                        {toolText}
+                        {parseTextWithLinks(toolText)}
                       </div>
                     )}
                   </div>
@@ -602,7 +603,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
             maxWidth: '100%'
           } as React.CSSProperties & { WebkitAppRegion?: string }}
         >
-          {parsed.response}
+          {parseTextWithLinks(parsed.response)}
         </div>
       )}
 
