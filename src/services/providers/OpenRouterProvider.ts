@@ -14,6 +14,7 @@ import {
 import { FALLBACK_MODELS } from './constants';
 import { OPENROUTER_SYSTEM_PROMPT, generateOpenRouterToolPrompt } from './prompts/openrouter';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
+// import { RAGService } from '../RAGService'; // Moved to Electron main process, accessed via IPC
 
 export class OpenRouterProvider extends BaseProvider {
   readonly id = 'openrouter';
@@ -179,7 +180,7 @@ export class OpenRouterProvider extends BaseProvider {
     messages.push(...conversationHistory);
 
     if (typeof message === 'string') {
-      messages.push({ role: 'user', content: message });
+      messages.push({ role: 'user', content: message }); // RAG integration now handled in chatService
     } else if (Array.isArray(message)) {
       const userContent: Array<ContentItem> = [];
       for (const item of message) {
