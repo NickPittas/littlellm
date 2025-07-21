@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, Brain, Copy, Check, Wrench } from 'lucide-react';
 import { Button } from './ui/button';
-import { parseTextWithLinks } from '../lib/linkParser';
+import { parseTextWithContent } from '../lib/contentParser';
 
 interface MessageWithThinkingProps {
   content: string;
@@ -319,7 +319,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                       maxWidth: '100%'
                     } as React.CSSProperties & { WebkitAppRegion?: string }}
                   >
-                    {parseTextWithLinks(thinkingText)}
+                    {parseTextWithContent(thinkingText)}
                   </div>
                 </div>
               ))}
@@ -466,7 +466,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                                 maxWidth: '100%'
                               } as React.CSSProperties & { WebkitAppRegion?: string }}
                             >
-                              {parseTextWithLinks(tool.result || '(no result)')}
+                              {parseTextWithContent(tool.result || '(no result)')}
                             </div>
                             {tool.status === 'failed' && (
                               <div className="mt-2 text-xs text-red-400/80">
@@ -490,7 +490,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                           maxWidth: '100%'
                         } as React.CSSProperties & { WebkitAppRegion?: string }}
                       >
-                        {parseTextWithLinks(toolText)}
+                        {parseTextWithContent(toolText)}
                       </div>
                     )}
                   </div>
@@ -603,7 +603,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
             maxWidth: '100%'
           } as React.CSSProperties & { WebkitAppRegion?: string }}
         >
-          {parseTextWithLinks(parsed.response)}
+          {parseTextWithContent(parsed.response)}
         </div>
       )}
 
