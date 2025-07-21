@@ -17,14 +17,83 @@ import { OLLAMA_SYSTEM_PROMPT, generateOllamaToolPrompt } from './prompts/ollama
 export class OllamaProvider extends BaseProvider {
   readonly id = 'ollama';
   readonly name = 'Ollama (Local)';
+
+  // Cache for model tool support detection
+  private static modelToolSupportCache = new Map<string, boolean>();
+
   readonly capabilities: ProviderCapabilities = {
     supportsVision: true,
-    supportsTools: true,
+    supportsTools: true, // Dynamic: structured tools if supported, text-based fallback
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: undefined,
-    toolFormat: 'openai'
+    toolFormat: 'adaptive' // Adaptive: structured tools or text-based based on model
   };
+
+  // Check if a specific model supports structured tools
+  private async checkModelSupportsStructuredTools(model: string): Promise<boolean> {
+    // Check cache first
+    if (OllamaProvider.modelToolSupportCache.has(model)) {
+      const cached = OllamaProvider.modelToolSupportCache.get(model)!;
+      console.log(`🔍 Ollama: Using cached tool support for model "${model}": ${cached}`);
+      return cached;
+    }
+
+    console.log(`🔍 Ollama: Testing structured tool support for model "${model}"...`);
+
+    // Test with a simple tool call to detect support
+    try {
+      const testRequestBody = {
+        model: model,
+        messages: [{ role: 'user', content: 'Test message' }],
+        stream: false,
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'test_tool',
+            description: 'Test tool for capability detection',
+            parameters: {
+              type: 'object',
+              properties: {
+                test: { type: 'string', description: 'Test parameter' }
+              }
+            }
+          }
+        }]
+      };
+
+      const response = await fetch('http://192.168.100.5:11434/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(testRequestBody)
+      });
+
+      if (response.ok) {
+        // Model supports structured tools
+        console.log(`✅ Ollama: Model "${model}" supports structured tools`);
+        OllamaProvider.modelToolSupportCache.set(model, true);
+        return true;
+      } else {
+        const errorText = await response.text();
+        if (errorText.includes('does not support tools')) {
+          // Model explicitly doesn't support tools
+          console.log(`❌ Ollama: Model "${model}" does not support structured tools`);
+          OllamaProvider.modelToolSupportCache.set(model, false);
+          return false;
+        } else {
+          // Other error - assume no tool support to be safe
+          console.log(`⚠️ Ollama: Model "${model}" tool support unknown (error: ${errorText}), assuming no support`);
+          OllamaProvider.modelToolSupportCache.set(model, false);
+          return false;
+        }
+      }
+    } catch (error) {
+      // Network or other error - assume no tool support to be safe
+      console.log(`⚠️ Ollama: Failed to test tool support for model "${model}":`, error);
+      OllamaProvider.modelToolSupportCache.set(model, false);
+      return false;
+    }
+  }
 
   // Ollama-specific tool calling methods
   private async getOllamaTools(settings: LLMSettings): Promise<unknown[]> {
@@ -112,14 +181,30 @@ export class OllamaProvider extends BaseProvider {
 
     const messages = [];
 
-    // Get Ollama-specific formatted tools
+    // Get tools for text-based descriptions (Ollama doesn't support structured tools)
     const ollamaTools = await this.getOllamaTools(settings);
 
-    // Build system prompt with tool instructions if tools are available
-    let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
+    // Use behavioral system prompt + tool descriptions (text-based approach)
+    // Check for meaningful system prompt, not just empty string or generic default
+    const hasCustomSystemPrompt = settings.systemPrompt &&
+      settings.systemPrompt.trim() &&
+      settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
+
+    let systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
+
+    // Add tool descriptions to system prompt (Ollama doesn't support structured tools)
     if (ollamaTools.length > 0) {
       systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, ollamaTools as ToolObject[]);
+      console.log(`🔧 Ollama enhanced system prompt with ${ollamaTools.length} text-based tool descriptions`);
     }
+
+    console.log(`🔍 Ollama system prompt source:`, {
+      hasCustom: hasCustomSystemPrompt,
+      usingCustom: hasCustomSystemPrompt,
+      promptLength: systemPrompt?.length || 0,
+      promptStart: systemPrompt?.substring(0, 100) + '...',
+      toolsIncluded: ollamaTools.length > 0
+    });
 
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
@@ -229,25 +314,22 @@ export class OllamaProvider extends BaseProvider {
       stream: !!onStream
     };
 
-    // Check if model supports tools before adding them
-    const supportsTools = this.modelSupportsTools(settings.model);
-    console.log(`🔍 Ollama: Model "${settings.model}" supports tools: ${supportsTools}`);
+    // Check if model supports structured tools
+    const supportsStructuredTools = await this.checkModelSupportsStructuredTools(settings.model);
 
-    // Only add tools if model supports them AND we have tools available
-    if (supportsTools && ollamaTools.length > 0) {
-      requestBody.tools = ollamaTools;
-      requestBody.tool_choice = 'auto';
-      console.log(`🚀 Ollama API call with ${ollamaTools.length} tools:`, {
+    if (supportsStructuredTools && ollamaTools.length > 0) {
+      console.log(`🚀 Ollama API call with structured tools:`, {
         model: settings.model,
-        toolCount: ollamaTools.length
+        toolCount: ollamaTools.length,
+        note: 'Model supports structured tools - using tools parameter'
       });
-      console.log(`🔍 Ollama: Full request body:`, JSON.stringify(requestBody, null, 2));
     } else {
-      if (!supportsTools) {
-        console.log(`🚀 Ollama API call without tools (model "${settings.model}" doesn't support tools)`);
-      } else {
-        console.log(`🚀 Ollama API call without tools (no tools available)`);
-      }
+      console.log(`🚀 Ollama API call with text-based tools:`, {
+        model: settings.model,
+        toolDescriptionsInSystemPrompt: ollamaTools.length > 0,
+        toolCount: ollamaTools.length,
+        note: 'Model does not support structured tools - using text descriptions in system prompt'
+      });
     }
 
     // Use Ollama's native /api/chat endpoint (not OpenAI-compatible)
@@ -255,16 +337,17 @@ export class OllamaProvider extends BaseProvider {
     const endpoint = `${ollamaUrl}/api/chat`;
     console.log(`🔍 Ollama: Using native API URL: ${endpoint}`);
 
-    // Convert to Ollama's native format
+    // Convert to Ollama's native format with dynamic tool support
     const ollamaRequestBody = {
       model: requestBody.model,
       messages: requestBody.messages,
       stream: requestBody.stream,
-      tools: requestBody.tools,
       options: {
         temperature: requestBody.temperature,
         num_predict: requestBody.max_tokens
-      }
+      },
+      // Include structured tools only if model supports them
+      ...(supportsStructuredTools && ollamaTools.length > 0 && { tools: ollamaTools })
     };
 
     console.log(`🔍 Ollama: Native request body:`, JSON.stringify(ollamaRequestBody, null, 2));
@@ -483,8 +566,10 @@ export class OllamaProvider extends BaseProvider {
     let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
     let toolCalls: Array<{ id: string; function: { name: string; arguments: string } }> = [];
     let chunkCount = 0;
+    let streamingComplete = false;
 
     console.log('🔍 Ollama: Starting to process streaming response...');
+    console.log('🔍 Ollama: IMPORTANT - Tool execution will only happen AFTER streaming is complete');
 
     if (response.body) {
       const reader = response.body.getReader();
@@ -494,7 +579,9 @@ export class OllamaProvider extends BaseProvider {
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
+            streamingComplete = true;
             console.log(`🔍 Ollama: Stream ended. Total chunks processed: ${chunkCount}`);
+            console.log(`🔍 Ollama: Streaming is now COMPLETE - ready for tool processing`);
             break;
           }
 
@@ -578,17 +665,28 @@ export class OllamaProvider extends BaseProvider {
       }
     }
 
+    // IMPORTANT: Verify streaming is complete before tool execution
+    if (!streamingComplete) {
+      console.error(`❌ Ollama: CRITICAL ERROR - Attempting tool execution before streaming is complete!`);
+      throw new Error('Tool execution attempted before streaming completion');
+    }
+
+    console.log(`✅ Ollama: Streaming is CONFIRMED COMPLETE. Processing tool calls...`);
+    console.log(`🔍 Ollama: Final content length: ${fullContent.length} characters`);
+    console.log(`🔍 Ollama: Total chunks processed: ${chunkCount}`);
+
     // If we have tool calls, execute them and make a follow-up call
     if (toolCalls.length > 0) {
-      console.log(`🔧 Ollama found ${toolCalls.length} native tool calls`);
+      console.log(`🔧 Ollama found ${toolCalls.length} native tool calls AFTER streaming completed`);
       console.log(`🔧 Ollama tool calls:`, toolCalls);
 
       // Stream any initial content first
       if (fullContent && typeof onStream === 'function') {
-        console.log(`🔄 Ollama: Streaming initial content before tool execution: "${fullContent}"`);
+        console.log(`🔄 Ollama: All content already streamed during response. Content: "${fullContent.substring(0, 200)}..."`);
         // Content was already streamed during parsing, no need to stream again
       }
 
+      console.log(`🚀 Ollama: Now executing tools AFTER complete streaming...`);
       return this.executeNativeToolCalls(toolCalls, fullContent, usage, settings, provider, conversationHistory, onStream);
     }
 
@@ -705,20 +803,68 @@ export class OllamaProvider extends BaseProvider {
         
         // Get tool results summary for the model
         const toolSummary = summarizeToolResultsForModel(parallelResults);
-        
+
         // Stream the tool results to user
         onStream('\n\n' + toolSummary);
-        
-        // Return response with tool results included
-        return {
-          content: originalContent + '\n\n' + toolSummary,
-          usage: usage ? {
-            promptTokens: usage.promptTokens || 0,
-            completionTokens: usage.completionTokens || 0,
-            totalTokens: usage.totalTokens || 0
-          } : undefined,
-          toolCalls: toolCallsForExecution
-        };
+
+        // Make follow-up call to get model's response based on tool results
+        console.log(`🔄 Making Ollama follow-up call to process tool results...`);
+
+        try {
+          // Build follow-up prompt with tool results
+          const toolResultsText = parallelResults.map((tr: any) =>
+            `Tool: ${tr.name}\nResult: ${tr.result}\n`
+          ).join('\n');
+
+          const followUpPrompt = `Based on the tool results below, please provide a helpful response to the user's question.
+
+Tool Results:
+${toolResultsText}
+
+Please integrate these results into a natural, helpful response.`;
+
+          // Build follow-up messages
+          const followUpMessages = [
+            ...conversationHistory,
+            { role: 'user', content: followUpPrompt }
+          ];
+
+          const followUpResponse = await this.makeDirectFollowUpCall(
+            followUpMessages,
+            settings,
+            onStream,
+            true // enableTools for continued agentic behavior
+          );
+
+          // Combine original content + tool summary + follow-up response
+          const combinedContent = originalContent + '\n\n' + toolSummary + '\n\n' + followUpResponse.content;
+
+          return {
+            content: combinedContent,
+            usage: followUpResponse.usage ? {
+              promptTokens: (usage?.promptTokens || 0) + (followUpResponse.usage.promptTokens || 0),
+              completionTokens: (usage?.completionTokens || 0) + (followUpResponse.usage.completionTokens || 0),
+              totalTokens: (usage?.totalTokens || 0) + (followUpResponse.usage.totalTokens || 0)
+            } : usage ? {
+              promptTokens: usage.promptTokens || 0,
+              completionTokens: usage.completionTokens || 0,
+              totalTokens: usage.totalTokens || 0
+            } : undefined,
+            toolCalls: toolCallsForExecution
+          };
+        } catch (followUpError) {
+          console.error(`❌ Ollama follow-up call failed:`, followUpError);
+          // Fall back to returning tool summary only
+          return {
+            content: originalContent + '\n\n' + toolSummary,
+            usage: usage ? {
+              promptTokens: usage.promptTokens || 0,
+              completionTokens: usage.completionTokens || 0,
+              totalTokens: usage.totalTokens || 0
+            } : undefined,
+            toolCalls: toolCallsForExecution
+          };
+        }
       } catch (error) {
         console.error(`❌ Ollama parallel tool execution failed, falling back to sequential:`, error);
         // Fall back to sequential execution below
@@ -795,11 +941,12 @@ Please provide a natural, helpful response based on the tool results.`;
       { role: 'user', content: followUpPrompt }
     ];
 
-    // Make a direct API call without tool calling for the follow-up
+    // Make a follow-up call with tools enabled for agentic behavior
     const followUpResponse = await this.makeDirectFollowUpCall(
       followUpMessages,
       settings,
-      onStream
+      onStream,
+      true // Enable tools for continued agentic behavior
     );
 
     // Create tool execution content for UI display (like LM Studio)
@@ -859,7 +1006,8 @@ Result: ${tr.result}`;
   private async makeDirectFollowUpCall(
     messages: Array<{role: string, content: string | Array<ContentItem>}>,
     settings: LLMSettings,
-    onStream: (chunk: string) => void
+    onStream: (chunk: string) => void,
+    enableTools: boolean = true
   ): Promise<LLMResponse> {
     const baseUrl = settings.baseUrl || 'http://localhost:11434';
     const ollamaUrl = baseUrl.replace('/v1', '');
@@ -900,6 +1048,45 @@ Result: ${tr.result}`;
       }
     });
 
+    // Get tools for text-based descriptions (Ollama doesn't support structured tools)
+    let tools: unknown[] = [];
+    if (enableTools && this.getMCPToolsForProvider) {
+      try {
+        tools = await this.getMCPToolsForProvider('ollama', settings);
+        console.log(`🔧 Ollama follow-up call with ${tools.length} text-based tools for continued agentic behavior`);
+        console.log(`🔧 Ollama follow-up: Tools will be included in system prompt, NOT as structured tools parameter`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to get tools for Ollama follow-up call:`, error);
+      }
+    }
+
+    // Update system message with optimized prompt if tools are available
+    if (enableTools && tools.length > 0) {
+      // Use condensed prompt for follow-up calls to avoid token limits
+      const toolNames = tools.map((tool: any) => tool.function?.name || tool.name).filter(Boolean);
+      const followUpPrompt = `You are an AI assistant with access to ${tools.length} tools. Based on the tool results provided, continue the conversation naturally. Use additional tools if needed.
+
+Available tools: ${toolNames.join(', ')}
+
+Use structured JSON for tool calls:
+\`\`\`json
+{"tool_call": {"name": "tool_name", "arguments": {"param": "value"}}}
+\`\`\`
+
+Continue based on the tool results above. Call additional tools if needed for a comprehensive response.`;
+
+      // Find and update system message, or add one if it doesn't exist
+      const systemMessageIndex = ollamaMessages.findIndex(msg => msg.role === 'system');
+      if (systemMessageIndex >= 0) {
+        ollamaMessages[systemMessageIndex].content = followUpPrompt;
+      } else {
+        ollamaMessages.unshift({ role: 'system', content: followUpPrompt });
+      }
+    }
+
+    // Check if model supports structured tools for follow-up call
+    const supportsStructuredTools = await this.checkModelSupportsStructuredTools(settings.model);
+
     const requestBody = {
       model: settings.model,
       messages: ollamaMessages,
@@ -907,11 +1094,19 @@ Result: ${tr.result}`;
       options: {
         temperature: settings.temperature,
         num_predict: settings.maxTokens
-      }
-      // Note: NO tools parameter for follow-up calls
+      },
+      // Include structured tools only if model supports them
+      ...(supportsStructuredTools && enableTools && tools.length > 0 && { tools })
     };
 
-    console.log(`🔄 Ollama making direct follow-up call without tools to: ${endpoint}`);
+    console.log(`🔧 Ollama follow-up call using ${supportsStructuredTools ? 'structured' : 'text-based'} tools`);
+    if (supportsStructuredTools && tools.length > 0) {
+      console.log(`🔧 Ollama follow-up: Including ${tools.length} structured tools in request`);
+    } else if (tools.length > 0) {
+      console.log(`🔧 Ollama follow-up: Tools included as text descriptions in system prompt`);
+    }
+
+    console.log(`🔄 Ollama making follow-up call ${enableTools ? 'with' : 'without'} tools to: ${endpoint}`);
     console.log(`🔍 Ollama direct follow-up request body:`, JSON.stringify(requestBody, null, 2));
 
     const response = await fetch(endpoint, {
@@ -976,6 +1171,24 @@ Result: ${tr.result}`;
         }
       }
 
+      // Check for additional tool calls in the follow-up response (agentic behavior)
+      if (enableTools && fullContent) {
+        const toolCalls = this.parseToolCallsFromText(fullContent);
+        if (toolCalls.length > 0) {
+          console.log(`🔄 Ollama follow-up response contains ${toolCalls.length} additional tool calls - continuing agentic workflow`);
+          // Recursively execute additional tool calls
+          return this.executeTextBasedTools(
+            toolCalls,
+            fullContent,
+            usage,
+            settings,
+            { id: 'ollama', name: 'Ollama' } as LLMProvider,
+            messages,
+            onStream
+          );
+        }
+      }
+
       return {
         content: fullContent,
         usage: usage ? {
@@ -989,8 +1202,31 @@ Result: ${tr.result}`;
       const data = await response.json();
       const message = data.message;
 
+      // Check for additional tool calls in the follow-up response (agentic behavior)
+      const content = message?.content || '';
+      if (enableTools && content) {
+        const toolCalls = this.parseToolCallsFromText(content);
+        if (toolCalls.length > 0) {
+          console.log(`🔄 Ollama follow-up response contains ${toolCalls.length} additional tool calls - continuing agentic workflow`);
+          // Recursively execute additional tool calls
+          return this.executeTextBasedTools(
+            toolCalls,
+            content,
+            data.total_duration ? {
+              promptTokens: data.prompt_eval_count || 0,
+              completionTokens: data.eval_count || 0,
+              totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
+            } : undefined,
+            settings,
+            { id: 'ollama', name: 'Ollama' } as LLMProvider,
+            messages,
+            onStream
+          );
+        }
+      }
+
       return {
-        content: message?.content || '',
+        content: content,
         usage: data.total_duration ? {
           promptTokens: data.prompt_eval_count || 0,
           completionTokens: data.eval_count || 0,

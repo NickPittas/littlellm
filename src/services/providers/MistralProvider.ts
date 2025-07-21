@@ -115,11 +115,21 @@ export class MistralProvider extends BaseProvider {
     // Get Mistral-specific formatted tools
     const mistralTools = await this.getMistralTools(settings);
 
-    // Build enhanced system prompt with tool instructions
-    let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
-    if (mistralTools.length > 0) {
-      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mistralTools as ToolObject[]);
-    }
+    // Use behavioral system prompt only (no tool descriptions)
+    // Tools are sent separately in the tools parameter (OpenAI-compatible)
+    // Check for meaningful system prompt, not just empty string or generic default
+    const hasCustomSystemPrompt = settings.systemPrompt &&
+      settings.systemPrompt.trim() &&
+      settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
+
+    const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
+
+    console.log(`🔍 Mistral system prompt source:`, {
+      hasCustom: hasCustomSystemPrompt,
+      usingCustom: hasCustomSystemPrompt,
+      promptLength: systemPrompt?.length || 0,
+      promptStart: systemPrompt?.substring(0, 100) + '...'
+    });
 
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
@@ -648,12 +658,21 @@ export class MistralProvider extends BaseProvider {
 
     console.log(`✅ Mistral: All ${mistralToolCalls.length} tool calls have matching results`);
 
+    // Get tools for continued agentic behavior in follow-up call
+    const followUpTools = await this.getMistralTools(settings);
+    console.log(`🔄 Making Mistral follow-up call with ${followUpTools.length} tools available for continued agentic behavior`);
+
     const followUpRequestBody = {
       model: settings.model,
       messages: followUpMessages,
       temperature: settings.temperature,
       max_tokens: settings.maxTokens,
-      stream: false
+      stream: false,
+      // Include tools to allow continued agentic behavior
+      ...(followUpTools.length > 0 && {
+        tools: followUpTools,
+        tool_choice: 'auto'
+      })
     };
 
     console.log(`🔧 Mistral follow-up request body:`, JSON.stringify(followUpRequestBody, null, 2));

@@ -36,33 +36,25 @@ export class GeminiProvider extends BaseProvider {
   ): Promise<LLMResponse> {
     console.log('🧠 Gemini: Integrating memory context');
 
-    // Build system prompt with memory context (Gemini-specific integration)
-    let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
-    console.log('🧠 Gemini original system prompt length:', systemPrompt.length);
+    // Use behavioral system prompt only (no tool descriptions)
+    // System instruction will be set in request body, not as user/model messages
+    // Check for meaningful system prompt, not just empty string or generic default
+    const hasCustomSystemPrompt = settings.systemPrompt &&
+      settings.systemPrompt.trim() &&
+      settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
 
-    // Add memory context if available (Gemini-specific format)
-    if (settings.memoryContext && settings.memoryContext.relevantMemories && settings.memoryContext.relevantMemories.length > 0) {
-      console.log('🧠 Gemini integrating memory context with', settings.memoryContext.relevantMemories.length, 'memories');
-      // Memory context integration would be handled by the main service
-      console.log('🧠 Gemini system prompt enhanced with memory:', systemPrompt.length, 'characters');
-      console.log('🧠 Gemini using', settings.memoryContext.relevantMemories.length, 'memories');
-    } else {
-      console.log('🧠 Gemini: No memory context to integrate');
-    }
+    const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
+
+    console.log(`🔍 Gemini system prompt source:`, {
+      hasCustom: hasCustomSystemPrompt,
+      usingCustom: hasCustomSystemPrompt,
+      promptLength: systemPrompt?.length || 0,
+      promptStart: systemPrompt?.substring(0, 100) + '...'
+    });
 
     const contents = [];
 
-    // Add system prompt as first user message (Gemini doesn't have system role)
-    if (systemPrompt) {
-      contents.push({
-        role: 'user',
-        parts: [{ text: systemPrompt }]
-      });
-      contents.push({
-        role: 'model',
-        parts: [{ text: 'I understand. I will follow these instructions and use the memory context provided.' }]
-      });
-    }
+    // NO system prompt in contents - it goes in systemInstruction parameter
 
     // Add conversation history
     for (const msg of conversationHistory) {
@@ -162,10 +154,15 @@ export class GeminiProvider extends BaseProvider {
       console.log(`🚀 Gemini API call without tools (no MCP tools available)`);
     }
 
-    if (settings.systemPrompt) {
+    // Set system instruction (behavioral prompt only - no tool descriptions)
+    if (systemPrompt) {
       requestBody.system_instruction = {
-        parts: [{ text: settings.systemPrompt }]
+        parts: [{ text: systemPrompt }]
       };
+      console.log(`🔧 Gemini system instruction set:`, {
+        length: systemPrompt.length,
+        preview: systemPrompt.substring(0, 100) + '...'
+      });
     }
 
     console.log('🔍 Gemini request body:', JSON.stringify(requestBody, null, 2));

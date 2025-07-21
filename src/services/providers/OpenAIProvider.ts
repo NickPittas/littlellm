@@ -42,30 +42,65 @@ export class OpenAIProvider extends BaseProvider {
     signal?: AbortSignal,
     conversationId?: string
   ): Promise<LLMResponse> {
+    // Smart routing: Use Assistants API for file uploads, Chat Completions API for everything else
+    const hasFileUploads = this.hasDocumentUploads(message);
+
+    if (hasFileUploads) {
+      console.log('🔧 OpenAI: Using Assistants API for file upload handling');
+      return this.sendMessageWithAssistants(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+    } else {
+      console.log('🔧 OpenAI: Using Chat Completions API for fast tool calling');
+      return this.sendMessageWithChatCompletions(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+    }
+  }
+
+  private hasDocumentUploads(message: MessageContent): boolean {
+    console.log(`🔍 OpenAI checking for file uploads in message:`, {
+      isArray: Array.isArray(message),
+      messageType: typeof message,
+      messageContent: Array.isArray(message) ? message.map(item => ({
+        type: item.type,
+        hasFile: !!(item as any).file,
+        hasDocument: !!(item as any).document,
+        hasAttachment: !!(item as any).attachment
+      })) : 'not array'
+    });
+
+    if (Array.isArray(message)) {
+      const hasFiles = message.some(item =>
+        item.type === 'document' ||
+        item.type === 'file' ||
+        item.type === 'attachment' ||
+        (item as any).file ||
+        (item as any).document ||
+        (item as any).attachment
+      );
+
+      console.log(`🔍 OpenAI file detection result:`, { hasFiles });
+      return hasFiles;
+    }
+
+    // Check if message has file properties (legacy format)
+    const hasLegacyFiles = !!(message as any).files || !!(message as any).attachments;
+    console.log(`🔍 OpenAI legacy file detection result:`, { hasLegacyFiles });
+    return hasLegacyFiles;
+  }
+
+  private async sendMessageWithAssistants(
+    message: MessageContent,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal,
+    conversationId?: string
+  ): Promise<LLMResponse> {
     // Initialize file service if not already done
     if (!this.fileService && settings.apiKey) {
       this.fileService = new OpenAIFileService(settings.apiKey, provider.baseUrl);
     }
-    const messages = [];
 
-    // Get MCP tools for this provider first
-    const mcpTools = await this.getMCPToolsForProvider('openai', settings);
-
-    // Build enhanced system prompt with tool instructions
-    let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
-    if (mcpTools.length > 0) {
-      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mcpTools as ToolObject[]);
-    }
-
-    if (systemPrompt) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-
-    // Add conversation history
-    messages.push(...conversationHistory);
-
-    // Add current message (handle both string and array formats)
-    // Assistants API workflow
+    // Assistants API workflow for file uploads
     if (!this.assistantId || !this.vectorStoreId) {
       const { assistantId, vectorStoreId } = await this.getOrCreateAssistantAndVectorStore(settings);
       this.assistantId = assistantId;
@@ -123,29 +158,453 @@ export class OpenAIProvider extends BaseProvider {
         totalTokens: run.usage?.total_tokens || 0
       }
     };
+  }
+
+  private async sendMessageWithChatCompletions(
+    message: MessageContent,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal,
+    conversationId?: string
+  ): Promise<LLMResponse> {
+    const messages = [];
+
+    // Get MCP tools for this provider first
+    const mcpTools = await this.getMCPToolsForProvider('openai', settings);
+
+    // Use behavioral system prompt only (no tool descriptions)
+    // Tools are sent separately in the tools parameter
+    // Check for meaningful system prompt, not just empty string or generic default
+    const hasCustomSystemPrompt = settings.systemPrompt &&
+      settings.systemPrompt.trim() &&
+      settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
+
+    const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
+
+    console.log(`🔍 OpenAI Chat Completions system prompt source:`, {
+      hasCustom: hasCustomSystemPrompt,
+      usingCustom: hasCustomSystemPrompt,
+      promptLength: systemPrompt?.length || 0,
+      promptStart: systemPrompt?.substring(0, 100) + '...'
+    });
+
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt });
+    }
+
+    // Add conversation history
+    messages.push(...conversationHistory);
+
+    // Add current message (handle both string and array formats)
+    if (typeof message === 'string') {
+      messages.push({ role: 'user', content: message });
+    } else if (Array.isArray(message)) {
+      // Handle ContentItem array format (images, text)
+      messages.push({ role: 'user', content: message });
+    } else {
+      // Handle legacy vision format (convert to OpenAI format)
+      const messageWithImages = message as { text: string; images: string[] };
+      const content: ContentItem[] = [{ type: 'text', text: messageWithImages.text }];
+
+      for (const imageUrl of messageWithImages.images) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: imageUrl }
+        });
+      }
+      messages.push({ role: 'user', content });
+    }
 
     const requestBody: Record<string, unknown> = {
       model: settings.model,
       messages,
       temperature: settings.temperature,
       max_tokens: settings.maxTokens,
-      stream: onStream && typeof onStream === 'function'
+      stream: !!onStream
     };
 
-    // Add tools if available and should be sent
-    const shouldSendTools = await this.shouldSendTools(conversationId, mcpTools as ToolObject[]);
-    if (mcpTools.length > 0 && shouldSendTools) {
+    // Add tools if available
+    if (mcpTools.length > 0) {
       requestBody.tools = mcpTools;
       requestBody.tool_choice = 'auto';
-      console.log(`🚀 OpenAI API call with ${mcpTools.length} tools:`, {
+      console.log(`🚀 OpenAI Chat Completions API call with ${mcpTools.length} tools:`, {
         model: settings.model,
         toolCount: mcpTools.length,
         conversationId: conversationId || 'none'
       });
     } else {
-      console.log(`🚀 OpenAI API call without tools (${mcpTools.length} available, shouldSend: ${shouldSendTools})`);
+      console.log(`🚀 OpenAI Chat Completions API call without tools`);
     }
 
+    console.log('🔍 OpenAI Chat Completions request body:', JSON.stringify(requestBody, null, 2));
+
+    const response = await fetch(`${provider.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`
+      },
+      body: JSON.stringify(requestBody),
+      signal
+    });
+
+    console.log('🔍 OpenAI Chat Completions response status:', response.status, response.statusText);
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('❌ OpenAI Chat Completions API error response:', error);
+
+      if (response.status === 401) {
+        throw new Error(`OpenAI API authentication failed. Please check your API key in Settings. Error: ${error}`);
+      }
+
+      // Check if it's a token limit error - fallback to Assistants API
+      if (response.status === 429 && error.includes('Request too large')) {
+        console.log('🔄 OpenAI Chat Completions request too large, falling back to Assistants API');
+        return this.sendMessageWithAssistants(message, settings, provider, conversationHistory, onStream, signal, conversationId);
+      }
+
+      throw new Error(`OpenAI API error: ${error}`);
+    }
+
+    if (onStream) {
+      return this.handleChatCompletionsStreamResponse(response, settings, provider, conversationHistory, onStream, signal);
+    } else {
+      return this.handleChatCompletionsNonStreamResponse(response, settings, conversationHistory);
+    }
+  }
+
+  private async handleChatCompletionsStreamResponse(
+    response: Response,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    onStream: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<LLMResponse> {
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    let fullContent = '';
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
+    const toolCalls: Array<{ id?: string; type?: string; function?: { name?: string; arguments?: string } }> = [];
+    let currentToolCall: { id?: string; type?: string; function?: { name?: string; arguments?: string } } | null = null;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = new TextDecoder().decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              const delta = parsed.choices?.[0]?.delta;
+
+              if (delta?.content) {
+                fullContent += delta.content;
+                onStream(delta.content);
+              }
+
+              // Handle tool calls in streaming
+              if (delta?.tool_calls) {
+                for (const toolCall of delta.tool_calls) {
+                  if (toolCall.index !== undefined) {
+                    if (!toolCalls[toolCall.index]) {
+                      toolCalls[toolCall.index] = { id: toolCall.id, type: toolCall.type };
+                    }
+                    if (toolCall.function) {
+                      if (!toolCalls[toolCall.index].function) {
+                        toolCalls[toolCall.index].function = { name: '', arguments: '' };
+                      }
+                      if (toolCall.function.name) {
+                        toolCalls[toolCall.index].function!.name += toolCall.function.name;
+                      }
+                      if (toolCall.function.arguments) {
+                        toolCalls[toolCall.index].function!.arguments += toolCall.function.arguments;
+                      }
+                    }
+                  }
+                }
+              }
+
+              if (parsed.usage) {
+                usage = parsed.usage;
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    // Handle tool calls if present
+    if (toolCalls.length > 0) {
+      console.log(`🔧 OpenAI Chat Completions detected ${toolCalls.length} tool calls`);
+
+      // Execute tools and make follow-up call
+      return this.executeToolsAndFollowUpChatCompletions(
+        toolCalls,
+        fullContent,
+        usage,
+        settings,
+        provider,
+        conversationHistory,
+        onStream,
+        signal
+      );
+    }
+
+    return {
+      content: fullContent,
+      usage: usage ? {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0
+      } : undefined
+    };
+  }
+
+  private async handleChatCompletionsNonStreamResponse(
+    response: Response,
+    settings: LLMSettings,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>
+  ): Promise<LLMResponse> {
+    const data = await response.json();
+    console.log('🔍 OpenAI Chat Completions raw response:', JSON.stringify(data, null, 2));
+
+    const message = data.choices?.[0]?.message;
+    const content = message?.content || '';
+    const usage = data.usage;
+
+    // Handle tool calls if present
+    if (message?.tool_calls && message.tool_calls.length > 0) {
+      console.log(`🔧 OpenAI Chat Completions detected ${message.tool_calls.length} tool calls`);
+      // For non-streaming, we would need to implement tool execution here
+      // For now, return the response as-is
+    }
+
+    return {
+      content,
+      usage: usage ? {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0
+      } : undefined,
+      toolCalls: message?.tool_calls?.map((tc: any) => ({
+        id: tc.id,
+        name: tc.function?.name,
+        arguments: JSON.parse(tc.function?.arguments || '{}')
+      }))
+    };
+  }
+
+  private async executeToolsAndFollowUpChatCompletions(
+    toolCalls: Array<{ id?: string; type?: string; function?: { name?: string; arguments?: string } }>,
+    initialContent: string,
+    initialUsage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined,
+    settings: LLMSettings,
+    provider: LLMProvider,
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    onStream: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<LLMResponse> {
+    console.log(`🚀 Executing ${toolCalls.length} OpenAI Chat Completions tools in parallel`);
+
+    // Check if parallel execution methods are available
+    if (!(this as any).executeMultipleToolsParallel) {
+      console.error('❌ executeMultipleToolsParallel method not available');
+      throw new Error('Tool execution method not available');
+    }
+
+    // Execute tools in parallel using the centralized service
+    const executeMultipleToolsParallel = (this as any).executeMultipleToolsParallel;
+    const parallelResults = await executeMultipleToolsParallel(
+      toolCalls.map(tc => ({
+        id: tc.id,
+        name: tc.function?.name || '',
+        arguments: JSON.parse(tc.function?.arguments || '{}')
+      })),
+      'openai'
+    );
+
+    console.log(`🏁 OpenAI Chat Completions tool execution completed: ${parallelResults.filter(r => r.success).length}/${parallelResults.length} successful`);
+
+    // Build messages for follow-up call
+    const userMessages = conversationHistory.filter(msg => msg.role !== 'system');
+
+    // Convert tool calls to OpenAI format for follow-up
+    const openaiToolCalls = toolCalls.map(tc => ({
+      id: tc.id || '',
+      type: 'function',
+      function: {
+        name: tc.function?.name || '',
+        arguments: tc.function?.arguments || '{}'
+      }
+    }));
+
+    // Convert tool results to OpenAI message format
+    const toolResults = parallelResults.map(result => ({
+      role: 'tool',
+      tool_call_id: result.id || '',
+      content: result.result
+    }));
+
+    // Use same behavioral system prompt as initial call (for consistency and caching)
+    const hasCustomSystemPromptFollowUp = settings.systemPrompt &&
+      settings.systemPrompt.trim() &&
+      settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
+
+    const baseSystemPrompt = hasCustomSystemPromptFollowUp ? settings.systemPrompt! : this.getSystemPrompt();
+    const followUpSystemPrompt = baseSystemPrompt +
+      `\n\n## Follow-up Context\n\nBased on the tool results provided above, continue the conversation naturally. If you need to use additional tools to better answer the user's question, feel free to do so.`;
+
+    // Build proper assistant message - if no initial content, use a descriptive message
+    const assistantContent = initialContent.trim() ||
+      `I'll help you with that. Let me use the appropriate tools to get the information you need.`;
+
+    const followUpMessages = [
+      { role: 'system', content: followUpSystemPrompt },
+      ...userMessages,
+      { role: 'assistant', content: assistantContent, tool_calls: openaiToolCalls },
+      ...toolResults
+    ];
+
+    console.log(`🔍 OpenAI Chat Completions follow-up messages:`, {
+      messageCount: followUpMessages.length,
+      systemPromptLength: followUpSystemPrompt.length,
+      assistantContent: assistantContent.substring(0, 100) + '...',
+      toolResultsCount: toolResults.length,
+      toolResultsPreview: toolResults.map(tr => ({
+        tool_call_id: tr.tool_call_id,
+        contentLength: tr.content.length,
+        contentPreview: tr.content.substring(0, 100) + '...'
+      }))
+    });
+
+    // Get tools for continued agentic behavior in follow-up call
+    const followUpTools = await this.getMCPToolsForProvider('openai', settings);
+    console.log(`🔄 Making OpenAI Chat Completions follow-up call with ${followUpTools.length} tools available for continued agentic behavior`);
+
+    const followUpRequestBody = {
+      model: settings.model,
+      messages: followUpMessages,
+      temperature: settings.temperature,
+      max_tokens: settings.maxTokens,
+      stream: true,
+      // Include tools to allow continued agentic behavior
+      ...(followUpTools.length > 0 && {
+        tools: followUpTools,
+        tool_choice: 'auto'
+      })
+    };
+
+    const followUpResponse = await fetch(`${provider.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`
+      },
+      body: JSON.stringify(followUpRequestBody),
+      signal
+    });
+
+    console.log(`🔍 OpenAI Chat Completions follow-up response status:`, followUpResponse.status, followUpResponse.statusText);
+
+    if (followUpResponse.ok) {
+      console.log(`✅ Starting OpenAI Chat Completions follow-up streaming response`);
+
+      try {
+        // Stream the follow-up response with updated conversation history for agentic behavior
+        const followUpResult = await this.handleChatCompletionsStreamResponse(
+          followUpResponse,
+          settings,
+          provider,
+          followUpMessages, // Use updated messages that include tool results
+          onStream,
+          signal
+        );
+
+        console.log(`✅ OpenAI Chat Completions follow-up streaming completed:`, {
+          contentLength: followUpResult.content?.length || 0,
+          hasUsage: !!followUpResult.usage,
+          hasToolCalls: !!followUpResult.toolCalls,
+          content: followUpResult.content?.substring(0, 100) + '...'
+        });
+
+        // Combine tool calls from initial response AND follow-up response
+        const initialToolCalls = toolCalls
+          .filter(tc => tc.id && tc.function?.name)
+          .map(tc => ({
+            id: tc.id!,
+            name: tc.function!.name!,
+            arguments: JSON.parse(tc.function!.arguments || '{}')
+          }));
+
+        const followUpToolCalls = followUpResult.toolCalls || [];
+        const allToolCalls = [...initialToolCalls, ...followUpToolCalls];
+
+        console.log(`🔧 Combined OpenAI Chat Completions tool calls: ${initialToolCalls.length} initial + ${followUpToolCalls.length} follow-up = ${allToolCalls.length} total`);
+
+        return {
+          content: initialContent + followUpResult.content,
+          usage: followUpResult.usage ? {
+            promptTokens: (initialUsage?.prompt_tokens || 0) + (followUpResult.usage?.promptTokens || 0),
+            completionTokens: (initialUsage?.completion_tokens || 0) + (followUpResult.usage?.completionTokens || 0),
+            totalTokens: (initialUsage?.total_tokens || 0) + (followUpResult.usage?.totalTokens || 0)
+          } : initialUsage ? {
+            promptTokens: initialUsage.prompt_tokens || 0,
+            completionTokens: initialUsage.completion_tokens || 0,
+            totalTokens: initialUsage.total_tokens || 0
+          } : undefined,
+          toolCalls: allToolCalls
+        };
+      } catch (error) {
+        console.error(`❌ OpenAI Chat Completions follow-up streaming failed:`, error);
+        console.error(`❌ Falling back to original response without tool results`);
+        // Fall through to return original response
+      }
+    } else {
+      const errorText = await followUpResponse.text();
+      console.error(`❌ OpenAI Chat Completions follow-up call failed (${followUpResponse.status}):`, errorText);
+      console.error(`❌ Falling back to original response without tool results`);
+    }
+
+    // Return original response with tool calls if follow-up failed
+    console.log(`⚠️ OpenAI Chat Completions returning original response without tool results:`, {
+      contentLength: initialContent?.length || 0,
+      toolCallsCount: toolCalls.length,
+      content: initialContent?.substring(0, 100) + '...'
+    });
+
+    return {
+      content: initialContent,
+      usage: initialUsage ? {
+        promptTokens: initialUsage.prompt_tokens || 0,
+        completionTokens: initialUsage.completion_tokens || 0,
+        totalTokens: initialUsage.total_tokens || 0
+      } : undefined,
+      toolCalls: toolCalls
+        .filter(tc => tc.id && tc.function?.name)
+        .map(tc => ({
+          id: tc.id!,
+          name: tc.function!.name!,
+          arguments: JSON.parse(tc.function!.arguments || '{}')
+        }))
+    };
   }
 
   // OpenAI-specific tool calling methods
@@ -771,21 +1230,37 @@ export class OpenAIProvider extends BaseProvider {
       }
     }));
 
+    // Use same behavioral system prompt as initial call (for consistency and caching)
+    const hasCustomSystemPromptFollowUp = settings.systemPrompt &&
+      settings.systemPrompt.trim() &&
+      settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
+
+    const baseSystemPrompt = hasCustomSystemPromptFollowUp ? settings.systemPrompt! : this.getSystemPrompt();
+    const followUpSystemPrompt = baseSystemPrompt +
+      `\n\n## Follow-up Context\n\nBased on the tool results provided above, continue the conversation naturally. If you need to use additional tools to better answer the user's question, feel free to do so.`;
+
     const followUpMessages = [
-      { role: 'system', content: 'Based on the tool results provided, give a helpful and natural response to the user\'s question.' },
+      { role: 'system', content: followUpSystemPrompt },
       ...userMessages,
       { role: 'assistant', content: initialContent, tool_calls: openaiToolCalls },
       ...toolResults
     ];
 
-    console.log(`🔄 Making OpenAI follow-up call to process tool results...`);
+    // Get tools for continued agentic behavior in follow-up call
+    const followUpTools = await this.getMCPToolsForProvider('openai', settings);
+    console.log(`🔄 Making OpenAI follow-up call with ${followUpTools.length} tools available for continued agentic behavior`);
 
     const followUpRequestBody = {
       model: settings.model,
       messages: followUpMessages,
       temperature: settings.temperature,
       max_tokens: settings.maxTokens,
-      stream: false
+      stream: false,
+      // Include tools to allow continued agentic behavior
+      ...(followUpTools.length > 0 && {
+        tools: followUpTools,
+        tool_choice: 'auto'
+      })
     };
 
     const followUpResponse = await fetch(`${provider.baseUrl}/chat/completions`, {

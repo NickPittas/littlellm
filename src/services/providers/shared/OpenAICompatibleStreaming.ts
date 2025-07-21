@@ -190,7 +190,9 @@ export class OpenAICompatibleStreaming {
     onStream: (chunk: string) => void,
     providerName: string,
     executeMCPTool: (toolName: string, args: Record<string, unknown>) => Promise<string>,
-    additionalHeaders: Record<string, string> = {}
+    additionalHeaders: Record<string, string> = {},
+    getMCPTools?: () => Promise<unknown[]>,
+    getEnhancedSystemPrompt?: (tools: unknown[]) => string
   ): Promise<LLMResponse> {
     console.log(`🔧 ${providerName} streaming detected ${toolCalls.length} tool calls, executing...`);
 
@@ -230,8 +232,15 @@ export class OpenAICompatibleStreaming {
       }
     }));
 
+    // Get available tools for potential additional tool calls
+    const availableTools = getMCPTools ? await getMCPTools() : [];
+
+    // Use behavioral system prompt only for follow-up (no tool descriptions)
+    // Tools are sent separately in the tools parameter
+    const followUpSystemPrompt = 'You are a helpful AI assistant. Based on the tool results provided, continue the conversation naturally. If you need to use additional tools to better answer the user\'s question, feel free to do so.';
+
     const followUpMessages = [
-      { role: 'system', content: 'Based on the tool results provided, give a helpful and natural response to the user\'s question.' },
+      { role: 'system', content: followUpSystemPrompt },
       ...userMessages,
       { role: 'assistant', content: initialContent, tool_calls: openaiToolCalls },
       ...toolResults
@@ -244,8 +253,15 @@ export class OpenAICompatibleStreaming {
       messages: followUpMessages,
       temperature: settings.temperature,
       max_tokens: settings.maxTokens,
-      stream: false
+      stream: false,
+      // Include tools to allow continued agentic behavior
+      ...(availableTools.length > 0 && {
+        tools: availableTools,
+        tool_choice: 'auto'
+      })
     };
+
+    console.log(`🔧 ${providerName} follow-up call with ${availableTools.length} tools available for continued agentic behavior`);
 
     const headers = {
       'Content-Type': 'application/json',
@@ -269,6 +285,32 @@ export class OpenAICompatibleStreaming {
         completionTokens: (initialUsage?.completion_tokens || 0) + (followUpData.usage?.completion_tokens || 0),
         totalTokens: (initialUsage?.total_tokens || 0) + (followUpData.usage?.total_tokens || 0)
       };
+
+      // Check if the follow-up response contains additional tool calls (agentic behavior)
+      if (followUpMessage?.tool_calls && followUpMessage.tool_calls.length > 0) {
+        console.log(`🔄 ${providerName} follow-up response contains ${followUpMessage.tool_calls.length} additional tool calls - continuing agentic workflow`);
+
+        // Stream any content from the follow-up first
+        if (followUpMessage.content) {
+          onStream(followUpMessage.content);
+        }
+
+        // Recursively execute additional tool calls
+        return this.executeToolsAndFollowUp(
+          followUpMessage.tool_calls,
+          followUpMessage.content || '',
+          followUpData.usage,
+          settings,
+          provider,
+          [...conversationHistory, { role: 'assistant', content: initialContent, tool_calls: openaiToolCalls }, ...toolResults],
+          onStream,
+          providerName,
+          executeMCPTool,
+          additionalHeaders,
+          getMCPTools,
+          getEnhancedSystemPrompt
+        );
+      }
 
       // Stream the follow-up content
       if (followUpMessage?.content) {

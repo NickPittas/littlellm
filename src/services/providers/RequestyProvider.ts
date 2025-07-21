@@ -194,7 +194,13 @@ export class RequestyProvider extends BaseProvider {
       conversationHistory,
       onStream,
       'Requesty',
-      this.executeMCPTool.bind(this)
+      this.executeMCPTool.bind(this),
+      {},
+      () => this.getMCPToolsForProvider(provider.id, settings),
+      (tools: unknown[]) => {
+        const basePrompt = settings.systemPrompt || this.getSystemPrompt();
+        return this.enhanceSystemPromptWithTools(basePrompt, tools as ToolObject[]);
+      }
     );
   }
 

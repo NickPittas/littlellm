@@ -263,7 +263,10 @@ export class DeepSeekProvider extends BaseProvider {
       conversationHistory,
       onStream,
       'DeepSeek',
-      this.executeMCPTool.bind(this)
+      this.executeMCPTool.bind(this),
+      {},
+      () => this.getMCPToolsForProvider(provider.id, settings)
+      // No enhanced system prompt function - tools sent separately in tools parameter
     );
   }
 
