@@ -29,6 +29,14 @@ export class KnowledgeBaseService {
   }
 
   /**
+   * Checks if the knowledge base is initialized.
+   * @returns {boolean} True if the knowledge base is initialized, false otherwise.
+   */
+  public isInitialized(): boolean {
+    return this.db !== undefined && this.table !== undefined && this.embedder !== undefined;
+  }
+
+  /**
    * Initializes the connection to the LanceDB vector database.
    * Creates the database and necessary tables if they don't exist.
    * @param dbPath - The local file system path to store the database.

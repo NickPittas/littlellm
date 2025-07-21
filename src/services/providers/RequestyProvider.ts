@@ -149,9 +149,8 @@ export class RequestyProvider extends BaseProvider {
   }
 
   // Private helper methods
-  private async getMCPToolsForProvider(providerId: string, settings: LLMSettings): Promise<unknown[]> {
-    return [];
-  }
+  // This method is injected by the ProviderAdapter from the LLMService
+  private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
 
   private async handleStreamResponse(
     response: Response,

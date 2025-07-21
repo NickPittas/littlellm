@@ -148,7 +148,70 @@ export class OpenAIProvider extends BaseProvider {
 
   }
 
+  // OpenAI-specific tool calling methods
+  private async getOpenAITools(settings: LLMSettings): Promise<unknown[]> {
+    try {
+      console.log(`🔍 Getting tools for OpenAI provider`);
+      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
+
+      // Check if tool calling is disabled
+      if (settings?.toolCallingEnabled === false) {
+        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
+        return [];
+      }
+
+      // Get raw tools from the centralized service (temporarily)
+      const rawTools = await this.getMCPToolsForProvider('openai', settings);
+      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: any) => t.name || t.function?.name));
+
+      // Format tools specifically for OpenAI Assistants API
+      const formattedTools = this.formatToolsForOpenAI(rawTools);
+      console.log(`🔧 Formatted ${formattedTools.length} tools for OpenAI Assistants API`);
+
+      return formattedTools;
+    } catch (error) {
+      console.error('❌ Failed to get OpenAI tools:', error);
+      return [];
+    }
+  }
+
+  private formatToolsForOpenAI(rawTools: any[]): unknown[] {
+    return rawTools.map(tool => {
+      // All tools now come in unified format with type: 'function' and function object
+      if (tool.type === 'function' && tool.function) {
+        // Sanitize tool name for OpenAI (replace hyphens with underscores)
+        const sanitizedName = tool.function.name.replace(/-/g, '_');
+        return {
+          type: 'function',
+          function: {
+            name: sanitizedName,
+            description: tool.function.description || 'No description',
+            parameters: tool.function.parameters || {
+              type: 'object',
+              properties: {},
+              required: []
+            }
+          }
+        };
+      }
+      
+      console.warn(`⚠️ Skipping invalid tool (not in unified format):`, tool);
+      return null;
+    }).filter(tool => tool !== null);
+  }
+
   private async getOrCreateAssistantAndVectorStore(settings: LLMSettings): Promise<{ assistantId: string, vectorStoreId: string }> {
+    // Get OpenAI-specific formatted tools
+    const openAITools = await this.getOpenAITools(settings);
+    
+    // Ensure we're using a compatible model for assistants
+    let assistantModel = settings.model;
+    const compatibleModels = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'];
+    if (!compatibleModels.some(model => assistantModel.includes(model))) {
+      console.warn(`⚠️ Model ${assistantModel} may not be compatible with Assistants API, using gpt-4o-mini as fallback`);
+      assistantModel = 'gpt-4o-mini';
+    }
+    
     // Create a vector store
     console.log('Creating a new vector store...');
     const vectorStoreResponse = await fetch('https://api.openai.com/v1/vector_stores', {
@@ -161,13 +224,36 @@ export class OpenAIProvider extends BaseProvider {
       body: JSON.stringify({ name: 'Document Store' })
     });
     if (!vectorStoreResponse.ok) {
-      throw new Error('Failed to create vector store');
+      const errorText = await vectorStoreResponse.text();
+      console.error('❌ Vector store creation failed:', errorText);
+      throw new Error(`Failed to create vector store: ${vectorStoreResponse.status} - ${errorText}`);
     }
     const vectorStore = await vectorStoreResponse.json();
     console.log(`Vector store created with ID: ${vectorStore.id}`);
 
-    // Create an assistant linked to the vector store
-    console.log('Creating a new assistant with file search...');
+    // Prepare tools array - start with file_search
+    const tools: Array<{ type: string; function?: { name: string; description: string; parameters: any } }> = [{ type: 'file_search' }];
+    
+    // Add formatted OpenAI tools
+    if (openAITools.length > 0) {
+      console.log(`🔧 Adding ${openAITools.length} formatted tools to OpenAI assistant`);
+      tools.push(...openAITools as any[]);
+    }
+
+    // Create an assistant linked to the vector store with OpenAI tools
+    console.log(`Creating a new assistant with file search and ${tools.length - 1} OpenAI tools...`);
+    console.log('🔧 Tools being sent to OpenAI:', JSON.stringify(tools, null, 2));
+    
+    const assistantPayload = {
+      name: 'AI Assistant with MCP Tools',
+      instructions: 'You are a helpful assistant that can search documents and use various tools to help users.',
+      tools: tools,
+      tool_resources: { file_search: { vector_store_ids: [vectorStore.id] } },
+      model: assistantModel
+    };
+    
+    console.log('🔧 Assistant payload:', JSON.stringify(assistantPayload, null, 2));
+    
     const assistantResponse = await fetch('https://api.openai.com/v1/assistants', {
       method: 'POST',
       headers: {
@@ -175,16 +261,19 @@ export class OpenAIProvider extends BaseProvider {
         'Authorization': `Bearer ${settings.apiKey}`,
         'OpenAI-Beta': 'assistants=v2'
       },
-      body: JSON.stringify({
-        name: 'File Search Assistant',
-        instructions: 'You are a helpful assistant that can search and analyze documents.',
-        tools: [{ type: 'file_search' }],
-        tool_resources: { file_search: { vector_store_ids: [vectorStore.id] } },
-        model: settings.model
-      })
+      body: JSON.stringify(assistantPayload)
     });
+    
     if (!assistantResponse.ok) {
-      throw new Error('Failed to create assistant');
+      const errorText = await assistantResponse.text();
+      console.error('❌ OpenAI API Error:', {
+        status: assistantResponse.status,
+        statusText: assistantResponse.statusText,
+        body: errorText,
+        model: assistantModel,
+        toolCount: tools.length
+      });
+      throw new Error(`Failed to create assistant: ${assistantResponse.status} ${assistantResponse.statusText} - ${errorText}`);
     }
     const assistant = await assistantResponse.json();
     console.log(`Assistant created with ID: ${assistant.id}`);
@@ -251,7 +340,12 @@ export class OpenAIProvider extends BaseProvider {
     let run = await runResponse.json();
     const pollInterval = 1000; // 1 second
 
-    while (['queued', 'in_progress'].includes(run.status)) {
+    while (['queued', 'in_progress', 'requires_action'].includes(run.status)) {
+      if (run.status === 'requires_action') {
+        console.log('🔧 OpenAI run requires action - executing tools...');
+        await this.handleRequiredAction(threadId, run, settings);
+      }
+      
       await new Promise(resolve => setTimeout(resolve, pollInterval));
       const pollResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${run.id}`, {
         headers: {
@@ -263,6 +357,61 @@ export class OpenAIProvider extends BaseProvider {
     }
 
     return run;
+  }
+
+  private async handleRequiredAction(threadId: string, run: any, settings: LLMSettings): Promise<void> {
+    console.log('🔧 Handling required action for OpenAI run:', run.id);
+    
+    if (!run.required_action || !run.required_action.submit_tool_outputs) {
+      console.warn('⚠️ No tool outputs required in required action');
+      return;
+    }
+
+    const toolCalls = run.required_action.submit_tool_outputs.tool_calls;
+    console.log(`🔧 Executing ${toolCalls.length} tool calls:`, toolCalls.map((tc: any) => tc.function.name));
+
+    const toolOutputs = [];
+    
+    for (const toolCall of toolCalls) {
+      try {
+        console.log(`🔧 Executing tool: ${toolCall.function.name}`);
+        const args = JSON.parse(toolCall.function.arguments);
+        const result = await this.executeMCPTool!(toolCall.function.name, args);
+        
+        toolOutputs.push({
+          tool_call_id: toolCall.id,
+          output: result
+        });
+        
+        console.log(`✅ Tool ${toolCall.function.name} executed successfully`);
+      } catch (error) {
+        console.error(`❌ Tool ${toolCall.function.name} failed:`, error);
+        toolOutputs.push({
+          tool_call_id: toolCall.id,
+          output: `Error executing tool: ${error}`
+        });
+      }
+    }
+
+    // Submit tool outputs back to OpenAI
+    console.log('🔧 Submitting tool outputs to OpenAI...');
+    const submitResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${run.id}/submit_tool_outputs`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`,
+        'OpenAI-Beta': 'assistants=v2'
+      },
+      body: JSON.stringify({ tool_outputs: toolOutputs })
+    });
+
+    if (!submitResponse.ok) {
+      const errorText = await submitResponse.text();
+      console.error('❌ Failed to submit tool outputs:', errorText);
+      throw new Error(`Failed to submit tool outputs: ${submitResponse.status} - ${errorText}`);
+    }
+    
+    console.log('✅ Tool outputs submitted successfully');
   }
 
   private async getAssistantResponse(threadId: string, settings: LLMSettings): Promise<string> {
@@ -387,22 +536,10 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   // Private helper methods
-  private async getMCPToolsForProvider(providerId: string, settings: LLMSettings): Promise<unknown[]> {
-    // This will be injected by the main service
-    // For now, return empty array - will be implemented in main service integration
-    return [];
-  }
-
-  private async shouldSendTools(conversationId: string | undefined, tools: ToolObject[]): Promise<boolean> {
-    // This will be injected by the main service
-    // For now, return true if tools are available
-    return tools.length > 0;
-  }
-
-  private async executeMCPTool(toolName: string, args: Record<string, unknown>): Promise<string> {
-    // This will be injected by the main service
-    return JSON.stringify({ error: 'Tool execution not available' });
-  }
+  // Note: These methods are injected by the ProviderAdapter from the LLMService
+  private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
+  private shouldSendTools!: (conversationId: string | undefined, tools: ToolObject[]) => Promise<boolean>;
+  private executeMCPTool!: (toolName: string, args: Record<string, unknown>) => Promise<string>;
 
   private async handleStreamResponse(
     response: Response,
@@ -557,14 +694,55 @@ export class OpenAIProvider extends BaseProvider {
   ): Promise<LLMResponse> {
     console.log(`🔧 OpenAI streaming detected ${toolCalls.length} tool calls, executing...`);
 
-    // Execute all tool calls
+    // Check if we have parallel execution method injected (like Anthropic/Mistral)
+    if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
+      console.log(`🚀 Using parallel execution for ${toolCalls.length} OpenAI tools`);
+      
+      // Format tool calls for parallel execution
+      const toolCallsForExecution = toolCalls.map(tc => ({
+        id: tc.id || '',
+        name: tc.function?.name || '',
+        arguments: JSON.parse(tc.function?.arguments || '{}')
+      }));
+
+      try {
+        // Execute tools in parallel immediately
+        const executeMultipleToolsParallel = (this as any).executeMultipleToolsParallel;
+        const summarizeToolResultsForModel = (this as any).summarizeToolResultsForModel;
+        
+        const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'openai');
+        console.log(`✅ OpenAI parallel execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
+        
+        // Get tool results summary for the model
+        const toolSummary = summarizeToolResultsForModel(parallelResults);
+        
+        // Stream the tool results to user
+        onStream('\n\n' + toolSummary);
+        
+        // Return response with tool results included
+        return {
+          content: initialContent + '\n\n' + toolSummary,
+          usage: initialUsage ? {
+            promptTokens: initialUsage.prompt_tokens || 0,
+            completionTokens: initialUsage.completion_tokens || 0,
+            totalTokens: initialUsage.total_tokens || 0
+          } : undefined
+        };
+      } catch (error) {
+        console.error(`❌ OpenAI parallel tool execution failed, falling back to sequential:`, error);
+        // Fall back to sequential execution below
+      }
+    }
+
+    // Fallback: Execute all tool calls sequentially (old method)
+    console.log(`⚠️ Using sequential execution for ${toolCalls.length} OpenAI tools`);
     const toolResults = [];
     for (const toolCall of toolCalls) {
       try {
         console.log(`🔧 Executing OpenAI tool call: ${toolCall.function?.name}`);
         const toolName = toolCall.function?.name || '';
         const toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
-        const toolResult = await this.executeMCPTool(toolName, toolArgs);
+        const toolResult = await (this as any).executeMCPTool(toolName, toolArgs);
         toolResults.push({
           role: 'tool',
           tool_call_id: toolCall.id,

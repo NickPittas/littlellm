@@ -174,18 +174,36 @@ export class ProviderAdapter {
 
   // Private method to inject dependencies into provider instances
   private async injectDependencies(providerInstance: ILLMProvider) {
-    // Inject the MCP tools getter
-    if (this.mcpToolsGetter && 'getMCPToolsForProvider' in providerInstance) {
+    // Inject the MCP tools getter - always inject if available
+    if (this.mcpToolsGetter) {
       (providerInstance as any).getMCPToolsForProvider = this.mcpToolsGetter;
     }
 
-    // Inject the tool executor
-    if (this.toolExecutor && 'executeMCPTool' in providerInstance) {
+    // Inject the tool executor - always inject if available
+    if (this.toolExecutor) {
       (providerInstance as any).executeMCPTool = this.toolExecutor;
     }
 
-    // Inject the stream handler
-    if (this.streamHandler && 'handleStreamResponse' in providerInstance) {
+    // Inject the parallel tool executor (like Anthropic uses) - always inject if available
+    if (this.multipleToolsExecutor) {
+      (providerInstance as any).executeMultipleToolsParallel = this.multipleToolsExecutor;
+    }
+
+    // Inject tool result processing methods (like Anthropic uses) - always inject if available
+    if (this.toolResultsSummarizer) {
+      (providerInstance as any).summarizeToolResultsForModel = this.toolResultsSummarizer;
+    }
+
+    if (this.toolResultsAggregator) {
+      (providerInstance as any).aggregateToolResults = this.toolResultsAggregator;
+    }
+
+    if (this.toolResultFormatter) {
+      (providerInstance as any).formatToolResult = this.toolResultFormatter;
+    }
+
+    // Inject the stream handler - always inject if available
+    if (this.streamHandler) {
       (providerInstance as any).handleStreamResponse = this.streamHandler;
     }
 

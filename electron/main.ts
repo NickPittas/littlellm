@@ -78,6 +78,39 @@ interface MCPConnection {
 
 const mcpConnections: Map<string, MCPConnection> = new Map();
 
+// MCP Auto-Connection Function
+async function connectEnabledMCPServers(): Promise<void> {
+  try {
+    console.log('🔌 Auto-connecting enabled MCP servers...');
+    
+    // Load MCP configuration
+    const mcpData = loadMCPServers();
+    const enabledServers = mcpData.servers.filter((server: MCPServerConfig) => server.enabled);
+    console.log(`📋 Found ${enabledServers.length} enabled servers`);
+
+    if (enabledServers.length === 0) {
+      console.log('⏸️ No enabled MCP servers to connect');
+      return;
+    }
+
+    // Connect to each enabled server
+    const connectionPromises = enabledServers.map(server => connectMCPServer(server.id));
+    const results = await Promise.allSettled(connectionPromises);
+
+    const successCount = results.filter(result => result.status === 'fulfilled' && result.value).length;
+    console.log(`✅ Successfully connected to ${successCount}/${enabledServers.length} MCP servers`);
+
+    // Check for enabled servers that failed to connect
+    const connectedIds = getConnectedMCPServerIds();
+    const failedServers = enabledServers.filter(s => !connectedIds.includes(s.id));
+    if (failedServers.length > 0) {
+      console.error(`${failedServers.length} enabled servers failed to connect`);
+    }
+  } catch (error) {
+    console.error('❌ Failed to auto-connect enabled MCP servers:', error);
+  }
+}
+
 // Multi-Monitor Utility Functions
 interface WindowPositionOptions {
   width: number;
@@ -744,10 +777,11 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     const resourceCount = resources.resources?.length || 0;
     const promptCount = prompts.prompts?.length || 0;
 
-    console.log(`🔍 [DEBUG] Server ${serverId} discovered capabilities:`);
-    console.log(`🔍 [DEBUG] - Tools: ${toolCount}`, toolCount > 0 ? (tools.tools || []).map((t: any) => t.name) : []);
-    console.log(`🔍 [DEBUG] - Resources: ${resourceCount}`);
-    console.log(`🔍 [DEBUG] - Prompts: ${promptCount}`);
+    process.stdout.write(`🔍 [DEBUG] Server ${serverId} discovered capabilities:\n`);
+    process.stdout.write(`🔍 [DEBUG] - Tools: ${toolCount} ${JSON.stringify(toolCount > 0 ? (tools.tools || []).map((t: any) => t.name) : [])}\n`);
+    process.stdout.write(`🔍 [DEBUG] - Resources: ${resourceCount}\n`);
+    process.stdout.write(`🔍 [DEBUG] - Prompts: ${promptCount}\n`);
+    process.stdout.write(`🔍 [DEBUG] - Raw tools data: ${JSON.stringify(tools.tools, null, 2)}\n`);
 
     const capabilities = [];
     if (toolCount > 0) capabilities.push(`${toolCount} tools`);
@@ -856,58 +890,7 @@ async function disconnectAllMCPServers(): Promise<void> {
   console.log('✅ All MCP servers disconnected');
 }
 
-async function connectEnabledMCPServers(): Promise<void> {
-  try {
-    console.log('🔌 Auto-connecting enabled MCP servers...');
 
-    const mcpData = loadMCPServers();
-    console.log(`🔍 [DEBUG] Total servers in config: ${mcpData.servers.length}`);
-    console.log(`🔍 [DEBUG] All servers:`, mcpData.servers.map(s => ({
-      id: s.id,
-      name: s.name,
-      enabled: s.enabled,
-      command: s.command
-    })));
-
-    const enabledServers = mcpData.servers.filter((server: MCPServerConfig) => server.enabled);
-    console.log(`📋 Found ${enabledServers.length} enabled servers`);
-    console.log(`🔍 [DEBUG] Enabled servers:`, enabledServers.map(s => ({
-      id: s.id,
-      name: s.name,
-      command: s.command
-    })));
-
-    for (const server of enabledServers) {
-      console.log(`🔌 [DEBUG] Attempting to connect server: ${server.id} (${server.name})`);
-      try {
-        const connected = await connectMCPServer(server.id);
-        console.log(`🔌 [DEBUG] Server ${server.id} connection result: ${connected}`);
-        if (!connected) {
-          console.error(`❌ [DEBUG] Failed to connect server ${server.id} - connection returned false`);
-        }
-      } catch (error) {
-        console.error(`❌ [DEBUG] Exception while connecting server ${server.id}:`, error);
-      }
-    }
-
-    console.log('✅ Auto-connection complete');
-    console.log(`🔍 [DEBUG] Final connection status:`, Array.from(mcpConnections.keys()));
-
-    // Detailed status check
-    const finalStatus = getMCPConnectionStatus();
-    console.log(`🔍 [DEBUG] Detailed connection status:`, finalStatus);
-
-    // Check for enabled servers that failed to connect
-    const connectedIds = getConnectedMCPServerIds();
-    const failedServers = enabledServers.filter(s => !connectedIds.includes(s.id));
-    if (failedServers.length > 0) {
-      console.error(`❌ [DEBUG] ${failedServers.length} enabled servers failed to connect:`,
-        failedServers.map(s => ({ id: s.id, name: s.name, command: s.command })));
-    }
-  } catch (error) {
-    console.error('❌ Failed to auto-connect enabled MCP servers:', error);
-  }
-}
 
 // MCP Tool Management Functions
 async function callMCPTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
@@ -1058,20 +1041,24 @@ async function callMultipleMCPTools(toolCalls: Array<{
 function getAllMCPTools(): (MCPTool & { serverId: string })[] {
   const allTools: (MCPTool & { serverId: string })[] = [];
 
-  console.log(`🔍 [DEBUG] getAllMCPTools called - checking ${mcpConnections.size} total connections`);
+  if (mcpConnections.size === 0) {
+    return [];
+  }
 
   for (const [serverId, connection] of mcpConnections) {
-    console.log(`🔍 [DEBUG] Server ${serverId}: connected=${connection.connected}, tools=${connection.tools.length}`);
-
     if (!connection.connected) {
-      console.log(`⏸️ [DEBUG] Skipping disconnected server: ${serverId}`);
       continue;
     }
 
-    console.log(`🔧 [DEBUG] Processing ${connection.tools.length} tools from server ${serverId}:`,
-      connection.tools.map(t => t.name));
+    if (!connection.tools || !Array.isArray(connection.tools)) {
+      continue;
+    }
 
     for (const tool of connection.tools) {
+      if (!tool || !tool.name) {
+        continue;
+      }
+      
       allTools.push({
         ...tool,
         serverId
@@ -1079,22 +1066,6 @@ function getAllMCPTools(): (MCPTool & { serverId: string })[] {
     }
   }
 
-  console.log(`📋 [DEBUG] Final result: ${allTools.length} tools from ${mcpConnections.size} total servers`);
-  console.log(`🔍 [DEBUG] Tools by server:`, Array.from(mcpConnections.entries()).map(([serverId, conn]) => ({
-    serverId,
-    connected: conn.connected,
-    toolCount: conn.tools.length,
-    toolNames: conn.tools.map(t => t.name)
-  })));
-
-  console.log(`📋 Retrieved ${allTools.length} tools from ${mcpConnections.size} connected servers`);
-  console.log(`🔍 Tool details:`, allTools.map(tool => ({
-    name: tool.name,
-    description: tool.description,
-    hasInputSchema: !!tool.inputSchema,
-    inputSchema: tool.inputSchema,
-    serverId: tool.serverId
-  })));
   return allTools;
 }
 
@@ -2159,6 +2130,27 @@ app.commandLine.appendSwitch('--no-sandbox');
 // Disable hardware acceleration for better transparency support
 app.disableHardwareAcceleration();
 
+// Ensure single instance - prevent multiple app instances
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  // Another instance is already running, quit this one
+  app.quit();
+} else {
+  // Handle second instance attempts - focus existing window
+  app.on('second-instance', () => {
+    // Someone tried to run a second instance, focus our window instead
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      mainWindow.show();
+    } else {
+      // If no main window exists, create one
+      createWindow();
+    }
+  });
+}
+
 app.whenReady().then(async () => {
   await createWindow();
   createTray();
@@ -2173,71 +2165,30 @@ app.whenReady().then(async () => {
   await knowledgeBaseService.initialize(dbPath);
   console.log('Knowledge Base Service initialized.');
 
-  // IPC handler for adding a document to the knowledge base
-  ipcMain.handle('knowledge-base:add-document', async (event, filePath) => {
-    try {
-      await knowledgeBaseService.addDocument(filePath);
-      return { success: true };
-    } catch (error) {
-      console.error('Failed to add document to knowledge base:', error);
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
-  // IPC handler for removing a document from the knowledge base
-  ipcMain.handle('knowledge-base:remove-document', async (event, documentId) => {
-    try {
-      await knowledgeBaseService.removeDocument(documentId);
-      return { success: true };
-    } catch (error) {
-      console.error('Failed to remove document from knowledge base:', error);
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
-  // IPC handler for getting list of documents in the knowledge base
-  ipcMain.handle('knowledge-base:get-documents', async () => {
-    try {
-      const documents = await knowledgeBaseService.getDocuments();
-      return { success: true, documents };
-    } catch (error) {
-      console.error('Failed to get documents from knowledge base:', error);
-      return { success: false, error: (error as Error).message, documents: [] };
-    }
-  });
-
-  // IPC handler for RAG search in the knowledge base
-  ipcMain.handle('knowledge-base:search', async (event, query, limit) => {
-    try {
-      const results = await knowledgeBaseService.search(query, limit);
-      return { success: true, results };
-    } catch (error) {
-      console.error('Failed to search knowledge base:', error);
-      return { success: false, error: (error as Error).message, results: [] };
-    }
-  });
-
-  // IPC handler for opening a file dialog
-  ipcMain.handle('dialog:open-file', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [{ name: 'PDFs', extensions: ['pdf'] }]
-    });
-    if (!canceled) {
-      return filePaths[0];
-    }
-    return null;
-  });
-
   // Auto-connect enabled MCP servers immediately
+  console.log('🚀 [DEBUG] About to call connectEnabledMCPServers...');
   try {
+    console.log('🚀 [DEBUG] Calling connectEnabledMCPServers function...');
     await connectEnabledMCPServers();
+    console.log('🚀 [DEBUG] connectEnabledMCPServers completed successfully');
   } catch (error) {
-    console.error('Failed to auto-connect MCP servers on startup:', error);
+    console.error('❌ [DEBUG] Failed to auto-connect MCP servers on startup:', error);
+    console.error('❌ [DEBUG] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
   }
+  console.log('🚀 [DEBUG] Auto-connection attempt finished');
 });
 
+// Guard to prevent duplicate IPC handler registration
+let ipcHandlersRegistered = false;
+
 function setupIPC() {
+  if (ipcHandlersRegistered) {
+    console.log('IPC handlers already registered, skipping...');
+    return;
+  }
+  
+  console.log('Registering IPC handlers...');
+  ipcHandlersRegistered = true;
   // Handle clipboard read requests from renderer
   ipcMain.handle('read-clipboard', () => {
     return clipboard.readText();
@@ -2667,6 +2618,24 @@ function setupIPC() {
     return getAllMCPPrompts();
   });
 
+  // Debug handler to manually test MCP tool retrieval
+  ipcMain.handle('debug-mcp-tools', () => {
+    process.stdout.write('🔍 [DEBUG] Manual MCP tools debug triggered\n');
+    const result = getAllMCPTools();
+    process.stdout.write(`🔍 [DEBUG] Manual MCP tools result: ${JSON.stringify(result, null, 2)}\n`);
+    return {
+      toolCount: result.length,
+      tools: result,
+      serverCount: mcpConnections.size,
+      connectedServers: Array.from(mcpConnections.entries()).map(([id, conn]) => ({
+        id,
+        connected: conn.connected,
+        toolCount: conn.tools?.length || 0,
+        serverName: conn.server?.name || 'Unknown'
+      }))
+    };
+  });
+
   // Save individual conversation to JSON file
   ipcMain.handle('save-conversation-to-file', (_, conversationId: string, conversation: Conversation) => {
     try {
@@ -3051,6 +3020,97 @@ function setupIPC() {
 
   // Window dragging is now handled by CSS -webkit-app-region in the renderer
   // No IPC handlers needed for CSS-based dragging
+
+  // Knowledge Base IPC handlers (moved from app.whenReady)
+  // Note: These handlers need to be registered here to be protected by the duplicate registration guard
+
+  // IPC handler for adding a document to the knowledge base
+  ipcMain.handle('knowledge-base:add-document', async (_, filePath) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        await knowledgeBaseService.initialize(dbPath);
+      }
+
+      await knowledgeBaseService.addDocument(filePath);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to add document to knowledge base:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // IPC handler for removing a document from the knowledge base
+  ipcMain.handle('knowledge-base:remove-document', async (_, documentId) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        await knowledgeBaseService.initialize(dbPath);
+      }
+
+      await knowledgeBaseService.removeDocument(documentId);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to remove document from knowledge base:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // IPC handler for getting list of documents in the knowledge base
+  ipcMain.handle('knowledge-base:get-documents', async () => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        await knowledgeBaseService.initialize(dbPath);
+      }
+
+      const documents = await knowledgeBaseService.getDocuments();
+      return { success: true, documents };
+    } catch (error) {
+      console.error('Failed to get documents from knowledge base:', error);
+      return { success: false, error: (error as Error).message, documents: [] };
+    }
+  });
+
+  // IPC handler for RAG search in the knowledge base
+  ipcMain.handle('knowledge-base:search', async (_, query, limit) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        await knowledgeBaseService.initialize(dbPath);
+      }
+
+      const results = await knowledgeBaseService.search(query, limit);
+      return { success: true, results };
+    } catch (error) {
+      console.error('Failed to search knowledge base:', error);
+      return { success: false, error: (error as Error).message, results: [] };
+    }
+  });
+
+  // IPC handler for opening a file dialog
+  ipcMain.handle('dialog:open-file', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'PDFs', extensions: ['pdf'] }]
+    });
+    if (!canceled) {
+      return filePaths[0];
+    }
+    return null;
+  });
 
   // History window management
   let historyWindow: BrowserWindow | null = null;
@@ -3626,296 +3686,6 @@ function setupIPC() {
     }
   });
 
-  // Generate HTML content for history window
-  function generateHistoryHTML(conversations: Conversation[]): string {
-    const conversationItems = conversations.map(conversation => {
-      const date = new Date(conversation.updatedAt).toLocaleDateString();
-      const messageCount = conversation.messages?.length || 0;
-
-      return `
-        <div class="history-item" data-conversation-id="${conversation.id}">
-          <div class="history-item-content">
-            <div class="history-item-title">${conversation.title || 'Untitled Conversation'}</div>
-            <div class="history-item-meta">${messageCount} messages • ${date}</div>
-          </div>
-          <button class="history-item-delete" data-conversation-id="${conversation.id}" title="Delete conversation">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3,6 5,6 21,6"></polyline>
-              <path d="m19,6v14a2,2 0 0,1-2,2H7a2,2 0 0,1-2-2V6m3,0V4a2,2 0 0,1,2-2h4a2,2 0 0,1,2,2v2"></path>
-              <line x1="10" y1="11" x2="10" y2="17"></line>
-              <line x1="14" y1="11" x2="14" y2="17"></line>
-            </svg>
-          </button>
-        </div>
-      `;
-    }).join('');
-
-    const emptyState = conversations.length === 0 ? `
-      <div class="empty-state">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-        </svg>
-        <p>No chat history yet</p>
-        <p class="empty-state-subtitle">Start a conversation to see it here</p>
-      </div>
-    ` : '';
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          /* FORCE WHITE TEXT EVERYWHERE - NO VARIABLES */
-          * {
-            color: #ffffff !important;
-          }
-
-          :root {
-            /* Custom theme colors - all white text */
-            --background: #181829;
-            --foreground: #ffffff;
-            --card: #181829;
-            --card-foreground: #ffffff;
-            --primary: #569cd6;
-            --primary-foreground: #ffffff;
-            --secondary: #4fc1ff;
-            --secondary-foreground: #ffffff;
-            --accent: #e04539;
-            --accent-foreground: #ffffff;
-            --muted: #201e31;
-            --muted-foreground: #ffffff;
-            --border: #3b3b68;
-            --input: #949494;
-            --ring: #569cd6;
-            --destructive: #f44747;
-            --destructive-foreground: #ffffff;
-          }
-
-          body {
-            margin: 0;
-            padding: 0;
-            background: var(--card);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            color: var(--card-foreground);
-            overflow: hidden;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-          }
-
-          body::-webkit-scrollbar {
-            display: none;
-          }
-
-          .history-container {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            overflow: hidden;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-          }
-
-          .history-header {
-            padding: 16px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: between;
-            align-items: center;
-            background: var(--card);
-          }
-
-          .history-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #ffffff !important;
-            flex: 1;
-          }
-
-          .clear-all-button {
-            background: var(--destructive);
-            color: var(--destructive-foreground);
-            border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            cursor: pointer;
-            margin-left: 12px;
-          }
-
-          .clear-all-button:hover {
-            opacity: 0.9;
-          }
-
-          .history-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 8px;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-          }
-
-          .history-content::-webkit-scrollbar {
-            display: none;
-          }
-
-          .history-item {
-            display: flex;
-            align-items: center;
-            padding: 12px;
-            margin-bottom: 4px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            group: hover;
-          }
-
-          .history-item:hover {
-            background: var(--accent);
-            color: var(--accent-foreground);
-          }
-
-          .history-item-content {
-            flex: 1;
-            min-width: 0;
-          }
-
-          .history-item-title {
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--card-foreground);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            margin-bottom: 4px;
-          }
-
-          .history-item:hover .history-item-title {
-            color: var(--accent-foreground);
-          }
-
-          .history-item-meta {
-            font-size: 12px;
-            color: var(--muted-foreground);
-          }
-
-          .history-item:hover .history-item-meta {
-            color: var(--accent-foreground);
-            opacity: 0.8;
-          }
-
-          .history-item-delete {
-            background: none;
-            border: none;
-            color: var(--muted-foreground);
-            cursor: pointer;
-            padding: 4px;
-            border-radius: 4px;
-            opacity: 0;
-            transition: opacity 0.2s;
-            margin-left: 8px;
-          }
-
-          .history-item:hover .history-item-delete {
-            opacity: 1;
-          }
-
-          .history-item-delete:hover {
-            background: var(--destructive);
-            color: var(--destructive-foreground);
-          }
-
-          .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 200px;
-            color: var(--muted-foreground);
-            text-align: center;
-          }
-
-          .empty-state svg {
-            margin-bottom: 12px;
-            opacity: 0.5;
-          }
-
-          .empty-state p {
-            margin: 4px 0;
-          }
-
-          .empty-state-subtitle {
-            font-size: 12px;
-            opacity: 0.7;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="history-container">
-          <div class="history-header">
-            <div class="history-title">Chat History</div>
-            ${conversations.length > 0 ? '<button class="clear-all-button" onclick="clearAllHistory()">Clear All</button>' : ''}
-          </div>
-          <div class="history-content">
-            ${emptyState}
-            ${conversationItems}
-          </div>
-        </div>
-        <script>
-          // Use direct ipcRenderer since preload isn't working
-          const { ipcRenderer } = require('electron');
-
-          // Helper function to log to main process terminal
-          function logToTerminal(message) {
-            ipcRenderer.invoke('log-to-terminal', message);
-          }
-
-          // History window loaded successfully
-
-          // Handle conversation item clicks
-          document.addEventListener('click', function(e) {
-            const historyItem = e.target.closest('.history-item');
-            const deleteButton = e.target.closest('.history-item-delete');
-
-            if (deleteButton) {
-              e.stopPropagation();
-              const conversationId = deleteButton.dataset.conversationId;
-              if (window.confirm('Delete this conversation?')) {
-                try {
-                  ipcRenderer.invoke('delete-history-item', conversationId);
-                } catch (error) {
-                  logToTerminal('❌ Error deleting conversation: ' + error.message);
-                }
-              }
-            } else if (historyItem) {
-              const conversationId = historyItem.dataset.conversationId;
-              logToTerminal('📂 Opening conversation: ' + conversationId);
-              try {
-                ipcRenderer.invoke('select-history-item', conversationId);
-              } catch (error) {
-                logToTerminal('❌ Error calling select-history-item: ' + error.message);
-              }
-            }
-          });
-
-          // Handle clear all history
-          function clearAllHistory() {
-            if (window.confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
-              try {
-                ipcRenderer.invoke('clear-all-history');
-              } catch (error) {
-                logToTerminal('❌ Error clearing all history: ' + error.message);
-              }
-            }
-          }
-        </script>
-      </body>
-      </html>
-    `;
-  }
-
   // Handle dropdown window creation
   ipcMain.handle('open-dropdown', async (_, { x, y, width, height, content }) => {
     if (!mainWindow) return;
@@ -4288,99 +4058,6 @@ function setupIPC() {
     }
   });
 
-  // Handle history window creation
-  ipcMain.handle('open-history', async (_, { conversations }) => {
-    if (!mainWindow) return;
-
-    // Close existing history window if open
-    if (historyWindow) {
-      historyWindow.close();
-      historyWindow = null;
-    }
-
-    // Skip dynamic CSS variables for history window to ensure white text
-    console.log('🎨 Using hardcoded CSS variables for history window to ensure white text');
-
-    // Calculate window size and position using multi-monitor aware utility
-    const windowWidth = 400;
-    const windowHeight = 500;
-    const { x: adjustedX, y: adjustedY } = calculateWindowPosition({
-      width: windowWidth,
-      height: windowHeight,
-      preferredPosition: 'right'
-    });
-
-    historyWindow = new BrowserWindow({
-      width: windowWidth,
-      height: windowHeight,
-      x: adjustedX,
-      y: adjustedY,
-      show: false,
-      frame: false,
-      resizable: false,
-      alwaysOnTop: true,
-      skipTaskbar: true,
-      transparent: false,
-      backgroundColor: '#1a1a1a',
-      roundedCorners: true,
-      focusable: true,
-      parent: mainWindow,
-      webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false,
-        webSecurity: false,
-      },
-    });
-
-    // Generate HTML content for history
-    const htmlContent = generateHistoryHTML(conversations);
-
-    historyWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-
-    // Handle click outside to close
-    historyWindow.on('blur', () => {
-      setTimeout(() => {
-        if (historyWindow && !historyWindow.isDestroyed()) {
-          historyWindow.close();
-        }
-      }, 100);
-    });
-
-    historyWindow.on('closed', () => {
-      historyWindow = null;
-    });
-
-    historyWindow.once('ready-to-show', () => {
-      historyWindow?.show();
-      historyWindow?.focus();
-    });
-
-    // Close history window if main window moves or is minimized
-    const handleMainWindowMove = () => {
-      if (historyWindow && !historyWindow.isDestroyed()) {
-        historyWindow.close();
-      }
-    };
-
-    mainWindow.on('move', handleMainWindowMove);
-    mainWindow.on('minimize', handleMainWindowMove);
-    mainWindow.on('hide', handleMainWindowMove);
-
-    // Clean up listeners when history window closes
-    historyWindow.on('closed', () => {
-      mainWindow?.off('move', handleMainWindowMove);
-      mainWindow?.off('minimize', handleMainWindowMove);
-      mainWindow?.off('hide', handleMainWindowMove);
-    });
-  });
-
-  ipcMain.handle('close-history', () => {
-    if (historyWindow) {
-      historyWindow.close();
-      historyWindow = null;
-    }
-  });
-
   // Handle history item selection
   ipcMain.handle('select-history-item', (_, conversationId: string) => {
     // Send selection to main window
@@ -4495,15 +4172,6 @@ function setupIPC() {
     }
   });
 
-  // Handle closing history window
-  ipcMain.handle('close-history', () => {
-    console.log('🔒 Closing history window');
-    if (historyWindow) {
-      historyWindow.close();
-      historyWindow = null;
-    }
-  });
-
   // Handle logging from history window to terminal
   ipcMain.handle('log-to-terminal', (_, message: string) => {
     console.log('[HISTORY WINDOW]', message);
@@ -4528,6 +4196,7 @@ app.on('before-quit', async () => {
 });
 
 app.on('activate', () => {
+  // Only create window if none exists and app is fully initialized
   if (mainWindow === null) {
     createWindow().catch(console.error);
   }
@@ -4541,3 +4210,5 @@ app.on('will-quit', () => {
   // Unregister all shortcuts
   globalShortcut.unregisterAll();
 });
+
+// Initialization now handled by app.whenReady() above

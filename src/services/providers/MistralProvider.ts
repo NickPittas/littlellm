@@ -29,6 +29,72 @@ export class MistralProvider extends BaseProvider {
 
   private fileService?: MistralFileService;
 
+  // Mistral-specific tool calling methods
+  private async getMistralTools(settings: LLMSettings): Promise<unknown[]> {
+    try {
+      console.log(`🔍 Getting tools for Mistral provider`);
+      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
+
+      // Check if tool calling is disabled
+      if (settings?.toolCallingEnabled === false) {
+        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
+        return [];
+      }
+
+      // Get raw tools from the centralized service (temporarily)
+      const rawTools = await this.getMCPToolsForProvider('mistral', settings);
+      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: any) => t.name || t.function?.name));
+
+      // Format tools specifically for Mistral (uses OpenAI format)
+      const formattedTools = this.formatToolsForMistral(rawTools);
+      console.log(`🔧 Formatted ${formattedTools.length} tools for Mistral`);
+
+      return formattedTools;
+    } catch (error) {
+      console.error('❌ Failed to get Mistral tools:', error);
+      return [];
+    }
+  }
+
+  private formatToolsForMistral(rawTools: any[]): unknown[] {
+    return rawTools.map(tool => {
+      // All tools now come in unified format with type: 'function' and function object
+      if (tool.type === 'function' && tool.function) {
+        return {
+          type: 'function',
+          function: {
+            name: tool.function.name || 'unknown_tool',
+            description: tool.function.description || 'No description',
+            parameters: tool.function.parameters || {
+              type: 'object',
+              properties: {},
+              required: []
+            }
+          }
+        };
+      }
+      
+      // Handle MCP tools (need conversion to OpenAI format)
+      if (tool.name && tool.description) {
+        return {
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema || {
+              type: 'object',
+              properties: {},
+              required: []
+            }
+          }
+        };
+      }
+      
+      console.warn(`⚠️ Skipping invalid tool:`, tool);
+      return null;
+    }).filter(tool => tool !== null);
+  }
+
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
@@ -46,13 +112,13 @@ export class MistralProvider extends BaseProvider {
     // Mistral uses OpenAI-compatible API
     const messages = [];
 
-    // Get MCP tools for Mistral first
-    const mcpTools = await this.getMCPToolsForProvider('mistral', settings);
+    // Get Mistral-specific formatted tools
+    const mistralTools = await this.getMistralTools(settings);
 
     // Build enhanced system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
-    if (mcpTools.length > 0) {
-      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mcpTools as ToolObject[]);
+    if (mistralTools.length > 0) {
+      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mistralTools as ToolObject[]);
     }
 
     if (systemPrompt) {
@@ -164,16 +230,16 @@ export class MistralProvider extends BaseProvider {
     };
 
     // Add tools if available
-    if (mcpTools.length > 0) {
-      requestBody.tools = mcpTools;
+    if (mistralTools.length > 0) {
+      requestBody.tools = mistralTools;
       requestBody.tool_choice = 'auto';
-      console.log(`🚀 Mistral API call with ${mcpTools.length} tools:`, {
+      console.log(`🚀 Mistral API call with ${mistralTools.length} tools:`, {
         model: settings.model,
-        toolCount: mcpTools.length,
-        tools: mcpTools
+        toolCount: mistralTools.length,
+        tools: mistralTools
       });
     } else {
-      console.log(`🚀 Mistral API call without tools (no MCP tools available)`);
+      console.log(`🚀 Mistral API call without tools (no tools available)`);
     }
 
     // Log the full request for debugging
@@ -181,7 +247,7 @@ export class MistralProvider extends BaseProvider {
       url: `${provider.baseUrl}/chat/completions`,
       model: settings.model,
       messageCount: messages.length,
-      hasImages: messages.some(msg => Array.isArray(msg.content) && msg.content.some((c: any) => c.type === 'image_url')),
+      hasImages: messages.some(msg => 'content' in msg && Array.isArray(msg.content) && msg.content.some((c: any) => c.type === 'image_url')),
       requestBody: JSON.stringify(requestBody, null, 2)
     });
 
@@ -203,8 +269,8 @@ export class MistralProvider extends BaseProvider {
         url: `${provider.baseUrl}/chat/completions`,
         model: settings.model,
         messageCount: messages.length,
-        hasTools: mcpTools.length > 0,
-        hasImages: messages.some(msg => Array.isArray(msg.content) && msg.content.some((c: any) => c.type === 'image_url'))
+        hasTools: mistralTools.length > 0,
+        hasImages: messages.some(msg => 'content' in msg && Array.isArray(msg.content) && msg.content.some((c: any) => c.type === 'image_url'))
       });
 
       // Try to parse error as JSON for better error messages
@@ -407,15 +473,9 @@ export class MistralProvider extends BaseProvider {
   }
 
   // Private helper methods
-  private async getMCPToolsForProvider(providerId: string, settings: LLMSettings): Promise<unknown[]> {
-    // This will be injected by the main service
-    return [];
-  }
-
-  private async executeMCPTool(toolName: string, args: Record<string, unknown>): Promise<string> {
-    // This will be injected by the main service
-    return JSON.stringify({ error: 'Tool execution not available' });
-  }
+  // These methods are injected by the ProviderAdapter from the LLMService
+  private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
+  private executeMCPTool!: (toolName: string, args: Record<string, unknown>) => Promise<string>;
 
   private async executeToolsAndFollowUp(
     toolCalls: Array<{ id?: string; type?: string; function?: { name?: string; arguments?: string } }>,
@@ -429,7 +489,7 @@ export class MistralProvider extends BaseProvider {
     console.log(`🔧 Mistral streaming detected ${toolCalls.length} tool calls, executing...`);
 
     // Execute all tool calls and ensure exact matching
-    const toolResults = [];
+    const toolResults: any[] = [];
     for (let i = 0; i < toolCalls.length; i++) {
       const toolCall = toolCalls[i];
       try {
@@ -479,7 +539,7 @@ export class MistralProvider extends BaseProvider {
         toolResults.push({
           role: 'tool',
           tool_call_id: toolCallId, // Must be first and match exactly
-          name: toolName,
+          name: toolCall.function?.name || '',
           content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
         });
 
@@ -559,13 +619,13 @@ export class MistralProvider extends BaseProvider {
       toolCallsCount: mistralToolCalls.length,
       toolResultsCount: toolResults.length,
       toolCallIds: mistralToolCalls.map(tc => tc.id),
-      toolResultIds: toolResults.map(tr => tr.tool_call_id),
-      idsMatch: mistralToolCalls.every(tc => toolResults.some(tr => tr.tool_call_id === tc.id)),
+      toolResultIds: (toolResults as any[]).map((tr: any) => tr.tool_call_id),
+      idsMatch: mistralToolCalls.every(tc => (toolResults as any[]).some((tr: any) => tr.tool_call_id === tc.id)),
       messages: followUpMessages.map(msg => ({
         role: msg.role,
-        hasToolCalls: !!msg.tool_calls,
-        hasContent: !!msg.content,
-        toolCallsCount: msg.tool_calls?.length || 0
+        hasToolCalls: !!(msg as any).tool_calls,
+        hasContent: !!(msg as any).content,
+        toolCallsCount: (msg as any).tool_calls?.length || 0
       }))
     });
 
@@ -609,19 +669,24 @@ export class MistralProvider extends BaseProvider {
       if (msg.role === 'assistant' && msg.tool_calls) {
         console.log(`  - Has ${msg.tool_calls.length} tool calls`);
         console.log(`  - Content: "${msg.content}"`);
-        msg.tool_calls.forEach((tc, tcIndex) => {
+        msg.tool_calls.forEach((tc: any, tcIndex: number) => {
           console.log(`  - Tool call ${tcIndex + 1}: ID="${tc.id}", name="${tc.function.name}"`);
         });
       } else if (msg.role === 'tool') {
-        console.log(`  - tool_call_id: "${msg.tool_call_id}"`);
-        console.log(`  - name: "${msg.name}"`);
-        console.log(`  - content length: ${msg.content?.length || 0} chars`);
-        console.log(`  - content preview: ${msg.content?.substring(0, 100)}...`);
+        console.log(`  - tool_call_id: "${(msg as any).tool_call_id}"`);
+        console.log(`  - name: "${(msg as any).name}"`);
+        console.log(`  - content length: ${(msg as any).content?.length || 0} chars`);
+        console.log(`  - content preview: ${typeof (msg as any).content === 'string' ? (msg as any).content.substring(0, 100) : ''}...`);
 
         // Validate content is valid JSON
         try {
-          JSON.parse(msg.content);
-          console.log(`  - ✅ Content is valid JSON`);
+          const content = (msg as any).content;
+          if (typeof content === 'string') {
+            JSON.parse(content);
+            console.log(`  - ✅ Content is valid JSON`);
+          } else {
+            console.log(`  - ⚠️ Content is not a string`);
+          }
         } catch (e) {
           console.log(`  - ❌ Content is NOT valid JSON: ${e}`);
         }
@@ -840,24 +905,71 @@ export class MistralProvider extends BaseProvider {
     const message = choice.message;
     console.log(`🔍 Mistral message:`, message);
 
-    // Handle tool calls if present
+    // Handle tool calls if present - execute immediately like Anthropic
     if (message.tool_calls && message.tool_calls.length > 0) {
       console.log(`🔧 Mistral response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
-      // Tool execution will be handled by the main service
-      return {
-        content: message.content || '',
-        usage: data.usage ? {
-          promptTokens: data.usage.prompt_tokens,
-          completionTokens: data.usage.completion_tokens,
-          totalTokens: data.usage.total_tokens
-        } : undefined,
-        toolCalls: message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
+      // Check if we have the parallel execution method injected
+      if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
+        console.log(`🚀 Executing ${message.tool_calls.length} Mistral tools immediately`);
+        
+        // Format tool calls for execution
+        const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
           id: toolCall.id,
           name: toolCall.function.name,
           arguments: JSON.parse(toolCall.function.arguments)
-        }))
-      };
+        }));
+
+        // Execute tools in parallel immediately
+        const executeMultipleToolsParallel = (this as any).executeMultipleToolsParallel;
+        const summarizeToolResultsForModel = (this as any).summarizeToolResultsForModel;
+        
+        try {
+          const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'mistral');
+          console.log(`✅ Mistral tool execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
+          
+          // Get tool results summary for the model
+          const toolSummary = summarizeToolResultsForModel(parallelResults);
+          
+          // Return response with tool results included
+          return {
+            content: (message.content || '') + '\n\n' + toolSummary,
+            usage: data.usage ? {
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens
+            } : undefined
+          };
+        } catch (error) {
+          console.error(`❌ Mistral tool execution failed:`, error);
+          // Fall back to returning tool calls for external handling
+          return {
+            content: message.content || '',
+            usage: data.usage ? {
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens
+            } : undefined,
+            toolCalls: toolCallsForExecution
+          };
+        }
+      } else {
+        console.warn(`⚠️ Mistral provider missing tool execution methods - falling back to external handling`);
+        // Fall back to external handling if methods not injected
+        return {
+          content: message.content || '',
+          usage: data.usage ? {
+            promptTokens: data.usage.prompt_tokens,
+            completionTokens: data.usage.completion_tokens,
+            totalTokens: data.usage.total_tokens
+          } : undefined,
+          toolCalls: message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
+            id: toolCall.id,
+            name: toolCall.function.name,
+            arguments: JSON.parse(toolCall.function.arguments)
+          }))
+        };
+      }
     }
 
     return {

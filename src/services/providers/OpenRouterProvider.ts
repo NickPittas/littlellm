@@ -28,6 +28,72 @@ export class OpenRouterProvider extends BaseProvider {
     toolFormat: 'openai'
   };
 
+  // OpenRouter-specific tool calling methods
+  private async getOpenRouterTools(settings: LLMSettings): Promise<unknown[]> {
+    try {
+      console.log(`🔍 Getting tools for OpenRouter provider`);
+      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
+
+      // Check if tool calling is disabled
+      if (settings?.toolCallingEnabled === false) {
+        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
+        return [];
+      }
+
+      // Get raw tools from the centralized service (temporarily)
+      const rawTools = await this.getMCPToolsForProvider('openrouter', settings);
+      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: any) => t.name || t.function?.name));
+
+      // Format tools specifically for OpenRouter (uses OpenAI format)
+      const formattedTools = this.formatToolsForOpenRouter(rawTools);
+      console.log(`🔧 Formatted ${formattedTools.length} tools for OpenRouter`);
+
+      return formattedTools;
+    } catch (error) {
+      console.error('❌ Failed to get OpenRouter tools:', error);
+      return [];
+    }
+  }
+
+  private formatToolsForOpenRouter(rawTools: any[]): unknown[] {
+    return rawTools.map(tool => {
+      // All tools now come in unified format with type: 'function' and function object
+      if (tool.type === 'function' && tool.function) {
+        return {
+          type: 'function',
+          function: {
+            name: tool.function.name || 'unknown_tool',
+            description: tool.function.description || 'No description',
+            parameters: tool.function.parameters || {
+              type: 'object',
+              properties: {},
+              required: []
+            }
+          }
+        };
+      }
+      
+      // Handle MCP tools (need conversion to OpenAI format)
+      if (tool.name && tool.description) {
+        return {
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema || {
+              type: 'object',
+              properties: {},
+              required: []
+            }
+          }
+        };
+      }
+      
+      console.warn(`⚠️ Skipping invalid tool:`, tool);
+      return null;
+    }).filter(tool => tool !== null);
+  }
+
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
@@ -40,13 +106,13 @@ export class OpenRouterProvider extends BaseProvider {
     // Construct messages, handling file content
     const messages = await this.constructMessagesWithFiles(message, conversationHistory, settings.systemPrompt || this.getSystemPrompt());
 
-    // Get MCP tools for OpenRouter (fix: use correct signature)
-    const mcpTools = (await this.getMCPToolsForProvider('openrouter', settings)) || [];
+    // Get OpenRouter-specific formatted tools
+    const openRouterTools = await this.getOpenRouterTools(settings);
 
     // Build system prompt with tool instructions
     let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
-    if (mcpTools.length > 0) {
-      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mcpTools as ToolObject[]);
+    if (openRouterTools.length > 0) {
+      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, openRouterTools as ToolObject[]);
     }
 
 
@@ -60,18 +126,18 @@ export class OpenRouterProvider extends BaseProvider {
     };
 
     // Add tools if available (OpenRouter expects OpenAI format)
-    if (mcpTools.length > 0) {
-      requestBody.tools = this.formatTools(mcpTools as ToolObject[]);
+    if (openRouterTools.length > 0) {
+      requestBody.tools = openRouterTools;
       requestBody.tool_choice = 'auto';
 
-      console.log(`🚀 OpenRouter API call with ${mcpTools.length} tools:`, {
+      console.log(`🚀 OpenRouter API call with ${openRouterTools.length} tools:`, {
         model: settings.model,
-        toolCount: mcpTools.length,
+        toolCount: openRouterTools.length,
         toolChoice: requestBody.tool_choice,
         formattedTools: requestBody.tools
       });
     } else {
-      console.log(`🚀 OpenRouter API call without tools (no MCP tools available)`);
+      console.log(`🚀 OpenRouter API call without tools (no tools available)`);
     }
 
     const response = await fetch(`${provider.baseUrl}/chat/completions`, {
@@ -253,15 +319,9 @@ export class OpenRouterProvider extends BaseProvider {
   }
 
   // Private helper methods
-  private async getMCPToolsForProvider(providerId: string, settings: LLMSettings): Promise<unknown[]> {
-    // This will be injected by the main service
-    return [];
-  }
-
-  private async executeMCPTool(toolName: string, args: Record<string, unknown>): Promise<string> {
-    // This will be injected by the main service
-    return JSON.stringify({ error: 'Tool execution not available' });
-  }
+  // These methods are injected by the ProviderAdapter from the LLMService
+  private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
+  private executeMCPTool!: (toolName: string, args: Record<string, unknown>) => Promise<string>;
 
   private async executeToolsAndFollowUp(
     toolCalls: Array<{ id?: string; type?: string; function?: { name?: string; arguments?: string } }>,
@@ -420,24 +480,71 @@ export class OpenRouterProvider extends BaseProvider {
       usage: data.usage
     });
 
-    // Handle tool calls if present (OpenAI format)
+    // Handle tool calls if present (OpenAI format) - execute immediately like Anthropic
     if (message.tool_calls && message.tool_calls.length > 0) {
       console.log(`🔧 OpenRouter response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
-      // Tool execution will be handled by the main service
-      return {
-        content: message.content || '',
-        usage: data.usage ? {
-          promptTokens: data.usage.prompt_tokens,
-          completionTokens: data.usage.completion_tokens,
-          totalTokens: data.usage.total_tokens
-        } : undefined,
-        toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
-          id: tc.id,
-          name: tc.function.name,
-          arguments: JSON.parse(tc.function.arguments)
-        }))
-      };
+      // Check if we have the parallel execution method injected
+      if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
+        console.log(`🚀 Executing ${message.tool_calls.length} OpenRouter tools immediately`);
+        
+        // Format tool calls for execution
+        const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
+          id: toolCall.id,
+          name: toolCall.function.name,
+          arguments: JSON.parse(toolCall.function.arguments)
+        }));
+
+        // Execute tools in parallel immediately
+        const executeMultipleToolsParallel = (this as any).executeMultipleToolsParallel;
+        const summarizeToolResultsForModel = (this as any).summarizeToolResultsForModel;
+        
+        try {
+          const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'openrouter');
+          console.log(`✅ OpenRouter tool execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
+          
+          // Get tool results summary for the model
+          const toolSummary = summarizeToolResultsForModel(parallelResults);
+          
+          // Return response with tool results included
+          return {
+            content: (message.content || '') + '\n\n' + toolSummary,
+            usage: data.usage ? {
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens
+            } : undefined
+          };
+        } catch (error) {
+          console.error(`❌ OpenRouter tool execution failed:`, error);
+          // Fall back to returning tool calls for external handling
+          return {
+            content: message.content || '',
+            usage: data.usage ? {
+              promptTokens: data.usage.prompt_tokens,
+              completionTokens: data.usage.completion_tokens,
+              totalTokens: data.usage.total_tokens
+            } : undefined,
+            toolCalls: toolCallsForExecution
+          };
+        }
+      } else {
+        console.warn(`⚠️ OpenRouter provider missing tool execution methods - falling back to external handling`);
+        // Fall back to external handling if methods not injected
+        return {
+          content: message.content || '',
+          usage: data.usage ? {
+            promptTokens: data.usage.prompt_tokens,
+            completionTokens: data.usage.completion_tokens,
+            totalTokens: data.usage.total_tokens
+          } : undefined,
+          toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
+            id: tc.id,
+            name: tc.function.name,
+            arguments: JSON.parse(tc.function.arguments)
+          }))
+        };
+      }
     }
 
     return {

@@ -26,6 +26,72 @@ export class OllamaProvider extends BaseProvider {
     toolFormat: 'openai'
   };
 
+  // Ollama-specific tool calling methods
+  private async getOllamaTools(settings: LLMSettings): Promise<unknown[]> {
+    try {
+      console.log(`🔍 Getting tools for Ollama provider`);
+      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
+
+      // Check if tool calling is disabled
+      if (settings?.toolCallingEnabled === false) {
+        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
+        return [];
+      }
+
+      // Get raw tools from the centralized service (temporarily)
+      const rawTools = await this.getMCPToolsForProvider('ollama', settings);
+      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: any) => t.name || t.function?.name));
+
+      // Format tools specifically for Ollama (uses OpenAI format)
+      const formattedTools = this.formatToolsForOllama(rawTools);
+      console.log(`🔧 Formatted ${formattedTools.length} tools for Ollama`);
+
+      return formattedTools;
+    } catch (error) {
+      console.error('❌ Failed to get Ollama tools:', error);
+      return [];
+    }
+  }
+
+  private formatToolsForOllama(rawTools: any[]): unknown[] {
+    return rawTools.map(tool => {
+      // All tools now come in unified format with type: 'function' and function object
+      if (tool.type === 'function' && tool.function) {
+        return {
+          type: 'function',
+          function: {
+            name: tool.function.name || 'unknown_tool',
+            description: tool.function.description || 'No description',
+            parameters: tool.function.parameters || {
+              type: 'object',
+              properties: {},
+              required: []
+            }
+          }
+        };
+      }
+      
+      // Handle MCP tools (need conversion to OpenAI format)
+      if (tool.name && tool.description) {
+        return {
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema || {
+              type: 'object',
+              properties: {},
+              required: []
+            }
+          }
+        };
+      }
+      
+      console.warn(`⚠️ Skipping invalid tool:`, tool);
+      return null;
+    }).filter(tool => tool !== null);
+  }
+
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
@@ -46,13 +112,13 @@ export class OllamaProvider extends BaseProvider {
 
     const messages = [];
 
-    // Get MCP tools for Ollama
-    const mcpTools = await this.getMCPToolsForProvider('ollama', settings);
+    // Get Ollama-specific formatted tools
+    const ollamaTools = await this.getOllamaTools(settings);
 
     // Build system prompt with tool instructions if tools are available
     let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
-    if (mcpTools.length > 0) {
-      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mcpTools as ToolObject[]);
+    if (ollamaTools.length > 0) {
+      systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, ollamaTools as ToolObject[]);
     }
 
     if (systemPrompt) {
@@ -153,7 +219,7 @@ export class OllamaProvider extends BaseProvider {
     }
 
     console.log(`🔍 Ollama: Using model: "${settings.model}"`);
-    console.log(`🔍 Ollama: Available MCP tools: ${mcpTools.length}`);
+    console.log(`🔍 Ollama: Available tools: ${ollamaTools.length}`);
 
     const requestBody: Record<string, unknown> = {
       model: settings.model,
@@ -168,19 +234,19 @@ export class OllamaProvider extends BaseProvider {
     console.log(`🔍 Ollama: Model "${settings.model}" supports tools: ${supportsTools}`);
 
     // Only add tools if model supports them AND we have tools available
-    if (supportsTools && mcpTools.length > 0) {
-      requestBody.tools = mcpTools;
+    if (supportsTools && ollamaTools.length > 0) {
+      requestBody.tools = ollamaTools;
       requestBody.tool_choice = 'auto';
-      console.log(`🚀 Ollama API call with ${mcpTools.length} tools:`, {
+      console.log(`🚀 Ollama API call with ${ollamaTools.length} tools:`, {
         model: settings.model,
-        toolCount: mcpTools.length
+        toolCount: ollamaTools.length
       });
       console.log(`🔍 Ollama: Full request body:`, JSON.stringify(requestBody, null, 2));
     } else {
       if (!supportsTools) {
         console.log(`🚀 Ollama API call without tools (model "${settings.model}" doesn't support tools)`);
       } else {
-        console.log(`🚀 Ollama API call without tools (no MCP tools available)`);
+        console.log(`🚀 Ollama API call without tools (no tools available)`);
       }
     }
 
@@ -401,10 +467,8 @@ export class OllamaProvider extends BaseProvider {
   }
 
   // Private helper methods
-  private async getMCPToolsForProvider(providerId: string, settings: LLMSettings): Promise<unknown[]> {
-    // This will be injected by the main service
-    return [];
-  }
+  // This method is injected by the ProviderAdapter from the LLMService
+  private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
 
   private async handleNativeStreamResponse(
     response: Response,
@@ -520,7 +584,7 @@ export class OllamaProvider extends BaseProvider {
       console.log(`🔧 Ollama tool calls:`, toolCalls);
 
       // Stream any initial content first
-      if (fullContent && onStream) {
+      if (fullContent && typeof onStream === 'function') {
         console.log(`🔄 Ollama: Streaming initial content before tool execution: "${fullContent}"`);
         // Content was already streamed during parsing, no need to stream again
       }
@@ -609,10 +673,60 @@ export class OllamaProvider extends BaseProvider {
     onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
     console.log(`🔧 Ollama executing ${toolCalls.length} native tool calls`);
-    console.log(`🔧 Ollama: executeMCPTool method available:`, typeof this.executeMCPTool);
-    console.log(`🔧 Ollama: executeMCPTool method:`, this.executeMCPTool.toString().substring(0, 200));
 
-    // Execute all tool calls
+    // Check if we have parallel execution method injected (like Anthropic/Mistral)
+    if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
+      console.log(`🚀 Using parallel execution for ${toolCalls.length} Ollama tools`);
+      
+      // Format tool calls for parallel execution
+      const toolCallsForExecution = toolCalls.map(tc => {
+        let parsedArgs: Record<string, unknown> = {};
+        try {
+          parsedArgs = JSON.parse(tc.function.arguments);
+        } catch (parseError) {
+          console.warn(`⚠️ Failed to parse tool arguments: ${tc.function.arguments}`, parseError);
+          parsedArgs = {};
+        }
+        
+        return {
+          id: tc.id,
+          name: tc.function.name,
+          arguments: parsedArgs
+        };
+      });
+
+      try {
+        // Execute tools in parallel immediately
+        const executeMultipleToolsParallel = (this as any).executeMultipleToolsParallel;
+        const summarizeToolResultsForModel = (this as any).summarizeToolResultsForModel;
+        
+        const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'ollama');
+        console.log(`✅ Ollama parallel execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
+        
+        // Get tool results summary for the model
+        const toolSummary = summarizeToolResultsForModel(parallelResults);
+        
+        // Stream the tool results to user
+        onStream('\n\n' + toolSummary);
+        
+        // Return response with tool results included
+        return {
+          content: originalContent + '\n\n' + toolSummary,
+          usage: usage ? {
+            promptTokens: usage.promptTokens || 0,
+            completionTokens: usage.completionTokens || 0,
+            totalTokens: usage.totalTokens || 0
+          } : undefined,
+          toolCalls: toolCallsForExecution
+        };
+      } catch (error) {
+        console.error(`❌ Ollama parallel tool execution failed, falling back to sequential:`, error);
+        // Fall back to sequential execution below
+      }
+    }
+
+    // Fallback: Execute all tool calls sequentially (old method)
+    console.log(`⚠️ Using sequential execution for ${toolCalls.length} Ollama tools`);
     const toolResults: Array<{ name: string; result: string; error?: boolean }> = [];
 
     for (const toolCall of toolCalls) {
@@ -629,10 +743,7 @@ export class OllamaProvider extends BaseProvider {
         }
 
         console.log(`🔧 Executing Ollama native tool: ${toolCall.function.name} with args:`, parsedArgs);
-        console.log(`🔍 Ollama: executeMCPTool method type:`, typeof this.executeMCPTool);
-        console.log(`🔍 Ollama: About to call executeMCPTool...`);
-
-        const result = await this.executeMCPTool(toolCall.function.name, parsedArgs);
+        const result = await (this as any).executeMCPTool(toolCall.function.name, parsedArgs);
         console.log(`🔍 Ollama: Tool execution result:`, result);
 
         toolResults.push({
@@ -643,7 +754,7 @@ export class OllamaProvider extends BaseProvider {
         console.log(`✅ Ollama native tool ${toolCall.function.name} executed successfully`);
       } catch (error) {
         console.error(`❌ Ollama native tool ${toolCall.function.name} failed:`, error);
-        const userFriendlyError = this.formatToolError(toolCall.function.name, error);
+        const userFriendlyError = (this as any).formatToolError ? (this as any).formatToolError(toolCall.function.name, error) : String(error);
         toolResults.push({
           name: toolCall.function.name,
           result: userFriendlyError,

@@ -120,6 +120,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 export const useTheme = () => {
   const context = useContext(ThemeContext);
   if (context === undefined) {
+    // During static generation, return default theme
+    if (typeof window === 'undefined') {
+      return {
+        theme: themes[0],
+        setTheme: () => {},
+        themes
+      };
+    }
     throw new Error('useTheme must be used within a ThemeProvider');
   }
   return context;

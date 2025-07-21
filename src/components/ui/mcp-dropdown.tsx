@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Server, Check, X, RefreshCw, Zap } from "lucide-react"
+import { Server, RefreshCw, Zap } from "lucide-react"
 import { cn } from "../../lib/utils"
 import { Button } from "./button"
 import { ToggleSwitch } from "./toggle-switch"
@@ -126,15 +126,11 @@ export function MCPDropdown({
   const toggleServer = React.useCallback(async (serverId: string, currentlyEnabled: boolean) => {
     try {
       console.log(`🔄 MCP Dropdown: Toggling server ${serverId}: ${currentlyEnabled} -> ${!currentlyEnabled}`)
-      console.log('🔄 Current enabledServers state:', Array.from(enabledServers))
-      console.log('🔄 Current connectedServers state:', Array.from(connectedServers))
 
       // Use the exact same logic as SettingsOverlay.tsx handleUpdateMcpServer
       const wasEnabled = currentlyEnabled
       const willBeEnabled = !currentlyEnabled
       const updates = { enabled: willBeEnabled }
-
-      console.log('🔄 Updating MCP server:', serverId, updates)
 
       // Update server enabled state
       await mcpService.updateServer(serverId, updates)
@@ -241,15 +237,27 @@ export function MCPDropdown({
     const handleSelection = (selectedValue: string) => {
       console.log('🔥 MCP DROPDOWN: Item selected:', selectedValue);
 
-      // Try to parse as JSON for toggle switch events
+      // Handle new toggle format: "mcp-toggle:serverId:currentlyEnabled"
+      if (selectedValue.startsWith('mcp-toggle:')) {
+        const parts = selectedValue.split(':');
+        if (parts.length === 3) {
+          const serverId = parts[1];
+          const currentlyEnabled = parts[2] === 'true';
+          console.log('🔥 MCP DROPDOWN: Toggle switch clicked:', serverId, 'currently enabled:', currentlyEnabled);
+          toggleServer(serverId, currentlyEnabled);
+          return; // Don't close dropdown for toggle switches
+        }
+      }
+
+      // Try to parse as JSON for legacy toggle switch events
       try {
         const parsed = JSON.parse(selectedValue);
         if (parsed.type === 'mcp-toggle') {
-          console.log('🔥 MCP DROPDOWN: Toggle switch clicked:', parsed.serverId);
+          console.log('🔥 MCP DROPDOWN: Legacy toggle switch clicked:', parsed.serverId);
           toggleServer(parsed.serverId, parsed.currentlyEnabled);
           return; // Don't close dropdown for toggle switches
         }
-      } catch (e) {
+      } catch {
         // Not JSON, handle as regular string selection
       }
 
@@ -309,7 +317,7 @@ export function MCPDropdown({
                 </svg>`
               }
             </div>
-            <div class="toggle-switch ${isEnabled ? 'toggle-enabled' : 'toggle-disabled'}" data-server-id="${server.id}" data-enabled="${isEnabled}">
+            <div class="toggle-switch ${isEnabled ? 'toggle-enabled' : 'toggle-disabled'} dropdown-item" data-value="mcp-toggle:${server.id}:${isEnabled}" data-server-id="${server.id}" data-enabled="${isEnabled}">
               <div class="toggle-track">
                 <div class="toggle-thumb"></div>
               </div>
@@ -472,32 +480,7 @@ export function MCPDropdown({
           display: none;
         }
       </style>
-      <script>
-        document.addEventListener('DOMContentLoaded', function() {
-          // Handle toggle switch clicks
-          document.querySelectorAll('.toggle-switch').forEach(toggle => {
-            toggle.addEventListener('click', function(e) {
-              e.preventDefault();
-              e.stopPropagation();
 
-              const serverId = this.getAttribute('data-server-id');
-              const currentEnabled = this.getAttribute('data-enabled') === 'true';
-
-              console.log('Toggle clicked:', serverId, 'currently enabled:', currentEnabled);
-
-              // Send toggle event to main process
-              if (window.electronAPI && window.electronAPI.selectDropdownItem) {
-                // Send as JSON string since selectDropdownItem expects a string
-                window.electronAPI.selectDropdownItem(JSON.stringify({
-                  type: 'mcp-toggle',
-                  serverId: serverId,
-                  currentlyEnabled: currentEnabled
-                }));
-              }
-            });
-          });
-        });
-      </script>
       <div class="dropdown-container">
         ${servers.length === 0 ?
           '<div class="empty-state">No MCP servers configured</div>' :
@@ -729,9 +712,10 @@ export function MCPDropdown({
                             >
                               <ToggleSwitch
                                 enabled={isEnabled}
-                                onToggle={async (enabled) => {
-                                  console.log('🔄 MCP Toggle switch clicked:', server.id, 'currently enabled:', isEnabled, 'new state:', enabled);
-                                  // Call toggle function directly
+                                onToggle={async (newEnabledState) => {
+                                  console.log('🔄 MCP Toggle switch clicked:', server.id, 'currently enabled:', isEnabled, 'new state requested:', newEnabledState);
+                                  // The toggleServer function expects the CURRENT state, not the new state
+                                  // This is because it calculates willBeEnabled = !currentlyEnabled
                                   await toggleServer(server.id, isEnabled);
                                 }}
                                 size="sm"
