@@ -109,6 +109,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // History window operations
   openHistory: (conversations: any[]) => ipcRenderer.invoke('open-history', conversations),
   closeHistory: () => ipcRenderer.invoke('close-history'),
+
+  // External link operations
+  openExternalLink: (url: string) => ipcRenderer.invoke('open-external-link', url),
   
   // History action methods (called from history window to send events)
   selectHistoryItem: (conversationId: string) => ipcRenderer.send('history-item-selected', conversationId),

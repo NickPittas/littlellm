@@ -4071,6 +4071,18 @@ function setupIPC() {
     }
   });
 
+  // Handle opening external links
+  ipcMain.handle('open-external-link', async (_, url: string) => {
+    try {
+      console.log('Opening external URL:', url);
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to open external URL:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
   // Handle history item deletion
   ipcMain.handle('delete-history-item', async (_, conversationId: string) => {
     console.log(`🗑️ Deleting conversation: ${conversationId}`);
