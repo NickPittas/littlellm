@@ -1,6 +1,8 @@
-# LittleLLM v1.9.0 🤖💬
+# LittleLLM v2.0.1 🤖💬
 
-A powerful, lightweight desktop chat application for Windows that provides seamless access to multiple AI providers with advanced features like MCP (Model Context Protocol) integration, tool calling, memory context, and enhanced vision support.
+A powerful, cross-platform desktop AI chat application that provides seamless access to multiple AI providers with advanced features like MCP (Model Context Protocol) integration, tool calling, memory context, and enhanced vision support.
+
+**Now available on Windows, macOS (Intel + Apple Silicon), and Linux!**
 
 ![LittleLLM Screenshot](assets/icon.png)
 
@@ -69,20 +71,34 @@ A powerful, lightweight desktop chat application for Windows that provides seaml
 
 ### Download & Install
 
-**Windows Installer (Recommended)**
-1. Download `LittleLLM-Setup-1.9.0.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
+#### Windows
+**Installer (Recommended)**
+1. Download `LittleLLM-Setup-2.0.1.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
 2. Run the installer (may need "Run as administrator")
 3. Follow installation wizard
 4. Launch from Desktop shortcut or Start Menu
 
 **Portable Version**
-1. Download `LittleLLM-Portable-1.9.0.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
+1. Download `LittleLLM-Portable-2.0.1.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
 2. Place anywhere (Desktop, USB drive, etc.)
 3. Double-click to run - no installation needed
 
-> **✅ Latest builds include all 11 AI providers with MCP integration, tool calling, and enhanced vision support**
+#### macOS
+1. Download the appropriate DMG for your Mac:
+   - Intel Macs: `LittleLLM-2.0.1-x64.dmg`
+   - Apple Silicon: `LittleLLM-2.0.1-arm64.dmg`
+   - Universal: `LittleLLM-2.0.1-universal.dmg`
+2. Open DMG and drag LittleLLM to Applications folder
+3. Right-click and select "Open" on first launch (Gatekeeper)
 
-📖 **[Full Installation Guide](INSTALLATION.md)**
+#### Linux
+1. Download `LittleLLM-2.0.1.AppImage` from [Releases](https://github.com/NickPittas/littlellm/releases)
+2. Make executable: `chmod +x LittleLLM-2.0.1.AppImage`
+3. Run: `./LittleLLM-2.0.1.AppImage`
+
+> **✅ Cross-platform builds include all 11 AI providers with MCP integration, tool calling, and enhanced vision support**
+
+📖 **Installation Guides**: [Windows](INSTALLATION.md) | [macOS](INSTALLATION_MAC.md)
 
 ### Setup API Keys
 1. Click the settings icon ⚙️
@@ -107,39 +123,6 @@ A powerful, lightweight desktop chat application for Windows that provides seaml
 6. Toggle tool calling with the 🔧 button next to attachments
 7. Manage MCP servers with the 🖥️ dropdown
 8. Copy text from clipboard, then select prompts with `{content}` for automatic insertion
-
-## 🔧 Development
-
-### Prerequisites
-- Node.js 18+
-- npm or yarn
-
-### Setup
-```bash
-git clone https://github.com/yourusername/littlellm.git
-cd littlellm
-npm install
-```
-
-### Development Mode
-```bash
-# Start Next.js dev server
-npm run dev
-
-# Start Electron in dev mode
-npm run electron-dev
-```
-
-### Build Executable
-```bash
-# Build for current platform
-npm run dist
-
-# Build for specific platforms
-npm run dist:win    # Windows
-npm run dist:mac    # macOS
-npm run dist:linux  # Linux
-```
 
 ## 📋 Keyboard Shortcuts
 
@@ -196,6 +179,9 @@ LittleLLM supports 20+ themes including:
 ### Prerequisites
 - Node.js 18+
 - npm or yarn
+- **macOS**: Xcode Command Line Tools (`xcode-select --install`)
+- **Windows**: Visual Studio Build Tools or Visual Studio Community
+- **Linux**: build-essential package
 
 ### Setup
 ```bash
@@ -214,63 +200,90 @@ npm run electron-dev
 ```
 
 ### Building
+
+#### Cross-Platform
 ```bash
 # Build for production
 npm run build
 
-# Build both installer and portable (Windows)
+# Build for current platform
+npm run dist
+```
+
+#### Windows
+```bash
+# Build both installer and portable
 npm run build:windows
 
 # Build specific versions
 npm run dist:win-installer  # Windows installer (.exe)
 npm run dist:win-portable   # Windows portable (.exe)
-npm run dist:mac            # macOS (.dmg)
+```
+
+#### macOS
+```bash
+# Build all macOS formats
+npm run build:mac
+
+# Build specific formats
+npm run dist:mac-dmg        # macOS DMG installer
+npm run dist:mac-zip        # macOS ZIP archive
+npm run dist:mac-universal  # Universal binary (Intel + Apple Silicon)
+
+# Create macOS icon (requires macOS)
+npm run create-mac-icon
+```
+
+#### Linux
+```bash
 npm run dist:linux          # Linux (AppImage)
 ```
 
-## 🆕 What's New in v1.9.0
+### Platform-Specific Notes
 
-### 🔧 **Major Bug Fixes**
-- **Fixed Chat Window Visibility**: Resolved issues with global shortcuts not properly restoring chat windows
-- **Enhanced Window State Management**: Improved tracking and restoration of window visibility states
-- **Reliable Open Chat Button**: Button now works unconditionally regardless of previous hide/show cycles
+#### macOS Installation
+- **Intel Macs**: Download the x64 version
+- **Apple Silicon Macs**: Download the arm64 version
+- **Universal**: Works on both Intel and Apple Silicon
+- **First Launch**: You may need to allow the app in System Preferences > Security & Privacy
+- **Gatekeeper**: Right-click the app and select "Open" if you get a security warning
 
-### 🎯 **MCP (Model Context Protocol) Integration** ✨
-- **Full MCP SDK Integration**: Complete implementation of Model Context Protocol
-- **Server Management**: Add, configure, and manage MCP servers through UI
-- **Tool Discovery**: Automatic detection and formatting of available MCP tools
-- **Per-Chat Control**: Enable/disable MCP servers per conversation
-- **Security Architecture**: MCP SDK isolated in main process with IPC bridge
+#### Windows Installation
+- **Installer**: Recommended for most users, includes automatic updates
+- **Portable**: No installation required, runs from any folder
+- **Windows Defender**: May flag the app initially, this is normal for new applications
 
-### 🛠️ **Tool Calling System** ✨
-- **User-Controlled Tool Calling**: Toggle switch next to attachment buttons
-- **Native Tool Support**: Works with models that natively support structured tool calling
-- **Streaming Tool Assembly**: Assembles tool calls from streaming chunks
-- **Clean Follow-up Processing**: Tool results processed without system message pollution
+#### Linux Installation
+- **AppImage**: Download, make executable (`chmod +x`), and run
+- **Dependencies**: Most modern Linux distributions should work out of the box
 
-### 🧠 **Memory Context System** ✨
-- **Intelligent Memory**: Automatic conversation memory with context retrieval
-- **Memory Tools**: Built-in memory management tools for storing and retrieving information
-- **Context-Aware Responses**: AI responses enhanced with relevant memory context
+## 🆕 What's New in v2.0.1
 
-### 🖼️ **Enhanced Vision Support** ✨
-- **Fixed Ollama Vision**: Proper pattern matching and native API integration for vision models
-- **Multipart Form Data**: n8n provider sends images as proper binary attachments
-- **Response Parser**: Advanced parsing system for cleaning up structured responses
-- **No Image Conversion**: Direct base64 handling for all providers (optimized performance)
+### 🍎 **Cross-Platform Support** ✨
+- **macOS Native Support**: Full compatibility with Intel and Apple Silicon Macs
+- **Linux AppImage**: Universal Linux distribution format
+- **Universal Binaries**: Single macOS app works on both architectures
+- **Platform-Specific Optimizations**: Tailored performance for each operating system
 
-### 🎨 **UI/UX Improvements** ✨
-- **Token Tracking**: Real-time tokens/second and total usage display
-- **Reset Chat**: One-click conversation clearing with 🔄 button
-- **MCP Dropdown**: Bottom toolbar control for MCP server management
-- **Enhanced Settings**: Dedicated MCP configuration section with raw JSON editor
-- **Tool Call Indicators**: Visual feedback when tools are being executed
+### 🔧 **Enhanced Build System**
+- **Cross-Platform Dependencies**: Automatic platform-specific binary selection
+- **Professional Installers**: DMG for macOS, NSIS for Windows, AppImage for Linux
+- **Code Signing Ready**: Proper entitlements and security configurations
+- **ES Module Support**: Modern JavaScript module system
 
-### 🔧 **Technical Improvements**
-- **Enhanced Logging**: Comprehensive debug output for settings and MCP operations
-- **Better Error Handling**: Improved error messages and fallback mechanisms
-- **Performance Optimizations**: Reduced image processing overhead
-- **Type Safety**: Improved TypeScript definitions throughout the codebase
+### 🛠️ **Technical Improvements**
+- **LanceDB Cross-Platform**: Fixed Windows-only dependency limitation
+- **Icon Generation**: Platform-appropriate formats (.ico, .icns, .png)
+- **Build Scripts**: Comprehensive automation for all platforms
+- **Documentation**: Detailed installation guides for each platform
+
+### 🎯 **Continued Excellence**
+All existing features from v1.9.0 remain fully functional:
+- **MCP Integration**: Model Context Protocol with tool calling
+- **11 AI Providers**: OpenAI, Anthropic, Gemini, Mistral, and more
+- **Vision Support**: Image processing across all platforms
+- **Memory Context**: Intelligent conversation memory
+- **Advanced UI**: Multi-window architecture with theming
 
 ## 🏗️ **Tech Stack**
 - **Frontend**: Next.js 14, React 18, TypeScript
@@ -293,10 +306,20 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**LittleLLM v1.9.0** - Your intelligent AI companion with MCP integration, tool calling, and memory context 🚀
+**LittleLLM v2.0.1** - Your cross-platform AI companion with MCP integration, tool calling, and memory context 🚀
 
 ## 📦 **Production Builds**
-- **Windows Installer**: `LittleLLM-Setup-1.9.0.exe` with proper installation
-- **Portable Version**: `LittleLLM-Portable-1.9.0.exe` for USB/standalone use
-- **No CORS Issues**: All APIs work perfectly in the executable builds
-- **Enhanced Features**: MCP integration, tool calling, and memory context included
+
+### Windows
+- **Installer**: `LittleLLM-Setup-2.0.1.exe` with proper installation and shortcuts
+- **Portable**: `LittleLLM-Portable-2.0.1.exe` for USB/standalone use
+
+### macOS
+- **Intel Macs**: `LittleLLM-2.0.1-x64.dmg`
+- **Apple Silicon**: `LittleLLM-2.0.1-arm64.dmg`
+- **Universal**: `LittleLLM-2.0.1-universal.dmg` (works on both)
+
+### Linux
+- **AppImage**: `LittleLLM-2.0.1.AppImage` for universal compatibility
+
+> **✅ All platforms**: No CORS issues, full feature parity, MCP integration included

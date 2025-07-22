@@ -1,4 +1,7 @@
-# Settings Window Flow Map
+# LittleLLM v2.0.1 - Settings Window Flow Map
+
+## Overview
+This document maps the complete flow from clicking the settings button to rendering the settings overlay window in LittleLLM v2.0.1.
 
 ## 1. USER ACTION: Click Settings Button
 

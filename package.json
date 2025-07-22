@@ -1,9 +1,10 @@
 {
   "name": "littlellm",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A powerful desktop AI chat application with enhanced vision support, n8n integration, and advanced response parsing",
   "author": "LittleLLM Team",
   "private": true,
+  "type": "module",
   "main": "dist/electron/electron/main.js",
   "scripts": {
     "dev": "next dev",
@@ -37,12 +38,16 @@
     "dist:win-installer": "npm run build && npm run build-electron && electron-builder --win --config.win.target=nsis --publish=never",
     "dist:win-portable": "npm run build && npm run build-electron && electron-builder --win --config.win.target=portable --publish=never",
     "build:windows": "node scripts/build-windows.js",
+    "build:mac": "node scripts/build-mac.js",
+    "create-mac-icon": "node scripts/create-mac-icon.js",
     "dist:mac": "npm run build && npm run build-electron && electron-builder --mac --publish=never",
+    "dist:mac-dmg": "npm run build && npm run build-electron && electron-builder --mac --config.mac.target=dmg --publish=never",
+    "dist:mac-zip": "npm run build && npm run build-electron && electron-builder --mac --config.mac.target=zip --publish=never",
+    "dist:mac-universal": "npm run build && npm run build-electron && electron-builder --mac --universal --publish=never",
     "dist:linux": "npm run build && npm run build-electron && electron-builder --linux --publish=never"
   },
   "dependencies": {
     "@apache-arrow/ts": "^14.0.2",
-    "@lancedb/vectordb-win32-x64-msvc": "^0.21.1",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@modelcontextprotocol/sdk": "^1.15.1",
     "@radix-ui/react-alert-dialog": "^1.0.5",
@@ -124,5 +129,11 @@
     "typescript": "^5.8.3",
     "vitest": "^3.2.4",
     "wait-on": "^8.0.3"
+  },
+  "optionalDependencies": {
+    "@lancedb/vectordb-win32-x64-msvc": "^0.21.1",
+    "@lancedb/vectordb-darwin-x64": "^0.21.1",
+    "@lancedb/vectordb-darwin-arm64": "^0.21.1",
+    "@lancedb/vectordb-linux-x64-gnu": "^0.21.1"
   }
 }

@@ -71,9 +71,46 @@
     "include": "scripts/installer.nsh"
   },
   "mac": {
-    "target": "dmg",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
+      }
+    ],
     "category": "public.app-category.productivity",
-    "icon": "assets/icon.png"
+    "icon": "assets/icon.icns",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "assets/entitlements.mac.plist",
+    "entitlementsInherit": "assets/entitlements.mac.plist",
+    "minimumSystemVersion": "10.14.0",
+    "type": "distribution"
+  },
+  "dmg": {
+    "title": "${productName} ${version}",
+    "icon": "assets/icon.icns",
+    "background": "assets/dmg-background.png",
+    "contents": [
+      {
+        "x": 130,
+        "y": 220
+      },
+      {
+        "x": 410,
+        "y": 220,
+        "type": "link",
+        "path": "/Applications"
+      }
+    ],
+    "window": {
+      "width": 540,
+      "height": 380
+    }
   },
   "linux": {
     "target": "AppImage",
