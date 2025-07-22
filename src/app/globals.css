@@ -5,37 +5,105 @@
 
 @layer base {
   :root {
-    /* Static CSS variables - no dynamic theming */
+    /* Base configuration */
     --radius: 0.5rem;
 
-    /* VS Code theme colors - Direct hex values */
-    --background: #181829;
-    --foreground: #d4d4d4;
-    --card: #181829;
-    --card-foreground: #ffffff;
-    --primary: #569cd6;
-    --primary-foreground: #ffffff;
-    --secondary: #4fc1ff;
-    --secondary-foreground: #adadad;
-    --accent: rgba(86, 156, 214, 0.811);
-    --accent-foreground: #ffffff;
-    --muted: #211f32;
-    --muted-foreground: #9ca3af;
-    --border: #3b3b68;
-    --input: #949494;
-    --ring: #569cd6;
-    --destructive: #f44747;
-    --destructive-foreground: #ffffff;
-    --popover: #8f8f8f;
-    --popover-foreground: #d4d4d4;
+    /* CSS VARIABLES - NO HARDCODED VALUES */
+    /* All values are set dynamically by ThemeContext/Settings */
+    /* These are just placeholders - real values come from Settings Appearance */
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 0%;
+    --card-foreground: 0 0% 100%;
+    --primary: 0 0% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 50%;
+    --secondary-foreground: 0 0% 100%;
+    --accent: 0 0% 50%;
+    --accent-foreground: 0 0% 100%;
+    --muted: 0 0% 25%;
+    --muted-foreground: 0 0% 75%;
+    --border: 0 0% 50%;
+    --input: 0 0% 50%;
+    --ring: 0 0% 50%;
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --system-text: 0 0% 88%;
+    --popover: var(--card);
+    --popover-foreground: var(--card-foreground);
 
-    /* Additional VS Code colors for enhanced theming */
-    --success: #4ec9b0;
-    --warning: #dcdcaa;
-    --info: #4fc1ff;
-    --code-background: #1e1e1e;
-    --code-border: #464647;
+    /* Additional colors - also controlled by settings */
+    --success: 0 100% 50%;
+    --warning: 60 100% 50%;
+    --info: 200 100% 50%;
+    --code-background: 0 0% 10%;
+    --code-border: 0 0% 20%;
   }
+
+  /* Global theme enforcement - ensure all elements respect theme variables */
+  /* Removed global border-color override - let components define their own borders */
+
+  body {
+    background-color: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Ensure all text elements use theme colors */
+  h1, h2, h3, h4, h5, h6, p, span, div, label {
+    color: inherit !important;
+  }
+
+  /* Fix icon color inheritance - ensure all SVG icons inherit proper colors */
+  svg, .lucide, [data-lucide] {
+    color: inherit !important;
+  }
+
+  /* Fix button text and icon colors specifically */
+  button, .button, [role="button"] {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  button svg, .button svg, [role="button"] svg {
+    color: inherit !important;
+  }
+
+  /* Fix dropdown and select text colors */
+  select, .select, [role="combobox"] {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Fix ALL text elements to use proper theme colors */
+  input, textarea, label, span, div, p, h1, h2, h3, h4, h5, h6 {
+    color: inherit !important;
+  }
+
+  /* Force specific problematic elements */
+  .text-foreground {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Fix muted text to be more visible */
+  .text-muted-foreground {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Ensure placeholder text is visible */
+  ::placeholder {
+    color: hsl(var(--muted-foreground)) !important;
+    opacity: 0.8 !important;
+  }
+
+  /* Fix tab navigation text */
+  [role="tab"], .tab, .nav-item {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Fix form labels and inputs */
+  .form-label, .input-label, fieldset legend {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Removed destructive global button styling that broke the interface */
 }
 
 @layer base {
@@ -76,44 +144,28 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Big rounded corners with no borders - simplified */
+  /* Clean base styling - no forced decorations */
   html {
-    background: var(--background) !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border-radius: 32px !important;
-    overflow: hidden !important;
-    width: 100% !important;
-    height: 100% !important;
-    position: relative !important;
-    border: 0px solid transparent !important;
-    outline: none !important;
-    box-shadow: none !important;
+    background: var(--background);
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
   }
 
   body {
-    background-color: var(--background) !important;
-    color: var(--foreground) !important;
-    border-radius: 32px !important;
-    overflow: hidden !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: 0px solid transparent !important;
-    outline: none !important;
-    box-shadow: none !important;
+    background-color: var(--background);
+    color: var(--foreground);
+    margin: 0;
+    padding: 0;
   }
 
   #__next {
-    background: var(--background) !important;
-    border-radius: 32px !important;
-    overflow: hidden !important;
-    width: 100% !important;
-    height: auto !important;
-    position: relative !important;
-    min-height: 0 !important;
-    border: 0px solid transparent !important;
-    outline: none !important;
-    box-shadow: none !important;
+    background: var(--background);
+    width: 100%;
+    height: 100%;
+    position: relative;
+    margin: 0;
   }
 
   /* Force main app container background */
@@ -151,13 +203,7 @@
     border-radius: 8px !important;
   }
 
-  /* Force buttons and inputs to be solid with better contrast */
-  button:not([role="switch"]) {
-    background: var(--muted) !important;
-    color: var(--foreground) !important;
-    border: none !important;
-    border-radius: 6px !important;
-  }
+  /* Allow buttons to use their own styling */
 
   /* Exception for toggle switches - allow custom styling */
   button[role="switch"] {
@@ -168,44 +214,44 @@
 
   /* Specific styling for enabled toggle switches */
   button[role="switch"][aria-checked="true"] {
-    background: #22c55e !important; /* Bright green */
-    box-shadow: 0 4px 14px 0 rgba(34, 197, 94, 0.3) !important;
-    border: 2px solid rgba(34, 197, 94, 0.5) !important;
+    background: hsl(var(--primary)) !important; /* Use theme primary */
+    box-shadow: 0 4px 14px 0 hsl(var(--primary) / 0.3) !important;
+    border: 2px solid hsl(var(--primary) / 0.5) !important;
     border-radius: 9999px !important; /* Fully rounded */
   }
 
   button[role="switch"][aria-checked="true"]:hover {
-    background: #16a34a !important; /* Darker green on hover */
-    box-shadow: 0 6px 20px 0 rgba(34, 197, 94, 0.4) !important;
+    background: hsl(var(--primary) / 0.8) !important; /* Darker on hover */
+    box-shadow: 0 6px 20px 0 hsl(var(--primary) / 0.4) !important;
     border-radius: 9999px !important; /* Fully rounded */
   }
 
   button[role="switch"][aria-checked="false"] {
-    background: #6b7280 !important; /* Gray when disabled */
-    border: 2px solid rgba(107, 114, 128, 0.3) !important;
+    background: hsl(var(--muted-foreground)) !important; /* Use theme muted */
+    border: 2px solid hsl(var(--muted-foreground) / 0.3) !important;
     border-radius: 9999px !important; /* Fully rounded */
   }
 
   /* Input fields with much better visibility */
   input, textarea, select {
-    background: #1a1a2e !important; /* Much darker than background */
-    color: var(--foreground) !important;
-    border: 2px solid var(--border) !important;
+    background: hsl(var(--muted)) !important; /* Use theme muted */
+    color: hsl(var(--foreground)) !important;
+    border: 2px solid hsl(var(--border)) !important;
     border-radius: 6px !important;
   }
 
   /* Focus states for input fields */
   input:focus, textarea:focus, select:focus {
-    background: #16213e !important; /* Even darker on focus */
-    border-color: var(--ring) !important;
+    background: hsl(var(--card)) !important; /* Use theme card on focus */
+    border-color: hsl(var(--ring)) !important;
     outline: none !important;
-    box-shadow: 0 0 0 2px rgba(86, 156, 214, 0.2) !important;
+    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2) !important;
   }
 
   /* Hover states for input fields */
   input:hover, textarea:hover, select:hover {
-    background: #1e1e3f !important;
-    border-color: var(--accent) !important;
+    background: hsl(var(--muted) / 0.8) !important;
+    border-color: hsl(var(--accent)) !important;
   }
 
   /* Settings window input fields - brighter background for better visibility */
@@ -236,9 +282,7 @@
     box-shadow: none !important;
   }
 
-  button:hover {
-    background: var(--accent) !important;
-  }
+  /* Remove global button hover override to allow component-specific hover styles */
 
   /* Enhanced animations for thinking indicator */
   @keyframes thinking-bounce {
@@ -284,8 +328,8 @@
   /* Message bubble specific styling - override card defaults */
   .user-message,
   .bg-primary {
-    background: rgba(86, 156, 214, 0.8) !important; /* More subtle blue */
-    color: var(--primary-foreground) !important;
+    background: hsl(var(--primary) / 0.8) !important; /* Use theme primary with opacity */
+    color: hsl(var(--primary-foreground)) !important;
     border-radius: 16px !important; /* Match main app */
     border: none !important; /* Remove all borders */
     word-wrap: break-word !important; /* Fix text overflow */
@@ -295,8 +339,8 @@
 
   .assistant-message,
   .bg-secondary {
-    background: rgba(45, 42, 65, 0.7) !important; /* Lighter/more muted color between background and user message */
-    color: #d4d4d4 !important; /* Use foreground color for better readability */
+    background: hsl(var(--muted) / 0.7) !important; /* Use theme muted with opacity */
+    color: hsl(var(--foreground)) !important; /* Use theme foreground */
     border-radius: 16px !important; /* Match main app */
     border: none !important; /* Remove all borders */
     word-wrap: break-word !important; /* Fix text overflow */
@@ -485,4 +529,6 @@
   *::-webkit-scrollbar-corner {
     background: var(--muted);
   }
+
+
 }

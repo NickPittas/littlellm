@@ -296,11 +296,11 @@ export function ActionMenuOverlay() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                         <span style={{ fontWeight: 500, fontSize: '14px', color: 'white' }}>{item.title}</span>
-                        <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '9999px', color: '#9ca3af', textTransform: 'capitalize' }}>
+                        <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '9999px', color: 'hsl(var(--muted-foreground))', textTransform: 'capitalize' }}>
                           {item.category}
                         </span>
                       </div>
-                      <p style={{ fontSize: '12px', color: '#9ca3af', lineHeight: '1.4' }}>
+                      <p style={{ fontSize: '12px', color: 'hsl(var(--muted-foreground))', lineHeight: '1.4' }}>
                         {item.description}
                       </p>
                     </div>

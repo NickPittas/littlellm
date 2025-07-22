@@ -47,8 +47,8 @@ export function ToggleSwitch({
         "relative inline-flex items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 border-2 border-transparent",
         currentSize.container,
         enabled
-          ? "bg-green-500 hover:bg-green-400 shadow-lg shadow-green-500/25 border-green-400/50 focus:ring-green-400"
-          : "bg-gray-500 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 border-gray-400/30 focus:ring-gray-400",
+          ? "bg-primary hover:bg-primary/80 shadow-lg shadow-primary/25 border-primary/50 focus:ring-primary"
+          : "bg-muted-foreground hover:bg-muted-foreground/80 border-muted-foreground/30 focus:ring-muted-foreground",
         disabled && "opacity-50 cursor-not-allowed",
         !disabled && "cursor-pointer",
         className

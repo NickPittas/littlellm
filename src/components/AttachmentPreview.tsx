@@ -144,17 +144,9 @@ export function AttachmentPreview({ files, onRemoveFile, currentProvider = 'open
               )}
             </div>
 
-            {/* File info */}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate" title={file.name}>
-                {file.name}
-              </p>
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground">
-                  {formatFileSize(file.size)}
-                </p>
-                {getProcessingIndicator(file)}
-              </div>
+            {/* Spacer - File info removed for minimal UI */}
+            <div className="flex-1 min-w-0 flex items-center justify-end">
+              {getProcessingIndicator(file)}
             </div>
 
             {/* Remove button */}
