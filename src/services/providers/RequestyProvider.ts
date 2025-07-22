@@ -115,7 +115,7 @@ export class RequestyProvider extends BaseProvider {
       const models = data.data?.map((model) => model.id)?.sort() || [];
 
       return models.length > 0 ? models : FALLBACK_MODELS.requesty;
-    } catch (error) {
+    } catch {
       return FALLBACK_MODELS.requesty;
     }
   }
@@ -152,14 +152,16 @@ export class RequestyProvider extends BaseProvider {
   // This method is injected by the ProviderAdapter from the LLMService
   private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleStreamResponse(
     response: Response,
     onStream: (chunk: string) => void,
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    signal?: AbortSignal
+    _signal?: AbortSignal
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     return OpenAICompatibleStreaming.handleStreamResponse(
       response,
       onStream,
@@ -171,7 +173,8 @@ export class RequestyProvider extends BaseProvider {
     );
   }
 
-  private async executeMCPTool(toolName: string, args: Record<string, unknown>): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async executeMCPTool(_toolName: string, _args: Record<string, unknown>): Promise<string> {
     // This will be injected by the main service
     return JSON.stringify({ error: 'Tool execution not available' });
   }
@@ -204,12 +207,14 @@ export class RequestyProvider extends BaseProvider {
     );
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleNonStreamResponse(
     response: Response,
-    settings: LLMSettings,
-    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    conversationId?: string
+    _settings: LLMSettings,
+    _conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    _conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
     const choice = data.choices[0];
     const message = choice.message;

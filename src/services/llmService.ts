@@ -46,14 +46,14 @@ interface MCPTool {
   serverId?: string;
 }
 
-interface MemoryTool {
-  type: string;
-  function: {
-    name: string;
-    description: string;
-    parameters: Record<string, unknown>;
-  };
-}
+// interface MemoryTool {
+//   type: string;
+//   function: {
+//     name: string;
+//     description: string;
+//     parameters: Record<string, unknown>;
+//   };
+// }
 
 // Types are imported from providers/types
 
@@ -71,17 +71,17 @@ export interface ToolExecutionResult {
   arguments: ToolCallArguments;
 }
 
-// Combined tool type for MCP and Memory tools
-type CombinedTool = MCPTool | MemoryTool;
+// Combined tool type for MCP and Memory tools (currently unused)
+// type CombinedTool = MCPTool | MemoryTool;
 
-// Type guard functions
-function isMCPTool(tool: CombinedTool): tool is MCPTool {
-  return 'name' in tool && 'description' in tool && !('function' in tool);
-}
+// Type guard functions (currently unused but kept for potential future use)
+// function isMCPTool(tool: CombinedTool): tool is MCPTool {
+//   return 'name' in tool && 'description' in tool && !('function' in tool);
+// }
 
-function isMemoryToolType(tool: CombinedTool): tool is MemoryTool {
-  return 'type' in tool && 'function' in tool;
-}
+// function isMemoryToolType(tool: CombinedTool): tool is MemoryTool {
+//   return 'type' in tool && 'function' in tool;
+// }
 
 // ToolObject is imported from providers/types
 
@@ -385,7 +385,7 @@ class LLMService {
       console.log(`🧠 Memory tools available (${memoryTools.length} tools):`, memoryTools.map(t => t.function.name));
 
       // Convert all tools to a unified format that providers can handle
-      const unifiedTools: any[] = [];
+      const unifiedTools: Array<{type: string, function: {name: string, description: string, parameters: unknown}, serverId?: string}> = [];
       
       // Convert MCP tools to unified format
       for (const tool of mcpTools) {

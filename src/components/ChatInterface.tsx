@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 
@@ -18,8 +18,7 @@ import {
   MessageSquare,
   Paperclip,
   X,
-  ChevronDown,
-  ChevronUp
+  ChevronDown
 } from 'lucide-react';
 import { promptsService } from '../services/promptsService';
 import { chatService, type Message, type ChatSettings } from '../services/chatService';
@@ -96,11 +95,13 @@ export function ChatInterface({
       gemini: { apiKey: '' },
       mistral: { apiKey: '' },
       deepseek: { apiKey: '' },
+      groq: { apiKey: '' },
       lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1' },
       ollama: { apiKey: '', baseUrl: '' },
       openrouter: { apiKey: '' },
       requesty: { apiKey: '' },
       replicate: { apiKey: '' },
+      n8n: { apiKey: '', baseUrl: '' },
     },
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -127,13 +128,13 @@ export function ChatInterface({
   };
 
   // Check if user is at bottom of scroll
-  const checkScrollPosition = () => {
+  const checkScrollPosition = useCallback(() => {
     if (!scrollContainerRef.current) return;
 
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
     setShowScrollToBottom(!isAtBottom && messages.length > 0);
-  };
+  }, [messages.length]);
 
   // Auto-scroll to bottom when messages change (only if user was already at bottom)
   useEffect(() => {
@@ -162,7 +163,7 @@ export function ChatInterface({
     return () => {
       scrollContainer.removeEventListener('scroll', checkScrollPosition);
     };
-  }, [messages.length]);
+  }, [messages.length, checkScrollPosition]);
 
   // Close action menu when clicking outside
   useEffect(() => {

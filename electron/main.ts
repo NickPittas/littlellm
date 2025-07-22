@@ -164,11 +164,12 @@ function calculateWindowPosition(options: WindowPositionOptions): { x: number; y
       x = mainBounds.x + mainBounds.width + 10;
       y = mainBounds.y;
       break;
-    case 'cursor':
+    case 'cursor': {
       const cursorPoint = screen.getCursorScreenPoint();
       x = cursorPoint.x + offsetX;
       y = cursorPoint.y + offsetY;
       break;
+    }
     default:
       x = mainBounds.x + offsetX;
       y = mainBounds.y + offsetY;
@@ -205,7 +206,7 @@ async function checkAndFixMacOSPermissions(command: string): Promise<string> {
           });
         });
         executablePath = output;
-      } catch (error) {
+      } catch {
         console.warn(`⚠️ Command '${command}' not found in PATH, trying as-is`);
         return command;
       }
@@ -778,7 +779,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     const promptCount = prompts.prompts?.length || 0;
 
     process.stdout.write(`🔍 [DEBUG] Server ${serverId} discovered capabilities:\n`);
-    process.stdout.write(`🔍 [DEBUG] - Tools: ${toolCount} ${JSON.stringify(toolCount > 0 ? (tools.tools || []).map((t: any) => t.name) : [])}\n`);
+    process.stdout.write(`🔍 [DEBUG] - Tools: ${toolCount} ${JSON.stringify(toolCount > 0 ? (tools.tools || []).map((t: {name?: string}) => t.name) : [])}\n`);
     process.stdout.write(`🔍 [DEBUG] - Resources: ${resourceCount}\n`);
     process.stdout.write(`🔍 [DEBUG] - Prompts: ${promptCount}\n`);
     process.stdout.write(`🔍 [DEBUG] - Raw tools data: ${JSON.stringify(tools.tools, null, 2)}\n`);
@@ -1416,7 +1417,6 @@ let actionMenuWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let chatWindow: BrowserWindow | null = null;
 let dropdownWindow: BrowserWindow | null = null;
-let historyWindow: BrowserWindow | null = null;
 
 // State tracking for window visibility before global hide
 let chatWindowWasVisible = false;
@@ -1930,7 +1930,7 @@ async function createWindow() {
 function createTray() {
   // Create tray icon using our custom icon
   const trayIconPath = getIconPath();
-  let trayIcon;
+  let trayIcon: Electron.NativeImage;
 
   try {
     trayIcon = nativeImage.createFromPath(trayIconPath);
@@ -3116,7 +3116,7 @@ function setupIPC() {
   let historyWindow: BrowserWindow | null = null;
 
   // Handle history window creation
-  ipcMain.handle('open-history', async (_, conversations: any[]) => {
+  ipcMain.handle('open-history', async (_, conversations: Array<{id: string, title: string, timestamp: number, createdAt?: number, messages?: Array<unknown>}>) => {
     try {
       // Close existing history window if open
       if (historyWindow) {
@@ -3125,7 +3125,7 @@ function setupIPC() {
       }
 
       // Generate HTML content for history window
-      const generateHistoryHTML = (conversations: any[]): string => {
+      const generateHistoryHTML = (conversations: Array<{id: string, title: string, timestamp: number, createdAt?: number, messages?: Array<unknown>}>): string => {
         const conversationItems = conversations.length > 0
           ? conversations.map(conversation => {
               const messageCount = conversation.messages ? conversation.messages.length : 0;
@@ -3394,21 +3394,21 @@ function setupIPC() {
   });
 
   // Handle history events from history window
-  ipcMain.on('history-item-selected', (event, conversationId: string) => {
+  ipcMain.on('history-item-selected', (_, conversationId: string) => {
     // Forward to main window renderer process
     if (mainWindow) {
       mainWindow.webContents.send('history-item-selected', conversationId);
     }
   });
 
-  ipcMain.on('history-item-deleted', (event, conversationId: string) => {
+  ipcMain.on('history-item-deleted', (_, conversationId: string) => {
     // Forward to main window renderer process
     if (mainWindow) {
       mainWindow.webContents.send('history-item-deleted', conversationId);
     }
   });
 
-  ipcMain.on('clear-all-history', (event) => {
+  ipcMain.on('clear-all-history', () => {
     // Forward to main window renderer process
     if (mainWindow) {
       mainWindow.webContents.send('clear-all-history');

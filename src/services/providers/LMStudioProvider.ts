@@ -131,14 +131,14 @@ export class LMStudioProvider extends BaseProvider {
     };
 
     // Check if this request contains images
-    const hasImages = (requestBody.messages as any[]).some(msg =>
-      Array.isArray(msg.content) && msg.content.some((item: any) => item.type === 'image_url')
+    const hasImages = (requestBody.messages as Array<{content: unknown}>).some(msg =>
+      Array.isArray(msg.content) && msg.content.some((item: {type?: string}) => item.type === 'image_url')
     );
 
     // Debug: Log the complete request being sent to LM Studio
     console.log(`🔍 LM Studio request body:`, {
       model: requestBody.model,
-      messageCount: (requestBody.messages as any[]).length,
+      messageCount: (requestBody.messages as Array<unknown>).length,
       hasImages: hasImages,
       stream: requestBody.stream
     });
@@ -308,6 +308,7 @@ export class LMStudioProvider extends BaseProvider {
   // This method is injected by the ProviderAdapter from the LLMService
   private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleStreamResponse(
     response: Response,
     onStream: (chunk: string) => void,
@@ -316,6 +317,7 @@ export class LMStudioProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     // Try native OpenAI-compatible tool calling first, then fallback to text-based
     return this.handleHybridToolCalling(
       response,
@@ -326,7 +328,8 @@ export class LMStudioProvider extends BaseProvider {
     );
   }
 
-  private async executeMCPTool(toolName: string, args: Record<string, unknown>): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async executeMCPTool(_toolName: string, _args: Record<string, unknown>): Promise<string> {
     // This will be injected by the main service
     return JSON.stringify({ error: 'Tool execution not available' });
   }
@@ -340,7 +343,7 @@ export class LMStudioProvider extends BaseProvider {
   ): Promise<LLMResponse> {
     let fullContent = '';
     let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
-    let nativeToolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
+    const nativeToolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
     let hasNativeToolCalls = false;
 
     if (response.body) {
@@ -348,6 +351,7 @@ export class LMStudioProvider extends BaseProvider {
       const decoder = new TextDecoder();
 
       try {
+        // eslint-disable-next-line no-constant-condition
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -448,7 +452,7 @@ export class LMStudioProvider extends BaseProvider {
         if (tc.function.arguments) {
           try {
             parsedArgs = JSON.parse(tc.function.arguments);
-          } catch (parseError) {
+          } catch {
             console.warn(`⚠️ Filtering out tool call with invalid JSON arguments:`, tc);
             return false;
           }
@@ -682,12 +686,14 @@ Please provide a natural, helpful response based on the tool results.`;
     };
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleNonStreamResponse(
     response: Response,
     settings: LLMSettings,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
     console.log(`🔍 LMStudio raw response:`, JSON.stringify(data, null, 2));
     const message = data.choices[0].message;
@@ -698,7 +704,7 @@ Please provide a natural, helpful response based on the tool results.`;
       console.log(`🔧 LMStudio response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
       // Check if we have the parallel execution method injected
-      if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
+      if ((this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).executeMultipleToolsParallel && (this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).summarizeToolResultsForModel) {
         console.log(`🚀 Executing ${message.tool_calls.length} LMStudio tools immediately`);
         
         // Format tool calls for execution
@@ -722,15 +728,15 @@ Please provide a natural, helpful response based on the tool results.`;
         });
 
         // Execute tools in parallel immediately
-        const executeMultipleToolsParallel = (this as any).executeMultipleToolsParallel;
-        const summarizeToolResultsForModel = (this as any).summarizeToolResultsForModel;
+        const executeMultipleToolsParallel = (this as unknown as {executeMultipleToolsParallel: unknown}).executeMultipleToolsParallel;
+        const summarizeToolResultsForModel = (this as unknown as {summarizeToolResultsForModel: unknown}).summarizeToolResultsForModel;
         
         try {
-          const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'lmstudio');
-          console.log(`✅ LMStudio tool execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
-          
+          const parallelResults = await (executeMultipleToolsParallel as (calls: unknown[], provider: string) => Promise<Array<{success: boolean}>>)(toolCallsForExecution, 'lmstudio');
+          console.log(`✅ LMStudio tool execution completed: ${parallelResults.filter(r => r.success).length}/${parallelResults.length} successful`);
+
           // Get tool results summary for the model
-          const toolSummary = summarizeToolResultsForModel(parallelResults);
+          const toolSummary = (summarizeToolResultsForModel as (results: unknown[]) => string)(parallelResults);
           
           // Return response with tool results included
           return {
@@ -836,7 +842,7 @@ Please provide a natural, helpful response based on the tool results.`;
           console.log(`✅ Found JSON-wrapped tool call: ${jsonObj.tool_call.name} with args:`, jsonObj.tool_call.arguments);
           return toolCalls; // Return early if we found the structured format
         }
-      } catch (error) {
+      } catch {
         console.log(`⚠️ Failed to parse JSON-wrapped tool call:`, match[1]);
       }
     }
@@ -852,7 +858,7 @@ Please provide a natural, helpful response based on the tool results.`;
         toolCalls.push({ name: toolName, arguments: args });
         console.log(`✅ Found direct tool call: ${toolName} with args:`, args);
         return toolCalls; // Return early if we found the structured format
-      } catch (error) {
+      } catch {
         console.log(`⚠️ Failed to parse direct tool call arguments:`, match[2]);
         // Try fallback parsing
         const toolName = match[1];
@@ -878,7 +884,7 @@ Please provide a natural, helpful response based on the tool results.`;
           });
           console.log(`✅ Found JSON block tool call: ${jsonObj.tool_call.name} with args:`, jsonObj.tool_call.arguments);
         }
-      } catch (error) {
+      } catch {
         console.log(`⚠️ Failed to parse JSON block:`, jsonMatch[1]);
       }
     }
@@ -1044,7 +1050,7 @@ Please provide a natural, helpful response based on the tool results.`;
     try {
       // Try to parse as JSON first
       return JSON.parse(argsText);
-    } catch (error) {
+    } catch {
       console.log(`⚠️ JSON parsing failed for: ${argsText}, trying fallback parsing`);
 
       // If JSON parsing fails, try to extract key-value pairs
@@ -1224,7 +1230,7 @@ Please provide a natural, helpful response based on the tool results.`;
     // Update system message with optimized prompt if tools are available
     if (enableTools && tools.length > 0) {
       // Use condensed prompt for follow-up calls to avoid token limits
-      const toolNames = tools.map((tool: any) => tool.function?.name || tool.name).filter(Boolean);
+      const toolNames = (tools as Array<{function?: {name?: string}, name?: string}>).map(tool => tool.function?.name || tool.name).filter(Boolean);
       const followUpPrompt = `You are an AI assistant with access to ${tools.length} tools. Based on the tool results provided, continue the conversation naturally. Use additional tools if needed.
 
 Available tools: ${toolNames.join(', ')}
@@ -1293,6 +1299,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
     let fullContent = '';
 
     try {
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -1313,7 +1320,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
                 fullContent += delta.content;
                 onStream(delta.content);
               }
-            } catch (error) {
+            } catch {
               // Skip invalid JSON lines
               continue;
             }

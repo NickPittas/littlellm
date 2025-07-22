@@ -1,7 +1,8 @@
 // Export all provider-related modules
 
 // Base classes and interfaces
-export { ILLMProvider, BaseProvider } from './BaseProvider';
+export type { ILLMProvider } from './BaseProvider';
+export { BaseProvider } from './BaseProvider';
 
 // Types and interfaces
 export * from './types';

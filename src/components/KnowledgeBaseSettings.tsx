@@ -43,9 +43,9 @@ const KnowledgeBaseSettings = () => {
       } else {
         setMessage('No file selected.');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error adding document:', error);
-      setMessage(`Error adding document: ${error.message}`);
+      setMessage(`Error adding document: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }
@@ -62,9 +62,9 @@ const KnowledgeBaseSettings = () => {
       } else {
         setMessage(`Failed to remove document: ${result.error}`);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error removing document:', error);
-      setMessage(`Error removing document: ${error.message}`);
+      setMessage(`Error removing document: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);
     }

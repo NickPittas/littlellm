@@ -49,13 +49,13 @@ export function TransparencyProvider({ children }: TransparencyProviderProps) {
   useEffect(() => {
     const detectCapabilities = () => {
       const isElectron = typeof window !== 'undefined' && (window.electronAPI || window.require);
-      const _supportsBackdropFilter = CSS.supports('backdrop-filter', 'blur(1px)') ||
+      const supportsBackdropFilter = CSS.supports('backdrop-filter', 'blur(1px)') ||
                                    CSS.supports('-webkit-backdrop-filter', 'blur(1px)');
 
       const platformCapabilities: PlatformCapabilities = {
         supportsTransparency: true, // Force enable for testing
         supportsVibrancy: !!isElectron,
-        supportsBackdropFilter: true, // Force enable for testing
+        supportsBackdropFilter: supportsBackdropFilter, // Use actual detection
         platform: typeof navigator !== 'undefined' ? navigator.platform : 'unknown',
       };
 

@@ -25,7 +25,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Initialize enhanced window dragging
-  const { } = useEnhancedWindowDrag();
+  useEnhancedWindowDrag();
 
   const handleClose = () => {
     if (typeof window !== 'undefined' && window.electronAPI) {

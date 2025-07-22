@@ -43,25 +43,20 @@ export interface Message {
   }>;
 }
 
-export interface ProviderSettings {
-  apiKey: string;
-  baseUrl?: string;
-  models?: string[];
-  lastSelectedModel?: string;
+// Import shared types
+import type { ProviderSettings, ChatSettings, ProvidersConfig } from '../types/settings';
+
+// Re-export for convenience
+export type { ProviderSettings, ChatSettings, ProvidersConfig };
+
+// RAG result types
+interface RAGResult {
+  text: string;
+  source: string;
+  score?: number;
 }
 
-export interface ChatSettings {
-  provider: string;
-  model: string;
-  temperature: number;
-  maxTokens: number;
-  systemPrompt?: string;
-  toolCallingEnabled: boolean;
-  ragEnabled?: boolean;
-  providers: {
-    [key: string]: ProviderSettings;
-  };
-}
+
 
 
 
@@ -130,8 +125,7 @@ export const chatService = {
     conversationHistory: Message[] = [],
     onStream?: (chunk: string) => void,
     signal?: AbortSignal,
-    conversationId?: string, // Add conversation ID for tool optimization
-    projectId?: string // Add project ID for memory context
+    conversationId?: string // Add conversation ID for tool optimization
   ): Promise<Message> {
     console.log('🚀 ChatService.sendMessage called with:', {
       message: message.substring(0, 100) + '...',
@@ -172,10 +166,10 @@ export const chatService = {
             
             if (isComprehensiveQuery) {
               // For comprehensive queries, ensure we get chunks from different documents
-              const chunksBySource = new Map<string, any[]>();
-              
+              const chunksBySource = new Map<string, RAGResult[]>();
+
               // Group chunks by source document
-              ragResult.results.forEach((result: any) => {
+              ragResult.results.forEach((result: RAGResult) => {
                 if (!chunksBySource.has(result.source)) {
                   chunksBySource.set(result.source, []);
                 }
@@ -184,7 +178,7 @@ export const chatService = {
               
               // Take the best chunk from each document, up to 8 total chunks
               selectedChunks = [];
-              for (const [source, chunks] of chunksBySource.entries()) {
+              for (const [, chunks] of chunksBySource.entries()) {
                 selectedChunks.push(chunks[0]); // Best chunk from this document
                 if (selectedChunks.length >= 8) break;
               }
@@ -197,7 +191,7 @@ export const chatService = {
             
             // Extract relevant text chunks and format them as context
             const contextChunks = selectedChunks
-              .map((result: any, index: number) => 
+              .map((result: RAGResult, index: number) =>
                 `[Context ${index + 1} from ${result.source}]:\n${result.text}`
               )
               .join('\n\n');
@@ -250,7 +244,7 @@ export const chatService = {
                 provider: this.getProviderConfig(provider)
               });
 
-              const processedFiles = await (mistralProvider as any).processFiles(
+              const processedFiles = await (mistralProvider as {processFiles: (files: File[], settings: ChatSettings, config: unknown) => Promise<unknown[]>}).processFiles(
                 Array.from(files),
                 settings,
                 this.getProviderConfig(provider)
@@ -261,13 +255,13 @@ export const chatService = {
                   type: 'text',
                   text: message || 'Please analyze the attached content.'
                 },
-                ...processedFiles
+                ...(processedFiles as ContentItem[])
               ];
 
               messageContent = contentArray;
               console.log('✅ Mistral files processed successfully:', {
                 processedCount: processedFiles.length,
-                contentTypes: processedFiles.map((f: any) => f.type)
+                contentTypes: processedFiles.map((f: unknown) => (f as {type: string}).type)
               });
             } catch (error) {
               console.error('❌ Mistral file processing failed:', error);

@@ -1,69 +1,11 @@
 // Google Gemini provider system prompt
-// EXACT copy from original llmService.ts generateComplexToolInstructions method
-// This is the complete tool calling prompt used for Gemini
 
-export function generateGeminiToolPrompt(tools: unknown[]): string {
-  // Type guard for tool objects - EXACT copy from original
-  const isToolObject = (t: unknown): t is { function?: { name?: string; description?: string; parameters?: Record<string, unknown> } } => {
-    return typeof t === 'object' && t !== null;
-  };
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function generateGeminiToolPrompt(_tools: unknown[]): string {
+  // Note: tools parameter kept for API compatibility but not currently used
+  // Tool categorization and dynamic prompts could be implemented here in the future
 
-  // Dynamic tool categorization based on actual tool names and descriptions - EXACT copy from original
-  const categorizeTools = (tools: unknown[]) => {
-    const categories: Record<string, unknown[]> = {};
-
-    tools.forEach(tool => {
-      if (!isToolObject(tool) || !tool.function?.name) return;
-
-      const name = tool.function.name.toLowerCase();
-      const desc = (tool.function.description || '').toLowerCase();
-
-      // Dynamic categorization based on keywords in names and descriptions
-      let category = 'general';
-
-      if (name.includes('search') || desc.includes('search') ||
-          name.includes('web') || desc.includes('web') ||
-          name.includes('internet') || desc.includes('internet')) {
-        category = 'search';
-      } else if (name.includes('memory') || desc.includes('memory') ||
-                 name.includes('remember') || desc.includes('remember')) {
-        category = 'memory';
-      } else if (name.includes('file') || desc.includes('file') ||
-                 name.includes('document') || desc.includes('document') ||
-                 name.includes('read') || name.includes('write')) {
-        category = 'files';
-      } else if (name.includes('data') || desc.includes('data') ||
-                 name.includes('database') || desc.includes('database') ||
-                 name.includes('sql') || desc.includes('query')) {
-        category = 'data';
-      } else if (name.includes('api') || desc.includes('api') ||
-                 name.includes('http') || desc.includes('http') ||
-                 name.includes('request') || desc.includes('request')) {
-        category = 'api';
-      } else if (name.includes('code') || desc.includes('code') ||
-                 name.includes('git') || desc.includes('git') ||
-                 name.includes('repo') || desc.includes('repository')) {
-        category = 'development';
-      } else if (name.includes('time') || desc.includes('time') ||
-                 name.includes('date') || desc.includes('date') ||
-                 name.includes('calendar') || desc.includes('calendar')) {
-        category = 'time';
-      } else if (name.includes('image') || desc.includes('image') ||
-                 name.includes('photo') || desc.includes('photo') ||
-                 name.includes('visual') || desc.includes('visual')) {
-        category = 'media';
-      }
-
-      if (!categories[category]) categories[category] = [];
-      categories[category].push(tool);
-    });
-
-    return categories;
-  };
-
-  const toolCategories = categorizeTools(tools);
-
-  let instructions = `
+  const instructions = `
 # Concise Universal AI Assistant System Prompt
 
 You are an intelligent AI assistant with multiple operational modes and tool capabilities. Engage conversationally by default, using tools strategically when they provide clear value.

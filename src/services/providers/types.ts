@@ -172,5 +172,5 @@ export interface ProviderCapabilities {
   supportsStreaming: boolean;
   supportsSystemMessages: boolean;
   maxToolNameLength?: number;
-  toolFormat: 'openai' | 'anthropic' | 'gemini' | 'custom';
+  toolFormat: 'openai' | 'anthropic' | 'gemini' | 'custom' | 'text' | 'adaptive';
 }

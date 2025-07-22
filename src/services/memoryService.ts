@@ -39,7 +39,7 @@ class MemoryService {
           this.memoryIndex = {
             ...index,
             lastUpdated: new Date(index.lastUpdated),
-            entries: index.entries.map((entry: any) => ({
+            entries: index.entries.map((entry: MemoryIndexEntry & {timestamp: string | Date}) => ({
               ...entry,
               timestamp: new Date(entry.timestamp)
             }))
@@ -92,7 +92,7 @@ class MemoryService {
           }))
         };
 
-        const success = await window.electronAPI.saveMemoryIndex(serializedIndex as any);
+        const success = await window.electronAPI.saveMemoryIndex(serializedIndex as unknown as MemoryIndex);
         if (success) {
           console.log('Memory index saved successfully');
         } else {

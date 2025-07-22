@@ -30,30 +30,11 @@ export interface AppSettings {
   };
 }
 
-export interface ChatSettings {
-  provider: string;
-  model: string;
-  defaultModel: string;
-  defaultProvider: string;
-  systemPrompt: string;
-  temperature: number;
-  maxTokens: number;
-  toolCallingEnabled: boolean;
-  providers: {
-    [key: string]: any;
-    openai: { apiKey: string; lastSelectedModel: string };
-    anthropic: { apiKey: string; lastSelectedModel: string };
-    gemini: { apiKey: string; lastSelectedModel: string };
-    mistral: { apiKey: string; lastSelectedModel: string };
-    deepseek: { apiKey: string; lastSelectedModel: string };
-    lmstudio: { apiKey: string; baseUrl: string; lastSelectedModel: string };
-    ollama: { apiKey: string; baseUrl: string; lastSelectedModel: string };
-    openrouter: { apiKey: string; lastSelectedModel: string };
-    requesty: { apiKey: string; lastSelectedModel: string };
-    replicate: { apiKey: string; lastSelectedModel: string };
-    n8n: { apiKey: string; baseUrl: string; lastSelectedModel: string };
-  };
-}
+// Import shared types
+import type { ChatSettings, ProviderSettings, ProvidersConfig, MCPServerConfig } from '../types/settings';
+
+// Re-export shared types for convenience
+export type { ChatSettings, ProviderSettings, ProvidersConfig, MCPServerConfig };
 
 const DEFAULT_SETTINGS: AppSettings = {
   chat: {
@@ -71,6 +52,7 @@ const DEFAULT_SETTINGS: AppSettings = {
       gemini: { apiKey: '', lastSelectedModel: '' },
       mistral: { apiKey: '', lastSelectedModel: '' },
       deepseek: { apiKey: '', lastSelectedModel: '' },
+      groq: { apiKey: '', lastSelectedModel: '' },
       lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       openrouter: { apiKey: '', lastSelectedModel: '' },
@@ -243,6 +225,7 @@ class SettingsService {
         gemini: { apiKey: '', lastSelectedModel: '' },
         mistral: { apiKey: '', lastSelectedModel: '' },
         deepseek: { apiKey: '', lastSelectedModel: '' },
+        groq: { apiKey: '', lastSelectedModel: '' },
         lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
         ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
         openrouter: { apiKey: '', lastSelectedModel: '' },

@@ -176,45 +176,45 @@ export class ProviderAdapter {
   private async injectDependencies(providerInstance: ILLMProvider) {
     // Inject the MCP tools getter - always inject if available
     if (this.mcpToolsGetter) {
-      (providerInstance as any).getMCPToolsForProvider = this.mcpToolsGetter;
+      (providerInstance as unknown as {getMCPToolsForProvider: unknown}).getMCPToolsForProvider = this.mcpToolsGetter;
     }
 
     // Inject the tool executor - always inject if available
     if (this.toolExecutor) {
-      (providerInstance as any).executeMCPTool = this.toolExecutor;
+      (providerInstance as unknown as {executeMCPTool: unknown}).executeMCPTool = this.toolExecutor;
     }
 
     // Inject the parallel tool executor (like Anthropic uses) - always inject if available
     if (this.multipleToolsExecutor) {
-      (providerInstance as any).executeMultipleToolsParallel = this.multipleToolsExecutor;
+      (providerInstance as unknown as {executeMultipleToolsParallel: unknown}).executeMultipleToolsParallel = this.multipleToolsExecutor;
     }
 
     // Inject tool result processing methods (like Anthropic uses) - always inject if available
     if (this.toolResultsSummarizer) {
-      (providerInstance as any).summarizeToolResultsForModel = this.toolResultsSummarizer;
+      (providerInstance as unknown as {summarizeToolResultsForModel: unknown}).summarizeToolResultsForModel = this.toolResultsSummarizer;
     }
 
     if (this.toolResultsAggregator) {
-      (providerInstance as any).aggregateToolResults = this.toolResultsAggregator;
+      (providerInstance as unknown as {aggregateToolResults: unknown}).aggregateToolResults = this.toolResultsAggregator;
     }
 
     if (this.toolResultFormatter) {
-      (providerInstance as any).formatToolResult = this.toolResultFormatter;
+      (providerInstance as unknown as {formatToolResult: unknown}).formatToolResult = this.toolResultFormatter;
     }
 
     // Inject the stream handler - always inject if available
     if (this.streamHandler) {
-      (providerInstance as any).handleStreamResponse = this.streamHandler;
+      (providerInstance as unknown as {handleStreamResponse: unknown}).handleStreamResponse = this.streamHandler;
     }
 
     // Inject the tool should send checker
     if (this.toolShouldSendChecker && 'shouldSendTools' in providerInstance) {
-      (providerInstance as any).shouldSendTools = this.toolShouldSendChecker;
+      (providerInstance as unknown as {shouldSendTools: unknown}).shouldSendTools = this.toolShouldSendChecker;
     }
 
     // Inject the memory creator
     if (this.memoryCreator && 'createMemoryFromConversation' in providerInstance) {
-      (providerInstance as any).createMemoryFromConversation = this.memoryCreator;
+      (providerInstance as unknown as {createMemoryFromConversation: unknown}).createMemoryFromConversation = this.memoryCreator;
     }
 
     // Inject tool names for text-based tool calling providers
@@ -222,7 +222,7 @@ export class ProviderAdapter {
       try {
         // Get the actual MCP tools and extract their names
         const mcpTools = await this.mcpToolsGetter(providerInstance.id, {} as LLMSettings);
-        const toolNames = mcpTools.map((tool: any) => {
+        const toolNames = (mcpTools as Array<{name?: string, function?: {name?: string}}>).map(tool => {
           // Handle different tool formats
           if (tool.name) return tool.name;
           if (tool.function?.name) return tool.function.name;
@@ -230,7 +230,7 @@ export class ProviderAdapter {
         }).filter(Boolean) as string[];
 
         console.log(`🔧 Injecting ${toolNames.length} tool names into ${providerInstance.id}:`, toolNames);
-        (providerInstance as any).setAvailableToolNames(toolNames);
+        (providerInstance as unknown as {setAvailableToolNames: (names: string[]) => void}).setAvailableToolNames(toolNames);
       } catch (error) {
         console.warn(`⚠️ Failed to inject tool names into ${providerInstance.id}:`, error);
       }
@@ -238,7 +238,7 @@ export class ProviderAdapter {
 
     // Special injection for AnthropicProvider with new tool execution methods
     if (providerInstance.id === 'anthropic' && 'injectDependencies' in providerInstance) {
-      const anthropicProvider = providerInstance as any;
+      const anthropicProvider = providerInstance as unknown as {injectDependencies?: (deps: unknown) => void};
       if (anthropicProvider.injectDependencies) {
         anthropicProvider.injectDependencies({
           executeMultipleToolsParallel: this.multipleToolsExecutor,

@@ -87,7 +87,7 @@ export class MistralFileService {
         try {
           const errorObj = JSON.parse(errorText);
           errorMessage = errorObj.message || errorObj.error?.message || errorText;
-        } catch (e) {
+        } catch {
           // Keep original error if not JSON
         }
 

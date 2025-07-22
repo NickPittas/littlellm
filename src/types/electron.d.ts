@@ -122,7 +122,7 @@ export interface ElectronAPI {
   addDocument: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   removeDocument: (documentId: string) => Promise<{ success: boolean; error?: string }>;
   getDocuments: () => Promise<{ success: boolean; documents: string[]; error?: string }>;
-  searchKnowledgeBase: (query: string, limit?: number) => Promise<{ success: boolean; results: any[]; error?: string }>;
+  searchKnowledgeBase: (query: string, limit?: number) => Promise<{ success: boolean; results: Array<{text: string, source: string, score?: number}>; error?: string }>;
   openFileDialog: () => Promise<string | null>;
 
   // History operations
