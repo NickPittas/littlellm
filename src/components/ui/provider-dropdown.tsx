@@ -304,7 +304,7 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
         object-fit: contain;
       }
       .provider-icon-fallback {
-        color: var(--foreground);
+        color: hsl(var(--foreground));
       }
       .dropdown-content {
         max-height: 415px; /* Increased by 15px for draggable header */
@@ -312,8 +312,8 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
         overflow-x: hidden;
         scrollbar-width: none;
         -ms-overflow-style: none;
-        background: var(--card);
-        color: var(--card-foreground);
+        background: hsl(var(--card));
+        color: hsl(var(--card-foreground));
       }
       .dropdown-content::-webkit-scrollbar {
         display: none;
@@ -321,9 +321,9 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
       .dropdown-header {
         padding: 8px 12px;
         font-size: 12px;
-        color: rgba(255, 255, 255, 0.8);
-        border-bottom: 1px solid var(--border);
-        background: var(--muted);
+        color: hsl(var(--muted-foreground));
+        border-bottom: 1px solid hsl(var(--border));
+        background: hsl(var(--muted));
         position: sticky;
         top: 0;
         z-index: 1;
@@ -332,7 +332,7 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
         display: flex;
         align-items: center;
         padding: 8px 12px;
-        color: white;
+        color: hsl(var(--foreground));
         cursor: pointer;
         border-radius: 4px;
         margin: 1px 0;
@@ -346,19 +346,19 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
         transition: background-color 0.2s;
       }
       .dropdown-item:hover {
-        background: rgba(86, 156, 214, 0.1);
-        color: white;
+        background: hsl(var(--accent) / 0.1);
+        color: hsl(var(--foreground));
       }
       .dropdown-item.selected {
-        background: rgba(86, 156, 214, 0.2);
-        color: white;
+        background: hsl(var(--accent) / 0.2);
+        color: hsl(var(--foreground));
       }
       .check-icon {
         margin-right: 8px;
         width: 16px;
         height: 16px;
         opacity: 0;
-        color: var(--primary);
+        color: hsl(var(--primary));
       }
       .check-icon.visible {
         opacity: 1;

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { DraggableDialog } from './ui/draggable-dialog';
+
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
@@ -169,124 +169,133 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
         <Wand2 className="h-4 w-4" />
       </Button>
 
-      <DraggableDialog
-        isOpen={showDialog}
-        onClose={() => setShowDialog(false)}
-        title={`Select a Prompt Template${isReadingClipboard ? ' (Reading clipboard...)' : ''}`}
-        width="w-[800px]"
-        height="max-h-[80vh]"
-        className="hide-scrollbar"
-      >
-        <div className="space-y-4">
-          {/* Category Filter */}
-          <div className="flex items-center gap-2">
-            <Label>Category:</Label>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                {categories.map(category => (
-                  <SelectItem key={category} value={category}>
-                    {category.charAt(0).toUpperCase() + category.slice(1)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent
+          className="max-w-4xl max-h-[80vh] overflow-hidden"
+          style={{
+            backgroundColor: 'hsl(var(--background))',
+            color: 'hsl(var(--foreground))',
+            border: 'none'
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{`Select a Prompt Template${isReadingClipboard ? ' (Reading clipboard...)' : ''}`}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4" style={{ color: 'hsl(var(--foreground))' }}>
+            {/* Category Filter */}
+            <div className="flex items-center gap-2">
+              <Label>Category:</Label>
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  {categories.map(category => (
+                    <SelectItem key={category} value={category}>
+                      {category.charAt(0).toUpperCase() + category.slice(1)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            <div className="ml-auto flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowAddPrompt(true)}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportPrompts}
-              >
-                <Download className="h-4 w-4 mr-1" />
-                Export
-              </Button>
-              <label>
-                <Button variant="outline" size="sm" asChild>
-                  <span>
-                    <Upload className="h-4 w-4 mr-1" />
-                    Import
-                  </span>
+              <div className="ml-auto flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAddPrompt(true)}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add
                 </Button>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleImportPrompts}
-                  className="hidden"
-                />
-              </label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportPrompts}
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  Export
+                </Button>
+                <label>
+                  <Button variant="outline" size="sm" asChild>
+                    <span>
+                      <Upload className="h-4 w-4 mr-1" />
+                      Import
+                    </span>
+                  </Button>
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportPrompts}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Prompts Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+              {filteredPrompts.map((prompt) => (
+                <div
+                  key={prompt.id}
+                  className={`p-3 rounded-lg border hover:bg-muted/50 cursor-pointer group ${isReadingClipboard ? 'opacity-50 pointer-events-none' : ''}`}
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: 'hsl(var(--foreground))',
+                    borderColor: 'hsl(var(--border))'
+                  }}
+                  onClick={() => handlePromptSelect(prompt)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        {renderIcon(prompt.icon, "h-5 w-5")}
+                        <h3 className="font-medium text-sm" style={{ color: 'hsl(var(--foreground))' }}>{prompt.name}</h3>
+                        {prompt.prompt.includes('{content}') && (
+                          <span className="text-xs bg-primary/20 text-primary px-1 py-0.5 rounded flex items-center gap-1" title="Uses clipboard content">
+                            {renderIcon('📋', "h-3 w-3")}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-2" style={{ color: 'hsl(var(--muted-foreground))' }}>{prompt.description}</p>
+                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded" style={{ color: 'hsl(var(--muted-foreground))', backgroundColor: 'hsl(var(--muted))' }}>
+                        {prompt.prompt.length > 100
+                          ? `${prompt.prompt.substring(0, 100)}...`
+                          : prompt.prompt}
+                      </div>
+                    </div>
+
+                    {promptsService.isCustomPrompt(prompt.id) && (
+                      <div className="opacity-0 group-hover:opacity-100 flex gap-1 ml-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditPrompt(prompt);
+                          }}
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeletePrompt(prompt);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-
-          {/* Prompts Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto hide-scrollbar">
-            {filteredPrompts.map((prompt) => (
-              <div
-                key={prompt.id}
-                className={`p-3 rounded-lg hover:bg-gray-50 cursor-pointer group ${isReadingClipboard ? 'opacity-50 pointer-events-none' : ''}`}
-                style={{ border: 'none' }}
-                onClick={() => handlePromptSelect(prompt)}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      {renderIcon(prompt.icon, "h-5 w-5")}
-                      <h3 className="font-medium text-sm">{prompt.name}</h3>
-                      {prompt.prompt.includes('{content}') && (
-                        <span className="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded flex items-center gap-1" title="Uses clipboard content">
-                          {renderIcon('📋', "h-3 w-3")}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-600 mb-2">{prompt.description}</p>
-                    <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded">
-                      {prompt.prompt.length > 100
-                        ? `${prompt.prompt.substring(0, 100)}...`
-                        : prompt.prompt}
-                    </div>
-                  </div>
-
-                  {promptsService.isCustomPrompt(prompt.id) && (
-                    <div className="opacity-0 group-hover:opacity-100 flex gap-1 ml-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleEditPrompt(prompt);
-                        }}
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeletePrompt(prompt.id);
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </DraggableDialog>
+        </DialogContent>
+      </Dialog>
 
       {/* Add/Edit Prompt Dialog - Separate dialog, not nested */}
       <Dialog open={showAddPrompt || !!editingPrompt} onOpenChange={(open) => {

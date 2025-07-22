@@ -427,7 +427,7 @@ export function ChatInterface({
   };
 
   return (
-    <div className="flex flex-col h-full relative">
+    <div className="chat-interface flex flex-col h-full relative">
       {/* Messages Area */}
       <div
         ref={scrollContainerRef}
@@ -636,7 +636,12 @@ export function ChatInterface({
                   value={input}
                   onChange={(e) => onInputChange(e.target.value)}
                   placeholder="Type your message..."
-                  className="flex-1 min-h-[40px] max-h-[120px] resize-none pr-10"
+                  className="chat-interface flex-1 min-h-[40px] max-h-[120px] resize-none pr-10"
+                  style={{
+                    backgroundColor: 'hsl(var(--input))',
+                    color: 'hsl(var(--foreground))',
+                    border: '1px solid hsl(var(--border))'
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();

@@ -277,17 +277,37 @@ export function SettingsOverlay() {
         setSettings(formData);
         setHasChanges(false);
 
-        // If custom colors were changed, notify other windows
-        if (formData.ui?.customColors || formData.ui?.useCustomColors !== undefined) {
+        // If any theme-related settings were changed, notify other windows
+        if (formData.ui?.customColors ||
+            formData.ui?.useCustomColors !== undefined ||
+            formData.ui?.selectedThemePreset ||
+            formData.ui?.colorMode) {
           console.log('Settings overlay: Preparing to notify theme change');
           console.log('formData.ui:', formData.ui);
-          console.log('customColors:', customColors);
-          console.log('useCustomColors:', useCustomColors);
+          console.log('Current theme context:', { customColors, useCustomColors, selectedThemePreset, colorMode });
 
           if (typeof window !== 'undefined' && window.electronAPI) {
+            // Determine the actual colors to apply based on the current mode
+            let colorsToApply = customColors;
+            const currentMode = formData.ui.colorMode || colorMode;
+            const currentPreset = formData.ui.selectedThemePreset || selectedThemePreset;
+
+            if (currentMode === 'preset') {
+              // Use preset colors
+              const preset = themePresets.find(p => p.id === currentPreset);
+              if (preset) {
+                colorsToApply = preset.colors;
+                console.log('Settings overlay: Using preset colors for:', currentPreset);
+              }
+            } else {
+              // Use custom colors
+              colorsToApply = formData.ui.customColors || customColors;
+              console.log('Settings overlay: Using custom colors');
+            }
+
             const themeData = {
-              customColors: formData.ui.customColors || customColors,
-              useCustomColors: formData.ui.useCustomColors ?? useCustomColors
+              customColors: colorsToApply,
+              useCustomColors: currentMode === 'custom'
             };
             console.log('Settings overlay: Sending theme change notification:', themeData);
             window.electronAPI.notifyThemeChange(themeData);
@@ -295,7 +315,7 @@ export function SettingsOverlay() {
             console.error('Settings overlay: electronAPI not available');
           }
         } else {
-          console.log('Settings overlay: No custom color changes detected');
+          console.log('Settings overlay: No theme changes detected');
         }
 
         console.log('Settings saved successfully');

@@ -101,6 +101,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   syncMessagesToChat: (messages: any[]) => ipcRenderer.invoke('sync-messages-to-chat', messages),
   requestCurrentMessages: () => ipcRenderer.invoke('request-current-messages'),
   notifyThemeChange: (themeData: { customColors: any; useCustomColors: boolean }) => ipcRenderer.invoke('notify-theme-change', themeData),
+  getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'),
 
   // Dropdown operations
   openDropdown: (x: number, y: number, width: number, height: number, content: string) =>
