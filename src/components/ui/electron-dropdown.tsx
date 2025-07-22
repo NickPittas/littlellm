@@ -173,7 +173,7 @@ export function ElectronDropdown({
         role="combobox"
         aria-expanded={open}
         className={cn(
-          "justify-between font-normal",
+          "justify-between font-normal text-foreground",
           !value && "text-muted-foreground",
           className
         )}
@@ -181,7 +181,7 @@ export function ElectronDropdown({
         onClick={toggleDropdown}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
-        <span className="truncate text-sm">{displayValue}</span>
+        <span className="truncate text-sm text-foreground">{displayValue}</span>
         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
       </Button>
 

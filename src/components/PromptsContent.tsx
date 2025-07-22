@@ -230,7 +230,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
                 value={newPrompt.name}
                 onChange={(e) => setNewPrompt(prev => ({ ...prev, name: e.target.value }))}
                 placeholder="Prompt name"
-                className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                className="bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
               />
             </div>
             <div>
@@ -240,7 +240,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
                 value={newPrompt.icon}
                 onChange={(e) => setNewPrompt(prev => ({ ...prev, icon: e.target.value }))}
                 placeholder="📝"
-                className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                className="bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
               />
             </div>
           </div>
@@ -280,7 +280,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
               onChange={(e) => setNewPrompt(prev => ({ ...prev, prompt: e.target.value }))}
               placeholder="Your prompt template. Use {content} where the clipboard content should be inserted."
               rows={4}
-              className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+              className="bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
             />
           </div>
           <div className="flex justify-end gap-2">

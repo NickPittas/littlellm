@@ -90,6 +90,13 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Auto-scroll to bottom when response finishes
+  const scrollToBottomOnComplete = () => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  };
+
   // Check if user is at bottom of scroll
   const checkScrollPosition = () => {
     if (!scrollContainerRef.current) return;
@@ -112,6 +119,17 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
       }, 100);
     }
   }, [messages]);
+
+  // Auto-scroll to bottom when new messages are received (response finished)
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      // If the last message is from assistant and has content, it means response is complete
+      if (lastMessage.role === 'assistant' && lastMessage.content && !lastMessage.isThinking) {
+        scrollToBottomOnComplete();
+      }
+    }
+  }, [messages.length, messages[messages.length - 1]?.content]);
 
   // Add scroll listener
   useEffect(() => {

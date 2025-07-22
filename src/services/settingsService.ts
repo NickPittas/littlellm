@@ -1,5 +1,26 @@
 
 
+export interface ColorSettings {
+  background: string;
+  foreground: string;
+  card: string;
+  cardForeground: string;
+  primary: string;
+  primaryForeground: string;
+  secondary: string;
+  secondaryForeground: string;
+  accent: string;
+  accentForeground: string;
+  muted: string;
+  mutedForeground: string;
+  border: string;
+  input: string;
+  ring: string;
+  destructive: string;
+  destructiveForeground: string;
+  systemText: string; // System UI text color (labels, buttons, etc.)
+}
+
 export interface AppSettings {
   chat: ChatSettings;
   ui: {
@@ -15,6 +36,10 @@ export interface AppSettings {
     };
     hotkey: string;
     screenshotHotkey: string;
+    customColors?: ColorSettings;
+    useCustomColors?: boolean;
+    selectedThemePreset?: string; // ID of selected theme preset
+    colorMode?: 'preset' | 'custom'; // Whether using preset or custom colors
   };
   shortcuts: {
     toggleWindow: string;
@@ -73,6 +98,29 @@ const DEFAULT_SETTINGS: AppSettings = {
       height: 615, // Increased by 15px for draggable header
       x: undefined, // Let Electron choose initial position
       y: undefined, // Let Electron choose initial position
+    },
+    useCustomColors: false,
+    selectedThemePreset: 'default', // Default to VS Code Dark theme
+    colorMode: 'preset', // Default to using preset themes
+    customColors: {
+      background: '#181829',
+      foreground: '#d4d4d4',
+      card: '#181829',
+      cardForeground: '#ffffff',
+      primary: '#569cd6',
+      primaryForeground: '#ffffff',
+      secondary: '#4fc1ff',
+      secondaryForeground: '#adadad',
+      accent: '#569cd6',
+      accentForeground: '#ffffff',
+      muted: '#211f32',
+      mutedForeground: '#9ca3af',
+      border: '#3b3b68',
+      input: '#949494',
+      ring: '#569cd6',
+      destructive: '#f44747',
+      destructiveForeground: '#ffffff',
+      systemText: '#e0e0e0',
     },
   },
   shortcuts: {
@@ -341,9 +389,36 @@ class SettingsService {
       });
     }
 
-    // Update settings in memory
+    // Update settings in memory with deep merge
     const oldSettings = { ...this.settings };
-    this.settings = { ...this.settings, ...updates };
+
+    // Deep merge for nested objects like ui, chat, etc.
+    this.settings = {
+      ...this.settings,
+      ...updates,
+      // Deep merge ui object if it exists in updates
+      ...(updates.ui && {
+        ui: {
+          ...this.settings.ui,
+          ...updates.ui
+        }
+      }),
+      // Deep merge chat object if it exists in updates
+      ...(updates.chat && {
+        chat: {
+          ...this.settings.chat,
+          ...updates.chat,
+          // Deep merge providers if it exists
+          ...(updates.chat.providers && {
+            providers: {
+              ...this.settings.chat.providers,
+              ...updates.chat.providers
+            }
+          })
+        }
+      })
+    };
+
     console.log('🔍 Settings updated in memory from:', JSON.stringify(oldSettings, null, 2));
     console.log('🔍 Settings updated in memory to:', JSON.stringify(this.settings, null, 2));
 

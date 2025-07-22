@@ -1,6 +1,6 @@
 import './globals.css';
 import { Inter } from 'next/font/google';
-// import SquircleWindow from '@/components/SquircleWindow';
+import { ThemeProvider } from '../contexts/ThemeContext';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -71,13 +71,18 @@ export default function RootLayout({
         style={{
           backgroundColor: 'var(--background)',
           color: 'var(--foreground)',
-          borderRadius: '20px',
+          borderRadius: '32px',
           overflow: 'hidden',
-          margin: '0',
-          padding: '0'
+          margin: 0,
+          padding: 0,
+          border: '0px solid transparent',
+          outline: 'none',
+          boxShadow: 'none'
         }}
       >
-        {children}
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

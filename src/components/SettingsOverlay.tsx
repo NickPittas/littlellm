@@ -13,7 +13,10 @@ import { MemoryManagement } from './MemoryManagement';
 import KnowledgeBaseSettings from './KnowledgeBaseSettings';
 import { mcpService, type MCPServer } from '../services/mcpService';
 import { PromptsContent } from './PromptsContent';
-import { Plus, Trash2, Server, Zap, Edit, FileText } from 'lucide-react';
+import { Plus, Trash2, Server, Zap, Edit, FileText, Palette, RotateCcw } from 'lucide-react';
+import { ColorPicker } from './ui/color-picker';
+import { ThemeSelector } from './ui/theme-selector';
+import { useTheme } from '../contexts/ThemeContext';
 
 export function SettingsOverlay() {
   const [activeTab, setActiveTab] = useState('api-keys');
@@ -21,6 +24,18 @@ export function SettingsOverlay() {
   const [formData, setFormData] = useState<AppSettings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const {
+    customColors,
+    setCustomColors,
+    useCustomColors,
+    setUseCustomColors,
+    resetToDefaults,
+    selectedThemePreset,
+    setSelectedThemePreset,
+    colorMode,
+    setColorMode,
+    themePresets
+  } = useTheme();
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([]);
   const [showAddMcpServer, setShowAddMcpServer] = useState(false);
   const [editingMcpServer, setEditingMcpServer] = useState<MCPServer | null>(null);
@@ -261,10 +276,31 @@ export function SettingsOverlay() {
       if (success) {
         setSettings(formData);
         setHasChanges(false);
-        // Optional: Show success message
+
+        // If custom colors were changed, notify other windows
+        if (formData.ui?.customColors || formData.ui?.useCustomColors !== undefined) {
+          console.log('Settings overlay: Preparing to notify theme change');
+          console.log('formData.ui:', formData.ui);
+          console.log('customColors:', customColors);
+          console.log('useCustomColors:', useCustomColors);
+
+          if (typeof window !== 'undefined' && window.electronAPI) {
+            const themeData = {
+              customColors: formData.ui.customColors || customColors,
+              useCustomColors: formData.ui.useCustomColors ?? useCustomColors
+            };
+            console.log('Settings overlay: Sending theme change notification:', themeData);
+            window.electronAPI.notifyThemeChange(themeData);
+          } else {
+            console.error('Settings overlay: electronAPI not available');
+          }
+        } else {
+          console.log('Settings overlay: No custom color changes detected');
+        }
+
+        console.log('Settings saved successfully');
       } else {
         console.error('Failed to save settings');
-        // Optional: Show error message
       }
     } catch (error) {
       console.error('Error saving settings:', error);
@@ -289,6 +325,75 @@ export function SettingsOverlay() {
     const newFormData = { ...formData, ...updates };
     setFormData(newFormData);
     setHasChanges(true);
+  };
+
+  // Handle color changes and integrate with save system
+  const handleColorChange = (colors: any) => {
+    // Update theme immediately for preview (don't save yet)
+    if (typeof setCustomColors === 'function') {
+      (setCustomColors as any)(colors, false);
+    }
+
+    // Update form data to trigger save system
+    if (formData) {
+      updateFormData({
+        ui: {
+          ...formData.ui,
+          customColors: colors
+        }
+      });
+    }
+  };
+
+  const handleUseCustomColorsChange = (enabled: boolean) => {
+    // Update theme immediately for preview (don't save yet)
+    if (typeof setUseCustomColors === 'function') {
+      (setUseCustomColors as any)(enabled, false);
+    }
+
+    // Update form data to trigger save system
+    if (formData) {
+      updateFormData({
+        ui: {
+          ...formData.ui,
+          useCustomColors: enabled
+        }
+      });
+    }
+  };
+
+  const handleThemePresetChange = (theme: any) => {
+    // Update theme immediately for preview (don't save yet)
+    if (typeof setSelectedThemePreset === 'function') {
+      (setSelectedThemePreset as any)(theme.id, false);
+    }
+
+    // Update form data to trigger save system
+    if (formData) {
+      updateFormData({
+        ui: {
+          ...formData.ui,
+          selectedThemePreset: theme.id
+        }
+      });
+    }
+  };
+
+  const handleColorModeChange = (mode: 'preset' | 'custom') => {
+    // Update theme immediately for preview (don't save yet)
+    if (typeof setColorMode === 'function') {
+      (setColorMode as any)(mode, false);
+    }
+
+    // Update form data to trigger save system
+    if (formData) {
+      updateFormData({
+        ui: {
+          ...formData.ui,
+          colorMode: mode
+        }
+      });
+    }
   };
 
   useEffect(() => {
@@ -976,13 +1081,13 @@ export function SettingsOverlay() {
                               <Input
                                 value={key}
                                 placeholder="Variable name"
-                                className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                                className="bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
                                 onChange={(e) => updateEnvVariable(key, e.target.value, value)}
                               />
                               <Input
                                 value={value}
                                 placeholder="Variable value"
-                                className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                                className="bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
                                 onChange={(e) => updateEnvVariable(key, key, e.target.value)}
                               />
                               <Button
@@ -1177,6 +1282,176 @@ export function SettingsOverlay() {
                               })}
                             />
                           </div>
+                        </div>
+
+                        {/* Theme Selection Section */}
+                        <div className="space-y-4 border-t border-border pt-6">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <Label className="flex items-center gap-2">
+                                <Palette className="h-4 w-4" />
+                                Color Themes
+                              </Label>
+                              <p className="text-sm text-muted-foreground">
+                                Choose from preset themes or create your own custom colors
+                              </p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={resetToDefaults}
+                              className="flex items-center gap-2"
+                              title="Reset to factory defaults"
+                            >
+                              <RotateCcw className="h-3 w-3" />
+                              Reset
+                            </Button>
+                          </div>
+
+                          {/* Color Mode Toggle */}
+                          <div className="space-y-3">
+                            <div className="flex gap-2">
+                              <Button
+                                variant={colorMode === 'preset' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => handleColorModeChange('preset')}
+                                className="flex-1"
+                              >
+                                Preset Themes
+                              </Button>
+                              <Button
+                                variant={colorMode === 'custom' ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => handleColorModeChange('custom')}
+                                className="flex-1"
+                              >
+                                Custom Colors
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Theme Preset Selector */}
+                          {colorMode === 'preset' && (
+                            <div className="space-y-4">
+                              <ThemeSelector
+                                selectedThemeId={selectedThemePreset}
+                                onThemeSelect={handleThemePresetChange}
+                              />
+                            </div>
+                          )}
+
+                          {/* Custom Color Pickers */}
+                          {colorMode === 'custom' && (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <Label>Enable Custom Colors</Label>
+                                  <p className="text-sm text-muted-foreground">
+                                    Use custom colors instead of the default theme
+                                  </p>
+                                </div>
+                                <ToggleSwitch
+                                  enabled={useCustomColors}
+                                  onToggle={handleUseCustomColorsChange}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {colorMode === 'custom' && useCustomColors && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
+                              <ColorPicker
+                                label="Main Background"
+                                value={customColors.background}
+                                onChange={(color) => handleColorChange({ ...customColors, background: color })}
+                              />
+                              <ColorPicker
+                                label="Main Text Color"
+                                value={customColors.foreground}
+                                onChange={(color) => handleColorChange({ ...customColors, foreground: color })}
+                              />
+                              <ColorPicker
+                                label="System Text Color"
+                                value={customColors.systemText || '#e0e0e0'}
+                                onChange={(color) => handleColorChange({ ...customColors, systemText: color })}
+                              />
+                              <ColorPicker
+                                label="Button & Link Color"
+                                value={customColors.primary}
+                                onChange={(color) => handleColorChange({ ...customColors, primary: color })}
+                              />
+                              <ColorPicker
+                                label="Button Text Color"
+                                value={customColors.primaryForeground}
+                                onChange={(color) => handleColorChange({ ...customColors, primaryForeground: color })}
+                              />
+                              <ColorPicker
+                                label="Secondary Button Color"
+                                value={customColors.secondary}
+                                onChange={(color) => handleColorChange({ ...customColors, secondary: color })}
+                              />
+                              <ColorPicker
+                                label="Secondary Button Text"
+                                value={customColors.secondaryForeground}
+                                onChange={(color) => handleColorChange({ ...customColors, secondaryForeground: color })}
+                              />
+                              <ColorPicker
+                                label="Highlight Color"
+                                value={customColors.accent}
+                                onChange={(color) => handleColorChange({ ...customColors, accent: color })}
+                              />
+                              <ColorPicker
+                                label="Highlight Text Color"
+                                value={customColors.accentForeground}
+                                onChange={(color) => handleColorChange({ ...customColors, accentForeground: color })}
+                              />
+                              <ColorPicker
+                                label="Panel Background"
+                                value={customColors.card}
+                                onChange={(color) => handleColorChange({ ...customColors, card: color })}
+                              />
+                              <ColorPicker
+                                label="Panel Text Color"
+                                value={customColors.cardForeground}
+                                onChange={(color) => handleColorChange({ ...customColors, cardForeground: color })}
+                              />
+                              <ColorPicker
+                                label="Subtle Background"
+                                value={customColors.muted}
+                                onChange={(color) => handleColorChange({ ...customColors, muted: color })}
+                              />
+                              <ColorPicker
+                                label="Subtle Text Color"
+                                value={customColors.mutedForeground}
+                                onChange={(color) => handleColorChange({ ...customColors, mutedForeground: color })}
+                              />
+                              <ColorPicker
+                                label="Border & Divider Color"
+                                value={customColors.border}
+                                onChange={(color) => handleColorChange({ ...customColors, border: color })}
+                              />
+                              <ColorPicker
+                                label="Input Field Background"
+                                value={customColors.input}
+                                onChange={(color) => handleColorChange({ ...customColors, input: color })}
+                              />
+                              <ColorPicker
+                                label="Focus Outline Color"
+                                value={customColors.ring}
+                                onChange={(color) => handleColorChange({ ...customColors, ring: color })}
+                              />
+                              <ColorPicker
+                                label="Error & Delete Color"
+                                value={customColors.destructive}
+                                onChange={(color) => handleColorChange({ ...customColors, destructive: color })}
+                              />
+                              <ColorPicker
+                                label="Error Text Color"
+                                value={customColors.destructiveForeground}
+                                onChange={(color) => handleColorChange({ ...customColors, destructiveForeground: color })}
+                              />
+                            </div>
+                          )}
                         </div>
                       </>
                     )}
