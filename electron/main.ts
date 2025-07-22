@@ -15,7 +15,7 @@ import {
   type BrowserWindowConstructorOptions,
   type Display,
 } from 'electron';
-import { KnowledgeBaseService } from '../src/services/KnowledgeBaseService';
+import { KnowledgeBaseService } from '../src/services/KnowledgeBaseService.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
@@ -23,6 +23,11 @@ import * as mime from 'mime-types';
 import { spawn } from 'child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { fileURLToPath } from 'url';
+
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // MCP Connection Management
 interface MCPTool {
