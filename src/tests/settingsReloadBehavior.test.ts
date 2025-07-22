@@ -100,6 +100,7 @@ describe('Settings Reload Behavior', () => {
             ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
             openrouter: { apiKey: '', lastSelectedModel: '' },
             requesty: { apiKey: '', lastSelectedModel: '' },
+            groq: { apiKey: '', lastSelectedModel: '' },
             replicate: { apiKey: '', lastSelectedModel: '' },
             n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
           }
@@ -109,6 +110,8 @@ describe('Settings Reload Behavior', () => {
           alwaysOnTop: true,
           startMinimized: false,
           fontSize: 'small',
+          hotkey: 'CommandOrControl+Shift+A',
+          screenshotHotkey: 'CommandOrControl+Shift+S',
           windowBounds: {
             width: 400,
             height: 615
@@ -147,6 +150,8 @@ describe('Settings Reload Behavior', () => {
           alwaysOnTop: true,
           startMinimized: false,
           fontSize: 'small',
+          hotkey: 'CommandOrControl+Shift+A',
+          screenshotHotkey: 'CommandOrControl+Shift+S',
           windowBounds: {
             width: 400,
             height: 615
@@ -167,6 +172,8 @@ describe('Settings Reload Behavior', () => {
           alwaysOnTop: true,
           startMinimized: false,
           fontSize: 'small',
+          hotkey: 'CommandOrControl+Shift+A',
+          screenshotHotkey: 'CommandOrControl+Shift+S',
           windowBounds: {
             width: 400,
             height: 615
@@ -255,6 +262,8 @@ describe('Settings Reload Behavior', () => {
           alwaysOnTop: true,
           startMinimized: false,
           fontSize: 'small',
+          hotkey: 'CommandOrControl+Shift+A',
+          screenshotHotkey: 'CommandOrControl+Shift+S',
           windowBounds: {
             width: 400,
             height: 615

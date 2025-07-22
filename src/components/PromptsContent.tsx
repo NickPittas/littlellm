@@ -187,7 +187,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
             variant="outline"
             size="sm"
             onClick={() => setShowAddPrompt(true)}
-            className="bg-blue-600/20 border-blue-400/50 text-blue-300 hover:bg-blue-600/30 hover:border-blue-400/70"
+            className="bg-primary/20 border-primary/50 text-primary hover:bg-primary/30 hover:border-primary/70"
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Custom Prompt
@@ -230,7 +230,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
                 value={newPrompt.name}
                 onChange={(e) => setNewPrompt(prev => ({ ...prev, name: e.target.value }))}
                 placeholder="Prompt name"
-                className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                className="bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
               />
             </div>
             <div>
@@ -240,7 +240,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
                 value={newPrompt.icon}
                 onChange={(e) => setNewPrompt(prev => ({ ...prev, icon: e.target.value }))}
                 placeholder="📝"
-                className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+                className="bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
               />
             </div>
           </div>
@@ -280,7 +280,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
               onChange={(e) => setNewPrompt(prev => ({ ...prev, prompt: e.target.value }))}
               placeholder="Your prompt template. Use {content} where the clipboard content should be inserted."
               rows={4}
-              className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+              className="bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
             />
           </div>
           <div className="flex justify-end gap-2">
@@ -313,13 +313,13 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
           <div
             key={prompt.id}
             className="group flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 cursor-pointer"
-            style={{ border: '1px solid var(--border)' }}
+            style={{ border: '1px solid hsl(var(--border))' }}
             onClick={() => handlePromptSelect(prompt)}
           >
             <div className="flex items-center gap-3 flex-1">
               <span className="text-lg">{prompt.icon}</span>
               <div className="flex-1">
-                <div className="font-medium">{prompt.name}</div>
+                <div className="font-medium text-foreground">{prompt.name}</div>
                 <div className="text-sm text-muted-foreground">{prompt.description}</div>
               </div>
             </div>
@@ -332,7 +332,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
                   e.stopPropagation();
                   handleEditPrompt(prompt);
                 }}
-                className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 border border-blue-400/30 opacity-80 hover:opacity-100"
+                className="text-primary hover:text-primary/80 hover:bg-primary/10 border border-primary/30 opacity-80 hover:opacity-100"
                 title="Edit prompt"
               >
                 <Edit className="h-4 w-4" />
@@ -347,7 +347,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
                     e.stopPropagation();
                     handleDeletePrompt(prompt.id);
                   }}
-                  className="text-red-400 hover:text-red-300 hover:bg-red-400/10 border border-red-400/30 opacity-80 hover:opacity-100"
+                  className="text-destructive hover:text-destructive/80 hover:bg-destructive/10 border border-destructive/30 opacity-80 hover:opacity-100"
                   title="Delete prompt"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -356,7 +356,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
 
               {/* Show indicator for custom prompts */}
               {promptsService.isCustomPrompt(prompt.id) && (
-                <div className="text-xs text-green-400 bg-green-400/10 px-2 py-1 rounded border border-green-400/30 ml-1">
+                <div className="text-xs text-primary bg-primary/10 px-2 py-1 rounded border border-primary/30 ml-1">
                   CUSTOM
                 </div>
               )}

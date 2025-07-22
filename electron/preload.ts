@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCurrentWindowSize: () => ipcRenderer.invoke('get-current-window-size'),
   getWindowPosition: () => ipcRenderer.invoke('get-window-position'),
   takeScreenshot: () => ipcRenderer.invoke('take-screenshot'),
+  setWindowBackgroundColor: (backgroundColor: string) => ipcRenderer.invoke('set-window-background-color', backgroundColor),
 
   // Window dragging is now handled by CSS -webkit-app-region
   // No IPC methods needed for CSS-based dragging
@@ -99,7 +100,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeChatWindow: () => ipcRenderer.invoke('close-chat-window'),
   syncMessagesToChat: (messages: any[]) => ipcRenderer.invoke('sync-messages-to-chat', messages),
   requestCurrentMessages: () => ipcRenderer.invoke('request-current-messages'),
-  notifyThemeChange: (themeId: string) => ipcRenderer.invoke('notify-theme-change', themeId),
+  notifyThemeChange: (themeData: { customColors: any; useCustomColors: boolean }) => ipcRenderer.invoke('notify-theme-change', themeData),
+  getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'),
 
   // Dropdown operations
   openDropdown: (x: number, y: number, width: number, height: number, content: string) =>
@@ -145,6 +147,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onThemeChanged: (callback: (themeId: string) => void) => {
     ipcRenderer.on('theme-changed', (_, themeId) => callback(themeId));
+  },
+
+  onThemeChange: (callback: (themeData: { customColors: unknown; useCustomColors: boolean }) => void) => {
+    const wrappedCallback = (_: any, themeData: { customColors: unknown; useCustomColors: boolean }) => callback(themeData);
+    ipcRenderer.on('theme-change', wrappedCallback);
+    return wrappedCallback; // Return the wrapped callback for removal
+  },
+
+  removeThemeChangeListener: (wrappedCallback: any) => {
+    ipcRenderer.removeListener('theme-change', wrappedCallback);
   },
 
   onPromptSelected: (callback: (promptText: string) => void) => {

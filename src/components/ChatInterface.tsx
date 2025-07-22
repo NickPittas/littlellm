@@ -75,6 +75,7 @@ export function ChatInterface({
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [internalAttachedFiles, setInternalAttachedFiles] = useState<AttachedFile[]>([]);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
 
   // Use external attached files if provided, otherwise use internal state
   const attachedFiles = externalAttachedFiles
@@ -125,6 +126,13 @@ export function ChatInterface({
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Auto-scroll to bottom when response finishes
+  const scrollToBottomOnComplete = () => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
   };
 
   // Check if user is at bottom of scroll
@@ -265,6 +273,7 @@ export function ChatInterface({
     // Create abort controller for this request
     const controller = new AbortController();
     setAbortController(controller);
+    setIsStreaming(true);
 
     try {
       let assistantContent = '';
@@ -330,6 +339,10 @@ export function ChatInterface({
           )
         );
       }
+
+      // Auto-scroll to bottom when response is complete
+      setIsStreaming(false);
+      scrollToBottomOnComplete();
     } catch (error) {
       console.error('Error sending message:', error);
 
@@ -357,6 +370,7 @@ export function ChatInterface({
       }
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
       setAbortController(null);
     }
   };
@@ -413,7 +427,7 @@ export function ChatInterface({
   };
 
   return (
-    <div className="flex flex-col h-full relative">
+    <div className="chat-interface flex flex-col h-full relative">
       {/* Messages Area */}
       <div
         ref={scrollContainerRef}
@@ -600,9 +614,6 @@ export function ChatInterface({
                   ) : (
                     <div className="relative flex items-center gap-2 p-2 border rounded bg-muted">
                       <Paperclip className="h-4 w-4" />
-                      <span className="text-sm truncate max-w-[100px]">
-                        {attachedFile.file.name}
-                      </span>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -625,7 +636,12 @@ export function ChatInterface({
                   value={input}
                   onChange={(e) => onInputChange(e.target.value)}
                   placeholder="Type your message..."
-                  className="flex-1 min-h-[40px] max-h-[120px] resize-none pr-10"
+                  className="chat-interface flex-1 min-h-[40px] max-h-[120px] resize-none pr-10"
+                  style={{
+                    backgroundColor: 'hsl(var(--input))',
+                    color: 'hsl(var(--foreground))',
+                    border: '1px solid hsl(var(--border))'
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();

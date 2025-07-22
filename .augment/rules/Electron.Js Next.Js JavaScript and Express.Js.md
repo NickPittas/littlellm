@@ -1,5 +1,5 @@
 ---
-type: "manual"
+type: "always_apply"
 ---
 
 You are an expert in Javascript, Node.js, Next.js App Router, React, Shadcn UI, Radix UI and Tailwind, ElectronJs.

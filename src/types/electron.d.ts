@@ -60,6 +60,7 @@ export interface ElectronAPI {
   getCurrentWindowSize: () => Promise<{ width: number; height: number }>;
   getWindowPosition: () => Promise<{ x: number; y: number }>;
   takeScreenshot: () => Promise<{ success: boolean; dataURL?: string; error?: string }>;
+  setWindowBackgroundColor: (backgroundColor: string) => Promise<boolean>;
 
   // Window dragging
   startDrag: () => Promise<{ offsetX: number; offsetY: number } | null>;
@@ -78,7 +79,8 @@ export interface ElectronAPI {
   closeChatWindow: () => Promise<void>;
   syncMessagesToChat: (messages: unknown[]) => Promise<void>;
   requestCurrentMessages: () => Promise<void>;
-  notifyThemeChange: (themeId: string) => Promise<void>;
+  notifyThemeChange: (themeData: { customColors: unknown; useCustomColors: boolean }) => Promise<void>;
+  getCurrentTheme: () => Promise<{ customColors: Record<string, string>; useCustomColors: boolean } | null>;
 
   // Dropdown operations
   openDropdown: (x: number, y: number, width: number, height: number, content: string) => Promise<void>;
@@ -95,6 +97,8 @@ export interface ElectronAPI {
   onPromptReceived: (callback: (prompt: string) => void) => void;
   onPromptSelected?: (callback: (promptText: string) => void) => void;
   onThemeChanged: (callback: (themeId: string) => void) => void;
+  onThemeChange: (callback: (themeData: { customColors: unknown; useCustomColors: boolean }) => void) => any;
+  removeThemeChangeListener?: (wrappedCallback: any) => void;
   onMessagesUpdate?: (callback: (messages: unknown[]) => void) => void;
   onRequestCurrentMessages: (callback: () => void) => void;
   onClipboardContent?: (callback: (content: string) => void) => void;
