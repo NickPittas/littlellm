@@ -1003,7 +1003,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.multiple = true;
-                input.accept = 'image/*,.pdf,.txt,.doc,.docx,.jpg,.png,.md,.log';
+                input.accept = 'image/*,.pdf,.txt,.doc,.docx,.xlsx,.xls,.ods,.pptx,.ppt,.csv,.json,.html,.htm,.xml,.ics,.rtf,.jpg,.png,.md,.log';
                 input.onchange = (e) => {
                   const files = (e.target as HTMLInputElement).files;
                   if (files) {

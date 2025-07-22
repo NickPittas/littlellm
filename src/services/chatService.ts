@@ -1,6 +1,7 @@
 import { llmService, type LLMSettings } from './llmService';
 import { sessionService } from './sessionService';
 import { settingsService } from './settingsService';
+import { documentParserService } from './DocumentParserService';
 
 // Type for content array items used in vision API
 interface ContentItem {
@@ -96,8 +97,13 @@ export const chatService = {
 
   // Helper function to extract text from files
   async extractTextFromFile(file: File): Promise<string> {
-    if (file.type === 'text/plain') {
-      // For text files, return content directly
+    const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+
+    // Check if this is a supported document format for parsing
+    const supportedFormats = ['.docx', '.doc', '.xlsx', '.xls', '.ods', '.csv', '.html', '.htm', '.ics', '.json', '.rtf', '.xml', '.pptx', '.ppt'];
+
+    if (file.type === 'text/plain' || fileExtension === '.txt' || fileExtension === '.md' || fileExtension === '.log') {
+      // For plain text files, return content directly
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
@@ -108,14 +114,59 @@ export const chatService = {
       // Skip PDF text extraction - let providers handle PDFs directly
       console.log('Skipping PDF text extraction, letting provider handle directly:', file.name);
       return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: PDF will be processed by the AI provider directly.`;
+    } else if (supportedFormats.includes(fileExtension)) {
+      // Use DocumentParserService for supported document formats
+      try {
+        console.log(`📄 Using DocumentParserService to parse: ${file.name}`);
+        const parsedDocument = await documentParserService.parseDocument(file);
 
+        // Return formatted text with metadata
+        let result = `[${parsedDocument.metadata?.format || 'Document'}: ${file.name}]\n`;
 
-    } else if (file.type.includes('word') || file.type.includes('document')) {
-      // For Word documents, provide placeholder
-      return `[Word Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: Word document text extraction not yet implemented. Please describe the content you'd like me to analyze.`;
+        // Add processing status
+        if (parsedDocument.metadata?.success === false) {
+          result += `⚠️ Parsing Status: Failed (using fallback)\n`;
+          if (parsedDocument.metadata?.error) {
+            result += `Error: ${parsedDocument.metadata.error}\n`;
+          }
+        } else {
+          result += `✅ Parsing Status: Success\n`;
+        }
+
+        if (parsedDocument.metadata?.processingTime) {
+          result += `Processing Time: ${parsedDocument.metadata.processingTime}ms\n`;
+        }
+
+        if (parsedDocument.metadata?.title && parsedDocument.metadata.title !== file.name) {
+          result += `Title: ${parsedDocument.metadata.title}\n`;
+        }
+        if (parsedDocument.metadata?.sheets) {
+          result += `Sheets: ${parsedDocument.metadata.sheets.join(', ')}\n`;
+        }
+        if (parsedDocument.metadata?.eventCount) {
+          result += `Events: ${parsedDocument.metadata.eventCount}\n`;
+        }
+
+        result += `\nContent:\n${parsedDocument.text}`;
+
+        return result;
+      } catch (error) {
+        console.error(`❌ Failed to parse document ${file.name}:`, error);
+        return `[${file.name} - ${Math.round(file.size / 1024)}KB]\nError: Failed to parse document - ${error instanceof Error ? error.message : 'Unknown error'}\nPlease describe the content you'd like me to analyze.`;
+      }
     } else {
       return `[File: ${file.name} - ${Math.round(file.size / 1024)}KB]\nFile type: ${file.type}\nNote: Text extraction not supported for this file type.`;
     }
+  },
+
+  // Get document parsing statistics
+  getDocumentParsingStats() {
+    return documentParserService.getStats();
+  },
+
+  // Reset document parsing statistics
+  resetDocumentParsingStats() {
+    documentParserService.resetStats();
   },
 
   async sendMessage(
@@ -586,10 +637,12 @@ export const chatService = {
             url: base64
           }
         });
-      } else if (file.type === 'application/pdf' || file.type.startsWith('text/') || file.type === 'text/csv') {
-        // Send documents directly to providers that support them
-        if (provider === 'anthropic') {
-          // Anthropic supports native document handling
+      } else {
+        const nativelySupported = file.type === 'application/pdf' || file.type.startsWith('text/') || file.type === 'text/csv';
+
+        // Check if provider supports this file type natively
+        if (nativelySupported && provider === 'anthropic') {
+          // Anthropic supports native document handling for PDFs and text files
           console.log('Sending document to Anthropic:', file.name);
           const base64 = await this.fileToBase64(file);
           const base64Data = base64.split(',')[1]; // Remove data URL prefix
@@ -603,18 +656,12 @@ export const chatService = {
             }
           } as ContentItem);
         } else {
-          // For other providers, extract text content
+          // For all other cases, extract text content using DocumentParserService
           console.log('Extracting text content for provider:', provider, file.name);
           const textContent = await this.extractTextFromFile(file);
           console.log('Text extracted, length:', textContent.length);
           contentArray[0].text += `\n\n[File: ${file.name}]\n${textContent}`;
         }
-      } else {
-        // For other file types, extract text content
-        console.log('Extracting text content from file:', file.name);
-        const textContent = await this.extractTextFromFile(file);
-        console.log('Text extracted, length:', textContent.length);
-        contentArray[0].text += `\n\n[File: ${file.name}]\n${textContent}`;
       }
     }
 

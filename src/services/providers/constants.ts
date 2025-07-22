@@ -181,7 +181,9 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: 64,
-    toolFormat: 'openai' as const
+    toolFormat: 'openai' as const,
+    nativeDocumentSupport: ['pdf', 'txt', 'md'], // Via Assistants API
+    documentParsingRequired: ['docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf']
   },
   anthropic: {
     supportsVision: true,
@@ -189,7 +191,9 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: 64,
-    toolFormat: 'anthropic' as const
+    toolFormat: 'anthropic' as const,
+    nativeDocumentSupport: ['pdf', 'txt', 'md', 'csv'], // Native document API
+    documentParsingRequired: ['docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'json', 'html', 'htm', 'xml', 'ics', 'rtf']
   },
   gemini: {
     supportsVision: true,
@@ -197,7 +201,9 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: undefined,
-    toolFormat: 'gemini' as const
+    toolFormat: 'gemini' as const,
+    nativeDocumentSupport: ['pdf', 'txt'], // Limited native support
+    documentParsingRequired: ['docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf', 'md']
   },
   mistral: {
     supportsVision: true,
@@ -205,7 +211,9 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: 64,
-    toolFormat: 'openai' as const
+    toolFormat: 'openai' as const,
+    nativeDocumentSupport: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'pptx', 'ppt', 'txt', 'md', 'csv', 'json'], // Comprehensive native support
+    documentParsingRequired: ['ods', 'html', 'htm', 'xml', 'ics', 'rtf']
   },
   deepseek: {
     supportsVision: false,
@@ -213,7 +221,9 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: undefined,
-    toolFormat: 'openai' as const
+    toolFormat: 'openai' as const,
+    nativeDocumentSupport: [], // No native document support
+    documentParsingRequired: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf', 'txt', 'md']
   },
   lmstudio: {
     supportsVision: true,
@@ -221,7 +231,9 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: undefined,
-    toolFormat: 'openai' as const
+    toolFormat: 'openai' as const,
+    nativeDocumentSupport: ['txt', 'md'], // Basic text support
+    documentParsingRequired: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf']
   },
   ollama: {
     supportsVision: true,
@@ -229,7 +241,9 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: undefined,
-    toolFormat: 'openai' as const
+    toolFormat: 'openai' as const,
+    nativeDocumentSupport: ['txt', 'md'], // Basic text support
+    documentParsingRequired: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf']
   },
   openrouter: {
     supportsVision: true,
@@ -237,7 +251,9 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: 64,
-    toolFormat: 'openai' as const
+    toolFormat: 'openai' as const,
+    nativeDocumentSupport: ['txt', 'md'], // Depends on underlying model
+    documentParsingRequired: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf']
   },
   requesty: {
     supportsVision: true,
@@ -245,7 +261,9 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: 64,
-    toolFormat: 'openai' as const
+    toolFormat: 'openai' as const,
+    nativeDocumentSupport: ['txt', 'md'], // Depends on underlying model
+    documentParsingRequired: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf']
   },
   replicate: {
     supportsVision: false,
@@ -253,7 +271,9 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: false,
     supportsSystemMessages: true,
     maxToolNameLength: undefined,
-    toolFormat: 'custom' as const
+    toolFormat: 'custom' as const,
+    nativeDocumentSupport: [], // No native document support
+    documentParsingRequired: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf', 'txt', 'md']
   },
   n8n: {
     supportsVision: false,
@@ -261,7 +281,9 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: undefined,
-    toolFormat: 'custom' as const
+    toolFormat: 'custom' as const,
+    nativeDocumentSupport: [], // No native document support
+    documentParsingRequired: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf', 'txt', 'md']
   }
 };
 

@@ -53,11 +53,17 @@ A powerful, lightweight desktop chat application for Windows that provides seaml
 - **Token Tracking**: Real-time tokens/second and total usage display ✨
 - **Enhanced Response Parsing**: Automatic cleanup of structured responses ✨
 
-### 📁 **File Support**
-- **Images**: PNG, JPG, GIF, WebP
-- **Documents**: Text files, PDFs
+### 📁 **Comprehensive File Support**
+- **Images**: PNG, JPG, GIF, WebP with automatic optimization
+- **Office Documents**: Word (DOCX/DOC), Excel (XLSX/XLS/ODS), PowerPoint (PPTX/PPT)
+- **Text Formats**: TXT, MD, RTF, CSV, JSON, HTML, XML
+- **Calendar Files**: ICS (iCalendar) with event extraction
+- **PDFs**: Native provider support with fallback parsing
+- **Intelligent Processing**: Automatic format detection and provider-specific optimization
+- **Error Handling**: Comprehensive fallback mechanisms with detailed error reporting
+- **Performance Monitoring**: Real-time parsing statistics and success rates
 - **Clipboard**: Paste images and text
-- **Drag & drop**: Easy file attachment
+- **Drag & drop**: Easy file attachment with visual processing indicators
 
 ## 🚀 Quick Start
 
