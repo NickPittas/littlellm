@@ -641,7 +641,7 @@ export function ChatInterface({
                     const input = document.createElement('input');
                     input.type = 'file';
                     input.multiple = true;
-                    input.accept = 'image/*,.pdf,.txt,.doc,.docx';
+                    input.accept = 'image/*,.pdf,.txt,.doc,.docx,.xlsx,.xls,.ods,.pptx,.ppt,.csv,.json,.html,.htm,.xml,.ics,.rtf,.md,.log';
                     input.onchange = (e) => {
                       const files = (e.target as HTMLInputElement).files;
                       handleFileAttach(files);

@@ -143,13 +143,21 @@ export function BottomToolbar({
     input.multiple = true;
 
     // Provider-specific file type support
-    let acceptedTypes = '.jpg,.jpeg,.png,.txt,.pdf,.md,.log';
-    let allowedExtensions = ['.jpg', '.jpeg', '.png', '.txt', '.pdf', '.md', '.log'];
+    // Base supported formats (all providers support these with text extraction)
+    const baseFormats = '.jpg,.jpeg,.png,.txt,.pdf,.md,.log,.csv,.json,.html,.htm,.xml,.ics,.rtf';
+    const baseExtensions = ['.jpg', '.jpeg', '.png', '.txt', '.pdf', '.md', '.log', '.csv', '.json', '.html', '.htm', '.xml', '.ics', '.rtf'];
+
+    // Extended formats (require document parsing)
+    const extendedFormats = '.docx,.doc,.xlsx,.xls,.ods,.pptx,.ppt';
+    const extendedExtensions = ['.docx', '.doc', '.xlsx', '.xls', '.ods', '.pptx', '.ppt'];
+
+    let acceptedTypes = baseFormats + ',' + extendedFormats;
+    let allowedExtensions = [...baseExtensions, ...extendedExtensions];
 
     if (settings.provider === 'mistral') {
       // Mistral supports additional formats through its Document AI and Vision
-      acceptedTypes = '.jpg,.jpeg,.png,.webp,.gif,.txt,.pdf,.md,.log,.csv,.json,.docx,.xlsx,.pptx,.doc,.xls,.ppt';
-      allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.txt', '.pdf', '.md', '.log', '.csv', '.json', '.docx', '.xlsx', '.pptx', '.doc', '.xls', '.ppt'];
+      acceptedTypes = baseFormats + ',' + extendedFormats + ',.webp,.gif';
+      allowedExtensions = [...baseExtensions, ...extendedExtensions, '.webp', '.gif'];
     }
 
     input.accept = acceptedTypes;
@@ -259,12 +267,14 @@ export function BottomToolbar({
               processingInfo.style.color = '#94a3b8';
               processingInfo.style.marginTop = '2px';
 
-              if (file.type === 'application/pdf' || file.type.includes('document') || file.type.includes('word') || file.type.includes('excel') || file.type.includes('powerpoint')) {
-                processingInfo.textContent = '📄 Mistral Document AI';
-              } else if (file.type.startsWith('image/')) {
+              const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+
+              if (file.type.startsWith('image/')) {
                 processingInfo.textContent = '🖼️ Mistral Vision';
-              } else if (file.type.startsWith('text/')) {
-                processingInfo.textContent = '📝 Text Processing';
+              } else if (file.type === 'application/pdf' || ['.docx', '.doc', '.xlsx', '.xls', '.ods', '.pptx', '.ppt'].includes(extension)) {
+                processingInfo.textContent = '📄 Mistral Document AI';
+              } else if (['.txt', '.md', '.csv', '.json', '.html', '.htm', '.xml', '.ics', '.rtf'].includes(extension)) {
+                processingInfo.textContent = '📝 Document Parser';
               } else {
                 processingInfo.textContent = '🔍 Mistral Processing';
               }
@@ -294,8 +304,8 @@ export function BottomToolbar({
           console.log('Files uploaded:', validFiles.map(f => f.name));
         } else {
           const providerInfo = settings.provider === 'mistral'
-            ? 'Mistral supports: images (jpg, png, webp, gif), documents (pdf, docx, xlsx, pptx), text files (txt, md, csv, json)'
-            : 'Allowed types: jpg, png, txt, pdf, md, log';
+            ? 'Mistral supports: images (jpg, png, webp, gif), documents (pdf, docx, doc, xlsx, xls, ods, pptx, ppt), text files (txt, md, csv, json, html, xml, ics, rtf)'
+            : 'Supported types: images (jpg, png), documents (pdf, docx, doc, xlsx, xls, ods, pptx, ppt), text files (txt, md, csv, json, html, xml, ics, rtf, log)';
           console.warn(`No valid files selected. ${providerInfo}`);
         }
       }
