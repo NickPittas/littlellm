@@ -1418,6 +1418,19 @@ let settingsWindow: BrowserWindow | null = null;
 let chatWindow: BrowserWindow | null = null;
 let dropdownWindow: BrowserWindow | null = null;
 
+// Helper function to get current background color from settings
+function getCurrentBackgroundColor(): string {
+  try {
+    const settings = loadAppSettings();
+    if (settings.ui?.useCustomColors && settings.ui?.customColors?.background) {
+      return settings.ui.customColors.background;
+    }
+  } catch (error) {
+    console.error('Error loading background color from settings:', error);
+  }
+  return '#181829'; // Default background color
+}
+
 // State tracking for window visibility before global hide
 let chatWindowWasVisible = false;
 let tray: Tray | null = null;
@@ -1461,8 +1474,8 @@ async function openSettingsOverlay(tab?: string) {
     titleBarStyle: 'hidden', // Hide title bar completely
     title: 'LittleLLM - Settings',
     autoHideMenuBar: true, // Hide menu bar
-    backgroundColor: '#1a1a1a',
-    roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
+    backgroundColor: getCurrentBackgroundColor(), // Dynamic background color from settings
+
     hasShadow: false,
     webPreferences: {
       nodeIntegration: false,
@@ -1502,11 +1515,14 @@ async function openActionMenu() {
     return;
   }
 
-  // Force close any existing action menu window first
-  if (actionMenuWindow) {
-    console.log('Closing existing action menu window...');
-    actionMenuWindow.close();
-    actionMenuWindow = null;
+  // If action menu window already exists and is not destroyed, just show and focus it
+  if (actionMenuWindow && !actionMenuWindow.isDestroyed()) {
+    console.log('Action menu window already exists, showing and focusing...');
+    if (!actionMenuWindow.isVisible()) {
+      actionMenuWindow.show();
+    }
+    actionMenuWindow.focus();
+    return true;
   }
 
   console.log('Creating new action menu window...');
@@ -1526,7 +1542,7 @@ async function openActionMenu() {
     height: windowHeight,
     x: x,
     y: y,
-    show: true, // Show immediately instead of waiting
+    show: false, // Wait for ready-to-show to prevent flash
     frame: false, // Remove native frame completely
     resizable: true, // Allow resizing
     alwaysOnTop: true,
@@ -1535,8 +1551,8 @@ async function openActionMenu() {
     titleBarStyle: 'hidden', // Hide title bar completely
     title: 'LittleLLM - Quick Actions',
     autoHideMenuBar: true, // Hide menu bar
-    backgroundColor: '#000000',
-    roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
+    backgroundColor: getCurrentBackgroundColor(), // Dynamic background color from settings
+
     hasShadow: false,
     webPreferences: {
       nodeIntegration: false,
@@ -1554,7 +1570,21 @@ async function openActionMenu() {
     startUrl = `http://localhost:${detectedPort}`;
   }
   const actionMenuUrl = `${startUrl}?overlay=action-menu`;
-  actionMenuWindow.loadURL(actionMenuUrl);
+
+  if (actionMenuWindow && !actionMenuWindow.isDestroyed()) {
+    actionMenuWindow.loadURL(actionMenuUrl).catch((error) => {
+      console.error('Failed to load action menu URL:', error);
+    });
+
+    // Show window only when ready to prevent flash
+    actionMenuWindow.once('ready-to-show', () => {
+      actionMenuWindow?.show();
+      actionMenuWindow?.focus();
+    });
+  } else {
+    console.error('Action menu window was destroyed before loadURL');
+    return false;
+  }
 
   actionMenuWindow.on('blur', () => {
     if (actionMenuWindow) {
@@ -1737,8 +1767,8 @@ async function createWindow() {
     autoHideMenuBar: true, // Hide menu bar
     titleBarStyle: 'hidden', // Hide title bar completely
     transparent: false, // Solid window for better compatibility
-    backgroundColor: '#181829', // Match app background
-    roundedCorners: true, // Enable rounded corners to match chat window
+    backgroundColor: getCurrentBackgroundColor(), // Dynamic background color from settings
+
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -2989,6 +3019,22 @@ function setupIPC() {
     return { x: 0, y: 0 };
   });
 
+  // Handle window background color updates
+  ipcMain.handle('set-window-background-color', (_, backgroundColor: string) => {
+    console.log('🎨 Setting window background color to:', backgroundColor);
+
+    // Update all window background colors
+    const allWindows = BrowserWindow.getAllWindows();
+    allWindows.forEach((window, index) => {
+      if (window && !window.isDestroyed()) {
+        console.log(`🎨 Setting backgroundColor for window ${index}:`, backgroundColor);
+        window.setBackgroundColor(backgroundColor);
+      }
+    });
+
+    return true;
+  });
+
   ipcMain.handle('take-screenshot', async () => {
     try {
       // desktopCapturer is already imported at the top
@@ -3124,6 +3170,32 @@ function setupIPC() {
         historyWindow = null;
       }
 
+      // Get current CSS variables from main window for consistent theming
+      let cssVariables = '';
+      try {
+        cssVariables = await mainWindow.webContents.executeJavaScript(`
+          (() => {
+            const root = document.documentElement;
+            const style = getComputedStyle(root);
+            const variables = [
+              'background', 'foreground', 'card', 'card-foreground',
+              'primary', 'primary-foreground', 'secondary', 'secondary-foreground',
+              'accent', 'accent-foreground', 'muted', 'muted-foreground',
+              'border', 'input', 'ring', 'destructive', 'destructive-foreground'
+            ];
+
+            return variables.map(name => {
+              const value = style.getPropertyValue('--' + name).trim();
+              return value ? '--' + name + ': ' + value + ';' : '';
+            }).filter(Boolean).join('\\n                ');
+          })()
+        `);
+        console.log('🎨 Retrieved CSS variables for history window:', cssVariables);
+      } catch (error) {
+        console.error('Failed to get CSS variables for history window:', error);
+        cssVariables = ''; // Will use fallback values
+      }
+
       // Generate HTML content for history window
       const generateHistoryHTML = (conversations: Array<{id: string, title: string, timestamp: number, createdAt?: number, messages?: Array<unknown>}>): string => {
         const conversationItems = conversations.length > 0
@@ -3151,12 +3223,36 @@ function setupIPC() {
             <meta charset="UTF-8">
             <title>Chat History</title>
             <style>
+              /* Dynamic theme colors - use CSS variables from main window */
+              :root {
+                ${cssVariables || `
+                /* Fallback values if main window CSS variables not available */
+                --background: 24 24 41;
+                --foreground: 212 212 212;
+                --card: 24 24 41;
+                --card-foreground: 255 255 255;
+                --primary: 86 156 214;
+                --primary-foreground: 255 255 255;
+                --secondary: 79 193 255;
+                --secondary-foreground: 173 173 173;
+                --accent: 86 156 214;
+                --accent-foreground: 255 255 255;
+                --muted: 33 31 50;
+                --muted-foreground: 156 163 175;
+                --border: 59 59 104;
+                --input: 148 148 148;
+                --ring: 86 156 214;
+                --destructive: 244 71 71;
+                --destructive-foreground: 255 255 255;
+                `}
+              }
+
               body {
                 margin: 0;
                 padding: 0;
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: #181829;
-                color: #d4d4d4;
+                background: hsl(var(--background));
+                color: hsl(var(--foreground));
                 overflow: hidden;
               }
               .history-container {
@@ -3166,16 +3262,16 @@ function setupIPC() {
               }
               .history-header {
                 padding: 16px;
-                border-bottom: 1px solid #3b3b68;
+                border-bottom: 1px solid hsl(var(--border));
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                background: #211f32;
+                background: hsl(var(--muted));
               }
               .history-title {
                 font-size: 18px;
                 font-weight: 600;
-                color: #d4d4d4;
+                color: hsl(var(--foreground));
               }
               .history-header-buttons {
                 display: flex;
@@ -3183,8 +3279,8 @@ function setupIPC() {
                 gap: 8px;
               }
               .clear-all-button {
-                background: #f44747;
-                color: white;
+                background: hsl(var(--destructive));
+                color: hsl(var(--destructive-foreground));
                 border: none;
                 padding: 8px 16px;
                 border-radius: 4px;
@@ -3192,11 +3288,11 @@ function setupIPC() {
                 font-size: 12px;
               }
               .clear-all-button:hover {
-                background: #d73a49;
+                background: hsl(var(--destructive) / 0.8);
               }
               .close-button {
-                background: #3b3b68;
-                color: #d4d4d4;
+                background: hsl(var(--muted));
+                color: hsl(var(--foreground));
                 border: none;
                 width: 32px;
                 height: 32px;
@@ -3209,8 +3305,8 @@ function setupIPC() {
                 transition: background-color 0.2s;
               }
               .close-button:hover {
-                background: #569cd6;
-                color: white;
+                background: hsl(var(--primary));
+                color: hsl(var(--primary-foreground));
               }
               .history-content {
                 flex: 1;
@@ -3225,14 +3321,14 @@ function setupIPC() {
                 align-items: center;
                 padding: 12px;
                 margin-bottom: 4px;
-                background: #211f32;
+                background: hsl(var(--card));
                 border-radius: 6px;
                 cursor: pointer;
                 transition: background-color 0.2s;
                 position: relative;
               }
               .history-item:hover {
-                background: #2d2b3e;
+                background: hsl(var(--accent));
               }
               .history-item-content {
                 flex: 1;
@@ -3241,25 +3337,25 @@ function setupIPC() {
               .history-item-title {
                 font-size: 14px;
                 font-weight: 500;
-                color: #d4d4d4;
+                color: hsl(var(--card-foreground));
                 margin-bottom: 4px;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
               }
               .history-item:hover .history-item-title {
-                color: #569cd6;
+                color: hsl(var(--primary));
               }
               .history-item-meta {
                 font-size: 12px;
-                color: #9ca3af;
+                color: hsl(var(--muted-foreground));
               }
               .history-item:hover .history-item-meta {
-                color: #d4d4d4;
+                color: hsl(var(--foreground));
               }
               .history-item-delete {
-                background: #f44747;
-                color: white;
+                background: hsl(var(--destructive));
+                color: hsl(var(--destructive-foreground));
                 border: none;
                 width: 24px;
                 height: 24px;
@@ -3276,7 +3372,7 @@ function setupIPC() {
                 opacity: 1;
               }
               .history-item-delete:hover {
-                background: #d73a49;
+                background: hsl(var(--destructive) / 0.8);
               }
             </style>
           </head>
@@ -3371,8 +3467,20 @@ function setupIPC() {
         }
       });
 
+      // Apply current theme background before showing window
+      if (currentThemeData) {
+        const backgroundColor = currentThemeData.useCustomColors && currentThemeData.customColors?.background
+          ? currentThemeData.customColors.background
+          : '#181829'; // Default background color
+        historyWindow.setBackgroundColor(backgroundColor);
+      }
+
       historyWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
-      historyWindow.show();
+
+      // Wait for the window to be ready before showing to prevent flash
+      historyWindow.once('ready-to-show', () => {
+        historyWindow?.show();
+      });
 
       historyWindow.on('closed', () => {
         historyWindow = null;
@@ -3416,7 +3524,14 @@ function setupIPC() {
   });
 
   // Handle overlay window creation
-  ipcMain.handle('open-action-menu', openActionMenu);
+  ipcMain.handle('open-action-menu', async () => {
+    try {
+      return await openActionMenu();
+    } catch (error) {
+      console.error('Error opening action menu:', error);
+      return false;
+    }
+  });
 
   ipcMain.handle('close-action-menu', () => {
     console.log('Close action menu requested');
@@ -3450,14 +3565,17 @@ function setupIPC() {
     console.log('Open settings overlay requested');
     if (!mainWindow) {
       console.log('No main window available');
-      return;
+      return false;
     }
 
-    // Force close any existing settings window first
-    if (settingsWindow) {
-      console.log('Closing existing settings window...');
-      settingsWindow.close();
-      settingsWindow = null;
+    // If settings window already exists and is not destroyed, just show and focus it
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      console.log('Settings window already exists, showing and focusing...');
+      if (!settingsWindow.isVisible()) {
+        settingsWindow.show();
+      }
+      settingsWindow.focus();
+      return true;
     }
 
     console.log('Creating new settings window...');
@@ -3477,7 +3595,7 @@ function setupIPC() {
       height: windowHeight,
       x: x,
       y: y,
-      show: true, // Show immediately instead of waiting
+      show: false, // Wait for ready-to-show to prevent flash
       frame: false, // Remove native frame completely
       resizable: true,
       alwaysOnTop: true,
@@ -3488,8 +3606,8 @@ function setupIPC() {
       minWidth: 600,
       minHeight: 400,
       autoHideMenuBar: true, // Hide menu bar
-      backgroundColor: '#1e1e1e',
-      roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
+      backgroundColor: getCurrentBackgroundColor(), // Dynamic background color from settings
+
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -3508,9 +3626,20 @@ function setupIPC() {
     const settingsUrl = `${startUrl}?overlay=settings`;
     console.log('Loading settings URL:', settingsUrl);
 
-    settingsWindow.loadURL(settingsUrl).catch((error) => {
-      console.error('Failed to load settings URL:', error);
-    });
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.loadURL(settingsUrl).catch((error) => {
+        console.error('Failed to load settings URL:', error);
+      });
+
+      // Show window only when ready to prevent flash
+      settingsWindow.once('ready-to-show', () => {
+        settingsWindow?.show();
+        settingsWindow?.focus();
+      });
+    } else {
+      console.error('Settings window was destroyed before loadURL');
+      return false;
+    }
 
     settingsWindow.on('closed', () => {
       console.log('Settings window closed, cleaning up...');
@@ -3593,7 +3722,7 @@ function setupIPC() {
       alwaysOnTop: true,
       skipTaskbar: true,
       transparent: false,
-      backgroundColor: '#1e1e1e',
+      backgroundColor: getCurrentBackgroundColor(), // Dynamic background color from settings
       roundedCorners: true, // Enable rounded corners
       webPreferences: {
         nodeIntegration: false,
@@ -3680,10 +3809,181 @@ function setupIPC() {
   });
 
   // Handle theme change notifications from overlay to main window
-  ipcMain.handle('notify-theme-change', (_, themeId: string) => {
-    if (mainWindow) {
-      mainWindow.webContents.send('theme-changed', themeId);
+  ipcMain.handle('notify-theme-change', (_, themeData: { customColors: Record<string, string>; useCustomColors: boolean }) => {
+    console.log('Main process: Received theme change notification:', themeData);
+
+    // Store the current theme for new windows
+    currentThemeData = themeData;
+
+    // Update Electron window background colors to match theme
+    const backgroundColor = themeData.useCustomColors && themeData.customColors?.background
+      ? themeData.customColors.background
+      : '#181829'; // Default background color
+
+    console.log('🎨 Setting Electron window backgroundColor to:', backgroundColor);
+
+    // Update all window background colors
+    const allWindows = BrowserWindow.getAllWindows();
+    allWindows.forEach((window, index) => {
+      if (window && !window.isDestroyed()) {
+        console.log(`🎨 Setting backgroundColor for window ${index}:`, backgroundColor);
+        window.setBackgroundColor(backgroundColor);
+      }
+    });
+
+    // Broadcast to all windows
+    console.log(`Main process: Broadcasting to ${allWindows.length} windows`);
+    allWindows.forEach((window, index) => {
+      if (window && !window.isDestroyed()) {
+        console.log(`Main process: Sending theme-change to window ${index}`);
+        window.webContents.send('theme-change', themeData);
+      }
+    });
+
+    // Close and recreate static HTML windows to pick up new theme
+    if (historyWindow && !historyWindow.isDestroyed()) {
+      console.log('🎨 Closing history window to refresh theme');
+      historyWindow.close();
+      historyWindow = null;
     }
+
+    // Note: Dropdown windows are temporary and will pick up new theme on next creation
+    console.log('🎨 Theme change broadcast complete');
+  });
+
+  // Store current theme data for new windows
+  let currentThemeData: { customColors: Record<string, string>; useCustomColors: boolean } | null = null;
+
+  // Theme preset definitions (matching src/config/themes.ts)
+  const THEME_PRESETS = [
+    {
+      id: 'default',
+      name: 'VS Code Dark',
+      colors: {
+        background: '#181829',
+        foreground: '#d4d4d4',
+        card: '#211f32',
+        cardForeground: '#ffffff',
+        primary: '#569cd6',
+        primaryForeground: '#ffffff',
+        secondary: '#4fc1ff',
+        secondaryForeground: '#adadad',
+        accent: '#569cd6',
+        accentForeground: '#ffffff',
+        muted: '#211f32',
+        mutedForeground: '#9ca3af',
+        border: '#3b3b68',
+        input: '#949494',
+        ring: '#569cd6',
+        destructive: '#f44747',
+        destructiveForeground: '#ffffff',
+        systemText: '#e0e0e0',
+      },
+    },
+    {
+      id: 'sunset',
+      name: 'Sunset',
+      colors: {
+        background: '#1a0f0a',
+        foreground: '#f4e4d6',
+        card: '#2a1f1a',
+        cardForeground: '#ffffff',
+        primary: '#ff6b35',
+        primaryForeground: '#ffffff',
+        secondary: '#ffa726',
+        secondaryForeground: '#000000',
+        accent: '#ff6b35',
+        accentForeground: '#ffffff',
+        muted: '#2a1f1a',
+        mutedForeground: '#b8860b',
+        border: '#8b4513',
+        input: '#3a2f2a',
+        ring: '#ff6b35',
+        destructive: '#ff5722',
+        destructiveForeground: '#ffffff',
+        systemText: '#f4e4d6',
+      },
+    },
+    {
+      id: 'cyberpunk',
+      name: 'Cyberpunk',
+      colors: {
+        background: '#0a0a0a',
+        foreground: '#00ff41',
+        card: '#1a1a1a',
+        cardForeground: '#00ff41',
+        primary: '#ff0080',
+        primaryForeground: '#000000',
+        secondary: '#00ffff',
+        secondaryForeground: '#000000',
+        accent: '#ff0080',
+        accentForeground: '#000000',
+        muted: '#1a1a1a',
+        mutedForeground: '#808080',
+        border: '#ff0080',
+        input: '#2a2a2a',
+        ring: '#00ffff',
+        destructive: '#ff4444',
+        destructiveForeground: '#000000',
+        systemText: '#00ff41',
+      },
+    },
+  ];
+
+  function getThemePreset(id: string) {
+    return THEME_PRESETS.find(theme => theme.id === id) || THEME_PRESETS[0];
+  }
+
+  // Initialize current theme data from settings
+  try {
+    const settings = loadAppSettings();
+    if (settings.ui) {
+      const selectedThemePreset = settings.ui.selectedThemePreset || 'default';
+      const colorMode = settings.ui.colorMode || 'preset';
+      const useCustomColors = settings.ui.useCustomColors || false;
+
+      console.log('🎨 Loading theme settings:', { selectedThemePreset, colorMode, useCustomColors });
+
+      let customColors: Record<string, string>;
+
+      if (colorMode === 'preset') {
+        // Use theme preset colors
+        const preset = getThemePreset(selectedThemePreset);
+        customColors = preset.colors;
+        console.log('🎨 Using preset colors for:', selectedThemePreset);
+      } else {
+        // Use custom colors or fallback to default
+        customColors = settings.ui.customColors || getThemePreset('default').colors;
+        console.log('🎨 Using custom colors mode');
+      }
+
+      currentThemeData = {
+        customColors,
+        useCustomColors: colorMode === 'custom'
+      };
+
+      console.log('🎨 Initialized current theme data from settings:', currentThemeData);
+    }
+  } catch (error) {
+    console.error('Failed to initialize theme data from settings:', error);
+    // Fallback to default theme
+    const defaultPreset = getThemePreset('default');
+    currentThemeData = {
+      customColors: defaultPreset.colors,
+      useCustomColors: false
+    };
+  }
+
+  // Update stored theme data when theme changes
+  ipcMain.on('store-current-theme', (_, themeData: { customColors: Record<string, string>; useCustomColors: boolean }) => {
+    console.log('🎨 Main process: Storing current theme data:', themeData);
+    currentThemeData = themeData;
+  });
+
+  // Handle requests for current theme from new windows
+  ipcMain.handle('get-current-theme', () => {
+    console.log('🎨 Main process: Requested current theme, returning:', currentThemeData);
+    return currentThemeData;
   });
 
   // Handle dropdown window creation
@@ -3707,7 +4007,9 @@ function setupIPC() {
             'background', 'foreground', 'card', 'card-foreground',
             'primary', 'primary-foreground', 'secondary', 'secondary-foreground',
             'accent', 'accent-foreground', 'muted', 'muted-foreground',
-            'border', 'input', 'ring', 'destructive', 'destructive-foreground'
+            'border', 'input', 'ring', 'destructive', 'destructive-foreground',
+            'popover', 'popover-foreground', 'success', 'warning', 'info',
+            'code-background', 'code-border'
           ];
 
           return variables.map(name => {
@@ -3756,7 +4058,7 @@ function setupIPC() {
       alwaysOnTop: true,
       skipTaskbar: true,
       transparent: false,
-      backgroundColor: '#1a1a1a', // Dark background
+      backgroundColor: getCurrentBackgroundColor(), // Dynamic background color from settings
       roundedCorners: true, // Enable rounded corners on the Electron window panel (macOS/Windows)
       focusable: true, // Enable focus to receive click events
       parent: mainWindow, // Anchor to main window
@@ -3771,30 +4073,85 @@ function setupIPC() {
 
 
     // Create HTML content for the dropdown using CSS variables (same as main window)
+    // Generate fallback CSS variables from current theme data
+    let fallbackCSSVariables = '';
+    if (currentThemeData && currentThemeData.customColors && Object.keys(currentThemeData.customColors).length > 0) {
+      // Convert hex colors to HSL for CSS variables
+      const hexToHsl = (hex: string): string => {
+        const r = parseInt(hex.slice(1, 3), 16) / 255;
+        const g = parseInt(hex.slice(3, 5), 16) / 255;
+        const b = parseInt(hex.slice(5, 7), 16) / 255;
+
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        let h = 0, s = 0;
+        const l = (max + min) / 2;
+
+        if (max !== min) {
+          const d = max - min;
+          s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+          switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+          }
+          h /= 6;
+        }
+
+        return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+      };
+
+      const colors = currentThemeData.customColors;
+      fallbackCSSVariables = `
+            --background: ${hexToHsl(colors.background || '#181829')};
+            --foreground: ${hexToHsl(colors.foreground || '#d4d4d4')};
+            --card: ${hexToHsl(colors.card || '#211f32')};
+            --card-foreground: ${hexToHsl(colors.cardForeground || '#ffffff')};
+            --primary: ${hexToHsl(colors.primary || '#569cd6')};
+            --primary-foreground: ${hexToHsl(colors.primaryForeground || '#ffffff')};
+            --secondary: ${hexToHsl(colors.secondary || '#4fc1ff')};
+            --secondary-foreground: ${hexToHsl(colors.secondaryForeground || '#adadad')};
+            --accent: ${hexToHsl(colors.accent || '#569cd6')};
+            --accent-foreground: ${hexToHsl(colors.accentForeground || '#ffffff')};
+            --muted: ${hexToHsl(colors.muted || '#211f32')};
+            --muted-foreground: ${hexToHsl(colors.mutedForeground || '#9ca3af')};
+            --border: ${hexToHsl(colors.border || '#3b3b68')};
+            --input: ${hexToHsl(colors.input || '#949494')};
+            --ring: ${hexToHsl(colors.ring || '#569cd6')};
+            --destructive: ${hexToHsl(colors.destructive || '#f44747')};
+            --destructive-foreground: ${hexToHsl(colors.destructiveForeground || '#ffffff')};
+            `;
+    } else {
+      // Default fallback values
+      fallbackCSSVariables = `
+            --background: 24 24 41;
+            --foreground: 212 212 212;
+            --card: 24 24 41;
+            --card-foreground: 255 255 255;
+            --primary: 86 156 214;
+            --primary-foreground: 255 255 255;
+            --secondary: 79 193 255;
+            --secondary-foreground: 173 173 173;
+            --accent: 86 156 214;
+            --accent-foreground: 255 255 255;
+            --muted: 33 31 50;
+            --muted-foreground: 156 163 175;
+            --border: 59 59 104;
+            --input: 148 148 148;
+            --ring: 86 156 214;
+            --destructive: 244 71 71;
+            --destructive-foreground: 255 255 255;
+            `;
+    }
+
     const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <style>
-          /* Custom theme colors - matching globals.css */
+          /* Dynamic theme colors - use CSS variables from main window */
           :root {
-            --background: #181829;
-            --foreground: #d4d4d4;
-            --card: #181829;
-            --card-foreground: #ffffff;
-            --primary: #569cd6;
-            --primary-foreground: #ffffff;
-            --secondary: #4fc1ff;
-            --secondary-foreground: #adadad;
-            --accent: rgba(86, 156, 214, 0.1);
-            --accent-foreground: #ffffff;
-            --muted: #201e31;
-            --muted-foreground: #9ca3af;
-            --border: #3b3b68;
-            --input: #949494;
-            --ring: #569cd6;
-            --destructive: #f44747;
-            --destructive-foreground: #ffffff;
+            ${cssVariables || fallbackCSSVariables}
           }
 
           body {

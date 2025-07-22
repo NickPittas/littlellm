@@ -197,13 +197,13 @@ export function ActionMenuOverlay() {
   }, [searchQuery]);
 
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden" style={{ backgroundColor: '#000000' }}>
+    <div className="action-menu-overlay h-full w-full flex flex-col overflow-hidden" style={{ backgroundColor: 'hsl(var(--background))', color: 'hsl(var(--foreground))' }}>
       {/* Draggable Title Bar */}
       <div
-        className="flex items-center justify-between px-3 py-2 border-b border-border cursor-grab active:cursor-grabbing bg-gray-800 hover:bg-gray-700 transition-colors"
+        className="flex items-center justify-between px-3 py-2 border-b border-border cursor-grab active:cursor-grabbing bg-muted hover:bg-muted/80 transition-colors"
         style={{
-          backgroundColor: '#374151',
-          borderBottom: '1px solid #4b5563',
+          backgroundColor: 'hsl(var(--muted))',
+          borderBottom: '1px solid hsl(var(--border))',
           WebkitAppRegion: 'drag',
           minHeight: '40px'
         }}
@@ -217,17 +217,17 @@ export function ActionMenuOverlay() {
       >
         <div className="flex items-center gap-2">
           <div className="flex flex-col gap-0.5">
-            <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-            <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-            <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+            <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
+            <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
+            <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
           </div>
-          <h2 className="text-sm font-medium text-white select-none">
+          <h2 className="text-sm font-medium text-foreground select-none">
             Actions & Prompts
           </h2>
         </div>
         <button
           onClick={handleClose}
-          className="h-6 w-6 p-0 hover:bg-gray-600 rounded flex items-center justify-center text-gray-300 hover:text-white transition-colors"
+          className="h-6 w-6 p-0 hover:bg-muted rounded flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
           style={{ WebkitAppRegion: 'no-drag' }}
         >
           <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -283,7 +283,7 @@ export function ActionMenuOverlay() {
                     margin: '0'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.backgroundColor = 'hsl(var(--muted) / 0.5)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.backgroundColor = 'transparent';
@@ -295,12 +295,12 @@ export function ActionMenuOverlay() {
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span style={{ fontWeight: 500, fontSize: '14px', color: 'white' }}>{item.title}</span>
-                        <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '9999px', color: '#9ca3af', textTransform: 'capitalize' }}>
+                        <span style={{ fontWeight: 500, fontSize: '14px', color: 'hsl(var(--foreground))' }}>{item.title}</span>
+                        <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '9999px', color: 'hsl(var(--muted-foreground))', textTransform: 'capitalize' }}>
                           {item.category}
                         </span>
                       </div>
-                      <p style={{ fontSize: '12px', color: '#9ca3af', lineHeight: '1.4' }}>
+                      <p style={{ fontSize: '12px', color: 'hsl(var(--muted-foreground))', lineHeight: '1.4' }}>
                         {item.description}
                       </p>
                     </div>

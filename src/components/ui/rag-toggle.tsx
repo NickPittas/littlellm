@@ -24,7 +24,7 @@ export function RAGToggle({
       size="sm"
       onClick={() => onToggle(!enabled)}
       className={cn(
-        "h-10 w-10 cursor-pointer flex-shrink-0 transition-all duration-200 relative",
+        "h-8 w-8 p-0 cursor-pointer flex-shrink-0 transition-all duration-200 relative",
         enabled
           ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
           : "text-muted-foreground hover:text-foreground hover:bg-accent border border-border",

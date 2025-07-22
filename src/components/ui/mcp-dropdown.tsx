@@ -333,9 +333,9 @@ export function MCPDropdown({
         .dropdown-header {
           padding: 8px 12px;
           font-size: 12px;
-          color: rgba(255, 255, 255, 0.8);
-          border-bottom: 1px solid var(--border);
-          background: var(--muted);
+          color: hsl(var(--muted-foreground));
+          border-bottom: 1px solid hsl(var(--border));
+          background: hsl(var(--muted));
         }
         .dropdown-item {
           padding: 8px 12px;
@@ -346,11 +346,11 @@ export function MCPDropdown({
           align-items: center;
           justify-content: space-between;
           min-height: 48px;
-          color: white;
+          color: hsl(var(--foreground));
         }
         .dropdown-item:hover {
-          background: rgba(59, 130, 246, 0.1);
-          color: white;
+          background: hsl(var(--accent) / 0.1);
+          color: hsl(var(--foreground));
         }
         .dropdown-item:last-child {
           border-bottom: none;

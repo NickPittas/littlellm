@@ -420,17 +420,16 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
 
 
-  // Simplified window auto-resize - only for attachment changes
+  // Enhanced window auto-resize for attachments and multiline text
   const autoResizeWindow = useCallback(() => {
     if (typeof window !== 'undefined' && window.electronAPI && !userResizedWindow) {
-      // Only resize for significant content changes (attachments), not text input
       const mainContainer = document.querySelector('.voila-interface-container') as HTMLElement;
       if (mainContainer) {
         const containerHeight = mainContainer.scrollHeight;
-        const newHeight = Math.min(Math.max(containerHeight + 20, 120), 600);
+        const newHeight = Math.min(Math.max(containerHeight + 20, 120), 800); // Increased max height
 
         window.electronAPI.getCurrentWindowSize().then((currentSize: { width: number; height: number }) => {
-          if (Math.abs(currentSize.height - newHeight) > 20) { // Only for significant changes
+          if (Math.abs(currentSize.height - newHeight) > 10) { // More sensitive threshold
             window.electronAPI.resizeWindow(currentSize.width, newHeight);
           }
         }).catch(() => {
@@ -440,33 +439,39 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     }
   }, [userResizedWindow]);
 
-  // Simple CSS-based textarea auto-resize
+  // Enhanced textarea auto-resize with window resize trigger
   const autoResizeTextarea = useCallback(() => {
     if (textareaRef.current) {
       const textarea = textareaRef.current;
-      // Let CSS handle the auto-sizing - just reset height to trigger recalculation
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
-    }
-  }, []);
+      const previousHeight = textarea.style.height;
 
-  // Debounced textarea auto-resize on input change
+      // Reset height to trigger recalculation
+      textarea.style.height = 'auto';
+      const newHeight = Math.min(textarea.scrollHeight, 200);
+      textarea.style.height = `${newHeight}px`;
+
+      // Trigger window resize if textarea height changed significantly
+      if (Math.abs(parseInt(previousHeight) - newHeight) > 20) {
+        setTimeout(() => autoResizeWindow(), 50);
+      }
+    }
+  }, [autoResizeWindow]);
+
+  // Responsive textarea auto-resize on input change
   useEffect(() => {
     const timer = setTimeout(() => {
       autoResizeTextarea();
-    }, 100); // Debounce to reduce frequency
+    }, 50); // Faster response for better UX
     return () => clearTimeout(timer);
   }, [input, autoResizeTextarea]);
 
-  // Window resize only for attachment changes
+  // Enhanced window resize for attachment changes
   useEffect(() => {
-    if (attachedFiles.length > 0) {
-      // Only resize when attachments are added/removed, not for text changes
-      const timer = setTimeout(() => {
-        autoResizeWindow();
-      }, 200);
-      return () => clearTimeout(timer);
-    }
+    // Resize when attachments are added/removed
+    const timer = setTimeout(() => {
+      autoResizeWindow();
+    }, 100); // Faster response
+    return () => clearTimeout(timer);
   }, [attachedFiles.length, autoResizeWindow]);
 
   // Additional resize trigger when user stops resizing manually
@@ -919,12 +924,9 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                       </div>
                     )}
 
-                    {/* File Info */}
+                    {/* Spacer - File info removed for minimal UI */}
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{file.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {(file.size / 1024).toFixed(1)} KB
-                      </div>
+                      {/* No file info displayed for cleaner appearance */}
                     </div>
 
                     {/* Remove Button */}
@@ -995,7 +997,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               data-interactive="true"
             />
 
-            {/* Attachment and Screenshot buttons - moved to left of Send button */}
+            {/* Attachment and Screenshot buttons - standardized to h-8 w-8 */}
             <Button
               variant="ghost"
               size="sm"
@@ -1012,7 +1014,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                 };
                 input.click();
               }}
-              className="h-10 w-10 cursor-pointer flex-shrink-0"
+              className="h-8 w-8 p-0 cursor-pointer flex-shrink-0"
               title="Attach File"
               data-interactive="true"
             >
@@ -1037,7 +1039,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                   console.error('Failed to take screenshot:', error);
                 }
               }}
-              className="h-10 w-10 cursor-pointer flex-shrink-0"
+              className="h-8 w-8 p-0 cursor-pointer flex-shrink-0"
               title="Take Screenshot"
               data-interactive="true"
             >
@@ -1070,10 +1072,10 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
             <Button
               onClick={handleSendMessage}
               disabled={!input.trim() && attachedFiles.length === 0}
-              className="h-10 w-10 cursor-pointer flex-shrink-0 p-0"
+              className="h-8 w-8 cursor-pointer flex-shrink-0 p-0"
               data-interactive="true"
             >
-              <Send className="h-5 w-5" />
+              <Send className="h-4 w-4" />
             </Button>
           </div>
         </Card>

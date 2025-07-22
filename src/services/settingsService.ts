@@ -1,40 +1,26 @@
 
 
-export interface AppSettings {
-  chat: ChatSettings;
-  ui: {
-    theme: 'light' | 'dark' | 'system';
-    alwaysOnTop: boolean;
-    startMinimized: boolean;
-    fontSize?: 'small' | 'medium' | 'large';
-    windowBounds: {
-      width: number;
-      height: number;
-      x?: number;
-      y?: number;
-    };
-    hotkey: string;
-    screenshotHotkey: string;
-  };
-  shortcuts: {
-    toggleWindow: string;
-    processClipboard: string;
-    actionMenu: string;
-    openShortcuts: string;
-  };
-  general: {
-    autoStartWithSystem: boolean;
-    showNotifications: boolean;
-    saveConversationHistory: boolean;
-    conversationHistoryLength: number; // Number of previous messages to include in context
-  };
-}
-
 // Import shared types
-import type { ChatSettings, ProviderSettings, ProvidersConfig, MCPServerConfig } from '../types/settings';
+import type {
+  ChatSettings,
+  ProviderSettings,
+  ProvidersConfig,
+  MCPServerConfig,
+  AppSettings,
+  UISettings,
+  ColorSettings
+} from '../types/settings';
 
 // Re-export shared types for convenience
-export type { ChatSettings, ProviderSettings, ProvidersConfig, MCPServerConfig };
+export type {
+  ChatSettings,
+  ProviderSettings,
+  ProvidersConfig,
+  MCPServerConfig,
+  AppSettings,
+  UISettings,
+  ColorSettings
+};
 
 const DEFAULT_SETTINGS: AppSettings = {
   chat: {
@@ -61,6 +47,7 @@ const DEFAULT_SETTINGS: AppSettings = {
       n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
     },
   },
+  mcpServers: [],
   ui: {
     theme: 'system',
     alwaysOnTop: true,
@@ -73,6 +60,29 @@ const DEFAULT_SETTINGS: AppSettings = {
       height: 615, // Increased by 15px for draggable header
       x: undefined, // Let Electron choose initial position
       y: undefined, // Let Electron choose initial position
+    },
+    useCustomColors: false,
+    selectedThemePreset: 'default', // Default to VS Code Dark theme
+    colorMode: 'preset', // Default to using preset themes
+    customColors: {
+      background: '#181829',
+      foreground: '#d4d4d4',
+      card: '#181829',
+      cardForeground: '#ffffff',
+      primary: '#569cd6',
+      primaryForeground: '#ffffff',
+      secondary: '#4fc1ff',
+      secondaryForeground: '#adadad',
+      accent: '#569cd6',
+      accentForeground: '#ffffff',
+      muted: '#211f32',
+      mutedForeground: '#9ca3af',
+      border: '#3b3b68',
+      input: '#949494',
+      ring: '#569cd6',
+      destructive: '#f44747',
+      destructiveForeground: '#ffffff',
+      systemText: '#e0e0e0',
     },
   },
   shortcuts: {
@@ -208,6 +218,10 @@ class SettingsService {
     return { ...this.settings };
   }
 
+  isInitialized(): boolean {
+    return this.initialized;
+  }
+
   getChatSettings(): ChatSettings {
     if (!this.initialized) {
       // Return defaults if not initialized yet
@@ -341,9 +355,36 @@ class SettingsService {
       });
     }
 
-    // Update settings in memory
+    // Update settings in memory with deep merge
     const oldSettings = { ...this.settings };
-    this.settings = { ...this.settings, ...updates };
+
+    // Deep merge for nested objects like ui, chat, etc.
+    this.settings = {
+      ...this.settings,
+      ...updates,
+      // Deep merge ui object if it exists in updates
+      ...(updates.ui && {
+        ui: {
+          ...this.settings.ui,
+          ...updates.ui
+        }
+      }),
+      // Deep merge chat object if it exists in updates
+      ...(updates.chat && {
+        chat: {
+          ...this.settings.chat,
+          ...updates.chat,
+          // Deep merge providers if it exists
+          ...(updates.chat.providers && {
+            providers: {
+              ...this.settings.chat.providers,
+              ...updates.chat.providers
+            }
+          })
+        }
+      })
+    };
+
     console.log('🔍 Settings updated in memory from:', JSON.stringify(oldSettings, null, 2));
     console.log('🔍 Settings updated in memory to:', JSON.stringify(this.settings, null, 2));
 
