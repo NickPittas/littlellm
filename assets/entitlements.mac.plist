@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Allow JIT compilation for better performance -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  
+  <!-- Allow unsigned executable memory for Node.js and native modules -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  
+  <!-- Disable library validation for native modules -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  
+  <!-- Allow arbitrary loads for HTTP connections to local AI services -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  
+  <!-- Allow outgoing network connections -->
+  <key>com.apple.security.network.server</key>
+  <true/>
+  
+  <!-- Allow file system access for document processing -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+  
+  <!-- Allow access to Downloads folder for file operations -->
+  <key>com.apple.security.files.downloads.read-write</key>
+  <true/>
+  
+  <!-- Allow camera access for vision features -->
+  <key>com.apple.security.device.camera</key>
+  <true/>
+  
+  <!-- Allow microphone access for potential voice features -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+  
+  <!-- Allow printing -->
+  <key>com.apple.security.print</key>
+  <true/>
+  
+  <!-- Allow access to user data for knowledge base -->
+  <key>com.apple.security.personal-information.addressbook</key>
+  <false/>
+  
+  <key>com.apple.security.personal-information.calendars</key>
+  <false/>
+  
+  <key>com.apple.security.personal-information.location</key>
+  <false/>
+  
+  <key>com.apple.security.personal-information.photos-library</key>
+  <false/>
+</dict>
+</plist>

@@ -1,6 +1,8 @@
-# COMPLETE WINDOW & COLOR VARIABLE MAPPING
+# LittleLLM v2.0.1 - Complete Window & Color Variable Mapping
 
 ## WINDOW ARCHITECTURE OVERVIEW
+
+LittleLLM v2.0.1 uses a multi-window architecture with consistent theming across all platforms (Windows, macOS, Linux).
 
 ### 1. **Main App Window**
 - **Creation**: `createWindow()` in `electron/main.ts:1761`
@@ -8,13 +10,15 @@
 - **Content**: `VoilaInterface` component
 - **Theme Source**: `ThemeProvider` in `src/contexts/ThemeContext.tsx`
 - **CSS Variables**: Applied via `applyThemeToDOM()` function
+- **Platform Support**: Windows, macOS (Intel + Apple Silicon), Linux
 
-### 2. **Settings Window** 
+### 2. **Settings Window**
 - **Creation**: `openSettingsOverlay()` in `electron/main.ts:1450` & `electron/main.ts:3525`
 - **URL**: `http://localhost:${port}?overlay=settings`
 - **Content**: `SettingsOverlay` component via `OverlayRouter`
 - **Theme Source**: Same `ThemeProvider` but NEW INSTANCE
 - **CSS Variables**: Applied via `applyThemeToDOM()` function
+- **Features**: Cross-platform theme management, MCP server configuration
 
 ### 3. **Action Menu Window (Prompts)**
 - **Creation**: `openActionMenu()` in `electron/main.ts:1524`
@@ -22,6 +26,7 @@
 - **Content**: `ActionMenuOverlay` component via `OverlayRouter`
 - **Theme Source**: Same `ThemeProvider` but NEW INSTANCE
 - **CSS Variables**: Applied via `applyThemeToDOM()` function
+- **Features**: Quick actions, prompt management, clipboard integration
 
 ### 4. **Chat Window**
 - **Creation**: `open-chat-window` handler in `electron/main.ts:3633`
@@ -29,6 +34,7 @@
 - **Content**: `ChatOverlay` component via `OverlayRouter`
 - **Theme Source**: Same `ThemeProvider` but NEW INSTANCE
 - **CSS Variables**: Applied via `applyThemeToDOM()` function
+- **Features**: AI conversations, tool calling, memory context, vision support
 
 ### 5. **Chat History Window**
 - **Creation**: `open-history` handler in `electron/main.ts:3408`
@@ -36,6 +42,7 @@
 - **Content**: Static HTML generated in `generateHistoryHTML()`
 - **Theme Source**: CSS variables retrieved from main window
 - **CSS Variables**: Injected as static CSS in HTML
+- **Features**: Conversation history, search, export
 
 ### 6. **Dropdown Windows**
 - **Creation**: `open-dropdown` handler in `electron/main.ts:3819`
@@ -43,6 +50,7 @@
 - **Content**: Static HTML with dropdown items
 - **Theme Source**: CSS variables retrieved from main window
 - **CSS Variables**: Injected as static CSS in HTML
+- **Features**: Provider selection, model selection, MCP server management
 
 ## CSS VARIABLE DEFINITIONS
 
