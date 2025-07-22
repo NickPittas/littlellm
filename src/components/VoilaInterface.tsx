@@ -149,11 +149,13 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       gemini: { apiKey: '', lastSelectedModel: '' },
       mistral: { apiKey: '', lastSelectedModel: '' },
       deepseek: { apiKey: '', lastSelectedModel: '' },
+      groq: { apiKey: '', lastSelectedModel: '' },
       lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       openrouter: { apiKey: '', lastSelectedModel: '' },
       requesty: { apiKey: '', lastSelectedModel: '' },
       replicate: { apiKey: '', lastSelectedModel: '' },
+      n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
     },
   });
 
@@ -436,7 +438,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         });
       }
     }
-  }, [attachedFiles.length, userResizedWindow]);
+  }, [userResizedWindow]);
 
   // Simple CSS-based textarea auto-resize
   const autoResizeTextarea = useCallback(() => {
@@ -834,7 +836,8 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
           // Summary
           console.log('📋 MCP CONNECTIVITY SUMMARY:');
-          console.log(`- Connected servers: ${Object.keys((status as any)?.servers || {}).filter((id: string) => (status as any).servers[id].connected).length}`);
+          const servers = (status && typeof status === 'object' && 'servers' in status) ? (status as {servers: Record<string, {connected: boolean}>}).servers : {};
+          console.log(`- Connected servers: ${Object.keys(servers).filter((id: string) => servers[id]?.connected).length}`);
           console.log(`- Total tools: ${tools.length}`);
           console.log(`- Total resources: ${resources.length}`);
           console.log(`- Total prompts: ${prompts.length}`);
@@ -849,7 +852,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
             resources,
             prompts,
             summary: {
-              connectedServers: Object.keys((status as any)?.servers || {}).filter((id: string) => (status as any).servers[id].connected).length,
+              connectedServers: Object.keys(servers).filter((id: string) => servers[id]?.connected).length,
               totalTools: tools.length,
               totalResources: resources.length,
               totalPrompts: prompts.length

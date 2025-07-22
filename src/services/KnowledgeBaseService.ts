@@ -109,7 +109,7 @@ export class KnowledgeBaseService {
       // Verify the records were added by checking the count
       const dummyEmbedding = new Array(384).fill(0); // MiniLM-L6-v2 has 384 dimensions
       const allRecords = await this.table.search(dummyEmbedding).limit(10000).execute();
-      const documentRecords = allRecords.filter((r: any) => r.source === documentSource);
+      const documentRecords = allRecords.filter(r => (r as {source: string}).source === documentSource);
       console.log(`Verification: Found ${documentRecords.length} records for document ${documentSource} in the database`);
       
     } catch (error) {
@@ -150,9 +150,9 @@ export class KnowledgeBaseService {
    * Searches the knowledge base for content relevant to a given query.
    * @param queryText - The text to search for.
    * @param limit - The maximum number of relevant chunks to return.
-   * @returns {Promise<any[]>} A promise that resolves to an array of relevant document chunks.
+   * @returns {Promise<Array<{text: string, source: string, score: number}>>} A promise that resolves to an array of relevant document chunks.
    */
-    public async search(queryText: string, limit: number = 5): Promise<any[]> {
+    public async search(queryText: string, limit: number = 5): Promise<Array<{text: string, source: string, score: number}>> {
     if (!this.table) {
       throw new Error('Knowledge base is not initialized.');
     }
@@ -164,7 +164,11 @@ export class KnowledgeBaseService {
       .limit(limit)
       .execute();
 
-    return results.map(r => ({ text: r.text, source: r.source, score: r.score }));
+    return results.map(r => ({
+      text: String(r.text),
+      source: String(r.source),
+      score: Number(r.score)
+    }));
   }
 
   /**
@@ -203,7 +207,7 @@ export class KnowledgeBaseService {
       console.log(`Retrieved ${results.length} records from knowledge base`);
       
       // Extract unique sources and filter out system entries
-      const uniqueSources = [...new Set(results.map((r: any) => r.source as string))]
+      const uniqueSources = [...new Set(results.map(r => (r as {source: string}).source as string))]
         .filter(source => source !== 'system');
       
       console.log(`Found ${uniqueSources.length} unique documents:`, uniqueSources);

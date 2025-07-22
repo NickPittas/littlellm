@@ -25,6 +25,7 @@ export class ReplicateProvider extends BaseProvider {
     toolFormat: 'custom'
   };
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
@@ -32,13 +33,14 @@ export class ReplicateProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
     signal?: AbortSignal,
-    conversationId?: string
+    _conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     // Replicate has a different API structure
     let prompt = '';
-    
+
     // Build prompt from conversation history and current message
-    let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
+    const systemPrompt = settings.systemPrompt || this.getSystemPrompt();
     if (systemPrompt) {
       prompt += `System: ${systemPrompt}\n\n`;
     }
@@ -95,13 +97,15 @@ export class ReplicateProvider extends BaseProvider {
     return this.parseReplicateResponse(data, prompt);
   }
 
-  async fetchModels(apiKey: string): Promise<string[]> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async fetchModels(_apiKey: string): Promise<string[]> {
     // Replicate doesn't have a simple models endpoint
     // Return fallback models which are version hashes
     return FALLBACK_MODELS.replicate;
   }
 
-  formatTools(tools: ToolObject[]): unknown[] {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  formatTools(_tools: ToolObject[]): unknown[] {
     // Replicate doesn't support tools in the same way
     return [];
   }
@@ -120,7 +124,7 @@ export class ReplicateProvider extends BaseProvider {
   }
 
   // Private helper methods
-  private async pollForCompletion(getUrl: string, apiKey: string, signal?: AbortSignal): Promise<any> {
+  private async pollForCompletion(getUrl: string, apiKey: string, signal?: AbortSignal): Promise<{status: string, output?: unknown}> {
     let attempts = 0;
     const maxAttempts = 60; // 5 minutes max
     
@@ -152,7 +156,7 @@ export class ReplicateProvider extends BaseProvider {
     throw new Error('Replicate prediction timed out');
   }
 
-  private parseReplicateResponse(data: any, prompt: string): LLMResponse {
+  private parseReplicateResponse(data: {output?: unknown}, prompt: string): LLMResponse {
     let content = '';
     
     if (data.output) {

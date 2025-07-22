@@ -1,4 +1,4 @@
-import { APIResponseData } from './providers/types';
+// Removed unused import: APIResponseData
 
 export interface OpenAIFileUpload {
   id: string;

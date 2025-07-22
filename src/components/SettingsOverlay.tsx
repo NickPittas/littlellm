@@ -135,7 +135,7 @@ export function SettingsOverlay() {
       args: server.args || [],
       description: server.description || '',
       enabled: server.enabled,
-      env: (server as any).env || {}
+      env: ('env' in server && typeof server.env === 'object' && server.env !== null) ? server.env as Record<string, string> : {}
     });
     setShowAddMcpServer(true);
   };

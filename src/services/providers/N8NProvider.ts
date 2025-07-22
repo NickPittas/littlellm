@@ -90,12 +90,13 @@ export class N8NProvider extends BaseProvider {
       // Instead, we return a list of workflow names/IDs that the user can configure
       const workflowName = this.extractWorkflowNameFromUrl(baseUrl);
       return workflowName ? [workflowName] : ['n8n-workflow'];
-    } catch (error) {
+    } catch {
       return FALLBACK_MODELS.n8n;
     }
   }
 
-  formatTools(tools: ToolObject[]): unknown[] {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  formatTools(_tools: ToolObject[]): unknown[] {
     // N8N workflows handle tools differently
     return [];
   }
@@ -130,29 +131,33 @@ export class N8NProvider extends BaseProvider {
       }
       
       return 'n8n-workflow';
-    } catch (error) {
+    } catch {
       return null;
     }
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleStreamResponse(
-    response: Response, 
-    onStream: (chunk: string) => void,
+    response: Response,
+    _onStream: (chunk: string) => void,
     settings: LLMSettings,
-    provider: LLMProvider,
+    _provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    signal?: AbortSignal
+    _signal?: AbortSignal
   ): Promise<LLMResponse> {
     // N8N streaming would depend on the workflow implementation
     return this.handleNonStreamResponse(response, settings, conversationHistory);
   }
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleNonStreamResponse(
     response: Response,
-    settings: LLMSettings,
-    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    conversationId?: string
+    _settings: LLMSettings,
+    _conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    _conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     try {
       const data = await response.json();
       console.log('🔗 N8N workflow response:', JSON.stringify(data, null, 2));
@@ -182,7 +187,7 @@ export class N8NProvider extends BaseProvider {
         };
       } else {
         // Estimate token usage
-        const prompt = conversationHistory.map(msg => 
+        const prompt = _conversationHistory.map((msg: {content: string | Array<unknown>}) =>
           typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
         ).join(' ');
         usage = this.createEstimatedUsage(prompt, content, 'N8N estimated');

@@ -39,7 +39,7 @@ export class DeepSeekProvider extends BaseProvider {
     // DeepSeek uses OpenAI-compatible API
     const messages = [];
 
-    let systemPrompt = settings.systemPrompt || this.getSystemPrompt();
+    const systemPrompt = settings.systemPrompt || this.getSystemPrompt();
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
     }
@@ -221,6 +221,7 @@ export class DeepSeekProvider extends BaseProvider {
   // This method is injected by the ProviderAdapter from the LLMService
   private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleStreamResponse(
     response: Response,
     onStream: (chunk: string) => void,
@@ -229,6 +230,7 @@ export class DeepSeekProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     return OpenAICompatibleStreaming.handleStreamResponse(
       response,
       onStream,
@@ -240,7 +242,8 @@ export class DeepSeekProvider extends BaseProvider {
     );
   }
 
-  private async executeMCPTool(toolName: string, args: Record<string, unknown>): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async executeMCPTool(_toolName: string, _args: Record<string, unknown>): Promise<string> {
     // This will be injected by the main service
     return JSON.stringify({ error: 'Tool execution not available' });
   }
@@ -270,12 +273,14 @@ export class DeepSeekProvider extends BaseProvider {
     );
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleNonStreamResponse(
     response: Response,
     settings: LLMSettings,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
     console.log('🔍 DeepSeek non-streaming response:', {
       hasUsage: !!data.usage,
@@ -291,9 +296,9 @@ export class DeepSeekProvider extends BaseProvider {
       console.log(`🔧 DeepSeek response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
       // Check if we have the parallel execution method injected
-      if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
+      if ((this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).executeMultipleToolsParallel && (this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).summarizeToolResultsForModel) {
         console.log(`🚀 Executing ${message.tool_calls.length} DeepSeek tools immediately`);
-        
+
         // Format tool calls for execution
         const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
           id: toolCall.id,
@@ -302,15 +307,15 @@ export class DeepSeekProvider extends BaseProvider {
         }));
 
         // Execute tools in parallel immediately
-        const executeMultipleToolsParallel = (this as any).executeMultipleToolsParallel;
-        const summarizeToolResultsForModel = (this as any).summarizeToolResultsForModel;
+        const executeMultipleToolsParallel = (this as unknown as {executeMultipleToolsParallel: unknown}).executeMultipleToolsParallel;
+        const summarizeToolResultsForModel = (this as unknown as {summarizeToolResultsForModel: unknown}).summarizeToolResultsForModel;
         
         try {
-          const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'deepseek');
-          console.log(`✅ DeepSeek tool execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
-          
+          const parallelResults = await (executeMultipleToolsParallel as (calls: unknown[], provider: string) => Promise<Array<{success: boolean}>>)(toolCallsForExecution, 'deepseek');
+          console.log(`✅ DeepSeek tool execution completed: ${parallelResults.filter(r => r.success).length}/${parallelResults.length} successful`);
+
           // Get tool results summary for the model
-          const toolSummary = summarizeToolResultsForModel(parallelResults);
+          const toolSummary = (summarizeToolResultsForModel as (results: unknown[]) => string)(parallelResults);
           
           // Return response with tool results included
           return {

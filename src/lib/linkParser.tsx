@@ -4,14 +4,14 @@ import React from 'react';
  * Regular expression to detect HTTP and HTTPS URLs in text
  * Matches URLs with or without www, with various TLDs, paths, query parameters, and fragments
  */
-const URL_REGEX = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/g;
+const URL_REGEX = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)/g;
 
 /**
  * Regular expression to detect domain names without protocol (e.g., example.com, www.google.com)
  * More conservative pattern to avoid false positives
  * Handles domains in parentheses and other punctuation contexts
  */
-const DOMAIN_REGEX = /(^|[\s\(\[\{])((?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.(?:[a-zA-Z]{2,6}|localhost)(?::\d+)?(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)?)/g;
+const DOMAIN_REGEX = /(^|[\s([{])((?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.(?:[a-zA-Z]{2,6}|localhost)(?::\d+)?(?:[-a-zA-Z0-9()@:%_+.~#?&//=]*)?)/g;
 
 /**
  * Interface for parsed text segments
@@ -50,7 +50,7 @@ function parseTextSegments(text: string): TextSegment[] {
     const domainIndex = match.index + match[1].length; // Adjust for leading whitespace
 
     // Remove trailing punctuation that shouldn't be part of the URL
-    const trailingPunctuationMatch = domainMatch.match(/^(.+?)[\)\]\}\.,:;!?]*$/);
+    const trailingPunctuationMatch = domainMatch.match(/^(.+?)[)\]}.:,;!?]*$/);
     if (trailingPunctuationMatch) {
       domainMatch = trailingPunctuationMatch[1];
     }

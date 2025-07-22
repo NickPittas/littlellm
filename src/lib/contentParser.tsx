@@ -4,8 +4,8 @@ import { CodeBlock, InlineCode } from '../components/CodeBlock';
 /**
  * Regular expressions for different content types
  */
-const URL_REGEX = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/g;
-const DOMAIN_REGEX = /(^|[\s\(\[\{])((?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.(?:[a-zA-Z]{2,6}|localhost)(?::\d+)?(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)?)/g;
+const URL_REGEX = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)/g;
+const DOMAIN_REGEX = /(^|[\s([{])((?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.(?:[a-zA-Z]{2,6}|localhost)(?::\d+)?(?:[-a-zA-Z0-9()@:%_+.~#?&//=]*)?)/g;
 const CODE_BLOCK_REGEX = /```(\w+)?\n?([\s\S]*?)```/g;
 const INLINE_CODE_REGEX = /`([^`\n]+)`/g;
 
@@ -42,7 +42,7 @@ function parseContentSegments(text: string): ContentSegment[] {
 
   // Find all code blocks first (highest priority)
   CODE_BLOCK_REGEX.lastIndex = 0;
-  let match;
+  let match: RegExpExecArray | null;
   while ((match = CODE_BLOCK_REGEX.exec(text)) !== null) {
     segments.push({
       type: 'code-block',
@@ -57,10 +57,10 @@ function parseContentSegments(text: string): ContentSegment[] {
   INLINE_CODE_REGEX.lastIndex = 0;
   while ((match = INLINE_CODE_REGEX.exec(text)) !== null) {
     // Skip if this inline code is inside a code block
-    const isInsideCodeBlock = segments.some(segment => 
+    const isInsideCodeBlock = segments.some(segment =>
       segment.type === 'code-block' &&
-      match.index >= segment.index && 
-      match.index < segment.index + segment.length
+      match!.index >= segment.index &&
+      match!.index < segment.index + segment.length
     );
     
     if (!isInsideCodeBlock) {
@@ -77,10 +77,10 @@ function parseContentSegments(text: string): ContentSegment[] {
   URL_REGEX.lastIndex = 0;
   while ((match = URL_REGEX.exec(text)) !== null) {
     // Skip if this URL is inside a code block or inline code
-    const isInsideCode = segments.some(segment => 
+    const isInsideCode = segments.some(segment =>
       (segment.type === 'code-block' || segment.type === 'inline-code') &&
-      match.index >= segment.index && 
-      match.index < segment.index + segment.length
+      match!.index >= segment.index &&
+      match!.index < segment.index + segment.length
     );
     
     if (!isInsideCode) {
@@ -101,7 +101,7 @@ function parseContentSegments(text: string): ContentSegment[] {
     const domainIndex = match.index + match[1].length;
     
     // Remove trailing punctuation
-    const cleanDomain = domainMatch.replace(/[\)\]\}\.,:;!?]*$/, '');
+    const cleanDomain = domainMatch.replace(/[)\]}.,:;!?]*$/, '');
     
     // Skip if this domain is inside code or already covered by a full URL
     const isInsideCodeOrCovered = segments.some(segment => 

@@ -42,7 +42,7 @@ export class OpenRouterProvider extends BaseProvider {
 
       // Get raw tools from the centralized service (temporarily)
       const rawTools = await this.getMCPToolsForProvider('openrouter', settings);
-      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: any) => t.name || t.function?.name));
+      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: unknown) => (t as {name?: string, function?: {name?: string}}).name || (t as {name?: string, function?: {name?: string}}).function?.name));
 
       // Format tools specifically for OpenRouter (uses OpenAI format)
       const formattedTools = this.formatToolsForOpenRouter(rawTools);
@@ -55,16 +55,18 @@ export class OpenRouterProvider extends BaseProvider {
     }
   }
 
-  private formatToolsForOpenRouter(rawTools: any[]): unknown[] {
+  private formatToolsForOpenRouter(rawTools: unknown[]): unknown[] {
     return rawTools.map(tool => {
+      const typedTool = tool as {type?: string, function?: {name?: string, description?: string, parameters?: unknown}, name?: string, description?: string, inputSchema?: unknown};
+
       // All tools now come in unified format with type: 'function' and function object
-      if (tool.type === 'function' && tool.function) {
+      if (typedTool.type === 'function' && typedTool.function) {
         return {
           type: 'function',
           function: {
-            name: tool.function.name || 'unknown_tool',
-            description: tool.function.description || 'No description',
-            parameters: tool.function.parameters || {
+            name: typedTool.function.name || 'unknown_tool',
+            description: typedTool.function.description || 'No description',
+            parameters: typedTool.function.parameters || {
               type: 'object',
               properties: {},
               required: []
@@ -72,15 +74,15 @@ export class OpenRouterProvider extends BaseProvider {
           }
         };
       }
-      
+
       // Handle MCP tools (need conversion to OpenAI format)
-      if (tool.name && tool.description) {
+      if (typedTool.name && typedTool.description) {
         return {
           type: 'function',
           function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.inputSchema || {
+            name: typedTool.name,
+            description: typedTool.description,
+            parameters: typedTool.inputSchema || {
               type: 'object',
               properties: {},
               required: []
@@ -88,7 +90,7 @@ export class OpenRouterProvider extends BaseProvider {
           }
         };
       }
-      
+
       console.warn(`⚠️ Skipping invalid tool:`, tool);
       return null;
     }).filter(tool => tool !== null);
@@ -177,9 +179,9 @@ export class OpenRouterProvider extends BaseProvider {
         requestBody.system = `${systemPrompt}\n\nAvailable tools:\n${toolDescriptions}`;
       } else {
         // Update system message in messages array
-        const systemMessageIndex = (messages as any[]).findIndex(m => m.role === 'system');
+        const systemMessageIndex = (messages as Array<{role: string, content: string}>).findIndex(m => m.role === 'system');
         if (systemMessageIndex >= 0) {
-          (messages as any[])[systemMessageIndex].content = `${systemPrompt}\n\nAvailable tools:\n${toolDescriptions}`;
+          (messages as Array<{role: string, content: string}>)[systemMessageIndex].content = `${systemPrompt}\n\nAvailable tools:\n${toolDescriptions}`;
         }
       }
       console.log(`🚀 OpenRouter API call with ${tools.length} text-based tools for ${underlyingProvider} model (no structured tool support)`);
@@ -233,7 +235,7 @@ export class OpenRouterProvider extends BaseProvider {
     });
 
     // Build request based on underlying provider format
-    const { requestBody, messages } = await this.buildProviderSpecificRequest(
+    const { requestBody } = await this.buildProviderSpecificRequest(
       underlyingProvider,
       settings,
       systemPrompt,
@@ -291,7 +293,7 @@ export class OpenRouterProvider extends BaseProvider {
       const models = data.data?.map((model) => model.id)?.sort() || [];
 
       return models.length > 0 ? models : FALLBACK_MODELS.openrouter;
-    } catch (error) {
+    } catch {
       return FALLBACK_MODELS.openrouter;
     }
   }
@@ -549,6 +551,7 @@ export class OpenRouterProvider extends BaseProvider {
     }
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleStreamResponse(
     response: Response,
     onStream: (chunk: string) => void,
@@ -557,6 +560,7 @@ export class OpenRouterProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     // Use the shared OpenAI-compatible streaming handler
     return OpenAICompatibleStreaming.handleStreamResponse(
       response,
@@ -569,12 +573,14 @@ export class OpenRouterProvider extends BaseProvider {
     );
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleNonStreamResponse(
     response: Response,
     settings: LLMSettings,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
     const choice = data.choices[0];
     const message = choice.message;
@@ -591,9 +597,9 @@ export class OpenRouterProvider extends BaseProvider {
       console.log(`🔧 OpenRouter response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
       // Check if we have the parallel execution method injected
-      if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
+      if ((this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).executeMultipleToolsParallel && (this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).summarizeToolResultsForModel) {
         console.log(`🚀 Executing ${message.tool_calls.length} OpenRouter tools immediately`);
-        
+
         // Format tool calls for execution
         const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
           id: toolCall.id,
@@ -602,15 +608,15 @@ export class OpenRouterProvider extends BaseProvider {
         }));
 
         // Execute tools in parallel immediately
-        const executeMultipleToolsParallel = (this as any).executeMultipleToolsParallel;
-        const summarizeToolResultsForModel = (this as any).summarizeToolResultsForModel;
+        const executeMultipleToolsParallel = (this as unknown as {executeMultipleToolsParallel: unknown}).executeMultipleToolsParallel;
+        const summarizeToolResultsForModel = (this as unknown as {summarizeToolResultsForModel: unknown}).summarizeToolResultsForModel;
         
         try {
-          const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'openrouter');
-          console.log(`✅ OpenRouter tool execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
-          
+          const parallelResults = await (executeMultipleToolsParallel as (calls: unknown[], provider: string) => Promise<Array<{success: boolean}>>)(toolCallsForExecution, 'openrouter');
+          console.log(`✅ OpenRouter tool execution completed: ${parallelResults.filter(r => r.success).length}/${parallelResults.length} successful`);
+
           // Get tool results summary for the model
-          const toolSummary = summarizeToolResultsForModel(parallelResults);
+          const toolSummary = (summarizeToolResultsForModel as (results: unknown[]) => string)(parallelResults);
           
           // Return response with tool results included
           return {

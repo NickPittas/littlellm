@@ -43,7 +43,7 @@ export class MistralProvider extends BaseProvider {
 
       // Get raw tools from the centralized service (temporarily)
       const rawTools = await this.getMCPToolsForProvider('mistral', settings);
-      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: any) => t.name || t.function?.name));
+      console.log(`📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{name?: string, function?: {name?: string}}>).map(t => t.name || t.function?.name));
 
       // Format tools specifically for Mistral (uses OpenAI format)
       const formattedTools = this.formatToolsForMistral(rawTools);
@@ -56,16 +56,18 @@ export class MistralProvider extends BaseProvider {
     }
   }
 
-  private formatToolsForMistral(rawTools: any[]): unknown[] {
+  private formatToolsForMistral(rawTools: unknown[]): unknown[] {
     return rawTools.map(tool => {
+      const typedTool = tool as {type?: string, function?: {name?: string, description?: string, parameters?: unknown}, name?: string, description?: string, inputSchema?: unknown};
+
       // All tools now come in unified format with type: 'function' and function object
-      if (tool.type === 'function' && tool.function) {
+      if (typedTool.type === 'function' && typedTool.function) {
         return {
           type: 'function',
           function: {
-            name: tool.function.name || 'unknown_tool',
-            description: tool.function.description || 'No description',
-            parameters: tool.function.parameters || {
+            name: typedTool.function.name || 'unknown_tool',
+            description: typedTool.function.description || 'No description',
+            parameters: typedTool.function.parameters || {
               type: 'object',
               properties: {},
               required: []
@@ -73,15 +75,15 @@ export class MistralProvider extends BaseProvider {
           }
         };
       }
-      
+
       // Handle MCP tools (need conversion to OpenAI format)
-      if (tool.name && tool.description) {
+      if (typedTool.name && typedTool.description) {
         return {
           type: 'function',
           function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.inputSchema || {
+            name: typedTool.name,
+            description: typedTool.description,
+            parameters: typedTool.inputSchema || {
               type: 'object',
               properties: {},
               required: []
@@ -89,12 +91,13 @@ export class MistralProvider extends BaseProvider {
           }
         };
       }
-      
+
       console.warn(`⚠️ Skipping invalid tool:`, tool);
       return null;
     }).filter(tool => tool !== null);
   }
 
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
@@ -104,6 +107,7 @@ export class MistralProvider extends BaseProvider {
     signal?: AbortSignal,
     conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-explicit-any */
     // Initialize file service if not already done
     if (!this.fileService && settings.apiKey) {
       this.fileService = new MistralFileService(settings.apiKey, provider.baseUrl);
@@ -137,12 +141,13 @@ export class MistralProvider extends BaseProvider {
 
     // Add conversation history (clean for Mistral requirements)
     const cleanedHistory = conversationHistory.map(msg => {
-      if (msg.role === 'assistant' && (msg as any).tool_calls && (msg as any).content) {
+      const typedMsg = msg as {role: string, tool_calls?: unknown, content?: unknown};
+      if (typedMsg.role === 'assistant' && typedMsg.tool_calls && typedMsg.content) {
         // Mistral requires assistant messages to have EITHER content OR tool_calls, not both
         // Keep only tool_calls for assistant messages that have both
         return {
-          role: msg.role,
-          tool_calls: (msg as any).tool_calls
+          role: typedMsg.role,
+          tool_calls: typedMsg.tool_calls
         };
       }
       return msg;
@@ -151,7 +156,7 @@ export class MistralProvider extends BaseProvider {
 
     // Check if model supports vision when images are present
     const hasImages = (Array.isArray(message) && message.some((item: ContentItem) => item.type === 'image_url')) ||
-                     (typeof message === 'object' && message && 'images' in message && (message as any).images?.length > 0);
+                     (typeof message === 'object' && message && 'images' in message && ((message as {images?: unknown[]}).images?.length ?? 0) > 0);
 
     if (hasImages) {
       const visionModels = [
@@ -257,7 +262,7 @@ export class MistralProvider extends BaseProvider {
       url: `${provider.baseUrl}/chat/completions`,
       model: settings.model,
       messageCount: messages.length,
-      hasImages: messages.some(msg => 'content' in msg && Array.isArray(msg.content) && msg.content.some((c: any) => c.type === 'image_url')),
+      hasImages: messages.some(msg => 'content' in msg && Array.isArray(msg.content) && msg.content.some((c: {type?: string}) => c.type === 'image_url')),
       requestBody: JSON.stringify(requestBody, null, 2)
     });
 
@@ -280,7 +285,7 @@ export class MistralProvider extends BaseProvider {
         model: settings.model,
         messageCount: messages.length,
         hasTools: mistralTools.length > 0,
-        hasImages: messages.some(msg => 'content' in msg && Array.isArray(msg.content) && msg.content.some((c: any) => c.type === 'image_url'))
+        hasImages: messages.some(msg => 'content' in msg && Array.isArray(msg.content) && msg.content.some((c: {type?: string}) => c.type === 'image_url'))
       });
 
       // Try to parse error as JSON for better error messages
@@ -303,7 +308,7 @@ export class MistralProvider extends BaseProvider {
         } else if (response.status === 429) {
           errorDetails = '\n\nRate limit exceeded - please wait before retrying';
         }
-      } catch (e) {
+      } catch {
         // Keep original error if not JSON
       }
 
@@ -346,7 +351,7 @@ export class MistralProvider extends BaseProvider {
         try {
           const errorObj = JSON.parse(errorText);
           console.warn('Mistral API error details:', errorObj);
-        } catch (e) {
+        } catch {
           console.warn('Mistral API raw error:', errorText);
         }
 
@@ -397,7 +402,7 @@ export class MistralProvider extends BaseProvider {
   }
 
   // Test method to help debug API connectivity
-  async testConnection(apiKey: string, baseUrl: string = 'https://api.mistral.ai/v1'): Promise<{ success: boolean; error?: string; details?: any }> {
+  async testConnection(apiKey: string, baseUrl: string = 'https://api.mistral.ai/v1'): Promise<{ success: boolean; error?: string; details?: unknown }> {
     try {
       console.log('🧪 Testing Mistral API connection...');
 
@@ -499,6 +504,7 @@ export class MistralProvider extends BaseProvider {
     console.log(`🔧 Mistral streaming detected ${toolCalls.length} tool calls, executing...`);
 
     // Execute all tool calls and ensure exact matching
+    /* eslint-disable @typescript-eslint/no-explicit-any */
     const toolResults: any[] = [];
     for (let i = 0; i < toolCalls.length; i++) {
       const toolCall = toolCalls[i];
@@ -769,8 +775,10 @@ export class MistralProvider extends BaseProvider {
           }))
       };
     }
+    /* eslint-enable @typescript-eslint/no-explicit-any */
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleStreamResponse(
     response: Response,
     onStream: (chunk: string) => void,
@@ -779,6 +787,7 @@ export class MistralProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     console.log(`🔍 Starting Mistral stream response handling...`);
     const reader = response.body?.getReader();
     if (!reader) {
@@ -912,12 +921,14 @@ export class MistralProvider extends BaseProvider {
     };
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleNonStreamResponse(
     response: Response,
     settings: LLMSettings,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
     console.log(`🔍 Mistral raw response:`, JSON.stringify(data, null, 2));
     const choice = data.choices[0];
@@ -929,6 +940,7 @@ export class MistralProvider extends BaseProvider {
       console.log(`🔧 Mistral response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
       // Check if we have the parallel execution method injected
+      /* eslint-disable @typescript-eslint/no-explicit-any */
       if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
         console.log(`🚀 Executing ${message.tool_calls.length} Mistral tools immediately`);
         
@@ -972,6 +984,7 @@ export class MistralProvider extends BaseProvider {
             toolCalls: toolCallsForExecution
           };
         }
+        /* eslint-enable @typescript-eslint/no-explicit-any */
       } else {
         console.warn(`⚠️ Mistral provider missing tool execution methods - falling back to external handling`);
         // Fall back to external handling if methods not injected

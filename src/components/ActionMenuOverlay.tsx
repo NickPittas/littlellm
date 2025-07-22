@@ -1,6 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+
+// Extend CSSProperties to include WebkitAppRegion
+declare module 'react' {
+  interface CSSProperties {
+    WebkitAppRegion?: 'drag' | 'no-drag';
+  }
+}
 import { Input } from './ui/input';
 
 import {
@@ -259,7 +266,7 @@ export function ActionMenuOverlay() {
             </div>
           ) : (
             <div className="space-y-1">
-              {filteredItems.map((item, index) => (
+              {filteredItems.map((item) => (
                 <div
                   key={item.id}
                   onClick={item.action}

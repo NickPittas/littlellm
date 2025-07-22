@@ -8,8 +8,7 @@ import {
   ContentItem,
   LLMProvider,
   ToolObject,
-  ProviderCapabilities,
-  APIResponseData
+  ProviderCapabilities
 } from './types';
 import { FALLBACK_MODELS } from './constants';
 import { OLLAMA_SYSTEM_PROMPT, generateOllamaToolPrompt } from './prompts/ollama';
@@ -109,7 +108,7 @@ export class OllamaProvider extends BaseProvider {
 
       // Get raw tools from the centralized service (temporarily)
       const rawTools = await this.getMCPToolsForProvider('ollama', settings);
-      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: any) => t.name || t.function?.name));
+      console.log(`📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{name?: string, function?: {name?: string}}>).map(t => t.name || t.function?.name));
 
       // Format tools specifically for Ollama (uses OpenAI format)
       const formattedTools = this.formatToolsForOllama(rawTools);
@@ -122,16 +121,18 @@ export class OllamaProvider extends BaseProvider {
     }
   }
 
-  private formatToolsForOllama(rawTools: any[]): unknown[] {
+  private formatToolsForOllama(rawTools: unknown[]): unknown[] {
     return rawTools.map(tool => {
+      const typedTool = tool as {type?: string, function?: {name?: string, description?: string, parameters?: unknown}, name?: string, description?: string, inputSchema?: unknown};
+
       // All tools now come in unified format with type: 'function' and function object
-      if (tool.type === 'function' && tool.function) {
+      if (typedTool.type === 'function' && typedTool.function) {
         return {
           type: 'function',
           function: {
-            name: tool.function.name || 'unknown_tool',
-            description: tool.function.description || 'No description',
-            parameters: tool.function.parameters || {
+            name: typedTool.function.name || 'unknown_tool',
+            description: typedTool.function.description || 'No description',
+            parameters: typedTool.function.parameters || {
               type: 'object',
               properties: {},
               required: []
@@ -139,15 +140,15 @@ export class OllamaProvider extends BaseProvider {
           }
         };
       }
-      
+
       // Handle MCP tools (need conversion to OpenAI format)
-      if (tool.name && tool.description) {
+      if (typedTool.name && typedTool.description) {
         return {
           type: 'function',
           function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.inputSchema || {
+            name: typedTool.name,
+            description: typedTool.description,
+            parameters: typedTool.inputSchema || {
               type: 'object',
               properties: {},
               required: []
@@ -155,7 +156,7 @@ export class OllamaProvider extends BaseProvider {
           }
         };
       }
-      
+
       console.warn(`⚠️ Skipping invalid tool:`, tool);
       return null;
     }).filter(tool => tool !== null);
@@ -553,6 +554,7 @@ export class OllamaProvider extends BaseProvider {
   // This method is injected by the ProviderAdapter from the LLMService
   private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleNativeStreamResponse(
     response: Response,
     onStream: (chunk: string) => void,
@@ -561,10 +563,11 @@ export class OllamaProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     // Use native Ollama tool calling - similar to OpenAI provider
     let fullContent = '';
     let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
-    let toolCalls: Array<{ id: string; function: { name: string; arguments: string } }> = [];
+    const toolCalls: Array<{ id: string; function: { name: string; arguments: string } }> = [];
     let chunkCount = 0;
     let streamingComplete = false;
 
@@ -576,6 +579,7 @@ export class OllamaProvider extends BaseProvider {
       const decoder = new TextDecoder();
 
       try {
+        // eslint-disable-next-line no-constant-condition
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
@@ -702,12 +706,14 @@ export class OllamaProvider extends BaseProvider {
     };
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleNativeNonStreamResponse(
     response: Response,
     settings: LLMSettings,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
     console.log(`🔍 Ollama native non-stream response:`, JSON.stringify(data, null, 2));
 
@@ -726,7 +732,7 @@ export class OllamaProvider extends BaseProvider {
       console.log(`🔧 Ollama native response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
       // Convert tool calls to expected format
-      const formattedToolCalls = message.tool_calls.map((tc: any) => ({
+      const formattedToolCalls = message.tool_calls.map((tc: {id?: string, function: {name: string, arguments: string}}) => ({
         id: tc.id || `call_${Date.now()}`,
         function: {
           name: tc.function.name,
@@ -773,7 +779,7 @@ export class OllamaProvider extends BaseProvider {
     console.log(`🔧 Ollama executing ${toolCalls.length} native tool calls`);
 
     // Check if we have parallel execution method injected (like Anthropic/Mistral)
-    if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
+    if ((this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).executeMultipleToolsParallel && (this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).summarizeToolResultsForModel) {
       console.log(`🚀 Using parallel execution for ${toolCalls.length} Ollama tools`);
       
       // Format tool calls for parallel execution
@@ -795,14 +801,14 @@ export class OllamaProvider extends BaseProvider {
 
       try {
         // Execute tools in parallel immediately
-        const executeMultipleToolsParallel = (this as any).executeMultipleToolsParallel;
-        const summarizeToolResultsForModel = (this as any).summarizeToolResultsForModel;
-        
-        const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'ollama');
-        console.log(`✅ Ollama parallel execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
+        const executeMultipleToolsParallel = (this as unknown as {executeMultipleToolsParallel: unknown}).executeMultipleToolsParallel;
+        const summarizeToolResultsForModel = (this as unknown as {summarizeToolResultsForModel: unknown}).summarizeToolResultsForModel;
+
+        const parallelResults = await (executeMultipleToolsParallel as (calls: unknown[], provider: string) => Promise<Array<{success: boolean}>>)(toolCallsForExecution, 'ollama');
+        console.log(`✅ Ollama parallel execution completed: ${parallelResults.filter(r => r.success).length}/${parallelResults.length} successful`);
         
         // Get tool results summary for the model
-        const toolSummary = summarizeToolResultsForModel(parallelResults);
+        const toolSummary = (summarizeToolResultsForModel as (results: unknown[]) => string)(parallelResults);
 
         // Stream the tool results to user
         onStream('\n\n' + toolSummary);
@@ -812,7 +818,7 @@ export class OllamaProvider extends BaseProvider {
 
         try {
           // Build follow-up prompt with tool results
-          const toolResultsText = parallelResults.map((tr: any) =>
+          const toolResultsText = (parallelResults as unknown as Array<{name: string, result: string}>).map(tr =>
             `Tool: ${tr.name}\nResult: ${tr.result}\n`
           ).join('\n');
 
@@ -889,7 +895,7 @@ Please integrate these results into a natural, helpful response.`;
         }
 
         console.log(`🔧 Executing Ollama native tool: ${toolCall.function.name} with args:`, parsedArgs);
-        const result = await (this as any).executeMCPTool(toolCall.function.name, parsedArgs);
+        const result = await (this as unknown as {executeMCPTool: (name: string, args: unknown) => Promise<string>}).executeMCPTool(toolCall.function.name, parsedArgs);
         console.log(`🔍 Ollama: Tool execution result:`, result);
 
         toolResults.push({
@@ -900,7 +906,7 @@ Please integrate these results into a natural, helpful response.`;
         console.log(`✅ Ollama native tool ${toolCall.function.name} executed successfully`);
       } catch (error) {
         console.error(`❌ Ollama native tool ${toolCall.function.name} failed:`, error);
-        const userFriendlyError = (this as any).formatToolError ? (this as any).formatToolError(toolCall.function.name, error) : String(error);
+        const userFriendlyError = (this as unknown as {formatToolError?: (name: string, error: unknown) => string}).formatToolError ? (this as unknown as {formatToolError: (name: string, error: unknown) => string}).formatToolError(toolCall.function.name, error) : String(error);
         toolResults.push({
           name: toolCall.function.name,
           result: userFriendlyError,
@@ -1063,7 +1069,7 @@ Result: ${tr.result}`;
     // Update system message with optimized prompt if tools are available
     if (enableTools && tools.length > 0) {
       // Use condensed prompt for follow-up calls to avoid token limits
-      const toolNames = tools.map((tool: any) => tool.function?.name || tool.name).filter(Boolean);
+      const toolNames = (tools as Array<{function?: {name?: string}, name?: string}>).map(tool => tool.function?.name || tool.name).filter(Boolean);
       const followUpPrompt = `You are an AI assistant with access to ${tools.length} tools. Based on the tool results provided, continue the conversation naturally. Use additional tools if needed.
 
 Available tools: ${toolNames.join(', ')}
@@ -1132,6 +1138,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
         const decoder = new TextDecoder();
 
         try {
+          // eslint-disable-next-line no-constant-condition
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -1262,6 +1269,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
       const decoder = new TextDecoder();
 
       try {
+        // eslint-disable-next-line no-constant-condition
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -1409,7 +1417,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
           console.log(`✅ Found JSON-wrapped tool call: ${jsonObj.tool_call.name} with args:`, jsonObj.tool_call.arguments);
           return toolCalls; // Return early if we found the structured format
         }
-      } catch (error) {
+      } catch {
         console.log(`⚠️ Failed to parse JSON-wrapped tool call:`, match[1]);
       }
     }
@@ -1453,7 +1461,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
           });
           console.log(`✅ Found JSON block tool call: ${jsonObj.tool_call.name} with args:`, jsonObj.tool_call.arguments);
         }
-      } catch (error) {
+      } catch {
         console.log(`⚠️ Failed to parse JSON block:`, jsonMatch[1]);
       }
     }
@@ -1511,7 +1519,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
     try {
       // Try to parse as JSON first
       return JSON.parse(argsText);
-    } catch (error) {
+    } catch {
       console.log(`⚠️ JSON parsing failed for: ${argsText}, trying fallback parsing`);
 
       // If JSON parsing fails, try to extract key-value pairs
@@ -1724,12 +1732,14 @@ Please provide a natural, helpful response based on the tool results.`;
     return cleanedContent;
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleNonStreamResponse(
     response: Response,
     settings: LLMSettings,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
     console.log(`🔍 Ollama raw response:`, JSON.stringify(data, null, 2));
     const message = data.choices[0].message;

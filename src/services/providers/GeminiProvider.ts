@@ -230,7 +230,7 @@ export class GeminiProvider extends BaseProvider {
       keys: Object.keys(t),
       name: t.name,
       functionName: t.function?.name,
-      type: t.type,
+      type: (t as {type?: string}).type,
       structure: JSON.stringify(t, null, 2).substring(0, 200) + '...'
     })));
 
@@ -238,14 +238,14 @@ export class GeminiProvider extends BaseProvider {
     const formattedTools = [{
       functionDeclarations: tools.map(tool => {
         // Try multiple ways to get the tool name
-        const originalName = tool.name || tool.function?.name || (tool as any).function_name || (tool as any).toolName || 'unknown_tool';
+        const originalName = tool.name || tool.function?.name || (tool as {function_name?: string}).function_name || (tool as {toolName?: string}).toolName || 'unknown_tool';
         const sanitizedName = this.sanitizeToolNameForGemini(originalName);
 
         // Try multiple ways to get the description
-        const description = tool.description || tool.function?.description || (tool as any).function_description || `Tool: ${sanitizedName}`;
+        const description = tool.description || tool.function?.description || (tool as {function_description?: string}).function_description || `Tool: ${sanitizedName}`;
 
         // Try multiple ways to get the parameters
-        const parameters = tool.parameters || tool.function?.parameters || (tool as any).input_schema || (tool as any).parameters;
+        const parameters = tool.parameters || tool.function?.parameters || (tool as {input_schema?: unknown}).input_schema || (tool as {parameters?: unknown}).parameters;
         const cleanedParameters = this.cleanSchemaForGemini(parameters);
 
         console.log(`🔧 Gemini tool formatting - ${originalName} -> ${sanitizedName}:`, {
@@ -296,7 +296,7 @@ export class GeminiProvider extends BaseProvider {
   private safeParseJSON(jsonString: string): unknown {
     try {
       return JSON.parse(jsonString);
-    } catch (error) {
+    } catch {
       console.warn(`🚫 Gemini: Failed to parse JSON "${jsonString}", returning as string`);
       return { result: jsonString };
     }
@@ -343,12 +343,14 @@ export class GeminiProvider extends BaseProvider {
   }
 
   // Private helper methods
-  private async getMCPToolsForProvider(providerId: string, settings: LLMSettings): Promise<unknown[]> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async getMCPToolsForProvider(_providerId: string, _settings: LLMSettings): Promise<unknown[]> {
     // This will be injected by the main service
     return [];
   }
 
-  private async executeMCPTool(toolName: string, args: Record<string, unknown>): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async executeMCPTool(_toolName: string, _args: Record<string, unknown>): Promise<string> {
     // This will be injected by the main service
     return JSON.stringify({ error: 'Tool execution not available' });
   }
@@ -530,7 +532,7 @@ export class GeminiProvider extends BaseProvider {
     }
 
     // Recursively check nested objects
-    for (const [key, value] of Object.entries(input)) {
+    for (const [, value] of Object.entries(input)) {
       if (value && typeof value === 'object' && !Array.isArray(value)) {
         if (this.hasUnsupportedFeatures(value)) {
           return true;
@@ -612,6 +614,7 @@ export class GeminiProvider extends BaseProvider {
     return cleaned;
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleStreamResponse(
     response: Response,
     onStream: (chunk: string) => void,
@@ -620,6 +623,7 @@ export class GeminiProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     console.log(`🔍 Starting Gemini stream response handling...`);
     const reader = response.body?.getReader();
     if (!reader) {
@@ -745,12 +749,14 @@ export class GeminiProvider extends BaseProvider {
     };
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleNonStreamResponse(
     response: Response,
     settings: LLMSettings,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     try {
       console.log('🔍 About to parse Gemini response...');
       const data = await response.json();
