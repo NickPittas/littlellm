@@ -94,7 +94,7 @@ export function DraggableDialog({
       {/* Dialog */}
       <div
         ref={dialogRef}
-        className={`fixed z-[9999] bg-background border border-border rounded-lg shadow-lg ${width} ${height} ${className}`}
+        className={`draggable-dialog fixed z-[9999] bg-background border border-border rounded-lg shadow-lg ${width} ${height} ${className}`}
         style={{
           left: `${position.x}px`,
           top: `${position.y}px`,
@@ -103,17 +103,16 @@ export function DraggableDialog({
       >
         {/* Draggable Header */}
         <div
-          className="drag-handle flex items-center justify-between p-4 border-b-2 border-border cursor-grab active:cursor-grabbing bg-gray-100 hover:bg-gray-200 transition-colors min-h-[60px]"
+          className="drag-handle flex items-center justify-between p-4 border-b border-border cursor-grab active:cursor-grabbing bg-muted hover:bg-muted/80 transition-colors min-h-[60px]"
           onMouseDown={handleMouseDown}
-          style={{ backgroundColor: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}
         >
           <div className="flex items-center gap-3">
             <div className="flex flex-col gap-1">
-              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full"></div>
-              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full"></div>
-              <div className="w-1.5 h-1.5 bg-gray-500 rounded-full"></div>
+              <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full"></div>
+              <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full"></div>
+              <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full"></div>
             </div>
-            <h2 className="text-lg font-bold text-gray-800 select-none">
+            <h2 className="text-lg font-bold text-foreground select-none">
               {title}
             </h2>
           </div>
@@ -121,14 +120,20 @@ export function DraggableDialog({
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="h-8 w-8 p-0 hover:bg-gray-300 text-gray-600"
+            className="h-8 w-8 p-0 hover:bg-muted text-foreground"
           >
             <X className="h-4 w-4" />
           </Button>
         </div>
         
         {/* Content */}
-        <div className="p-4 overflow-y-auto max-h-[calc(80vh-80px)]">
+        <div
+          className="p-4 overflow-y-auto max-h-[calc(80vh-80px)] bg-background text-foreground"
+          style={{
+            backgroundColor: 'hsl(var(--background))',
+            color: 'hsl(var(--foreground))'
+          }}
+        >
           {children}
         </div>
       </div>

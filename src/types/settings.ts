@@ -47,14 +47,60 @@ export interface MCPServerConfig {
   env?: Record<string, string>;
 }
 
-export interface AppSettings {
-  chat: ChatSettings;
-  mcpServers: MCPServerConfig[];
-  theme?: string;
-  windowSettings?: {
+export interface ColorSettings {
+  background: string;
+  foreground: string;
+  card: string;
+  cardForeground: string;
+  primary: string;
+  primaryForeground: string;
+  secondary: string;
+  secondaryForeground: string;
+  accent: string;
+  accentForeground: string;
+  muted: string;
+  mutedForeground: string;
+  border: string;
+  input: string;
+  ring: string;
+  destructive: string;
+  destructiveForeground: string;
+  systemText: string; // System UI text color (labels, buttons, etc.)
+}
+
+export interface UISettings {
+  theme: 'light' | 'dark' | 'system';
+  alwaysOnTop: boolean;
+  startMinimized: boolean;
+  fontSize?: 'small' | 'medium' | 'large';
+  windowBounds: {
     width: number;
     height: number;
     x?: number;
     y?: number;
+  };
+  hotkey: string;
+  screenshotHotkey: string;
+  customColors?: ColorSettings;
+  useCustomColors?: boolean;
+  selectedThemePreset?: string; // ID of selected theme preset
+  colorMode?: 'preset' | 'custom'; // Whether using preset or custom colors
+}
+
+export interface AppSettings {
+  chat: ChatSettings;
+  mcpServers: MCPServerConfig[];
+  ui: UISettings;
+  shortcuts: {
+    toggleWindow: string;
+    processClipboard: string;
+    actionMenu: string;
+    openShortcuts: string;
+  };
+  general: {
+    autoStartWithSystem: boolean;
+    showNotifications: boolean;
+    saveConversationHistory: boolean;
+    conversationHistoryLength: number; // Number of previous messages to include in context
   };
 }

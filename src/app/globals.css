@@ -197,11 +197,124 @@
 
   /* Dialog content styling */
   [data-radix-dialog-content] {
-    background: var(--card) !important;
+    background: hsl(var(--background)) !important;
     border: none !important;
-    color: var(--card-foreground) !important;
+    color: hsl(var(--foreground)) !important;
     border-radius: 8px !important;
   }
+
+  /* CRITICAL: Force all text in dialogs to use theme colors */
+  [data-radix-dialog-content] *,
+  [data-radix-dialog-content] h1,
+  [data-radix-dialog-content] h2,
+  [data-radix-dialog-content] h3,
+  [data-radix-dialog-content] h4,
+  [data-radix-dialog-content] h5,
+  [data-radix-dialog-content] h6,
+  [data-radix-dialog-content] p,
+  [data-radix-dialog-content] span,
+  [data-radix-dialog-content] div,
+  [data-radix-dialog-content] label {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Force muted text in dialogs */
+  [data-radix-dialog-content] .text-muted-foreground {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Force primary text in dialogs */
+  [data-radix-dialog-content] .text-primary {
+    color: hsl(var(--primary)) !important;
+  }
+
+  /* Force prompt grid items in dialogs */
+  [data-radix-dialog-content] .grid > div {
+    background: transparent !important;
+    color: hsl(var(--foreground)) !important;
+    border: 1px solid hsl(var(--border)) !important;
+  }
+
+  [data-radix-dialog-content] .grid > div:hover {
+    background: hsl(var(--muted) / 0.5) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* NUCLEAR OPTION: Force ALL text in ANY dialog to be visible */
+  [role="dialog"] *,
+  [role="dialog"] h1,
+  [role="dialog"] h2,
+  [role="dialog"] h3,
+  [role="dialog"] h4,
+  [role="dialog"] h5,
+  [role="dialog"] h6,
+  [role="dialog"] p,
+  [role="dialog"] span,
+  [role="dialog"] div,
+  [role="dialog"] label {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  [role="dialog"] .text-muted-foreground {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Force dialog background */
+  [role="dialog"] {
+    background: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* ULTIMATE NUCLEAR OPTION: Maximum specificity for prompt text */
+  html body [data-radix-dialog-content] div.space-y-4 div.grid div h3,
+  html body [data-radix-dialog-content] div.space-y-4 div.grid div p,
+  html body [data-radix-dialog-content] div.space-y-4 div.grid div div {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  html body [data-radix-dialog-content] div.space-y-4 div.grid div p.text-muted-foreground,
+  html body [data-radix-dialog-content] div.space-y-4 div.grid div div.text-muted-foreground {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Force all text elements to inherit color */
+  * {
+    color: inherit;
+  }
+
+  /* Ensure ActionMenuOverlay uses proper theme colors */
+  .action-menu-overlay {
+    background: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .action-menu-overlay * {
+    color: inherit !important;
+  }
+
+  /* CRITICAL: Force main chat textarea to have white text */
+  .chat-interface textarea,
+  [data-chat-input] textarea,
+  textarea[placeholder*="Type your message"],
+  textarea[placeholder*="message"] {
+    background: hsl(var(--input)) !important;
+    color: hsl(var(--foreground)) !important;
+    border: 1px solid hsl(var(--border)) !important;
+  }
+
+  /* NUCLEAR OPTION: Force ALL textareas to use theme colors */
+  textarea {
+    background: hsl(var(--input)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Force placeholder text to be visible */
+  textarea::placeholder,
+  input::placeholder {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Removed draggable dialog CSS - now using standard Radix dialog */
 
   /* Allow buttons to use their own styling */
 
@@ -234,10 +347,16 @@
 
   /* Input fields with much better visibility */
   input, textarea, select {
-    background: hsl(var(--muted)) !important; /* Use theme muted */
-    color: hsl(var(--foreground)) !important;
+    background: hsl(var(--input)) !important; /* Use theme input background */
+    color: hsl(var(--foreground)) !important; /* Force white text */
     border: 2px solid hsl(var(--border)) !important;
     border-radius: 6px !important;
+  }
+
+  /* Force textarea text to be white specifically */
+  textarea {
+    color: hsl(var(--foreground)) !important;
+    background: hsl(var(--input)) !important;
   }
 
   /* Focus states for input fields */
@@ -397,8 +516,8 @@
 
   /* Ensure input fields have solid backgrounds */
   input, textarea, select {
-    background: var(--muted) !important;
-    color: var(--foreground) !important;
+    background: hsl(var(--input)) !important;
+    color: hsl(var(--foreground)) !important;
   }
 
   /* Solid backgrounds for dropdown items */

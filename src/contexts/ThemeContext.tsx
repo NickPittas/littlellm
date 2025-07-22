@@ -5,6 +5,7 @@ import { settingsService, type ColorSettings } from '../services/settingsService
 import { themeSyncService } from '../services/themeSyncService';
 import { getDefaultHexColors, applyColorsToDOM } from '../config/colors';
 import { THEME_PRESETS, getThemePreset, getDefaultThemePreset, type ThemePreset } from '../config/themes';
+import type { ColorSettings } from '../types/settings';
 
 export interface Theme {
   id: string;
@@ -94,57 +95,39 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [selectedThemePreset, setSelectedThemePreset] = useState('default');
   const [colorMode, setColorMode] = useState<'preset' | 'custom'>('preset');
 
-  // Apply default colors immediately on mount, then load settings
+  // SIMPLIFIED: Load theme ONCE from main process at startup
   useEffect(() => {
-    // Apply default colors first to ensure no hardcoded values are used
-    console.log('🎨 ThemeProvider: Applying default colors on mount');
-    applyColorsToDOM(getDefaultHexColors());
-
-    const loadThemeSettings = async () => {
+    const loadTheme = async () => {
       try {
-        // Only run on client side
         if (typeof window === 'undefined') return;
 
-        const settings = settingsService.getSettings();
-        console.log('ThemeProvider: Loaded settings:', settings.ui);
+        console.log('🎨 ThemeProvider: Loading theme from main process...');
 
-        if (settings.ui.customColors) {
-          console.log('ThemeProvider: Setting custom colors:', settings.ui.customColors);
-          setCustomColors(settings.ui.customColors);
+        // Get theme directly from main process
+        if (window.electronAPI?.getCurrentTheme) {
+          const currentTheme = await window.electronAPI.getCurrentTheme();
+          console.log('🎨 ThemeProvider: Received theme:', currentTheme);
+
+          if (currentTheme?.customColors) {
+            // Apply theme immediately
+            setCustomColors(currentTheme.customColors);
+            setUseCustomColors(currentTheme.useCustomColors);
+            applyColorsToDOM(currentTheme.customColors);
+            console.log('🎨 ThemeProvider: Theme applied successfully');
+            return;
+          }
         }
 
-        // Load theme preset settings
-        const themePreset = settings.ui.selectedThemePreset ?? 'default';
-        const mode = settings.ui.colorMode ?? 'preset';
-        console.log('ThemeProvider: Loading theme preset:', themePreset, 'mode:', mode);
-        setSelectedThemePreset(themePreset);
-        setColorMode(mode);
-
-        // Always set useCustomColors (could be true or false)
-        const useCustom = settings.ui.useCustomColors ?? false;
-        console.log('ThemeProvider: Setting useCustomColors:', useCustom);
-        setUseCustomColors(useCustom);
-
-        console.log('ThemeProvider: Applying theme with settings');
-        // Apply theme based on color mode
-        let colorsToApply: ColorSettings;
-        if (mode === 'preset') {
-          const preset = getThemePreset(themePreset) || getDefaultThemePreset();
-          colorsToApply = preset.colors;
-        } else {
-          colorsToApply = useCustom && settings.ui.customColors ? settings.ui.customColors : getDefaultHexColors();
-        }
-        applyColorsToDOM(colorsToApply);
-
-        // Initialize theme sync service
-        themeSyncService.initialize();
+        // Fallback to defaults
+        console.log('🎨 ThemeProvider: Using default theme');
+        applyColorsToDOM(getDefaultHexColors());
       } catch (error) {
-        console.error('Error loading theme settings:', error);
+        console.error('🎨 ThemeProvider: Error loading theme:', error);
         applyColorsToDOM(getDefaultHexColors());
       }
     };
 
-    loadThemeSettings();
+    loadTheme();
   }, []);
 
   // Listen for theme changes from other windows
@@ -152,13 +135,23 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined' || !window.electronAPI) return;
 
     const handleThemeChange = (themeData: { customColors: unknown; useCustomColors: boolean }) => {
-      console.log('Received theme change:', themeData);
-      const customColors = themeData.customColors as ColorSettings;
-      setCustomColors(customColors);
+      console.log('🎨 ThemeProvider: Received theme change:', themeData);
+      const receivedColors = themeData.customColors as ColorSettings;
+
+      // Update local state
+      setCustomColors(receivedColors);
       setUseCustomColors(themeData.useCustomColors);
-      const colorsToApply = themeData.useCustomColors ? customColors : getDefaultHexColors();
-      applyColorsToDOM(colorsToApply);
-      console.log('Applied theme change to DOM');
+
+      // Apply the colors directly - the main process has already resolved preset vs custom
+      // The customColors field contains the actual colors to apply (either preset or custom)
+      if (receivedColors && Object.keys(receivedColors).length > 0) {
+        applyColorsToDOM(receivedColors);
+        console.log('🎨 ThemeProvider: Applied theme change to DOM with received colors');
+      } else {
+        // Fallback to default colors if no colors received
+        applyColorsToDOM(getDefaultHexColors());
+        console.log('🎨 ThemeProvider: Applied default colors as fallback');
+      }
     };
 
     // Listen for theme changes and store the wrapped callback
@@ -181,29 +174,35 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleSetSelectedThemePreset = (presetId: string, shouldSave: boolean = true) => {
+    console.log('🎨 Setting theme preset:', presetId);
     setSelectedThemePreset(presetId);
 
-    // Apply theme immediately if in preset mode
-    if (colorMode === 'preset') {
-      const preset = getThemePreset(presetId) || getDefaultThemePreset();
-      applyColorsToDOM(preset.colors);
-    }
+    // Apply preset colors immediately
+    const preset = getThemePreset(presetId) || getDefaultThemePreset();
+    setCustomColors(preset.colors);
+    applyColorsToDOM(preset.colors);
 
     if (shouldSave) {
-      try {
-        const currentSettings = settingsService.getSettings();
-        settingsService.updateSettings({
-          ui: { ...currentSettings.ui, selectedThemePreset: presetId }
-        });
-      } catch (error) {
-        console.error('Error saving theme preset:', error);
-      }
-
-      // Broadcast theme change
-      themeSyncService.broadcastThemeChange({
-        customColors: getCurrentColors(),
-        useCustomColors: colorMode === 'custom'
+      // Save to settings immediately
+      const currentSettings = settingsService.getSettings();
+      settingsService.updateSettings({
+        ui: {
+          ...currentSettings.ui,
+          selectedThemePreset: presetId,
+          colorMode: 'preset'
+        }
       });
+
+      // Notify main process immediately
+      const themeData = {
+        customColors: preset.colors,
+        useCustomColors: false
+      };
+
+      if (window.electronAPI?.notifyThemeChange) {
+        window.electronAPI.notifyThemeChange(themeData);
+        console.log('🎨 Theme change notified to main process');
+      }
     }
   };
 
@@ -225,10 +224,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Broadcast theme change
-      themeSyncService.broadcastThemeChange({
+      const themeData = {
         customColors: colorsToApply,
         useCustomColors: mode === 'custom'
-      });
+      };
+      themeSyncService.broadcastThemeChange(themeData);
+
+      // Store current theme in main process for new windows
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        window.electronAPI.notifyThemeChange(themeData);
+      }
     }
   };
 
@@ -261,10 +266,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Broadcast theme change to all windows via sync service
-      themeSyncService.broadcastThemeChange({
+      const themeData = {
         customColors: colors,
         useCustomColors: useCustomColors
-      });
+      };
+      themeSyncService.broadcastThemeChange(themeData);
+
+      // Store current theme in main process for new windows
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        window.electronAPI.notifyThemeChange(themeData);
+      }
     }
   };
 
@@ -288,10 +299,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Broadcast theme change to all windows via sync service
-      themeSyncService.broadcastThemeChange({
+      const themeData = {
         customColors: customColors,
         useCustomColors: use
-      });
+      };
+      themeSyncService.broadcastThemeChange(themeData);
+
+      // Store current theme in main process for new windows
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        window.electronAPI.notifyThemeChange(themeData);
+      }
     }
   };
 

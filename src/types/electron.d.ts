@@ -80,6 +80,7 @@ export interface ElectronAPI {
   syncMessagesToChat: (messages: unknown[]) => Promise<void>;
   requestCurrentMessages: () => Promise<void>;
   notifyThemeChange: (themeData: { customColors: unknown; useCustomColors: boolean }) => Promise<void>;
+  getCurrentTheme: () => Promise<{ customColors: Record<string, string>; useCustomColors: boolean } | null>;
 
   // Dropdown operations
   openDropdown: (x: number, y: number, width: number, height: number, content: string) => Promise<void>;

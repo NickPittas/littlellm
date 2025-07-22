@@ -294,21 +294,21 @@ function generateOptionsDropdownHTML(options: string[], selectedValue?: string, 
     <style>
       .search-section {
         padding: 8px 12px;
-        border-bottom: 1px solid var(--border);
-        background: var(--muted);
+        border-bottom: 1px solid hsl(var(--border));
+        background: hsl(var(--muted));
       }
       .search-input {
         width: 100%;
         padding: 6px 8px;
-        background: var(--background);
-        border: 1px solid var(--border);
+        background: hsl(var(--background));
+        border: 1px solid hsl(var(--border));
         border-radius: 4px;
-        color: white;
+        color: hsl(var(--foreground));
         font-size: 14px;
         outline: none;
       }
       .search-input::placeholder {
-        color: rgba(255, 255, 255, 0.5);
+        color: hsl(var(--muted-foreground));
       }
       .dropdown-content {
         max-height: 250px;
@@ -324,7 +324,7 @@ function generateOptionsDropdownHTML(options: string[], selectedValue?: string, 
         display: flex;
         align-items: center;
         padding: 8px 12px;
-        color: white;
+        color: hsl(var(--foreground));
         cursor: pointer;
         border-radius: 4px;
         margin: 1px 0;
@@ -338,19 +338,19 @@ function generateOptionsDropdownHTML(options: string[], selectedValue?: string, 
         transition: background-color 0.2s;
       }
       .dropdown-item:hover {
-        background: rgba(86, 156, 214, 0.1);
-        color: white;
+        background: hsl(var(--accent) / 0.1);
+        color: hsl(var(--foreground));
       }
       .dropdown-item.selected {
-        background: rgba(86, 156, 214, 0.2);
-        color: white;
+        background: hsl(var(--accent) / 0.2);
+        color: hsl(var(--foreground));
       }
       .check-icon {
         margin-right: 8px;
         width: 16px;
         height: 16px;
         opacity: 0;
-        color: var(--primary);
+        color: hsl(var(--primary));
       }
       .check-icon.visible {
         opacity: 1;

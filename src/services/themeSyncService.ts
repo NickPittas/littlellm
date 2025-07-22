@@ -86,8 +86,9 @@ class ThemeSyncService {
   async getCurrentTheme(): Promise<ThemeData | null> {
     if (typeof window !== 'undefined' && window.electronAPI) {
       try {
-        // This would need to be implemented in the main process
-        return await window.electronAPI.getCurrentTheme?.();
+        const themeData = await window.electronAPI.getCurrentTheme();
+        console.log('ThemeSyncService: Got current theme from main process:', themeData);
+        return themeData;
       } catch (error) {
         console.error('ThemeSyncService: Failed to get current theme:', error);
       }

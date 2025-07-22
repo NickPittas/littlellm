@@ -1,65 +1,26 @@
 
 
-export interface ColorSettings {
-  background: string;
-  foreground: string;
-  card: string;
-  cardForeground: string;
-  primary: string;
-  primaryForeground: string;
-  secondary: string;
-  secondaryForeground: string;
-  accent: string;
-  accentForeground: string;
-  muted: string;
-  mutedForeground: string;
-  border: string;
-  input: string;
-  ring: string;
-  destructive: string;
-  destructiveForeground: string;
-  systemText: string; // System UI text color (labels, buttons, etc.)
-}
-
-export interface AppSettings {
-  chat: ChatSettings;
-  ui: {
-    theme: 'light' | 'dark' | 'system';
-    alwaysOnTop: boolean;
-    startMinimized: boolean;
-    fontSize?: 'small' | 'medium' | 'large';
-    windowBounds: {
-      width: number;
-      height: number;
-      x?: number;
-      y?: number;
-    };
-    hotkey: string;
-    screenshotHotkey: string;
-    customColors?: ColorSettings;
-    useCustomColors?: boolean;
-    selectedThemePreset?: string; // ID of selected theme preset
-    colorMode?: 'preset' | 'custom'; // Whether using preset or custom colors
-  };
-  shortcuts: {
-    toggleWindow: string;
-    processClipboard: string;
-    actionMenu: string;
-    openShortcuts: string;
-  };
-  general: {
-    autoStartWithSystem: boolean;
-    showNotifications: boolean;
-    saveConversationHistory: boolean;
-    conversationHistoryLength: number; // Number of previous messages to include in context
-  };
-}
-
 // Import shared types
-import type { ChatSettings, ProviderSettings, ProvidersConfig, MCPServerConfig } from '../types/settings';
+import type {
+  ChatSettings,
+  ProviderSettings,
+  ProvidersConfig,
+  MCPServerConfig,
+  AppSettings,
+  UISettings,
+  ColorSettings
+} from '../types/settings';
 
 // Re-export shared types for convenience
-export type { ChatSettings, ProviderSettings, ProvidersConfig, MCPServerConfig };
+export type {
+  ChatSettings,
+  ProviderSettings,
+  ProvidersConfig,
+  MCPServerConfig,
+  AppSettings,
+  UISettings,
+  ColorSettings
+};
 
 const DEFAULT_SETTINGS: AppSettings = {
   chat: {
@@ -86,6 +47,7 @@ const DEFAULT_SETTINGS: AppSettings = {
       n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
     },
   },
+  mcpServers: [],
   ui: {
     theme: 'system',
     alwaysOnTop: true,
@@ -254,6 +216,10 @@ class SettingsService {
       return { ...DEFAULT_SETTINGS };
     }
     return { ...this.settings };
+  }
+
+  isInitialized(): boolean {
+    return this.initialized;
   }
 
   getChatSettings(): ChatSettings {
