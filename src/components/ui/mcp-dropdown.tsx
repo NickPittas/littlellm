@@ -120,7 +120,8 @@ export function MCPDropdown({
 
   const toggleServer = React.useCallback(async (serverId: string, currentlyEnabled: boolean) => {
     try {
-      console.log(`🔄 MCP Dropdown: Toggling server ${serverId}: ${currentlyEnabled} -> ${!currentlyEnabled}`)
+      console.log(`🔄 MCP Dropdown: toggleServer called for ${serverId}: ${currentlyEnabled} -> ${!currentlyEnabled}`)
+      console.log('🔄 MCP Dropdown: mcpService available:', !!mcpService)
 
       // Use the exact same logic as SettingsOverlay.tsx handleUpdateMcpServer
       const wasEnabled = currentlyEnabled
@@ -227,20 +228,33 @@ export function MCPDropdown({
 
   // Handle MCP dropdown selection events from Electron
   React.useEffect(() => {
-    if (!isElectron || !window.electronAPI?.onDropdownItemSelected) return;
+    if (!isElectron) return;
 
     const handleSelection = (selectedValue: string) => {
-      console.log('🔥 MCP DROPDOWN: Item selected:', selectedValue);
+      console.log('🔥 MCP DROPDOWN: handleSelection called with:', selectedValue);
+      console.log('🔥 MCP DROPDOWN: typeof selectedValue:', typeof selectedValue);
+
+      // ONLY handle MCP-related selections to avoid conflicts with other dropdowns
+      const isMCPToggle = selectedValue.startsWith('mcp-toggle:');
+      const isMCPServer = servers.some(s => s.id === selectedValue);
+
+      if (!isMCPToggle && !isMCPServer) {
+        console.log('🔥 MCP DROPDOWN: Ignoring non-MCP selection:', selectedValue);
+        return;
+      }
 
       // Handle new toggle format: "mcp-toggle:serverId:currentlyEnabled"
       if (selectedValue.startsWith('mcp-toggle:')) {
         const parts = selectedValue.split(':');
+        console.log('🔥 MCP DROPDOWN: Toggle format detected, parts:', parts);
         if (parts.length === 3) {
           const serverId = parts[1];
           const currentlyEnabled = parts[2] === 'true';
-          console.log('🔥 MCP DROPDOWN: Toggle switch clicked:', serverId, 'currently enabled:', currentlyEnabled);
+          console.log('🔥 MCP DROPDOWN: Calling toggleServer with:', serverId, currentlyEnabled);
           toggleServer(serverId, currentlyEnabled);
           return; // Don't close dropdown for toggle switches
+        } else {
+          console.log('🔥 MCP DROPDOWN: Invalid toggle format, expected 3 parts, got:', parts.length);
         }
       }
 
@@ -273,12 +287,15 @@ export function MCPDropdown({
       }
     };
 
-    window.electronAPI.onDropdownItemSelected(handleSelection);
+    // Register MCP dropdown listener
+    if (window.electronAPI?.onDropdownItemSelected) {
+      console.log('🔥 MCP DROPDOWN: Registering listener');
+      window.electronAPI.onDropdownItemSelected(handleSelection);
 
-    return () => {
-      // Don't remove all listeners - just let this one be overridden
-      // The electron API will handle multiple listeners properly
-    };
+      return () => {
+        console.log('🔥 MCP DROPDOWN: Cleanup (not removing listeners)');
+      };
+    }
   }, [servers, enabledServers, isElectron, toggleServer]);
 
   const generateMCPDropdownHTML = (servers: MCPServer[], enabledServers: Set<string>) => {
@@ -312,7 +329,11 @@ export function MCPDropdown({
                 </svg>`
               }
             </div>
-            <div class="toggle-switch ${isEnabled ? 'toggle-enabled' : 'toggle-disabled'} dropdown-item" data-value="mcp-toggle:${server.id}:${isEnabled}" data-server-id="${server.id}" data-enabled="${isEnabled}">
+            <div class="toggle-switch ${isEnabled ? 'toggle-enabled' : 'toggle-disabled'} dropdown-item"
+                 data-value="mcp-toggle:${server.id}:${isEnabled}"
+                 data-server-id="${server.id}"
+                 data-enabled="${isEnabled}"
+                 onclick="console.log('🔥 HTML Toggle clicked:', '${server.id}', ${isEnabled}); console.log('🔥 electronAPI available:', !!window.electronAPI); console.log('🔥 selectDropdownItem available:', !!window.electronAPI?.selectDropdownItem); window.electronAPI?.selectDropdownItem?.('mcp-toggle:${server.id}:${isEnabled}');">
               <div class="toggle-track">
                 <div class="toggle-thumb"></div>
               </div>

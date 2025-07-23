@@ -131,8 +131,8 @@ export function ProviderDropdown({
       window.electronAPI.onDropdownItemSelected(handleSelection);
 
       return () => {
-        // Clean up listener
-        window.electronAPI?.removeAllListeners?.('dropdown-item-selected');
+        // Don't remove all listeners - other dropdowns need them too
+        console.log('🚀 PROVIDER DROPDOWN: Cleanup (not removing listeners)');
       };
     }
   }, [isElectron, onValueChange, providers]);

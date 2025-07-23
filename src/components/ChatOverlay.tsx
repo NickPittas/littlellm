@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { X, Minus, MessageSquare, ChevronDown } from 'lucide-react';
 
-import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag';
+// import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag'; // Disabled for title-bar-only dragging
 import { MessageWithThinking } from './MessageWithThinking';
 import { UserMessage } from './UserMessage';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -24,46 +24,58 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize enhanced window dragging
-  useEnhancedWindowDrag();
+  // Disable full window dragging - we only want title bar dragging
+  // useEnhancedWindowDrag();
 
-  // Ensure title bar remains draggable regardless of global hook changes
+  // Set up proper dragging - only title bar should be draggable
   useEffect(() => {
-    const ensureTitleBarDraggable = () => {
+    const setupDragRegions = () => {
+      // Make body non-draggable
+      document.body.style.setProperty('-webkit-app-region', 'no-drag');
+
+      // Make only the title bar draggable
       const titleBar = document.querySelector('.chat-title-bar-drag-zone');
       if (titleBar) {
         (titleBar as HTMLElement).style.setProperty('-webkit-app-region', 'drag', 'important');
       }
+
+      // Ensure all interactive elements are non-draggable
+      const interactiveElements = document.querySelectorAll([
+        'input', 'textarea', 'button', 'select', 'a', '[contenteditable]',
+        '[role="button"]', '[data-interactive]', '.cursor-pointer'
+      ].join(', '));
+
+      interactiveElements.forEach(element => {
+        (element as HTMLElement).style.setProperty('-webkit-app-region', 'no-drag');
+      });
     };
 
     // Set initially
-    ensureTitleBarDraggable();
+    setupDragRegions();
 
-    // Re-apply periodically to override any interference
-    const interval = setInterval(ensureTitleBarDraggable, 100);
-
-    // Also re-apply on DOM mutations
-    const observer = new MutationObserver(ensureTitleBarDraggable);
+    // Re-apply when DOM changes
+    const observer = new MutationObserver(setupDragRegions);
     observer.observe(document.body, {
       childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['style']
+      subtree: true
     });
 
     return () => {
-      clearInterval(interval);
       observer.disconnect();
     };
   }, []);
 
-  // Simple title bar drag handler (CSS-based dragging)
-  const handleTitleBarMouseDown = () => {
-    // Ensure dragging is enabled
-    const titleBar = document.querySelector('.chat-title-bar-drag-zone');
-    if (titleBar) {
-      (titleBar as HTMLElement).style.setProperty('-webkit-app-region', 'drag', 'important');
-    }
+  // Title bar drag handler - visual feedback only (CSS handles the actual dragging)
+  const handleTitleBarMouseDown = (e: React.MouseEvent) => {
+    // Visual feedback - change cursor to grabbing
+    const titleBar = e.currentTarget as HTMLElement;
+    titleBar.style.cursor = 'grabbing';
+  };
+
+  const handleTitleBarMouseUp = (e: React.MouseEvent) => {
+    // Reset cursor
+    const titleBar = e.currentTarget as HTMLElement;
+    titleBar.style.cursor = 'grab';
   };
 
   const handleClose = () => {
@@ -189,14 +201,20 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
     <div className="h-full w-full bg-background flex flex-col overflow-hidden min-h-[400px] min-w-[300px]">
         {/* Custom Title Bar - Draggable */}
         <div
-          className="chat-title-bar-drag-zone flex-none flex items-center justify-between p-3 border-b border-border bg-background/95 backdrop-blur-sm select-none"
+          className="chat-title-bar-drag-zone flex-none flex items-center justify-between p-3 border-b border-border bg-background/95 backdrop-blur-sm select-none cursor-grab active:cursor-grabbing hover:bg-background/90 transition-colors"
           style={{
             WebkitAppRegion: 'drag'
           } as React.CSSProperties & { WebkitAppRegion?: string }}
           onMouseDown={handleTitleBarMouseDown}
+          onMouseUp={handleTitleBarMouseUp}
           data-drag-zone="true"
         >
           <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-0.5">
+              <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
+              <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
+              <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
+            </div>
             <div className="text-sm font-medium text-foreground">Chat</div>
           </div>
           

@@ -84,10 +84,12 @@ export class OpenAICompatibleStreaming {
               const delta = choice?.delta;
               const content = delta?.content || '';
 
-              if (content) {
+              if (content && typeof content === 'string') {
                 fullContent += content;
                 onStream(content);
                 console.log(`📝 ${providerName} content chunk: "${content}"`);
+              } else if (content) {
+                console.warn(`⚠️ ${providerName} content chunk is not a string:`, typeof content, content);
               }
 
               // Check for tool calls and assemble them
@@ -312,9 +314,11 @@ export class OpenAICompatibleStreaming {
         );
       }
 
-      // Stream the follow-up content
-      if (followUpMessage?.content) {
+      // Stream the follow-up content with type safety
+      if (followUpMessage?.content && typeof followUpMessage.content === 'string') {
         onStream(followUpMessage.content);
+      } else if (followUpMessage?.content) {
+        console.warn('⚠️ Follow-up content is not a string:', typeof followUpMessage.content, followUpMessage.content);
       }
 
       return {

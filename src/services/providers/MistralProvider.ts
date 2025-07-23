@@ -738,9 +738,11 @@ export class MistralProvider extends BaseProvider {
         totalTokens: (initialUsage?.total_tokens || 0) + (followUpData.usage?.total_tokens || 0)
       };
 
-      // Stream the follow-up content
-      if (followUpMessage?.content) {
+      // Stream the follow-up content with type safety
+      if (followUpMessage?.content && typeof followUpMessage.content === 'string') {
         onStream(followUpMessage.content);
+      } else if (followUpMessage?.content) {
+        console.warn('⚠️ Mistral follow-up content is not a string:', typeof followUpMessage.content, followUpMessage.content);
       }
 
       return {
@@ -828,10 +830,12 @@ export class MistralProvider extends BaseProvider {
               const delta = choice?.delta;
               const content = delta?.content || '';
 
-              if (content) {
+              if (content && typeof content === 'string') {
                 fullContent += content;
                 onStream(content);
                 console.log(`📝 Mistral content chunk: "${content}"`);
+              } else if (content) {
+                console.warn(`⚠️ Mistral content chunk is not a string:`, typeof content, content);
               }
 
               // Check for tool calls and assemble them
