@@ -12,6 +12,7 @@
     "out/**/*",
     "public/**/*",
     "node_modules/**/*",
+    "test/**/*",
     "package.json"
   ],
   "extraResources": [
@@ -28,6 +29,11 @@
     {
       "from": "assets",
       "to": "assets",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "test",
+      "to": "test",
       "filter": ["**/*"]
     }
   ],

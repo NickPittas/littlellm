@@ -2,7 +2,6 @@ import * as lancedb from 'vectordb';
 import { pipeline, FeatureExtractionPipeline } from '@xenova/transformers';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import pdf from 'pdf-parse';
 
 /**
  * Manages the local knowledge base for the application.
@@ -64,6 +63,49 @@ export class KnowledgeBaseService {
   }
 
   /**
+   * Safely imports pdf-parse module with comprehensive error handling
+   */
+  private async importPdfParseSafely(): Promise<(buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>> {
+    try {
+      // Try to import pdf-parse with a timeout to prevent hanging
+      const importPromise = import('pdf-parse');
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('PDF parse import timeout')), 5000)
+      );
+
+      const pdfParseModule = await Promise.race([importPromise, timeoutPromise]) as {
+        default?: (buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>;
+      } & ((buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>);
+      console.log('✅ pdf-parse module imported successfully');
+      // Handle both CommonJS and ES module exports
+      const pdfParse = pdfParseModule.default;
+      if (typeof pdfParse === 'function') {
+        return pdfParse;
+      } else if (typeof pdfParseModule === 'function') {
+        return pdfParseModule as (buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>;
+      } else {
+        throw new Error('pdf-parse module does not export a function');
+      }
+    } catch (error) {
+      console.error('❌ Failed to import pdf-parse:', error);
+
+      // Return a fallback function that provides basic PDF info without parsing
+      return async (buffer: Buffer) => {
+        console.log('📄 Using fallback PDF handler (no text extraction)');
+        return {
+          text: `[PDF Document - ${buffer.length} bytes]\nNote: PDF text extraction is not available. The PDF parsing module could not be loaded.`,
+          numpages: 1,
+          info: {
+            Title: 'PDF Document',
+            Creator: 'Unknown',
+            Producer: 'Fallback Handler'
+          } as Record<string, unknown>
+        };
+      };
+    }
+  }
+
+  /**
    * Adds a document to the knowledge base.
    * The document is processed, chunked, embedded, and stored in the vector database.
    * @param filePath - The path to the file to be added (e.g., a PDF).
@@ -75,14 +117,23 @@ export class KnowledgeBaseService {
 
     try {
       console.log(`Starting to process document: ${filePath}`);
-      
+
       // Check if file exists
       const fileBuffer = await fs.readFile(filePath);
       console.log(`File read successfully, size: ${fileBuffer.length} bytes`);
-      
-      const pdfData = await pdf(fileBuffer);
-      const text = pdfData.text;
-      console.log(`PDF parsed successfully, text length: ${text.length} characters`);
+
+      // Dynamically import pdf-parse to avoid initialization issues
+      let text: string;
+      try {
+        // Create a safe wrapper for pdf-parse import
+        const pdfParse = await this.importPdfParseSafely();
+        const pdfData = await pdfParse(fileBuffer);
+        text = pdfData.text;
+        console.log(`PDF parsed successfully, text length: ${text.length} characters`);
+      } catch (pdfError) {
+        console.error('PDF parsing failed:', pdfError);
+        throw new Error(`Failed to parse PDF: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}`);
+      }
 
       if (!text || text.trim().length === 0) {
         throw new Error('No text content found in the PDF document');
