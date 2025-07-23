@@ -1,5 +1,15 @@
 /* Chat overlay specific styles */
-/* The dragging is handled inline in the component, similar to SettingsOverlay */
+
+/* Title bar should be draggable */
+.chat-title-bar {
+  -webkit-app-region: drag !important;
+  user-select: none;
+}
+
+/* Buttons in title bar should not be draggable */
+.chat-title-bar button {
+  -webkit-app-region: no-drag !important;
+}
 
 /* Content area should not be draggable */
 .chat-content-area {
@@ -53,4 +63,15 @@
     opacity: 1;
     transform: translateX(0);
   }
+}
+
+/* Ensure the window has proper overflow handling */
+html, body {
+  overflow: hidden;
+  height: 100%;
+}
+
+/* Title bar hover effects */
+.chat-title-bar:hover {
+  background-color: rgba(var(--muted), 0.7);
 }
