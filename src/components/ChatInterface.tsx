@@ -75,7 +75,6 @@ export function ChatInterface({
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [internalAttachedFiles, setInternalAttachedFiles] = useState<AttachedFile[]>([]);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [isStreaming, setIsStreaming] = useState(false);
 
   // Use external attached files if provided, otherwise use internal state
   const attachedFiles = externalAttachedFiles
@@ -123,6 +122,61 @@ export function ChatInterface({
     };
     loadSettings();
   }, []);
+
+  // Set up proper dragging - only title bar should be draggable
+  useEffect(() => {
+    const setupDragRegions = () => {
+      // Make body non-draggable
+      document.body.style.setProperty('-webkit-app-region', 'no-drag');
+
+      // Make only the title bar draggable
+      const titleBar = document.querySelector('.chat-interface-title-bar');
+      if (titleBar) {
+        (titleBar as HTMLElement).style.setProperty('-webkit-app-region', 'drag', 'important');
+      }
+
+      // Ensure all interactive elements are non-draggable
+      const interactiveElements = document.querySelectorAll([
+        'input', 'textarea', 'button', 'select', 'a', '[contenteditable]',
+        '[role="button"]', '[data-interactive]', '.cursor-pointer'
+      ].join(', '));
+
+      interactiveElements.forEach(element => {
+        (element as HTMLElement).style.setProperty('-webkit-app-region', 'no-drag');
+      });
+    };
+
+    // Set initially
+    setupDragRegions();
+
+    // Re-apply when DOM changes
+    const observer = new MutationObserver(setupDragRegions);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  const handleClose = () => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      window.electronAPI.closeChatWindow();
+    }
+  };
+
+  const handleMinimize = () => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      window.electronAPI.minimizeWindow();
+    }
+  };
+
+  const handleTitleBarMouseDown = () => {
+    // Enable window dragging via CSS
+    // The title bar will use -webkit-app-region: drag
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -273,7 +327,6 @@ export function ChatInterface({
     // Create abort controller for this request
     const controller = new AbortController();
     setAbortController(controller);
-    setIsStreaming(true);
 
     try {
       let assistantContent = '';
@@ -347,7 +400,6 @@ export function ChatInterface({
       }
 
       // Auto-scroll to bottom when response is complete
-      setIsStreaming(false);
       scrollToBottomOnComplete();
     } catch (error) {
       console.error('Error sending message:', error);
@@ -376,7 +428,6 @@ export function ChatInterface({
       }
     } finally {
       setIsLoading(false);
-      setIsStreaming(false);
       setAbortController(null);
     }
   };
@@ -434,6 +485,34 @@ export function ChatInterface({
 
   return (
     <div className="chat-interface flex flex-col h-full relative">
+      {/* Custom Title Bar - Draggable */}
+      <div
+        className="chat-interface-title-bar h-10 w-full bg-background/95 backdrop-blur-sm border-b border-border/30 flex items-center justify-center relative flex-none select-none"
+        style={{
+          WebkitAppRegion: 'drag',
+          borderRadius: '8px 8px 0 0'
+        } as React.CSSProperties & { WebkitAppRegion?: string }}
+        onMouseDown={handleTitleBarMouseDown}
+      >
+        <div
+          className="absolute left-4 flex items-center gap-2"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+        >
+          <div
+            className="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 cursor-pointer transition-colors"
+            onClick={handleClose}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          />
+          <div 
+            className="w-3 h-3 rounded-full bg-yellow-500/80 hover:bg-yellow-500 cursor-pointer transition-colors"
+            onClick={handleMinimize}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          />
+          <div className="w-3 h-3 rounded-full bg-green-500/80" />
+        </div>
+        <div className="text-sm font-medium text-foreground">Chat</div>
+      </div>
+
       {/* Messages Area */}
       <div
         ref={scrollContainerRef}
