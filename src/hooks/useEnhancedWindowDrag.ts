@@ -21,6 +21,7 @@ export function useEnhancedWindowDrag() {
       document.body.style.setProperty('-webkit-app-region', 'drag');
 
       // Find all interactive elements and mark them as no-drag
+      // BUT respect existing drag regions (don't override elements that are explicitly set to drag)
       const interactiveElements = document.querySelectorAll([
         'input',
         'textarea',
@@ -52,7 +53,16 @@ export function useEnhancedWindowDrag() {
       ].join(', '));
 
       interactiveElements.forEach(element => {
-        (element as HTMLElement).style.setProperty('-webkit-app-region', 'no-drag');
+        const htmlElement = element as HTMLElement;
+
+        // Check if the element or its parent has an explicit drag region set
+        const hasExplicitDragRegion = htmlElement.style.getPropertyValue('-webkit-app-region') === 'drag' ||
+                                     htmlElement.closest('[style*="-webkit-app-region: drag"]');
+
+        // Only set to no-drag if it doesn't have an explicit drag region
+        if (!hasExplicitDragRegion) {
+          htmlElement.style.setProperty('-webkit-app-region', 'no-drag');
+        }
       });
 
       console.log('🎯 Applied CSS drag regions to', interactiveElements.length, 'interactive elements');

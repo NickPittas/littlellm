@@ -85,6 +85,16 @@
   /* Fix muted text to be more visible */
   .text-muted-foreground {
     color: hsl(var(--muted-foreground)) !important;
+    opacity: 1 !important; /* Ensure no transparency issues */
+  }
+
+  /* Ensure muted text has minimum contrast */
+  .text-muted-foreground,
+  p.text-muted-foreground,
+  span.text-muted-foreground,
+  div.text-muted-foreground {
+    color: hsl(var(--muted-foreground)) !important;
+    opacity: 1 !important;
   }
 
   /* Ensure placeholder text is visible */
@@ -314,6 +324,104 @@
     color: hsl(var(--muted-foreground)) !important;
   }
 
+  /* SETTINGS SPECIFIC FIXES */
+  /* Force all settings text to be visible */
+  .settings-overlay,
+  .settings-overlay * {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Settings muted text - ensure good contrast */
+  .settings-overlay .text-muted-foreground,
+  .settings-overlay p.text-muted-foreground,
+  .settings-overlay span.text-muted-foreground,
+  .settings-overlay .text-xs.text-muted-foreground,
+  .settings-overlay .text-sm.text-muted-foreground {
+    color: hsl(var(--muted-foreground)) !important;
+    opacity: 1 !important; /* Ensure no transparency issues */
+  }
+
+  /* Settings labels - ensure high contrast */
+  .settings-overlay label,
+  .settings-overlay .text-lg,
+  .settings-overlay h3 {
+    color: hsl(var(--foreground)) !important;
+    opacity: 1 !important;
+  }
+
+  /* Settings descriptions */
+  .settings-overlay p:not(.text-muted-foreground) {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Ensure all text elements in settings have proper contrast */
+  .settings-overlay div,
+  .settings-overlay span,
+  .settings-overlay p,
+  .settings-overlay label,
+  .settings-overlay h1,
+  .settings-overlay h2,
+  .settings-overlay h3,
+  .settings-overlay h4,
+  .settings-overlay h5,
+  .settings-overlay h6 {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Override any potential black text */
+  .settings-overlay [style*="color: black"],
+  .settings-overlay [style*="color: #000"],
+  .settings-overlay [style*="color: rgb(0, 0, 0)"] {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* NUCLEAR OPTION: Force all text in settings to be visible */
+  html body .settings-overlay * {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  html body .settings-overlay .text-muted-foreground,
+  html body .settings-overlay p.text-muted-foreground,
+  html body .settings-overlay span.text-muted-foreground {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* CHAT WINDOW TITLE BAR DRAGGING - HIGHEST PRIORITY */
+  .chat-title-bar-drag-zone {
+    -webkit-app-region: drag !important;
+  }
+
+  .chat-title-bar-drag-zone * {
+    -webkit-app-region: no-drag !important;
+  }
+
+  .chat-title-bar-drag-zone [data-drag-zone="true"] {
+    -webkit-app-region: drag !important;
+  }
+
+  /* Force text color in all containers */
+  div, span, p, label, h1, h2, h3, h4, h5, h6 {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Force muted text to be visible */
+  .text-muted-foreground,
+  p.text-muted-foreground,
+  span.text-muted-foreground {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Force button text to be visible */
+  button {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Force input text to be visible */
+  input, textarea {
+    color: hsl(var(--foreground)) !important;
+    background: hsl(var(--input)) !important;
+  }
+
   /* Removed draggable dialog CSS - now using standard Radix dialog */
 
   /* Allow buttons to use their own styling */
@@ -373,15 +481,38 @@
     border-color: hsl(var(--accent)) !important;
   }
 
-  /* Settings window input fields - brighter background for better visibility */
-  .settings-input input,
-  .settings-input textarea,
-  .settings-input select,
-  .settings-input [data-radix-select-trigger] {
-    background: #3a3a4e !important; /* Brighter than previous #2a2a3e */
-    color: var(--foreground) !important;
-    border: none !important;
-    border-radius: 8px !important;
+  /* CRITICAL: Settings window input fields - force theme colors */
+  .settings-overlay input,
+  .settings-overlay textarea,
+  .settings-overlay select,
+  .settings-overlay [data-radix-select-trigger] {
+    background: hsl(var(--input)) !important;
+    color: hsl(var(--foreground)) !important;
+    border: 1px solid hsl(var(--border)) !important;
+    border-radius: 6px !important;
+  }
+
+  /* Force settings input text to be white */
+  .settings-overlay input::placeholder,
+  .settings-overlay textarea::placeholder {
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* NUCLEAR OPTION: Override hardcoded settings colors */
+  .settings-overlay .bg-slate-900,
+  .settings-overlay .bg-slate-800,
+  .settings-overlay .bg-slate-850 {
+    background: hsl(var(--input)) !important;
+  }
+
+  .settings-overlay .text-slate-100,
+  .settings-overlay .text-slate-200 {
+    color: hsl(var(--foreground)) !important;
+  }
+
+  .settings-overlay .border-slate-600,
+  .settings-overlay .border-slate-700 {
+    border-color: hsl(var(--border)) !important;
   }
 
   /* Auto-resize textarea using CSS field-sizing */

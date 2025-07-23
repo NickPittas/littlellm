@@ -36,7 +36,7 @@ class ThemeSyncService {
    * Broadcast theme change to all windows
    */
   async broadcastThemeChange(themeData: ThemeData) {
-    console.log('ThemeSyncService: Broadcasting theme change:', themeData);
+    // Broadcasting theme change
     
     // Notify local listeners first
     this.notifyListeners(themeData);
@@ -45,7 +45,7 @@ class ThemeSyncService {
     if (typeof window !== 'undefined' && window.electronAPI) {
       try {
         await window.electronAPI.notifyThemeChange(themeData);
-        console.log('ThemeSyncService: Successfully broadcasted theme change');
+        // Successfully broadcasted theme change
       } catch (error) {
         console.error('ThemeSyncService: Failed to broadcast theme change:', error);
       }

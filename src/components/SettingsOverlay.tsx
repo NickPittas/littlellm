@@ -423,7 +423,7 @@ export function SettingsOverlay() {
   return (
     <div
       style={{ height: '100vh', width: '100vw' }}
-      className="bg-background flex flex-col overflow-hidden"
+      className="settings-overlay bg-background flex flex-col overflow-hidden"
     >
       {/* Custom Title Bar */}
       <div

@@ -32,7 +32,7 @@
     "electron": "npm run build-electron && npx electron .",
     "electron-dev": "concurrently \"npm run dev\" \"npm run build-electron && wait-on http://localhost:3000 && npx electron .\"",
     "electron-pack": "npm run build && npm run build-electron && electron-builder",
-    "build-electron": "tsc --project electron/tsconfig.json",
+    "build-electron": "tsc --project electron/tsconfig.json && tsc --project electron/tsconfig.preload.json",
     "dist": "npm run build && npm run build-electron && electron-builder --publish=never",
     "dist:win": "npm run build && npm run build-electron && electron-builder --win --publish=never",
     "dist:win-installer": "npm run build && npm run build-electron && electron-builder --win --config.win.target=nsis --publish=never",
