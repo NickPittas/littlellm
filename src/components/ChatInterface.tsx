@@ -130,7 +130,7 @@ export function ChatInterface({
       document.body.style.setProperty('-webkit-app-region', 'no-drag');
 
       // Make only the title bar draggable
-      const titleBar = document.querySelector('.chat-interface-title-bar');
+      const titleBar = document.querySelector('.chat-interface-title-bar-drag-zone');
       if (titleBar) {
         (titleBar as HTMLElement).style.setProperty('-webkit-app-region', 'drag', 'important');
       }
@@ -173,9 +173,16 @@ export function ChatInterface({
     }
   };
 
-  const handleTitleBarMouseDown = () => {
-    // Enable window dragging via CSS
-    // The title bar will use -webkit-app-region: drag
+  const handleTitleBarMouseDown = (e: React.MouseEvent) => {
+    // Visual feedback - change cursor to grabbing
+    const titleBar = e.currentTarget as HTMLElement;
+    titleBar.style.cursor = 'grabbing';
+  };
+
+  const handleTitleBarMouseUp = (e: React.MouseEvent) => {
+    // Reset cursor
+    const titleBar = e.currentTarget as HTMLElement;
+    titleBar.style.cursor = 'grab';
   };
 
   const scrollToBottom = () => {
@@ -487,13 +494,14 @@ export function ChatInterface({
     <div className="chat-interface flex flex-col h-full relative overflow-hidden">
       {/* Custom Title Bar - Draggable */}
       <div
-        className="chat-interface-title-bar h-10 w-full bg-background/95 backdrop-blur-sm border-b border-border/30 flex items-center justify-center relative flex-none select-none z-50"
+        className="chat-interface-title-bar-drag-zone flex-none flex items-center justify-center relative h-10 w-full bg-background/95 backdrop-blur-sm border-b border-border/30 select-none cursor-grab active:cursor-grabbing hover:bg-background/90 transition-colors"
         style={{
-          WebkitAppRegion: 'drag',
-          borderRadius: '8px 8px 0 0',
-          zIndex: 50
-        } as React.CSSProperties & { WebkitAppRegion?: string; zIndex?: number }}
+          WebkitAppRegion: 'drag'
+        } as React.CSSProperties & { WebkitAppRegion?: string }}
         onMouseDown={handleTitleBarMouseDown}
+        onMouseUp={handleTitleBarMouseUp}
+        onMouseLeave={handleTitleBarMouseUp}
+        data-drag-zone="true"
       >
         <div
           className="absolute left-4 flex items-center gap-2"
@@ -626,13 +634,14 @@ export function ChatInterface({
       {showScrollToBottom && (
         <Button
           onClick={scrollToBottom}
-          className="absolute bottom-20 left-1/2 transform -translate-x-1/2 h-12 w-12 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 z-50 flex items-center justify-center p-0"
+          className="absolute bottom-20 left-1/2 transform -translate-x-1/2 h-12 w-12 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 flex items-center justify-center p-0"
           style={{
             WebkitAppRegion: 'no-drag',
             backdropFilter: 'blur(8px)',
             minWidth: '48px',
-            minHeight: '48px'
-          } as React.CSSProperties & { WebkitAppRegion?: string }}
+            minHeight: '48px',
+            zIndex: 40
+          } as React.CSSProperties & { WebkitAppRegion?: string; zIndex?: number }}
         >
           <ChevronDown
             className="text-primary-foreground"
@@ -651,7 +660,8 @@ export function ChatInterface({
       {showActionMenu && (
         <div
           ref={actionMenuRef}
-          className="absolute bottom-16 left-4 right-4 bg-background border border-border rounded-lg shadow-lg p-3 z-10"
+          className="absolute bottom-16 left-4 right-4 bg-background border border-border rounded-lg shadow-lg p-3"
+          style={{ zIndex: 30 }}
         >
           <div className="text-sm text-muted-foreground mb-2">Type to search for an action...</div>
           <div className="grid grid-cols-2 gap-2">
