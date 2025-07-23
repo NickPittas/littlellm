@@ -6,9 +6,6 @@ import { Textarea } from './ui/textarea';
 import { Card, CardContent } from './ui/card';
 import {
   Send,
-  Copy,
-  RotateCcw,
-  Volume2,
   Edit3,
   CheckSquare,
   Minus,
@@ -206,13 +203,13 @@ export function ChatInterface({
   };
 
   // Check if user is at bottom of scroll
-  const checkScrollPosition = () => {
+  const checkScrollPosition = useCallback(() => {
     if (!scrollContainerRef.current) return;
 
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
     setShowScrollToBottom(!isAtBottom && messages.length > 0);
-  };
+  }, [messages.length]);
 
   // Auto-scroll to bottom when messages change (only if user was already at bottom)
   useEffect(() => {
@@ -237,7 +234,7 @@ export function ChatInterface({
         scrollToBottomOnComplete();
       }
     }
-  }, [messages.length, messages[messages.length - 1]?.content]);
+  }, [messages.length, messages[messages.length - 1]?.content, scrollToBottomOnComplete]);
 
   // Add scroll listener
   useEffect(() => {
@@ -252,7 +249,7 @@ export function ChatInterface({
     return () => {
       scrollContainer.removeEventListener('scroll', checkScrollPosition);
     };
-  }, [messages.length]);
+  }, [messages.length, checkScrollPosition]);
 
   // Close action menu when clicking outside
   useEffect(() => {
@@ -487,15 +484,6 @@ export function ChatInterface({
     onActionMenuClose();
   };
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
-      }
-    } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
-    }
-  };
 
   const handleStopGeneration = () => {
     if (abortController) {
