@@ -3932,14 +3932,44 @@ function setupIPC() {
   try {
     const settings = loadAppSettings();
     if (settings.ui) {
-      // NO FALLBACKS - use ONLY what's in settings
-      const selectedThemePreset = settings.ui.selectedThemePreset;
-      const colorMode = settings.ui.colorMode;
-      const useCustomColors = settings.ui.useCustomColors;
+      // Get theme settings with fallbacks
+      const selectedThemePreset = settings.ui.selectedThemePreset || 'cyberpunk';
+      const colorMode = settings.ui.colorMode || 'preset';
+      const useCustomColors = settings.ui.useCustomColors !== undefined ? settings.ui.useCustomColors : false;
 
-      // Validate required settings exist
-      if (!selectedThemePreset || !colorMode || useCustomColors === undefined) {
-        throw new Error(`Missing required theme settings: selectedThemePreset=${selectedThemePreset}, colorMode=${colorMode}, useCustomColors=${useCustomColors}`);
+      // Apply fallbacks if missing and save corrected settings
+      if (!settings.ui.selectedThemePreset || !settings.ui.colorMode || settings.ui.useCustomColors === undefined) {
+        console.warn('⚠️ Main process: Theme settings missing, applying defaults');
+        settings.ui.selectedThemePreset = selectedThemePreset;
+        settings.ui.colorMode = colorMode;
+        settings.ui.useCustomColors = useCustomColors;
+
+        // Ensure customColors exist
+        if (!settings.ui.customColors) {
+          settings.ui.customColors = {
+            background: '#0a0a0f',
+            foreground: '#e0e0ff',
+            card: '#1a1a2e',
+            cardForeground: '#ffffff',
+            primary: '#00d4ff',
+            primaryForeground: '#000000',
+            secondary: '#ff6b9d',
+            secondaryForeground: '#000000',
+            accent: '#00d4ff',
+            accentForeground: '#000000',
+            muted: '#16213e',
+            mutedForeground: '#9ca3af',
+            border: '#3b3b68',
+            input: '#1e1b2e',
+            ring: '#00d4ff',
+            destructive: '#f44747',
+            destructiveForeground: '#ffffff',
+            systemText: '#e0e0ff',
+          };
+        }
+
+        // Save corrected settings
+        saveAppSettings(settings);
       }
 
       // Loading theme settings
@@ -3968,10 +3998,19 @@ function setupIPC() {
       // Initialized current theme data from settings
     }
   } catch (error) {
-    console.error('❌ CRITICAL: Failed to initialize theme data from settings:', error);
-    console.error('❌ App requires valid theme settings - no fallback to defaults');
-    // Don't set currentThemeData - force proper theme configuration
-    currentThemeData = null;
+    console.error('❌ Failed to initialize theme data from settings:', error);
+    console.warn('🔧 Using cyberpunk theme as fallback');
+
+    // Use cyberpunk theme as fallback
+    const cyberpunkPreset = THEME_PRESETS.find(preset => preset.id === 'cyberpunk');
+    if (cyberpunkPreset) {
+      currentThemeData = {
+        customColors: cyberpunkPreset.colors,
+        useCustomColors: false
+      };
+    } else {
+      currentThemeData = null;
+    }
   }
 
   // Update stored theme data when theme changes

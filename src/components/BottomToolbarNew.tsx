@@ -78,10 +78,14 @@ export function BottomToolbar({
 
       // Only fetch models if we have an API key (except for Ollama, LM Studio, and n8n which don't require one)
       if (providerId !== 'ollama' && providerId !== 'lmstudio' && providerId !== 'n8n' && !providerSettings.apiKey) {
-        console.log(`No API key configured for ${providerId}, fetching without API key`);
+        console.log(`No API key configured for ${providerId}, using fallback models`);
         const models = await chatService.fetchModels(providerId, '', '');
-        console.log('Models fetched (no API key):', models);
+        console.log(`✅ Fallback models loaded for ${providerId}:`, models.length, 'models available');
         setAvailableModels(models);
+
+        if (models.length === 0) {
+          console.warn(`⚠️ No fallback models available for ${providerId}`);
+        }
 
         // ONLY restore model if it exists in the fetched models list
         const lastSelectedModel = currentSettings.providers?.[providerId]?.lastSelectedModel;
@@ -104,8 +108,12 @@ export function BottomToolbar({
         providerSettings: JSON.stringify(providerSettings, null, 2)
       });
       const models = await chatService.fetchModels(providerId, apiKey, baseUrl);
-      console.log('Models fetched:', models);
+      console.log(`✅ Models fetched for ${providerId} with API key:`, models.length, 'models available');
       setAvailableModels(models);
+
+      if (models.length === 0) {
+        console.warn(`⚠️ No models returned for ${providerId} with API key - check API key validity`);
+      }
 
       // ONLY restore model if it exists in the fetched models list
       const lastSelectedModel = currentSettings.providers?.[providerId]?.lastSelectedModel;
@@ -117,8 +125,19 @@ export function BottomToolbar({
         console.log('❌ INVALID model found, NOT restoring:', lastSelectedModel, 'not in models:', models.slice(0, 3));
       }
     } catch (error) {
-      console.error('Failed to fetch models:', error);
+      console.error(`❌ Failed to fetch models for ${providerId}:`, error);
       setAvailableModels([]);
+
+      // Provide user-friendly error message
+      if (error instanceof Error) {
+        if (error.message.includes('network') || error.message.includes('fetch')) {
+          console.warn(`🌐 Network error fetching models for ${providerId} - check internet connection`);
+        } else if (error.message.includes('unauthorized') || error.message.includes('401')) {
+          console.warn(`🔐 Authentication error for ${providerId} - check API key`);
+        } else {
+          console.warn(`⚠️ Unexpected error fetching models for ${providerId}:`, error.message);
+        }
+      }
     } finally {
       setIsLoadingModels(false);
     }

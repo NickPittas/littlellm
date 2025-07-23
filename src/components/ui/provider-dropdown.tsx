@@ -272,7 +272,10 @@ function generateProviderDropdownHTML(providers: LLMProvider[], selectedValue?: 
 
   const providerItems = providers.map(provider => {
     // Convert relative path to absolute URL for Electron context
-    const logoUrl = provider.logo.startsWith('/') ? `http://localhost:3000${provider.logo}` : provider.logo;
+    // Use window.location.origin to get the correct port dynamically
+    const logoUrl = provider.logo.startsWith('/') ?
+      (typeof window !== 'undefined' ? `${window.location.origin}${provider.logo}` : provider.logo) :
+      provider.logo;
 
     return `
     <div

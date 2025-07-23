@@ -8,7 +8,7 @@
   "main": "dist/electron/electron/main.js",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/fix-paths.js",
+    "build": "next build && node scripts/fix-paths.js && node scripts/copy-assets.cjs",
     "build-no-lint": "next build --no-lint && node scripts/fix-paths.js",
     "start": "next start",
     "lint": "next lint",
