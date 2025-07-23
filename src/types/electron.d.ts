@@ -63,11 +63,8 @@ export interface ElectronAPI {
   setWindowBackgroundColor: (backgroundColor: string) => Promise<boolean>;
 
   // Window dragging
-  startDrag: () => Promise<{ offsetX: number; offsetY: number } | null>;
-  dragWindow: (x: number, y: number, offsetX: number, offsetY: number) => Promise<void>;
-
-  // Window dragging is now handled by CSS -webkit-app-region
-  // No methods needed for CSS-based dragging
+  startDrag: () => (() => void);
+  setWindowPosition: (x: number, y: number) => Promise<void>;
 
   // Overlay windows
   openActionMenu: () => Promise<void>;

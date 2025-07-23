@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
-import { X, Minus, MessageSquare, ChevronDown, GripHorizontal } from 'lucide-react';
+import { X, Minus, MessageSquare, ChevronDown } from 'lucide-react';
 import { MessageWithThinking } from './MessageWithThinking';
 import { UserMessage } from './UserMessage';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -22,6 +22,15 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Initialize window dragging
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.electronAPI?.startDrag) {
+      const cleanup = window.electronAPI.startDrag();
+      return cleanup;
+    }
+    return undefined;
+  }, []);
 
   const handleClose = () => {
     if (typeof window !== 'undefined' && window.electronAPI) {
@@ -144,23 +153,13 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
 
   return (
     <div className="h-full w-full bg-background overflow-hidden flex flex-col">
-      {/* Title Bar - Draggable */}
+      {/* Title Bar - Simple draggable area */}
       <div 
-        className="flex-none h-10 bg-muted/50 border-b border-border flex items-center justify-between px-3 select-none"
-        style={{ 
-          WebkitAppRegion: 'drag',
-          cursor: 'move'
-        } as React.CSSProperties}
+        className="flex-none h-10 bg-muted/50 border-b border-border flex items-center justify-between px-3 select-none draggable-title-bar"
       >
-        <div className="flex items-center gap-2">
-          <GripHorizontal className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">CHAT WINDOW</span>
-        </div>
+        <span className="text-sm font-medium">CHAT WINDOW</span>
         
-        <div 
-          className="flex items-center gap-1"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
+        <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="sm"
