@@ -300,6 +300,12 @@ export function ChatInterface({
         settings,
         conversationHistory,
         (chunk: string) => {
+          // Ensure chunk is a string and handle edge cases
+          if (typeof chunk !== 'string') {
+            console.warn('⚠️ Received non-string chunk in ChatInterface onStream:', typeof chunk, chunk);
+            return;
+          }
+
           // Handle streaming response
           assistantContent += chunk;
           if (onMessagesChange) {

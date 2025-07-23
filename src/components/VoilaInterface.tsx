@@ -649,6 +649,12 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         settings,
         conversationHistory,
         (chunk: string) => {
+          // Ensure chunk is a string and handle edge cases
+          if (typeof chunk !== 'string') {
+            console.warn('⚠️ Received non-string chunk in onStream:', typeof chunk, chunk);
+            return;
+          }
+
           // Stop thinking indicator when streaming starts (first chunk received)
           if (assistantContent === '' && chunk.trim().length > 0) {
             const processingDuration = Date.now() - processingStartTime;

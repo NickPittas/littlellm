@@ -82,6 +82,7 @@ interface MCPConnection {
 }
 
 const mcpConnections: Map<string, MCPConnection> = new Map();
+const mcpConnectionAttempts: Set<string> = new Set(); // Track ongoing connection attempts
 
 // MCP Auto-Connection Function
 async function connectEnabledMCPServers(): Promise<void> {
@@ -654,9 +655,18 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
 
     // Check if already connected
     if (mcpConnections.has(serverId)) {
-      // Server already connected
+      console.log(`✅ Server ${serverId} already connected`);
       return true;
     }
+
+    // Check if connection attempt is already in progress
+    if (mcpConnectionAttempts.has(serverId)) {
+      console.log(`⏳ Connection attempt already in progress for ${serverId}`);
+      return false;
+    }
+
+    // Mark connection attempt as in progress
+    mcpConnectionAttempts.add(serverId);
 
     // Skip validation for npx commands since user confirmed they work
     let validation: { valid: boolean; fixedCommand?: string; error?: string };
@@ -700,13 +710,16 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
 
     // Starting MCP server
 
+    // Create transport and client (single attempt with longer timeout)
+    console.log(`🔌 Connecting to MCP server: ${serverId}`);
+    console.log(`🔌 Command: ${finalCommand} ${server.args?.join(' ') || ''}`);
+
     const transport = new StdioClientTransport({
       command: finalCommand,
       args: server.args,
       env: mergedEnv
     });
 
-    // Create client
     const client = new Client({
       name: 'littlellm-client',
       version: '1.0.0'
@@ -718,13 +731,14 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
       }
     });
 
-    // Connect with timeout
+    // Connect with reasonable timeout (back to single attempt)
     const connectPromise = client.connect(transport);
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Connection timeout')), 10000)
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Connection timeout')), 30000) // 30 second timeout
     );
 
     await Promise.race([connectPromise, timeoutPromise]);
+    console.log(`✅ Connected to MCP server: ${serverId}`);
     // Connected to MCP server
 
     // Discover capabilities with error handling
@@ -803,9 +817,20 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
       mainWindow.webContents.send('mcp-server-connected', serverId);
     }
 
+    // Remove from connection attempts tracking
+    mcpConnectionAttempts.delete(serverId);
+
     return true;
   } catch (error) {
     console.error(`❌ Failed to connect to MCP server ${serverId}:`, error);
+    console.error(`❌ Error details:`, {
+      serverId,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined
+    });
+
+    // Remove from connection attempts tracking on failure
+    mcpConnectionAttempts.delete(serverId);
 
     // Provide macOS-specific troubleshooting information
     if (process.platform === 'darwin') {
@@ -1690,6 +1715,9 @@ function loadMCPServers(): MCPData {
       if (!mcpData.servers) {
         mcpData.servers = [];
       }
+
+      // REMOVED: Auto-disable logic - let users control their servers
+      // Servers should only be disabled by explicit user action
 
       return mcpData;
     }
