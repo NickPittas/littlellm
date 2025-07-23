@@ -487,11 +487,14 @@ export function ChatInterface({
     <div className="chat-interface flex flex-col h-full relative">
       {/* Custom Title Bar - Draggable */}
       <div
-        className="chat-interface-title-bar h-10 w-full bg-background/95 backdrop-blur-sm border-b border-border/30 flex items-center justify-center relative flex-none select-none"
+        className="chat-interface-title-bar h-10 w-full bg-background/95 backdrop-blur-sm border-b border-border/30 flex items-center justify-center relative flex-none select-none z-50"
         style={{
           WebkitAppRegion: 'drag',
-          borderRadius: '8px 8px 0 0'
-        } as React.CSSProperties & { WebkitAppRegion?: string }}
+          borderRadius: '8px 8px 0 0',
+          position: 'sticky',
+          top: 0,
+          zIndex: 50
+        } as React.CSSProperties & { WebkitAppRegion?: string; position?: string; top?: number; zIndex?: number }}
         onMouseDown={handleTitleBarMouseDown}
       >
         <div
@@ -516,7 +519,10 @@ export function ChatInterface({
       {/* Messages Area */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar scrollable relative"
+        className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar scrollable relative z-10"
+        style={{
+          zIndex: 10
+        }}
         onScroll={checkScrollPosition}
       >
         {messages.length === 0 ? (
