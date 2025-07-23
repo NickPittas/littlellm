@@ -3,9 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
-import { X, Minus, MessageSquare, ChevronDown } from 'lucide-react';
-
-// import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag'; // Disabled for title-bar-only dragging
+import { X, Minus, MessageSquare, ChevronDown, GripHorizontal } from 'lucide-react';
 import { MessageWithThinking } from './MessageWithThinking';
 import { UserMessage } from './UserMessage';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -24,60 +22,6 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  // Disable full window dragging - we only want title bar dragging
-  // useEnhancedWindowDrag();
-
-  // Set up proper dragging - only title bar should be draggable
-  useEffect(() => {
-    const setupDragRegions = () => {
-      // Make body non-draggable
-      document.body.style.setProperty('-webkit-app-region', 'no-drag');
-
-      // Make only the title bar draggable
-      const titleBar = document.querySelector('.chat-title-bar-drag-zone');
-      if (titleBar) {
-        (titleBar as HTMLElement).style.setProperty('-webkit-app-region', 'drag', 'important');
-      }
-
-      // Ensure all interactive elements are non-draggable
-      const interactiveElements = document.querySelectorAll([
-        'input', 'textarea', 'button', 'select', 'a', '[contenteditable]',
-        '[role="button"]', '[data-interactive]', '.cursor-pointer'
-      ].join(', '));
-
-      interactiveElements.forEach(element => {
-        (element as HTMLElement).style.setProperty('-webkit-app-region', 'no-drag');
-      });
-    };
-
-    // Set initially
-    setupDragRegions();
-
-    // Re-apply when DOM changes
-    const observer = new MutationObserver(setupDragRegions);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-
-  // Title bar drag handler - visual feedback only (CSS handles the actual dragging)
-  const handleTitleBarMouseDown = (e: React.MouseEvent) => {
-    // Visual feedback - change cursor to grabbing
-    const titleBar = e.currentTarget as HTMLElement;
-    titleBar.style.cursor = 'grabbing';
-  };
-
-  const handleTitleBarMouseUp = (e: React.MouseEvent) => {
-    // Reset cursor
-    const titleBar = e.currentTarget as HTMLElement;
-    titleBar.style.cursor = 'grab';
-  };
 
   const handleClose = () => {
     if (typeof window !== 'undefined' && window.electronAPI) {
@@ -199,103 +143,76 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   }, [messages.length]);
 
   return (
-    <div className="h-full w-full bg-background overflow-hidden min-h-[400px] min-w-[300px]">
-      {/* Title bar container - separate from content */}
-      <div className="flex flex-col h-full">
-        {/* Custom Title Bar - Draggable */}
-        <div
-          className="chat-title-bar-drag-zone h-10 flex-none flex items-center justify-between px-3 border-b border-border bg-background/95 backdrop-blur-sm select-none"
-          style={{
-            WebkitAppRegion: 'drag',
-            cursor: 'grab'
-          } as React.CSSProperties & { WebkitAppRegion?: string }}
-          onMouseDown={handleTitleBarMouseDown}
-          onMouseUp={handleTitleBarMouseUp}
-        >
-          <div className="flex items-center gap-2">
-            <div className="flex flex-col gap-0.5">
-              <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
-              <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
-              <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
-            </div>
-            <div className="text-sm font-medium text-foreground">Chat</div>
-          </div>
-          
-          <div
-            className="flex items-center gap-1"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleMinimize}
-              className="h-6 w-6 p-0 hover:bg-muted"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-            >
-              <Minus className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleClose}
-              className="h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
+    <div className="h-full w-full bg-background overflow-hidden flex flex-col">
+      {/* Title Bar - Draggable */}
+      <div 
+        className="flex-none h-10 bg-muted/50 border-b border-border flex items-center justify-between px-3 select-none"
+        style={{ 
+          WebkitAppRegion: 'drag',
+          cursor: 'move'
+        } as React.CSSProperties}
+      >
+        <div className="flex items-center gap-2">
+          <GripHorizontal className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">CHAT WINDOW</span>
         </div>
+        
+        <div 
+          className="flex items-center gap-1"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleMinimize}
+            className="h-6 w-6 p-0 hover:bg-muted"
+          >
+            <Minus className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleClose}
+            className="h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
 
-        {/* Content container - separate from title bar */}
-        <div className="flex-1 flex flex-col overflow-hidden p-4 w-full chat-content-area" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}>
-          {messages.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
-              <div>
-                <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>No messages yet</p>
-                <p className="text-sm">Send a message from the main window to start chatting</p>
-              </div>
+      {/* Content Area */}
+      <div className="flex-1 flex flex-col overflow-hidden p-4">
+        {messages.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
+            <div>
+              <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>No messages yet</p>
+              <p className="text-sm">Send a message from the main window to start chatting</p>
             </div>
-          ) : (
-            <div
-              ref={scrollContainerRef}
-              className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar w-full relative"
-              style={{ maxHeight: '100%' }}
-            >
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          </div>
+        ) : (
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar relative"
+          >
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <Card
+                  className={`max-w-[85%] shadow-lg ${
+                    message.role === 'user'
+                      ? 'bg-primary text-primary-foreground user-message'
+                      : 'bg-secondary text-foreground assistant-message'
+                  }`}
                 >
-                  <Card
-                    className={`max-w-full shadow-lg ${
-                      message.role === 'user'
-                        ? 'bg-primary text-primary-foreground user-message'
-                        : 'bg-secondary text-foreground assistant-message'
-                    }`}
-                  >
-                    <CardContent className="p-3">
-                      {message.role === 'assistant' ? (
-                        message.isThinking ? (
-                          <ThinkingIndicator />
-                        ) : (
-                          <MessageWithThinking
-                            content={
-                              typeof message.content === 'string'
-                                ? message.content
-                                : Array.isArray(message.content)
-                                  ? message.content.map((item, idx) =>
-                                      item.type === 'text' ? item.text : `[Image ${idx + 1}]`
-                                    ).join(' ')
-                                  : String(message.content)
-                            }
-                            usage={message.usage}
-                            timing={message.timing}
-                            toolCalls={message.toolCalls}
-                          />
-                        )
+                  <CardContent className="p-3">
+                    {message.role === 'assistant' ? (
+                      message.isThinking ? (
+                        <ThinkingIndicator />
                       ) : (
-                        <UserMessage
+                        <MessageWithThinking
                           content={
                             typeof message.content === 'string'
                               ? message.content
@@ -305,57 +222,57 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
                                   ).join(' ')
                                 : String(message.content)
                           }
+                          usage={message.usage}
+                          timing={message.timing}
+                          toolCalls={message.toolCalls}
                         />
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              ))}
-              {/* Scroll anchor */}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-
-          {/* Scroll to bottom button - positioned relative to window */}
-          {showScrollToBottom && (
-            <Button
-              onClick={scrollToBottom}
-              className="absolute bottom-20 left-1/2 transform -translate-x-1/2 h-12 w-12 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 z-50 flex items-center justify-center p-0"
-              style={{
-                WebkitAppRegion: 'no-drag',
-                backdropFilter: 'blur(8px)',
-                minWidth: '48px',
-                minHeight: '48px'
-              } as React.CSSProperties & { WebkitAppRegion?: string }}
-            >
-              <ChevronDown
-                className="text-primary-foreground"
-                size={24}
-                style={{
-                  width: '24px',
-                  height: '24px',
-                  minWidth: '24px',
-                  minHeight: '24px'
-                }}
-              />
-            </Button>
-          )}
-        </div>
-
-        {/* Session Stats Display - Only show when there are messages */}
-        {messages.length > 0 && (
-          <div className="flex-none px-4 pb-2 min-h-0">
-            <div className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded text-center break-words">
-              <div className="truncate">
-                Session: {sessionStats.totalTokens} tokens • {sessionStats.messagesCount} messages • {sessionService.formatSessionDuration()}
+                      )
+                    ) : (
+                      <UserMessage
+                        content={
+                          typeof message.content === 'string'
+                            ? message.content
+                            : Array.isArray(message.content)
+                              ? message.content.map((item, idx) =>
+                                  item.type === 'text' ? item.text : `[Image ${idx + 1}]`
+                                ).join(' ')
+                              : String(message.content)
+                        }
+                      />
+                    )}
+                  </CardContent>
+                </Card>
               </div>
-              {sessionStats.totalTokens === 0 && (
-                <div className="text-yellow-500 text-[10px] mt-1">[DEBUG: No tokens tracked yet]</div>
-              )}
-            </div>
+            ))}
+            {/* Scroll anchor */}
+            <div ref={messagesEndRef} />
           </div>
         )}
+
+        {/* Scroll to bottom button */}
+        {showScrollToBottom && (
+          <Button
+            onClick={scrollToBottom}
+            className="absolute bottom-20 right-4 h-10 w-10 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 z-50 flex items-center justify-center p-0"
+            style={{
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            <ChevronDown className="h-5 w-5" />
+          </Button>
+        )}
       </div>
+
+      {/* Session Stats Display */}
+      {messages.length > 0 && (
+        <div className="flex-none px-4 pb-2">
+          <div className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded text-center">
+            <div className="truncate">
+              Session: {sessionStats.totalTokens} tokens • {sessionStats.messagesCount} messages • {sessionService.formatSessionDuration()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
