@@ -21,6 +21,7 @@ export function ProviderLogo({ provider, className = "", size = 20 }: ProviderLo
   const getAbsoluteUrl = (url: string) => {
     if (url.startsWith('http')) return url;
     if (typeof window !== 'undefined') {
+      // Use window.location.origin to get the correct port dynamically
       return `${window.location.origin}${url}`;
     }
     return url;
