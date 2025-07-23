@@ -1,49 +1,56 @@
-/* Explicit CSS for drag regions */
-.chat-title-bar-drag-zone {
-  -webkit-app-region: drag !important;
-  -webkit-user-select: none !important;
-  user-select: none !important;
-  position: relative !important;
-  z-index: 9999 !important;
-  height: 40px !important;
-  flex-shrink: 0 !important;
-}
+/* Chat overlay specific styles */
+/* The dragging is handled inline in the component, similar to SettingsOverlay */
 
-/* Ensure buttons in title bar are not draggable */
-.chat-title-bar-drag-zone button,
-.chat-title-bar-drag-zone [role="button"] {
-  -webkit-app-region: no-drag !important;
-  position: relative !important;
-  z-index: 10000 !important;
-}
-
-/* Ensure the rest of the window is not draggable */
-body {
+/* Content area should not be draggable */
+.chat-content-area {
   -webkit-app-region: no-drag !important;
 }
 
-/* Make sure the chat content area is not draggable */
-.flex-1,
-.overflow-y-auto {
-  -webkit-app-region: no-drag !important;
-  position: relative !important;
+/* Custom scrollbar styles */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
 }
 
-/* Ensure scrollable content doesn't interfere with drag */
-.overflow-y-auto,
-.overflow-y-auto * {
-  -webkit-app-region: no-drag !important;
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* Ensure proper stacking context */
-.flex.flex-col.h-full {
-  position: relative !important;
-  z-index: 1 !important;
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(155, 155, 155, 0.3);
+  border-radius: 4px;
 }
 
-/* Ensure content container is isolated from title bar */
-.flex-1.flex.flex-col.overflow-hidden {
-  -webkit-app-region: no-drag !important;
-  position: relative !important;
-  z-index: 1 !important;
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(155, 155, 155, 0.5);
+}
+
+/* Message styles */
+.user-message {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.assistant-message {
+  animation: slideInLeft 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }

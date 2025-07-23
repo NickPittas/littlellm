@@ -391,12 +391,13 @@
     -webkit-app-region: drag !important;
   }
 
-  .chat-title-bar-drag-zone * {
+  /* Only make interactive elements non-draggable, not all children */
+  .chat-title-bar-drag-zone button,
+  .chat-title-bar-drag-zone [role="button"],
+  .chat-title-bar-drag-zone input,
+  .chat-title-bar-drag-zone select,
+  .chat-title-bar-drag-zone textarea {
     -webkit-app-region: no-drag !important;
-  }
-
-  .chat-title-bar-drag-zone [data-drag-zone="true"] {
-    -webkit-app-region: drag !important;
   }
 
   /* Force text color in all containers */
