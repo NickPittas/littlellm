@@ -199,10 +199,12 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   }, [messages.length]);
 
   return (
-    <div className="h-full w-full bg-background flex flex-col overflow-hidden min-h-[400px] min-w-[300px]">
+    <div className="h-full w-full bg-background overflow-hidden min-h-[400px] min-w-[300px]">
+      {/* Title bar container - separate from content */}
+      <div className="flex flex-col h-full">
         {/* Custom Title Bar - Draggable */}
         <div
-          className="chat-title-bar-drag-zone flex-none flex items-center justify-between p-3 border-b border-border bg-background/95 backdrop-blur-sm select-none cursor-grab active:cursor-grabbing hover:bg-background/90 transition-colors"
+          className="chat-title-bar-drag-zone h-10 flex-none flex items-center justify-between px-3 border-b border-border bg-background/95 backdrop-blur-sm select-none cursor-grab active:cursor-grabbing hover:bg-background/90 transition-colors"
           style={{
             WebkitAppRegion: 'drag',
             WebkitUserSelect: 'none',
@@ -210,7 +212,6 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
           } as React.CSSProperties & { WebkitAppRegion?: string; WebkitUserSelect?: string }}
           onMouseDown={handleTitleBarMouseDown}
           onMouseUp={handleTitleBarMouseUp}
-          data-drag-zone="true"
         >
           <div className="flex items-center gap-2">
             <div className="flex flex-col gap-0.5">
@@ -246,8 +247,8 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
           </div>
         </div>
 
-        {/* Chat Display */}
-        <div className="flex-1 flex flex-col overflow-hidden p-4 w-full">
+        {/* Content container - separate from title bar */}
+        <div className="flex-1 flex flex-col overflow-hidden p-4 w-full" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}>
           {messages.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
               <div>
@@ -355,6 +356,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
             </div>
           </div>
         )}
+      </div>
     </div>
   );
 }
