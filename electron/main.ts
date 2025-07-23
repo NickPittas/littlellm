@@ -3720,8 +3720,7 @@ function setupIPC() {
       x: x,
       y: y,
       show: false,
-      frame: true, // Enable frame for proper dragging
-      titleBarStyle: 'hidden', // Hide title bar but keep frame functionality
+      frame: false, // Frameless window
       resizable: true, // Make it resizable
       alwaysOnTop: true,
       skipTaskbar: true,

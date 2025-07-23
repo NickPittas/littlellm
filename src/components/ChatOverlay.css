@@ -1,21 +1,5 @@
 /* Chat overlay specific styles */
 
-/* Title bar should be draggable */
-.chat-title-bar {
-  -webkit-app-region: drag !important;
-  user-select: none;
-}
-
-/* Buttons in title bar should not be draggable */
-.chat-title-bar button {
-  -webkit-app-region: no-drag !important;
-}
-
-/* Content area should not be draggable */
-.chat-content-area {
-  -webkit-app-region: no-drag !important;
-}
-
 /* Custom scrollbar styles */
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
@@ -71,7 +55,13 @@ html, body {
   height: 100%;
 }
 
-/* Title bar hover effects */
-.chat-title-bar:hover {
+/* Title bar styles for frameless window */
+.draggable-title-bar {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+.draggable-title-bar:hover {
   background-color: rgba(var(--muted), 0.7);
 }

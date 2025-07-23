@@ -90,8 +90,59 @@ contextBridge.exposeInMainWorld('electronAPI', {
   takeScreenshot: () => ipcRenderer.invoke('take-screenshot'),
   setWindowBackgroundColor: (backgroundColor: string) => ipcRenderer.invoke('set-window-background-color', backgroundColor),
 
-  // Window dragging is now handled by CSS -webkit-app-region
-  // No IPC methods needed for CSS-based dragging
+  // Window dragging for frameless windows
+  startDrag: () => {
+    // Get the current mouse position
+    let mouseX = 0;
+    let mouseY = 0;
+    let windowX = 0;
+    let windowY = 0;
+    let isDragging = false;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      // Check if the click is on the draggable title bar
+      const target = e.target as HTMLElement;
+      if (target.closest('.draggable-title-bar')) {
+        isDragging = true;
+        mouseX = e.screenX;
+        mouseY = e.screenY;
+        
+        // Get current window position
+        ipcRenderer.invoke('get-window-position').then((pos) => {
+          windowX = pos.x;
+          windowY = pos.y;
+        });
+        
+        e.preventDefault();
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+      
+      const deltaX = e.screenX - mouseX;
+      const deltaY = e.screenY - mouseY;
+      
+      // Update window position
+      ipcRenderer.invoke('set-window-position', windowX + deltaX, windowY + deltaY);
+    };
+
+    const handleMouseUp = () => {
+      isDragging = false;
+    };
+
+    // Add event listeners
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    // Return cleanup function
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  },
 
   // Overlay windows
   openActionMenu: () => ipcRenderer.invoke('open-action-menu'),
