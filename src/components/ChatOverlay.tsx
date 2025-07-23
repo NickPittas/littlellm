@@ -204,12 +204,11 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
       <div className="flex flex-col h-full">
         {/* Custom Title Bar - Draggable */}
         <div
-          className="chat-title-bar-drag-zone h-10 flex-none flex items-center justify-between px-3 border-b border-border bg-background/95 backdrop-blur-sm select-none cursor-grab active:cursor-grabbing hover:bg-background/90 transition-colors"
+          className="chat-title-bar-drag-zone h-10 flex-none flex items-center justify-between px-3 border-b border-border bg-background/95 backdrop-blur-sm select-none"
           style={{
             WebkitAppRegion: 'drag',
-            WebkitUserSelect: 'none',
-            userSelect: 'none'
-          } as React.CSSProperties & { WebkitAppRegion?: string; WebkitUserSelect?: string }}
+            cursor: 'grab'
+          } as React.CSSProperties & { WebkitAppRegion?: string }}
           onMouseDown={handleTitleBarMouseDown}
           onMouseUp={handleTitleBarMouseUp}
         >
@@ -248,7 +247,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
         </div>
 
         {/* Content container - separate from title bar */}
-        <div className="flex-1 flex flex-col overflow-hidden p-4 w-full" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}>
+        <div className="flex-1 flex flex-col overflow-hidden p-4 w-full chat-content-area" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}>
           {messages.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
               <div>

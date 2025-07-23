@@ -1317,7 +1317,7 @@ async function detectNextJSPort(): Promise<number> {
       if (response) {
         return port;
       }
-    } catch (error) {
+    } catch {
       // Continue to next port
     }
   }
@@ -3721,6 +3721,7 @@ function setupIPC() {
       y: y,
       show: false,
       frame: false, // No title bar
+      titleBarStyle: 'hidden', // Hide title bar completely
       resizable: true, // Make it resizable
       alwaysOnTop: true,
       skipTaskbar: true,
