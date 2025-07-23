@@ -1,0 +1,23 @@
+/* Explicit CSS for drag regions */
+.chat-title-bar-drag-zone {
+  -webkit-app-region: drag !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+/* Ensure buttons in title bar are not draggable */
+.chat-title-bar-drag-zone button,
+.chat-title-bar-drag-zone [role="button"] {
+  -webkit-app-region: no-drag !important;
+}
+
+/* Ensure the rest of the window is not draggable */
+body {
+  -webkit-app-region: no-drag !important;
+}
+
+/* Make sure the chat content area is not draggable */
+.flex-1,
+.overflow-y-auto {
+  -webkit-app-region: no-drag !important;
+}

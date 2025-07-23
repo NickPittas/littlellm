@@ -12,6 +12,7 @@ import { ThinkingIndicator } from './ThinkingIndicator';
 import { sessionService } from '../services/sessionService';
 import type { Message } from '../services/chatService';
 import type { SessionStats } from '../services/sessionService';
+import './ChatOverlay.css';
 
 interface ChatOverlayProps {
   onClose?: () => void;
@@ -203,8 +204,10 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
         <div
           className="chat-title-bar-drag-zone flex-none flex items-center justify-between p-3 border-b border-border bg-background/95 backdrop-blur-sm select-none cursor-grab active:cursor-grabbing hover:bg-background/90 transition-colors"
           style={{
-            WebkitAppRegion: 'drag'
-          } as React.CSSProperties & { WebkitAppRegion?: string }}
+            WebkitAppRegion: 'drag',
+            WebkitUserSelect: 'none',
+            userSelect: 'none'
+          } as React.CSSProperties & { WebkitAppRegion?: string; WebkitUserSelect?: string }}
           onMouseDown={handleTitleBarMouseDown}
           onMouseUp={handleTitleBarMouseUp}
           data-drag-zone="true"
