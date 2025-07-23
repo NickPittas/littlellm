@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
-
+import { Card, CardContent } from './ui/card';
 import {
   Send,
   Copy,
@@ -26,7 +26,8 @@ import { MessageWithThinking } from './MessageWithThinking';
 import { UserMessage } from './UserMessage';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { settingsService } from '../services/settingsService';
-
+import { sessionService } from '../services/sessionService';
+import type { SessionStats } from '../services/sessionService';
 
 interface ChatInterfaceProps {
   input: string;
@@ -36,10 +37,10 @@ interface ChatInterfaceProps {
   onPromptSelect: (prompt: string) => void;
   messages?: Message[];
   onMessagesChange?: (messages: Message[]) => void;
-  hideInput?: boolean; // Hide the bottom input area
-  attachedFiles?: File[]; // Files to attach to the next message
+  hideInput?: boolean;
+  attachedFiles?: File[];
   onAttachedFilesChange?: (files: File[]) => void;
-  onScreenshotCapture?: (file: File) => void; // Screenshot capture handler
+  onScreenshotCapture?: (file: File) => void;
 }
 
 interface AttachedFile {
@@ -70,7 +71,7 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   const [internalMessages, setInternalMessages] = useState<Message[]>([]);
   const messages = externalMessages || internalMessages;
-
+  const [sessionStats, setSessionStats] = useState<SessionStats>(sessionService.getSessionStats());
   const [isLoading, setIsLoading] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const [internalAttachedFiles, setInternalAttachedFiles] = useState<AttachedFile[]>([]);
@@ -107,6 +108,7 @@ export function ChatInterface({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Load settings on component mount
   useEffect(() => {
@@ -130,7 +132,7 @@ export function ChatInterface({
       document.body.style.setProperty('-webkit-app-region', 'no-drag');
 
       // Make only the title bar draggable
-      const titleBar = document.querySelector('.chat-interface-title-bar-drag-zone');
+      const titleBar = document.querySelector('.chat-title-bar-drag-zone');
       if (titleBar) {
         (titleBar as HTMLElement).style.setProperty('-webkit-app-region', 'drag', 'important');
       }
@@ -161,18 +163,7 @@ export function ChatInterface({
     };
   }, []);
 
-  const handleClose = () => {
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      window.electronAPI.closeChatWindow();
-    }
-  };
-
-  const handleMinimize = () => {
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      window.electronAPI.minimizeWindow();
-    }
-  };
-
+  // Title bar drag handler - visual feedback only (CSS handles the actual dragging)
   const handleTitleBarMouseDown = (e: React.MouseEvent) => {
     // Visual feedback - change cursor to grabbing
     const titleBar = e.currentTarget as HTMLElement;
@@ -185,6 +176,24 @@ export function ChatInterface({
     titleBar.style.cursor = 'grab';
   };
 
+  const handleClose = () => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      window.electronAPI.closeChatWindow();
+    }
+  };
+
+  const handleMinimize = () => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      window.electronAPI.minimizeWindow();
+    }
+  };
+
+  // Update session stats when messages change
+  useEffect(() => {
+    setSessionStats(sessionService.getSessionStats());
+  }, [messages]);
+
+  // Scroll to bottom function
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -197,13 +206,13 @@ export function ChatInterface({
   };
 
   // Check if user is at bottom of scroll
-  const checkScrollPosition = useCallback(() => {
+  const checkScrollPosition = () => {
     if (!scrollContainerRef.current) return;
 
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
     setShowScrollToBottom(!isAtBottom && messages.length > 0);
-  }, [messages.length]);
+  };
 
   // Auto-scroll to bottom when messages change (only if user was already at bottom)
   useEffect(() => {
@@ -219,6 +228,17 @@ export function ChatInterface({
     }
   }, [messages]);
 
+  // Auto-scroll to bottom when new messages are received (response finished)
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      // If the last message is from assistant and has content, it means response is complete
+      if (lastMessage.role === 'assistant' && lastMessage.content && !lastMessage.isThinking) {
+        scrollToBottomOnComplete();
+      }
+    }
+  }, [messages.length, messages[messages.length - 1]?.content]);
+
   // Add scroll listener
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
@@ -232,7 +252,7 @@ export function ChatInterface({
     return () => {
       scrollContainer.removeEventListener('scroll', checkScrollPosition);
     };
-  }, [messages.length, checkScrollPosition]);
+  }, [messages.length]);
 
   // Close action menu when clicking outside
   useEffect(() => {
@@ -247,6 +267,17 @@ export function ChatInterface({
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showActionMenu, onActionMenuClose]);
+
+  // Auto-focus chat input only when component first mounts (not on every change)
+  useEffect(() => {
+    if (!hideInput && textareaRef.current) {
+      // Small delay to ensure the component is fully rendered
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        console.log('ChatInterface input auto-focused on mount');
+      }, 100);
+    }
+  }, [hideInput]);
 
   const handleFileAttach = (files: FileList | null) => {
     if (!files) return;
@@ -290,22 +321,6 @@ export function ChatInterface({
       setInternalAttachedFiles((prev: AttachedFile[]) => prev.filter((_, i: number) => i !== index));
     }
   };
-
-
-
-  // Create ref for the textarea to enable auto-focus
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Auto-focus chat input only when component first mounts (not on every change)
-  useEffect(() => {
-    if (!hideInput && textareaRef.current) {
-      // Small delay to ensure the component is fully rendered
-      setTimeout(() => {
-        textareaRef.current?.focus();
-        console.log('ChatInterface input auto-focused on mount');
-      }, 100);
-    }
-  }, [hideInput]); // Include hideInput dependency
 
   const handleSendMessage = async () => {
     if (!input.trim() && attachedFiles.length === 0) return;
@@ -491,100 +506,87 @@ export function ChatInterface({
   };
 
   return (
-    <div className="chat-interface flex flex-col h-full relative overflow-hidden">
+    <div className="h-full w-full bg-background flex flex-col overflow-hidden min-h-[400px] min-w-[300px]">
       {/* Custom Title Bar - Draggable */}
       <div
-        className="chat-interface-title-bar-drag-zone flex-none flex items-center justify-center relative h-10 w-full bg-background/95 backdrop-blur-sm border-b border-border/30 select-none cursor-grab active:cursor-grabbing hover:bg-background/90 transition-colors"
+        className="chat-title-bar-drag-zone flex-none flex items-center justify-between p-3 border-b border-border bg-background/95 backdrop-blur-sm select-none cursor-grab active:cursor-grabbing hover:bg-background/90 transition-colors"
         style={{
           WebkitAppRegion: 'drag'
         } as React.CSSProperties & { WebkitAppRegion?: string }}
         onMouseDown={handleTitleBarMouseDown}
         onMouseUp={handleTitleBarMouseUp}
-        onMouseLeave={handleTitleBarMouseUp}
         data-drag-zone="true"
       >
+        <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-0.5">
+            <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
+            <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
+            <div className="w-1 h-1 bg-muted-foreground rounded-full"></div>
+          </div>
+          <div className="text-sm font-medium text-foreground">Chat</div>
+        </div>
+        
         <div
-          className="absolute left-4 flex items-center gap-2"
+          className="flex items-center gap-1"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
         >
-          <div
-            className="w-3 h-3 rounded-full bg-red-500/80 hover:bg-red-500 cursor-pointer transition-colors"
-            onClick={handleClose}
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-          />
-          <div 
-            className="w-3 h-3 rounded-full bg-yellow-500/80 hover:bg-yellow-500 cursor-pointer transition-colors"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleMinimize}
+            className="h-6 w-6 p-0 hover:bg-muted"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-          />
-          <div className="w-3 h-3 rounded-full bg-green-500/80" />
+          >
+            <Minus className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleClose}
+            className="h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          >
+            <X className="h-3 w-3" />
+          </Button>
         </div>
-        <div className="text-sm font-medium text-foreground">Chat</div>
       </div>
 
-      {/* Messages Area */}
-      <div
-        ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar scrollable relative"
-        onScroll={checkScrollPosition}
-      >
+      {/* Chat Display */}
+      <div className="flex-1 flex flex-col overflow-hidden p-4 w-full">
         {messages.length === 0 ? (
-          <div className="text-center text-muted-foreground py-8">
-            <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>Start your conversation</p>
-            <p className="text-sm">Type your message and press Enter to send</p>
-            <p className="text-sm mt-2">Press Space to see quick actions</p>
+          <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
+            <div>
+              <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>Start your conversation</p>
+              <p className="text-sm">Type your message and press Enter to send</p>
+              <p className="text-sm mt-2">Press Space to see quick actions</p>
+            </div>
           </div>
         ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar w-full relative"
+            style={{ maxHeight: '100%' }}
+          >
+            {messages.map((message) => (
               <div
-                className={`max-w-[80%] rounded-lg p-3 ${
-                  message.role === 'user'
-                    ? 'bg-blue-600 text-white user-message'
-                    : 'bg-gray-100 text-gray-900 assistant-message border border-gray-200'
-                }`}
+                key={message.id}
+                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                  {message.role === 'assistant' ? (
-                    <MessageWithThinking
-                      content={
-                        typeof message.content === 'string'
-                          ? message.content
-                          : Array.isArray(message.content)
-                            ? message.content.map((item, idx) =>
-                                item.type === 'text' ? item.text : `[Image ${idx + 1}]`
-                              ).join(' ')
-                            : String(message.content)
-                      }
-                      usage={message.usage}
-                      timing={message.timing}
-                      toolCalls={message.toolCalls}
-                    />
-                  ) : (
-                    <UserMessage
-                      content={
-                        typeof message.content === 'string'
-                          ? message.content
-                          : Array.isArray(message.content)
-                            ? message.content.map((item, idx) =>
-                                item.type === 'text' ? item.text : `[Image ${idx + 1}]`
-                              ).join(' ')
-                            : String(message.content)
-                      }
-                    />
-                  )}
-                  <div className="flex items-center justify-between mt-2 text-xs opacity-70">
-                    <span>{message.timestamp.toLocaleTimeString()}</span>
-                    {message.role === 'assistant' && (
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                          onClick={() => copyToClipboard(
+                <Card
+                  className={`max-w-full shadow-lg ${
+                    message.role === 'user'
+                      ? 'bg-primary text-primary-foreground user-message'
+                      : 'bg-secondary text-foreground assistant-message'
+                  }`}
+                >
+                  <CardContent className="p-3">
+                    {message.role === 'assistant' ? (
+                      message.isThinking ? (
+                        <ThinkingIndicator />
+                      ) : (
+                        <MessageWithThinking
+                          content={
                             typeof message.content === 'string'
                               ? message.content
                               : Array.isArray(message.content)
@@ -592,76 +594,65 @@ export function ChatInterface({
                                     item.type === 'text' ? item.text : `[Image ${idx + 1}]`
                                   ).join(' ')
                                 : String(message.content)
-                          )}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                        >
-                          <Volume2 className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                        </Button>
-                      </div>
+                          }
+                          usage={message.usage}
+                          timing={message.timing}
+                          toolCalls={message.toolCalls}
+                        />
+                      )
+                    ) : (
+                      <UserMessage
+                        content={
+                          typeof message.content === 'string'
+                            ? message.content
+                            : Array.isArray(message.content)
+                              ? message.content.map((item, idx) =>
+                                  item.type === 'text' ? item.text : `[Image ${idx + 1}]`
+                                ).join(' ')
+                              : String(message.content)
+                        }
+                      />
                     )}
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               </div>
-          ))
-        )}
-        
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="max-w-[80%]">
-              <ThinkingIndicator />
-            </div>
+            ))}
+            {/* Scroll anchor */}
+            <div ref={messagesEndRef} />
           </div>
         )}
 
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Scroll to bottom button - positioned relative to chat interface */}
-      {showScrollToBottom && (
-        <Button
-          onClick={scrollToBottom}
-          className="absolute bottom-20 left-1/2 transform -translate-x-1/2 h-12 w-12 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 flex items-center justify-center p-0"
-          style={{
-            WebkitAppRegion: 'no-drag',
-            backdropFilter: 'blur(8px)',
-            minWidth: '48px',
-            minHeight: '48px',
-            zIndex: 40
-          } as React.CSSProperties & { WebkitAppRegion?: string; zIndex?: number }}
-        >
-          <ChevronDown
-            className="text-primary-foreground"
-            size={24}
+        {/* Scroll to bottom button - positioned relative to window */}
+        {showScrollToBottom && (
+          <Button
+            onClick={scrollToBottom}
+            className="absolute bottom-20 left-1/2 transform -translate-x-1/2 h-12 w-12 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 z-50 flex items-center justify-center p-0"
             style={{
-              width: '24px',
-              height: '24px',
-              minWidth: '24px',
-              minHeight: '24px'
-            }}
-          />
-        </Button>
-      )}
+              WebkitAppRegion: 'no-drag',
+              backdropFilter: 'blur(8px)',
+              minWidth: '48px',
+              minHeight: '48px'
+            } as React.CSSProperties & { WebkitAppRegion?: string }}
+          >
+            <ChevronDown
+              className="text-primary-foreground"
+              size={24}
+              style={{
+                width: '24px',
+                height: '24px',
+                minWidth: '24px',
+                minHeight: '24px'
+              }}
+            />
+          </Button>
+        )}
+      </div>
 
       {/* Quick Actions Menu */}
       {showActionMenu && (
         <div
           ref={actionMenuRef}
-          className="absolute bottom-16 left-4 right-4 bg-background border border-border rounded-lg shadow-lg p-3"
-          style={{ zIndex: 30 }}
+          className="absolute bottom-16 left-4 right-4 bg-background border border-border rounded-lg shadow-lg p-3 z-10"
         >
           <div className="text-sm text-muted-foreground mb-2">Type to search for an action...</div>
           <div className="grid grid-cols-2 gap-2">
@@ -685,7 +676,7 @@ export function ChatInterface({
 
       {/* Input Area */}
       {!hideInput && (
-        <div className="p-4 border-t border-border">
+        <div className="flex-none p-4 border-t border-border">
           {/* Attached Files */}
           {attachedFiles.length > 0 && (
             <div className="mb-3 flex flex-wrap gap-2">
@@ -725,63 +716,77 @@ export function ChatInterface({
             </div>
           )}
 
-            <div className="flex gap-2">
-              <div className="flex-1 relative">
-                <Textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={(e) => onInputChange(e.target.value)}
-                  placeholder="Type your message..."
-                  className="chat-interface flex-1 min-h-[40px] max-h-[120px] resize-none pr-10"
-                  style={{
-                    backgroundColor: 'hsl(var(--input))',
-                    color: 'hsl(var(--foreground))',
-                    border: '1px solid hsl(var(--border))'
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-2 top-2 w-6 h-6 p-0"
-                  onClick={() => {
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.multiple = true;
-                    input.accept = 'image/*,.pdf,.txt,.doc,.docx,.xlsx,.xls,.ods,.pptx,.ppt,.csv,.json,.html,.htm,.xml,.ics,.rtf,.md,.log';
-                    input.onchange = (e) => {
-                      const files = (e.target as HTMLInputElement).files;
-                      handleFileAttach(files);
-                    };
-                    input.click();
-                  }}
-                >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-              </div>
-              {isLoading ? (
-                <Button
-                  onClick={handleStopGeneration}
-                  variant="outline"
-                  size="sm"
-                >
-                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleSendMessage}
-                  disabled={!input.trim() && attachedFiles.length === 0}
-                  size="sm"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              )}
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <Textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => onInputChange(e.target.value)}
+                placeholder="Type your message..."
+                className="chat-interface flex-1 min-h-[40px] max-h-[120px] resize-none pr-10"
+                style={{
+                  backgroundColor: 'hsl(var(--input))',
+                  color: 'hsl(var(--foreground))',
+                  border: '1px solid hsl(var(--border))'
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-2 top-2 w-6 h-6 p-0"
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.multiple = true;
+                  input.accept = 'image/*,.pdf,.txt,.doc,.docx,.xlsx,.xls,.ods,.pptx,.ppt,.csv,.json,.html,.htm,.xml,.ics,.rtf,.md,.log';
+                  input.onchange = (e) => {
+                    const files = (e.target as HTMLInputElement).files;
+                    handleFileAttach(files);
+                  };
+                  input.click();
+                }}
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
             </div>
+            {isLoading ? (
+              <Button
+                onClick={handleStopGeneration}
+                variant="outline"
+                size="sm"
+              >
+                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSendMessage}
+                disabled={!input.trim() && attachedFiles.length === 0}
+                size="sm"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Session Stats Display - Only show when there are messages */}
+      {messages.length > 0 && (
+        <div className="flex-none px-4 pb-2 min-h-0">
+          <div className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded text-center break-words">
+            <div className="truncate">
+              Session: {sessionStats.totalTokens} tokens • {sessionStats.messagesCount} messages • {sessionService.formatSessionDuration()}
+            </div>
+            {sessionStats.totalTokens === 0 && (
+              <div className="text-yellow-500 text-[10px] mt-1">[DEBUG: No tokens tracked yet]</div>
+            )}
+          </div>
         </div>
       )}
     </div>
