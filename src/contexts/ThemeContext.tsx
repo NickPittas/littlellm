@@ -85,14 +85,12 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 // Theme application is now handled by applyColorsToDOM from colors.ts
 
-// Default colors - using DEFAULT_COLORS as single source of truth
-const defaultColors: ColorSettings = getDefaultHexColors();
-
+// NO DEFAULT COLORS - will be loaded from settings only
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [themeState, setThemeState] = useState<Theme>(themes[0]);
-  const [customColors, setCustomColors] = useState<ColorSettings>(defaultColors);
+  const [customColors, setCustomColors] = useState<ColorSettings>({} as ColorSettings);
   const [useCustomColors, setUseCustomColors] = useState(false);
-  const [selectedThemePreset, setSelectedThemePreset] = useState('default');
+  const [selectedThemePreset, setSelectedThemePreset] = useState('');
   const [colorMode, setColorMode] = useState<'preset' | 'custom'>('preset');
 
   // SIMPLIFIED: Load theme ONCE from main process at startup
@@ -101,29 +99,28 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       try {
         if (typeof window === 'undefined') return;
 
-        console.log('🎨 ThemeProvider: Loading theme from main process...');
+        // Loading theme from main process
 
         // Get theme directly from main process
         if (window.electronAPI?.getCurrentTheme) {
           const currentTheme = await window.electronAPI.getCurrentTheme();
-          console.log('🎨 ThemeProvider: Received theme:', currentTheme);
+          // Received theme from main process
 
           if (currentTheme?.customColors) {
             // Apply theme immediately
             setCustomColors(currentTheme.customColors);
             setUseCustomColors(currentTheme.useCustomColors);
             applyColorsToDOM(currentTheme.customColors);
-            console.log('🎨 ThemeProvider: Theme applied successfully');
+            // Theme applied successfully
             return;
           }
         }
 
-        // Fallback to defaults
-        console.log('🎨 ThemeProvider: Using default theme');
-        applyColorsToDOM(getDefaultHexColors());
+        // NO FALLBACK - app requires valid theme settings
+        console.error('❌ CRITICAL: No theme data from main process - app requires valid theme settings');
       } catch (error) {
-        console.error('🎨 ThemeProvider: Error loading theme:', error);
-        applyColorsToDOM(getDefaultHexColors());
+        console.error('❌ CRITICAL: Error loading theme:', error);
+        console.error('❌ App requires valid theme settings - no fallback to defaults');
       }
     };
 
@@ -135,7 +132,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined' || !window.electronAPI) return;
 
     const handleThemeChange = (themeData: { customColors: unknown; useCustomColors: boolean }) => {
-      console.log('🎨 ThemeProvider: Received theme change:', themeData);
+      // Received theme change
       const receivedColors = themeData.customColors as ColorSettings;
 
       // Update local state
@@ -146,11 +143,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // The customColors field contains the actual colors to apply (either preset or custom)
       if (receivedColors && Object.keys(receivedColors).length > 0) {
         applyColorsToDOM(receivedColors);
-        console.log('🎨 ThemeProvider: Applied theme change to DOM with received colors');
+        // Applied theme change to DOM
       } else {
-        // Fallback to default colors if no colors received
-        applyColorsToDOM(getDefaultHexColors());
-        console.log('🎨 ThemeProvider: Applied default colors as fallback');
+        // NO FALLBACK - log error but don't apply defaults
+        console.error('❌ CRITICAL: No colors received in theme change - cannot apply theme');
       }
     };
 
@@ -174,11 +170,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleSetSelectedThemePreset = (presetId: string, shouldSave: boolean = true) => {
-    console.log('🎨 Setting theme preset:', presetId);
+    // Setting theme preset
     setSelectedThemePreset(presetId);
 
-    // Apply preset colors immediately
-    const preset = getThemePreset(presetId) || getDefaultThemePreset();
+    // Apply preset colors immediately - NO FALLBACK
+    const preset = getThemePreset(presetId);
+    if (!preset) {
+      console.error(`❌ CRITICAL: Theme preset '${presetId}' not found - cannot apply theme`);
+      return;
+    }
     setCustomColors(preset.colors);
     applyColorsToDOM(preset.colors);
 
@@ -201,7 +201,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
       if (window.electronAPI?.notifyThemeChange) {
         window.electronAPI.notifyThemeChange(themeData);
-        console.log('🎨 Theme change notified to main process');
+        // Theme change notified to main process
       }
     }
   };
@@ -240,10 +240,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const getCurrentColors = (mode?: 'preset' | 'custom'): ColorSettings => {
     const currentMode = mode || colorMode;
     if (currentMode === 'preset') {
-      const preset = getThemePreset(selectedThemePreset) || getDefaultThemePreset();
+      const preset = getThemePreset(selectedThemePreset);
+      if (!preset) {
+        console.error(`❌ CRITICAL: Theme preset '${selectedThemePreset}' not found - cannot get colors`);
+        return {} as ColorSettings;
+      }
       return preset.colors;
     } else {
-      return useCustomColors ? customColors : getDefaultHexColors();
+      if (!useCustomColors || !customColors) {
+        console.error('❌ CRITICAL: Custom colors mode but no custom colors available');
+        return {} as ColorSettings;
+      }
+      return customColors;
     }
   };
 
@@ -313,33 +321,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetToDefaults = () => {
-    setCustomColors(defaultColors);
-    setUseCustomColors(false);
-
-    // Apply theme immediately
-    applyColorsToDOM(defaultColors);
-
-    // Save to settings
-    try {
-      const currentSettings = settingsService.getSettings();
-      settingsService.updateSettings({
-        ui: {
-          ...currentSettings.ui,
-          customColors: defaultColors,
-          useCustomColors: false
-        }
-      });
-    } catch (error) {
-      console.error('Error resetting to defaults:', error);
-    }
-
-    // Notify other windows about theme change
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      window.electronAPI.notifyThemeChange({
-        customColors: defaultColors,
-        useCustomColors: false
-      });
-    }
+    console.error('❌ resetToDefaults is disabled - no default themes available');
+    console.log('💡 Use theme presets instead of resetting to defaults');
   };
 
   const value = {
@@ -369,26 +352,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 export const useTheme = () => {
   const context = useContext(ThemeContext);
   if (context === undefined) {
-    // During static generation, return default theme
-    if (typeof window === 'undefined') {
-      return {
-        theme: themes[0],
-        setTheme: () => {},
-        themes,
-        customColors: defaultColors,
-        setCustomColors: () => {},
-        useCustomColors: false,
-        setUseCustomColors: () => {},
-        resetToDefaults: () => {},
-        selectedThemePreset: 'default',
-        setSelectedThemePreset: () => {},
-        colorMode: 'preset' as const,
-        setColorMode: () => {},
-        themePresets: THEME_PRESETS,
-        getCurrentColors: () => defaultColors
-      };
-    }
-    throw new Error('useTheme must be used within a ThemeProvider');
+    // NO DEFAULTS - even during static generation
+    throw new Error('useTheme must be used within a ThemeProvider - no fallback themes available');
   }
   return context;
 };

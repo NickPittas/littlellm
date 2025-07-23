@@ -86,24 +86,19 @@ const mcpConnections: Map<string, MCPConnection> = new Map();
 // MCP Auto-Connection Function
 async function connectEnabledMCPServers(): Promise<void> {
   try {
-    console.log('🔌 Auto-connecting enabled MCP servers...');
-    
     // Load MCP configuration
     const mcpData = loadMCPServers();
     const enabledServers = mcpData.servers.filter((server: MCPServerConfig) => server.enabled);
-    console.log(`📋 Found ${enabledServers.length} enabled servers`);
 
     if (enabledServers.length === 0) {
-      console.log('⏸️ No enabled MCP servers to connect');
       return;
     }
 
     // Connect to each enabled server
     const connectionPromises = enabledServers.map(server => connectMCPServer(server.id));
-    const results = await Promise.allSettled(connectionPromises);
+    await Promise.allSettled(connectionPromises);
 
-    const successCount = results.filter(result => result.status === 'fulfilled' && result.value).length;
-    console.log(`✅ Successfully connected to ${successCount}/${enabledServers.length} MCP servers`);
+    // MCP servers connection completed
 
     // Check for enabled servers that failed to connect
     const connectedIds = getConnectedMCPServerIds();
@@ -331,7 +326,7 @@ function setupCrossPlatformEnvironment(env: Record<string, string>): NodeJS.Proc
 
 async function validateMCPServerCommand(server: MCPServerConfig): Promise<{ valid: boolean; error?: string; fixedCommand?: string }> {
   try {
-    console.log(`🔍 Validating MCP server command: ${server.command} on ${process.platform}`);
+    // Validating MCP server command
 
     if (process.platform === 'darwin') {
       return await validateMacOSCommand(server);
@@ -401,7 +396,7 @@ async function validateMacOSCommand(server: MCPServerConfig): Promise<{ valid: b
 }
 
 async function validateWindowsCommand(server: MCPServerConfig): Promise<{ valid: boolean; error?: string; fixedCommand?: string }> {
-  console.log(`🪟 Running Windows validation for: ${server.command}`);
+  // Running Windows validation
 
   // Windows-specific command validation
   const fixedCommand = server.command;
@@ -449,7 +444,7 @@ async function validateWindowsCommand(server: MCPServerConfig): Promise<{ valid:
         hasResponded = true;
         clearTimeout(timeout);
         if (code === 0) {
-          console.log(`✅ Windows command found: ${server.command}`);
+          // Windows command found
           resolve({
             valid: true,
             fixedCommand
@@ -641,7 +636,7 @@ function createMacOSSecurityBypass(): Record<string, string> {
 // MCP Server Management Functions
 async function connectMCPServer(serverId: string): Promise<boolean> {
   try {
-    console.log(`🔌 Connecting to MCP server: ${serverId}`);
+    // Connecting to MCP server
 
     // Load server configuration
     const mcpData = loadMCPServers();
@@ -653,31 +648,31 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     }
 
     if (!server.enabled) {
-      console.log(`⏸️ Server ${serverId} is disabled, skipping connection`);
+      // Server is disabled, skipping connection
       return false;
     }
 
     // Check if already connected
     if (mcpConnections.has(serverId)) {
-      console.log(`✅ Server ${serverId} already connected`);
+      // Server already connected
       return true;
     }
 
     // Skip validation for npx commands since user confirmed they work
-    let validation;
+    let validation: { valid: boolean; fixedCommand?: string; error?: string };
     if (server.command === 'npx' || server.command === 'npm') {
-      console.log(`✅ Skipping validation for ${server.command} command (user confirmed it's in PATH)`);
+      // Skipping validation for command
       validation = { valid: true, fixedCommand: server.command };
     } else {
       // Validate and prepare command for macOS
-      console.log(`🔍 Validating MCP server for macOS compatibility...`);
+      // Validating MCP server for compatibility
       validation = await validateMCPServerCommand(server);
 
       if (!validation.valid) {
         console.warn(`⚠️ Initial MCP server validation failed: ${validation.error}`);
 
         // Attempt macOS-specific fixes
-        console.log(`🔧 Attempting macOS fixes...`);
+        // Attempting macOS fixes
         const fixResult = await attemptMacOSFixes(server);
 
         if (!fixResult.success) {
@@ -685,7 +680,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
           throw new Error(`Server validation and fixes failed: ${validation.error}. Suggestion: ${fixResult.message}`);
         }
 
-        console.log(`✅ Applied macOS fixes: ${fixResult.message}`);
+        // Applied macOS fixes
 
         // Re-validate after fixes
         const revalidation = await validateMCPServerCommand(server);
@@ -697,19 +692,13 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     }
 
     const finalCommand = validation.fixedCommand || server.command;
-    console.log(`🚀 Starting MCP server process: ${finalCommand} ${server.args?.join(' ') || ''}`);
+    // Removed verbose command logging
 
     // Setup macOS-compatible environment
     const baseEnv = setupMacOSEnvironment(server.env || {});
     const mergedEnv = { ...process.env, ...baseEnv } as Record<string, string>;
 
-    console.log(`🔧 macOS Environment setup:`, {
-      command: finalCommand,
-      args: server.args,
-      pathEntries: mergedEnv.PATH?.split(':').length || 0,
-      pythonPath: mergedEnv.PYTHONPATH || 'not set',
-      platform: process.platform
-    });
+    // Starting MCP server
 
     const transport = new StdioClientTransport({
       command: finalCommand,
@@ -736,7 +725,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     );
 
     await Promise.race([connectPromise, timeoutPromise]);
-    console.log(`✅ Connected to MCP server: ${serverId}`);
+    // Connected to MCP server
 
     // Discover capabilities with error handling
     let tools: { tools: unknown[] } = { tools: [] };
@@ -749,7 +738,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     } catch (error: unknown) {
       const err = error as { code?: number; message?: string };
       if (err.code === -32601) {
-        console.log(`ℹ️ Server ${serverId} does not support tools (method not found)`);
+        // Server does not support tools
       } else {
         console.warn(`⚠️ Failed to list tools for ${serverId}:`, error);
       }
@@ -761,7 +750,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     } catch (error: unknown) {
       const err = error as { code?: number; message?: string };
       if (err.code === -32601) {
-        console.log(`ℹ️ Server ${serverId} does not support resources (method not found)`);
+        // Server does not support resources
       } else {
         console.warn(`⚠️ Failed to list resources for ${serverId}:`, error);
       }
@@ -773,7 +762,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     } catch (error: unknown) {
       const err = error as { code?: number; message?: string };
       if (err.code === -32601) {
-        console.log(`ℹ️ Server ${serverId} does not support prompts (method not found)`);
+        // Server does not support prompts
       } else {
         console.warn(`⚠️ Failed to list prompts for ${serverId}:`, error);
       }
@@ -783,22 +772,14 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     const resourceCount = resources.resources?.length || 0;
     const promptCount = prompts.prompts?.length || 0;
 
-    process.stdout.write(`🔍 [DEBUG] Server ${serverId} discovered capabilities:\n`);
-    process.stdout.write(`🔍 [DEBUG] - Tools: ${toolCount} ${JSON.stringify(toolCount > 0 ? (tools.tools || []).map((t: {name?: string}) => t.name) : [])}\n`);
-    process.stdout.write(`🔍 [DEBUG] - Resources: ${resourceCount}\n`);
-    process.stdout.write(`🔍 [DEBUG] - Prompts: ${promptCount}\n`);
-    process.stdout.write(`🔍 [DEBUG] - Raw tools data: ${JSON.stringify(tools.tools, null, 2)}\n`);
+    // Removed DEBUG capability discovery logging
 
     const capabilities = [];
     if (toolCount > 0) capabilities.push(`${toolCount} tools`);
     if (resourceCount > 0) capabilities.push(`${resourceCount} resources`);
     if (promptCount > 0) capabilities.push(`${promptCount} prompts`);
 
-    if (capabilities.length > 0) {
-      console.log(`📋 Server ${serverId} capabilities: ${capabilities.join(', ')}`);
-    } else {
-      console.log(`📋 Server ${serverId} connected but provides no capabilities`);
-    }
+    // Server capabilities discovered
 
     // Store connection with error handling
     const connection: MCPConnection = {
@@ -828,16 +809,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
 
     // Provide macOS-specific troubleshooting information
     if (process.platform === 'darwin') {
-      // Reload server config for troubleshooting
-      const mcpData = loadMCPServers();
-      const serverConfig = mcpData.servers.find((s: MCPServerConfig) => s.id === serverId);
-
-      console.log(`\n🍎 macOS Troubleshooting for MCP server ${serverId}:`);
-      if (serverConfig) {
-        console.log(`1. Check if the command exists: which ${serverConfig.command}`);
-        console.log(`2. Verify executable permissions: ls -la ${serverConfig.command}`);
-        console.log(`3. Try running manually: ${serverConfig.command} ${serverConfig.args?.join(' ') || ''}`);
-      }
+      console.log(`🍎 macOS: Check command path and permissions for ${serverId}`);
       console.log(`4. Check if Gatekeeper is blocking: System Preferences > Security & Privacy`);
       console.log(`5. For Python servers, ensure Python is in PATH: echo $PATH`);
       console.log(`6. For npm packages, try: npm install -g <package-name>`);
@@ -1302,36 +1274,30 @@ async function detectNextJSPort(): Promise<number> {
     try {
       const response = await new Promise<boolean>((resolve) => {
         const req = http.get(`http://localhost:${port}`, (res) => {
-          console.log(`Checking port ${port}: status ${res.statusCode}, headers:`, res.headers);
           // Check if this looks like a Next.js server
           const isNextJS = res.headers['x-powered-by']?.includes('Next.js') ||
                           res.statusCode === 200;
           resolve(isNextJS);
         });
 
-        req.on('error', (err) => {
-          console.log(`Port ${port} error:`, err.message);
+        req.on('error', () => {
           resolve(false);
         });
         req.setTimeout(2000, () => {
           req.destroy();
-          console.log(`Port ${port} timeout`);
           resolve(false);
         });
       });
 
       if (response) {
-        console.log(`✓ Found Next.js server on port ${port}`);
         return port;
       }
     } catch (error) {
-      console.log(`Port ${port} exception:`, error);
       // Continue to next port
     }
   }
 
   // Default to 3000 if no server found (standard Next.js port)
-  console.log('No Next.js server found, defaulting to port 3000');
   return 3000;
 }
 
@@ -1385,13 +1351,13 @@ async function createStaticServer(): Promise<number> {
     // Try ports starting from 3001
     const tryPort = (port: number) => {
       server.listen(port, 'localhost', () => {
-        console.log(`Static server running on http://localhost:${port}`);
+        // Static server running
         resolve(port);
       });
 
       server.on('error', (err: { code?: string }) => {
         if (err.code === 'EADDRINUSE') {
-          console.log(`Port ${port} is busy, trying ${port + 1}...`);
+          // Port is busy, trying next port
           server.removeAllListeners('error');
           tryPort(port + 1);
         } else {
@@ -1514,7 +1480,7 @@ async function openSettingsOverlay(tab?: string) {
 
 // Global function to open action menu
 async function openActionMenu() {
-  console.log('Open action menu requested');
+  // Open action menu requested
   if (!mainWindow) {
     console.log('No main window available');
     return;
@@ -1530,7 +1496,7 @@ async function openActionMenu() {
     return true;
   }
 
-  console.log('Creating new action menu window...');
+  // Creating new action menu window
 
   // Calculate position using multi-monitor aware utility
   const windowWidth = 600;
@@ -1598,24 +1564,22 @@ async function openActionMenu() {
   });
 
   actionMenuWindow.on('closed', () => {
-    console.log('Action menu window closed, cleaning up...');
     actionMenuWindow = null;
   });
 
   actionMenuWindow.on('close', () => {
-    console.log('Action menu window closing...');
+    // Action menu window closing
   });
 
   // Additional cleanup handlers
   actionMenuWindow.webContents.on('destroyed', () => {
-    console.log('Action menu window webContents destroyed');
     if (actionMenuWindow) {
       actionMenuWindow = null;
     }
   });
 
   actionMenuWindow.once('ready-to-show', () => {
-    console.log('Action menu window ready to show');
+    // Action menu window ready to show
     actionMenuWindow?.focus();
   });
 }
@@ -1930,7 +1894,7 @@ async function createWindow() {
     const minHeight = 120;
 
     if (newBounds.width < minWidth || newBounds.height < minHeight) {
-      console.log(`Preventing resize below minimum: ${newBounds.width}x${newBounds.height}`);
+      // Preventing resize below minimum
       event.preventDefault();
 
       // Set to minimum size if user tries to go below
@@ -2201,16 +2165,11 @@ app.whenReady().then(async () => {
   console.log('Knowledge Base Service initialized.');
 
   // Auto-connect enabled MCP servers immediately
-  console.log('🚀 [DEBUG] About to call connectEnabledMCPServers...');
   try {
-    console.log('🚀 [DEBUG] Calling connectEnabledMCPServers function...');
     await connectEnabledMCPServers();
-    console.log('🚀 [DEBUG] connectEnabledMCPServers completed successfully');
   } catch (error) {
-    console.error('❌ [DEBUG] Failed to auto-connect MCP servers on startup:', error);
-    console.error('❌ [DEBUG] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('❌ Failed to auto-connect MCP servers on startup:', error);
   }
-  console.log('🚀 [DEBUG] Auto-connection attempt finished');
 });
 
 // Guard to prevent duplicate IPC handler registration
@@ -2244,7 +2203,7 @@ function setupIPC() {
   // Handle app settings
   ipcMain.handle('get-app-settings', () => {
     const settings = loadAppSettings();
-    console.log('get-app-settings called, returning:', settings);
+    // Returning app settings
     return settings;
   });
 
@@ -2395,7 +2354,7 @@ function setupIPC() {
   ipcMain.handle('get-mcp-servers', () => {
     try {
       const mcpData = loadMCPServers();
-      console.log('get-mcp-servers called, returning:', mcpData);
+      // Removed verbose MCP servers logging
       return mcpData;
     } catch (error) {
       console.error('Failed to get MCP servers:', error);
@@ -2617,7 +2576,7 @@ function setupIPC() {
 
   ipcMain.handle('validate-mcp-server', async (_, serverId: string) => {
     try {
-      console.log(`🔍 Manual validation requested for server: ${serverId}`);
+      // Manual validation requested for server
 
       // Load server configuration
       const mcpData = loadMCPServers();
@@ -2655,9 +2614,7 @@ function setupIPC() {
 
   // Debug handler to manually test MCP tool retrieval
   ipcMain.handle('debug-mcp-tools', () => {
-    process.stdout.write('🔍 [DEBUG] Manual MCP tools debug triggered\n');
     const result = getAllMCPTools();
-    process.stdout.write(`🔍 [DEBUG] Manual MCP tools result: ${JSON.stringify(result, null, 2)}\n`);
     return {
       toolCount: result.length,
       tools: result,
@@ -3003,7 +2960,7 @@ function setupIPC() {
       const constrainedWidth = Math.max(width, minWidth);
       const constrainedHeight = Math.max(height, minHeight);
 
-      console.log(`Resize request: ${width}x${height} -> constrained: ${constrainedWidth}x${constrainedHeight}`);
+      // Resize request constrained
       mainWindow.setSize(constrainedWidth, constrainedHeight);
     }
   });
@@ -3024,15 +2981,37 @@ function setupIPC() {
     return { x: 0, y: 0 };
   });
 
+  ipcMain.handle('set-window-position', (_, x: number, y: number) => {
+    if (mainWindow) {
+      mainWindow.setPosition(x, y);
+      return true;
+    }
+    return false;
+  });
+
+  // Chat window specific position handlers
+  ipcMain.handle('get-chat-window-position', () => {
+    if (chatWindow) {
+      const bounds = chatWindow.getBounds();
+      return { x: bounds.x, y: bounds.y };
+    }
+    return { x: 0, y: 0 };
+  });
+
+  ipcMain.handle('set-chat-window-position', (_, x: number, y: number) => {
+    if (chatWindow) {
+      chatWindow.setPosition(x, y);
+      return true;
+    }
+    return false;
+  });
+
   // Handle window background color updates
   ipcMain.handle('set-window-background-color', (_, backgroundColor: string) => {
-    console.log('🎨 Setting window background color to:', backgroundColor);
-
     // Update all window background colors
     const allWindows = BrowserWindow.getAllWindows();
-    allWindows.forEach((window, index) => {
+    allWindows.forEach((window) => {
       if (window && !window.isDestroyed()) {
-        console.log(`🎨 Setting backgroundColor for window ${index}:`, backgroundColor);
         window.setBackgroundColor(backgroundColor);
       }
     });
@@ -3195,7 +3174,7 @@ function setupIPC() {
             }).filter(Boolean).join('\\n                ');
           })()
         `);
-        console.log('🎨 Retrieved CSS variables for history window:', cssVariables);
+        // Retrieved CSS variables for history window
       } catch (error) {
         console.error('Failed to get CSS variables for history window:', error);
         cssVariables = ''; // Will use fallback values
@@ -3539,14 +3518,11 @@ function setupIPC() {
   });
 
   ipcMain.handle('close-action-menu', () => {
-    console.log('Close action menu requested');
     if (actionMenuWindow) {
-      console.log('Closing action menu window...');
       actionMenuWindow.close();
       // Force cleanup in case the closed event doesn't fire
       setTimeout(() => {
         if (actionMenuWindow) {
-          console.log('Force cleaning up action menu window reference');
           actionMenuWindow = null;
         }
       }, 1000);
@@ -3567,7 +3543,7 @@ function setupIPC() {
   });
 
   ipcMain.handle('open-settings-overlay', async () => {
-    console.log('Open settings overlay requested');
+    // Open settings overlay requested
     if (!mainWindow) {
       console.log('No main window available');
       return false;
@@ -3583,7 +3559,7 @@ function setupIPC() {
       return true;
     }
 
-    console.log('Creating new settings window...');
+    // Creating new settings window
 
     // Calculate position using multi-monitor aware utility
     const windowWidth = 800;
@@ -3629,7 +3605,7 @@ function setupIPC() {
       startUrl = `http://localhost:${detectedPort}`;
     }
     const settingsUrl = `${startUrl}?overlay=settings`;
-    console.log('Loading settings URL:', settingsUrl);
+    // Loading settings URL
 
     if (settingsWindow && !settingsWindow.isDestroyed()) {
       settingsWindow.loadURL(settingsUrl).catch((error) => {
@@ -3647,41 +3623,35 @@ function setupIPC() {
     }
 
     settingsWindow.on('closed', () => {
-      console.log('Settings window closed, cleaning up...');
       settingsWindow = null;
     });
 
     settingsWindow.on('close', () => {
-      console.log('Settings window closing...');
+      // Settings window closing
     });
 
     // Additional cleanup handlers
     settingsWindow.webContents.on('destroyed', () => {
-      console.log('Settings window webContents destroyed');
       if (settingsWindow) {
         settingsWindow = null;
       }
     });
 
     settingsWindow.on('hide', () => {
-      console.log('Settings window hidden');
+      // Settings window hidden
     });
 
     settingsWindow.once('ready-to-show', () => {
-      console.log('Settings window ready to show');
       settingsWindow?.focus();
     });
   });
 
   ipcMain.handle('close-settings-overlay', () => {
-    console.log('Close settings overlay requested');
     if (settingsWindow) {
-      console.log('Closing settings window...');
       settingsWindow.close();
       // Force cleanup in case the closed event doesn't fire
       setTimeout(() => {
         if (settingsWindow) {
-          console.log('Force cleaning up settings window reference');
           settingsWindow = null;
         }
       }, 1000);
@@ -3815,7 +3785,7 @@ function setupIPC() {
 
   // Handle theme change notifications from overlay to main window
   ipcMain.handle('notify-theme-change', (_, themeData: { customColors: Record<string, string>; useCustomColors: boolean }) => {
-    console.log('Main process: Received theme change notification:', themeData);
+    // Received theme change notification
 
     // Store the current theme for new windows
     currentThemeData = themeData;
@@ -3825,35 +3795,26 @@ function setupIPC() {
       ? themeData.customColors.background
       : '#181829'; // Default background color
 
-    console.log('🎨 Setting Electron window backgroundColor to:', backgroundColor);
-
     // Update all window background colors
     const allWindows = BrowserWindow.getAllWindows();
-    allWindows.forEach((window, index) => {
+    allWindows.forEach((window) => {
       if (window && !window.isDestroyed()) {
-        console.log(`🎨 Setting backgroundColor for window ${index}:`, backgroundColor);
         window.setBackgroundColor(backgroundColor);
       }
     });
 
     // Broadcast to all windows
-    console.log(`Main process: Broadcasting to ${allWindows.length} windows`);
-    allWindows.forEach((window, index) => {
+    allWindows.forEach((window) => {
       if (window && !window.isDestroyed()) {
-        console.log(`Main process: Sending theme-change to window ${index}`);
         window.webContents.send('theme-change', themeData);
       }
     });
 
     // Close and recreate static HTML windows to pick up new theme
     if (historyWindow && !historyWindow.isDestroyed()) {
-      console.log('🎨 Closing history window to refresh theme');
       historyWindow.close();
       historyWindow = null;
     }
-
-    // Note: Dropdown windows are temporary and will pick up new theme on next creation
-    console.log('🎨 Theme change broadcast complete');
   });
 
   // Store current theme data for new windows
@@ -3910,6 +3871,30 @@ function setupIPC() {
       },
     },
     {
+      id: 'midnight',
+      name: 'Midnight Blue',
+      colors: {
+        background: '#0f1419',
+        foreground: '#e6e1cf',
+        card: '#1a1f29',
+        cardForeground: '#ffffff',
+        primary: '#39bae6',
+        primaryForeground: '#ffffff',
+        secondary: '#7c3aed',
+        secondaryForeground: '#ffffff',
+        accent: '#39bae6',
+        accentForeground: '#ffffff',
+        muted: '#1a1f29',
+        mutedForeground: '#8b949e',
+        border: '#30363d',
+        input: '#21262d',
+        ring: '#39bae6',
+        destructive: '#f85149',
+        destructiveForeground: '#ffffff',
+        systemText: '#e6e1cf',
+      },
+    },
+    {
       id: 'cyberpunk',
       name: 'Cyberpunk',
       colors: {
@@ -3936,18 +3921,28 @@ function setupIPC() {
   ];
 
   function getThemePreset(id: string) {
-    return THEME_PRESETS.find(theme => theme.id === id) || THEME_PRESETS[0];
+    const preset = THEME_PRESETS.find(theme => theme.id === id);
+    if (!preset) {
+      throw new Error(`Theme preset '${id}' not found - no fallback to defaults`);
+    }
+    return preset;
   }
 
   // Initialize current theme data from settings
   try {
     const settings = loadAppSettings();
     if (settings.ui) {
-      const selectedThemePreset = settings.ui.selectedThemePreset || 'default';
-      const colorMode = settings.ui.colorMode || 'preset';
-      const useCustomColors = settings.ui.useCustomColors || false;
+      // NO FALLBACKS - use ONLY what's in settings
+      const selectedThemePreset = settings.ui.selectedThemePreset;
+      const colorMode = settings.ui.colorMode;
+      const useCustomColors = settings.ui.useCustomColors;
 
-      console.log('🎨 Loading theme settings:', { selectedThemePreset, colorMode, useCustomColors });
+      // Validate required settings exist
+      if (!selectedThemePreset || !colorMode || useCustomColors === undefined) {
+        throw new Error(`Missing required theme settings: selectedThemePreset=${selectedThemePreset}, colorMode=${colorMode}, useCustomColors=${useCustomColors}`);
+      }
+
+      // Loading theme settings
 
       let customColors: Record<string, string>;
 
@@ -3955,11 +3950,14 @@ function setupIPC() {
         // Use theme preset colors
         const preset = getThemePreset(selectedThemePreset);
         customColors = preset.colors;
-        console.log('🎨 Using preset colors for:', selectedThemePreset);
+        // Using preset colors
       } else {
-        // Use custom colors or fallback to default
-        customColors = settings.ui.customColors || getThemePreset('default').colors;
-        console.log('🎨 Using custom colors mode');
+        // Use custom colors - NO FALLBACK TO DEFAULTS
+        if (!settings.ui.customColors) {
+          throw new Error('Custom color mode selected but no custom colors found in settings');
+        }
+        customColors = settings.ui.customColors;
+        // Using custom colors mode
       }
 
       currentThemeData = {
@@ -3967,27 +3965,24 @@ function setupIPC() {
         useCustomColors: colorMode === 'custom'
       };
 
-      console.log('🎨 Initialized current theme data from settings:', currentThemeData);
+      // Initialized current theme data from settings
     }
   } catch (error) {
-    console.error('Failed to initialize theme data from settings:', error);
-    // Fallback to default theme
-    const defaultPreset = getThemePreset('default');
-    currentThemeData = {
-      customColors: defaultPreset.colors,
-      useCustomColors: false
-    };
+    console.error('❌ CRITICAL: Failed to initialize theme data from settings:', error);
+    console.error('❌ App requires valid theme settings - no fallback to defaults');
+    // Don't set currentThemeData - force proper theme configuration
+    currentThemeData = null;
   }
 
   // Update stored theme data when theme changes
   ipcMain.on('store-current-theme', (_, themeData: { customColors: Record<string, string>; useCustomColors: boolean }) => {
-    console.log('🎨 Main process: Storing current theme data:', themeData);
+    // Storing current theme data
     currentThemeData = themeData;
   });
 
   // Handle requests for current theme from new windows
   ipcMain.handle('get-current-theme', () => {
-    console.log('🎨 Main process: Requested current theme, returning:', currentThemeData);
+    // Requested current theme
     return currentThemeData;
   });
 
@@ -4023,7 +4018,7 @@ function setupIPC() {
           }).filter(Boolean).join('\\n            ');
         })()
       `);
-      console.log('🎨 Retrieved CSS variables from main window:', cssVariables);
+      // Retrieved CSS variables from main window
     } catch (error) {
       console.error('Failed to get CSS variables from main window:', error);
       cssVariables = ''; // Will use fallback values
@@ -4044,13 +4039,7 @@ function setupIPC() {
     const adjustedX = Math.max(displayX, Math.min(screenX, displayX + displayWidth - width));
     const adjustedY = Math.max(displayY, Math.min(screenY, displayY + displayHeight - height));
 
-    console.log('🔍 Dropdown multi-monitor positioning:', {
-      viewportCoords: { x, y },
-      screenCoords: { screenX, screenY },
-      adjustedPosition: { adjustedX, adjustedY },
-      size: { width, height },
-      display: display.bounds
-    });
+    // Dropdown multi-monitor positioning calculated
 
     dropdownWindow = new BrowserWindow({
       width: width,

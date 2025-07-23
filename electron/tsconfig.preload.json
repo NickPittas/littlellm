@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "ES2020",
+    "module": "CommonJS",
     "lib": ["ES2020", "DOM"],
     "outDir": "../dist/electron",
     "rootDir": "..",
@@ -19,9 +19,7 @@
     "noEmit": false
   },
   "include": [
-    "main.ts",
-    "../src/services/KnowledgeBaseService.ts",
-    "../src/services/RAGService.ts"
+    "preload.ts"
   ],
   "exclude": [
     "node_modules"

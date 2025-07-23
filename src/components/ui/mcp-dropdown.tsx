@@ -91,12 +91,7 @@ export function MCPDropdown({
 
       setServerStatus(statusMap)
 
-      console.log('📊 MCP Status loaded:', {
-        totalServers: mcpServers.length,
-        enabledServers: enabled.size,
-        connectedServers: connectedIds.length,
-        detailedStatus: detailedStatus
-      })
+      // MCP Status loaded
     } catch (error) {
       console.error('Failed to load MCP servers:', error)
     } finally {

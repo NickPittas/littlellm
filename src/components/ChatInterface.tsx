@@ -534,32 +534,32 @@ export function ChatInterface({
 
 
         <div ref={messagesEndRef} />
-
-        {/* Scroll to bottom button */}
-        {showScrollToBottom && (
-          <Button
-            onClick={scrollToBottom}
-            className="absolute bottom-4 left-1/2 transform -translate-x-1/2 h-12 w-12 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 z-10 flex items-center justify-center p-0"
-            style={{
-              WebkitAppRegion: 'no-drag',
-              backdropFilter: 'blur(8px)',
-              minWidth: '48px',
-              minHeight: '48px'
-            } as React.CSSProperties & { WebkitAppRegion?: string }}
-          >
-            <ChevronDown
-              className="text-primary-foreground"
-              size={24}
-              style={{
-                width: '24px',
-                height: '24px',
-                minWidth: '24px',
-                minHeight: '24px'
-              }}
-            />
-          </Button>
-        )}
       </div>
+
+      {/* Scroll to bottom button - positioned relative to chat interface */}
+      {showScrollToBottom && (
+        <Button
+          onClick={scrollToBottom}
+          className="absolute bottom-20 left-1/2 transform -translate-x-1/2 h-12 w-12 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 z-50 flex items-center justify-center p-0"
+          style={{
+            WebkitAppRegion: 'no-drag',
+            backdropFilter: 'blur(8px)',
+            minWidth: '48px',
+            minHeight: '48px'
+          } as React.CSSProperties & { WebkitAppRegion?: string }}
+        >
+          <ChevronDown
+            className="text-primary-foreground"
+            size={24}
+            style={{
+              width: '24px',
+              height: '24px',
+              minWidth: '24px',
+              minHeight: '24px'
+            }}
+          />
+        </Button>
+      )}
 
       {/* Quick Actions Menu */}
       {showActionMenu && (

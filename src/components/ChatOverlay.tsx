@@ -27,6 +27,45 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   // Initialize enhanced window dragging
   useEnhancedWindowDrag();
 
+  // Ensure title bar remains draggable regardless of global hook changes
+  useEffect(() => {
+    const ensureTitleBarDraggable = () => {
+      const titleBar = document.querySelector('.chat-title-bar-drag-zone');
+      if (titleBar) {
+        (titleBar as HTMLElement).style.setProperty('-webkit-app-region', 'drag', 'important');
+      }
+    };
+
+    // Set initially
+    ensureTitleBarDraggable();
+
+    // Re-apply periodically to override any interference
+    const interval = setInterval(ensureTitleBarDraggable, 100);
+
+    // Also re-apply on DOM mutations
+    const observer = new MutationObserver(ensureTitleBarDraggable);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style']
+    });
+
+    return () => {
+      clearInterval(interval);
+      observer.disconnect();
+    };
+  }, []);
+
+  // Simple title bar drag handler (CSS-based dragging)
+  const handleTitleBarMouseDown = () => {
+    // Ensure dragging is enabled
+    const titleBar = document.querySelector('.chat-title-bar-drag-zone');
+    if (titleBar) {
+      (titleBar as HTMLElement).style.setProperty('-webkit-app-region', 'drag', 'important');
+    }
+  };
+
   const handleClose = () => {
     if (typeof window !== 'undefined' && window.electronAPI) {
       window.electronAPI.closeChatWindow();
@@ -150,22 +189,27 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
     <div className="h-full w-full bg-background flex flex-col overflow-hidden min-h-[400px] min-w-[300px]">
         {/* Custom Title Bar - Draggable */}
         <div
-          className="flex-none flex items-center justify-between p-3 border-b border-border bg-background/95 backdrop-blur-sm cursor-move"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          className="chat-title-bar-drag-zone flex-none flex items-center justify-between p-3 border-b border-border bg-background/95 backdrop-blur-sm select-none"
+          style={{
+            WebkitAppRegion: 'drag'
+          } as React.CSSProperties & { WebkitAppRegion?: string }}
+          onMouseDown={handleTitleBarMouseDown}
+          data-drag-zone="true"
         >
           <div className="flex items-center gap-2">
             <div className="text-sm font-medium text-foreground">Chat</div>
           </div>
           
-          <div 
+          <div
             className="flex items-center gap-1"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
           >
             <Button
               variant="ghost"
               size="sm"
               onClick={handleMinimize}
               className="h-6 w-6 p-0 hover:bg-muted"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
             >
               <Minus className="h-3 w-3" />
             </Button>
@@ -174,6 +218,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
               size="sm"
               onClick={handleClose}
               className="h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
             >
               <X className="h-3 w-3" />
             </Button>
@@ -247,32 +292,32 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
               ))}
               {/* Scroll anchor */}
               <div ref={messagesEndRef} />
-
-              {/* Scroll to bottom button */}
-              {showScrollToBottom && (
-                <Button
-                  onClick={scrollToBottom}
-                  className="absolute bottom-4 left-1/2 transform -translate-x-1/2 h-12 w-12 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 z-10 flex items-center justify-center p-0"
-                  style={{
-                    WebkitAppRegion: 'no-drag',
-                    backdropFilter: 'blur(8px)',
-                    minWidth: '48px',
-                    minHeight: '48px'
-                  } as React.CSSProperties & { WebkitAppRegion?: string }}
-                >
-                  <ChevronDown
-                    className="text-primary-foreground"
-                    size={24}
-                    style={{
-                      width: '24px',
-                      height: '24px',
-                      minWidth: '24px',
-                      minHeight: '24px'
-                    }}
-                  />
-                </Button>
-              )}
             </div>
+          )}
+
+          {/* Scroll to bottom button - positioned relative to window */}
+          {showScrollToBottom && (
+            <Button
+              onClick={scrollToBottom}
+              className="absolute bottom-20 left-1/2 transform -translate-x-1/2 h-12 w-12 rounded-full bg-primary/90 hover:bg-primary shadow-lg transition-all duration-200 z-50 flex items-center justify-center p-0"
+              style={{
+                WebkitAppRegion: 'no-drag',
+                backdropFilter: 'blur(8px)',
+                minWidth: '48px',
+                minHeight: '48px'
+              } as React.CSSProperties & { WebkitAppRegion?: string }}
+            >
+              <ChevronDown
+                className="text-primary-foreground"
+                size={24}
+                style={{
+                  width: '24px',
+                  height: '24px',
+                  minWidth: '24px',
+                  minHeight: '24px'
+                }}
+              />
+            </Button>
           )}
         </div>
 

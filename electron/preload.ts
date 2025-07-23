@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { contextBridge, ipcRenderer } from 'electron';
+const { contextBridge, ipcRenderer } = require('electron');
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -84,6 +84,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resizeWindow: (width: number, height: number) => ipcRenderer.invoke('resize-window', width, height),
   getCurrentWindowSize: () => ipcRenderer.invoke('get-current-window-size'),
   getWindowPosition: () => ipcRenderer.invoke('get-window-position'),
+  setWindowPosition: (x: number, y: number) => ipcRenderer.invoke('set-window-position', x, y),
+  getChatWindowPosition: () => ipcRenderer.invoke('get-chat-window-position'),
+  setChatWindowPosition: (x: number, y: number) => ipcRenderer.invoke('set-chat-window-position', x, y),
   takeScreenshot: () => ipcRenderer.invoke('take-screenshot'),
   setWindowBackgroundColor: (backgroundColor: string) => ipcRenderer.invoke('set-window-background-color', backgroundColor),
 

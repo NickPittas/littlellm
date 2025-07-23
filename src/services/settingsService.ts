@@ -61,29 +61,11 @@ const DEFAULT_SETTINGS: AppSettings = {
       x: undefined, // Let Electron choose initial position
       y: undefined, // Let Electron choose initial position
     },
-    useCustomColors: false,
-    selectedThemePreset: 'default', // Default to VS Code Dark theme
-    colorMode: 'preset', // Default to using preset themes
-    customColors: {
-      background: '#181829',
-      foreground: '#d4d4d4',
-      card: '#181829',
-      cardForeground: '#ffffff',
-      primary: '#569cd6',
-      primaryForeground: '#ffffff',
-      secondary: '#4fc1ff',
-      secondaryForeground: '#adadad',
-      accent: '#569cd6',
-      accentForeground: '#ffffff',
-      muted: '#211f32',
-      mutedForeground: '#9ca3af',
-      border: '#3b3b68',
-      input: '#949494',
-      ring: '#569cd6',
-      destructive: '#f44747',
-      destructiveForeground: '#ffffff',
-      systemText: '#e0e0e0',
-    },
+    // REMOVED: All theme defaults - these should ONLY come from saved settings
+    // useCustomColors: false,
+    // selectedThemePreset: 'default',
+    // colorMode: 'preset',
+    // customColors: { ... }
   },
   shortcuts: {
     toggleWindow: 'CommandOrControl+Shift+L',
@@ -148,12 +130,65 @@ class SettingsService {
               });
             }
 
-            this.settings = { ...DEFAULT_SETTINGS, ...(savedSettings as AppSettings) };
-            this.initialized = true; // Mark as initialized after settings are loaded
+            // CRITICAL: Use ONLY saved settings, no merging with defaults
+            this.settings = savedSettings as AppSettings;
+
+            // Validate required theme settings exist
+            if (!this.settings.ui?.selectedThemePreset || !this.settings.ui?.colorMode || this.settings.ui?.useCustomColors === undefined) {
+              console.error('❌ CRITICAL: Saved settings missing required theme properties:', {
+                selectedThemePreset: this.settings.ui?.selectedThemePreset,
+                colorMode: this.settings.ui?.colorMode,
+                useCustomColors: this.settings.ui?.useCustomColors
+              });
+              throw new Error('Saved settings are missing required theme properties');
+            }
+
+            this.initialized = true;
             this.notifyListeners();
+            console.log('✅ Settings loaded from file with valid theme settings:', this.settings.ui);
           } else {
-            console.log('No saved settings found, using defaults');
-            this.initialized = true; // Mark as initialized even with defaults
+            console.log('🔧 No saved settings found - creating initial settings with cyberpunk theme');
+            // Create initial settings with cyberpunk theme (user's preferred theme)
+            const initialSettings: AppSettings = {
+              ...DEFAULT_SETTINGS,
+              ui: {
+                ...DEFAULT_SETTINGS.ui,
+                selectedThemePreset: 'cyberpunk',
+                colorMode: 'preset',
+                useCustomColors: false,
+                customColors: {
+                  background: '#0a0a0f',
+                  foreground: '#e0e0ff',
+                  card: '#1a1a2e',
+                  cardForeground: '#ffffff',
+                  primary: '#00d4ff',
+                  primaryForeground: '#000000',
+                  secondary: '#ff6b9d',
+                  secondaryForeground: '#000000',
+                  accent: '#00d4ff',
+                  accentForeground: '#000000',
+                  muted: '#16213e',
+                  mutedForeground: '#a0a0b0',
+                  border: '#2a2a5e',
+                  input: '#16213e',
+                  ring: '#00d4ff',
+                  destructive: '#ff4757',
+                  destructiveForeground: '#ffffff',
+                  systemText: '#e0e0ff',
+                }
+              }
+            };
+
+            this.settings = initialSettings;
+            this.initialized = true;
+
+            // Save initial settings to file
+            this.saveSettingsToFile().then(() => {
+              console.log('✅ Initial settings saved to file');
+              this.notifyListeners();
+            }).catch((error) => {
+              console.error('❌ Failed to save initial settings:', error);
+            });
           }
         }).catch((error) => {
           console.error('Failed to load settings from disk:', error);

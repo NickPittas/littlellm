@@ -825,27 +825,15 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
           // Get MCP connection status
           const status = await window.electronAPI.getMCPDetailedStatus();
-          console.log('📊 MCP Detailed Status:', status);
-
-          // Get all available tools
           const tools = await window.electronAPI.getAllMCPTools();
-          console.log('🔧 Available MCP Tools:', tools);
-
-          // Get all available resources
           const resources = await window.electronAPI.getAllMCPResources();
-          console.log('📁 Available MCP Resources:', resources);
-
-          // Get all available prompts
           const prompts = await window.electronAPI.getAllMCPPrompts();
-          console.log('💬 Available MCP Prompts:', prompts);
 
-          // Summary
-          console.log('📋 MCP CONNECTIVITY SUMMARY:');
+          // Simplified MCP summary
           const servers = (status && typeof status === 'object' && 'servers' in status) ? (status as {servers: Record<string, {connected: boolean}>}).servers : {};
-          console.log(`- Connected servers: ${Object.keys(servers).filter((id: string) => servers[id]?.connected).length}`);
-          console.log(`- Total tools: ${tools.length}`);
-          console.log(`- Total resources: ${resources.length}`);
-          console.log(`- Total prompts: ${prompts.length}`);
+          const connectedCount = Object.keys(servers).filter((id: string) => servers[id]?.connected).length;
+
+          // MCP summary data collected
 
           if (tools.length === 0) {
             console.warn('⚠️ No MCP tools available! This is why the LLM cannot use tools.');
