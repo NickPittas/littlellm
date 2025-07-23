@@ -107,11 +107,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
         mouseX = e.screenX;
         mouseY = e.screenY;
         
+        // Determine which window we're in based on URL
+        const isInChatWindow = window.location.search.includes('overlay=chat');
+        
         // Get current window position
-        ipcRenderer.invoke('get-window-position').then((pos) => {
-          windowX = pos.x;
-          windowY = pos.y;
-        });
+        if (isInChatWindow) {
+          ipcRenderer.invoke('get-chat-window-position').then((pos) => {
+            windowX = pos.x;
+            windowY = pos.y;
+          });
+        } else {
+          ipcRenderer.invoke('get-window-position').then((pos) => {
+            windowX = pos.x;
+            windowY = pos.y;
+          });
+        }
         
         e.preventDefault();
       }
@@ -123,8 +133,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       const deltaX = e.screenX - mouseX;
       const deltaY = e.screenY - mouseY;
       
+      // Determine which window we're in based on URL
+      const isInChatWindow = window.location.search.includes('overlay=chat');
+      
       // Update window position
-      ipcRenderer.invoke('set-window-position', windowX + deltaX, windowY + deltaY);
+      if (isInChatWindow) {
+        ipcRenderer.invoke('set-chat-window-position', windowX + deltaX, windowY + deltaY);
+      } else {
+        ipcRenderer.invoke('set-window-position', windowX + deltaX, windowY + deltaY);
+      }
     };
 
     const handleMouseUp = () => {

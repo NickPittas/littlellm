@@ -65,6 +65,8 @@ export interface ElectronAPI {
   // Window dragging
   startDrag: () => (() => void);
   setWindowPosition: (x: number, y: number) => Promise<void>;
+  getChatWindowPosition: () => Promise<{ x: number; y: number }>;
+  setChatWindowPosition: (x: number, y: number) => Promise<void>;
 
   // Overlay windows
   openActionMenu: () => Promise<void>;
