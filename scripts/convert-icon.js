@@ -1,48 +1,44 @@
 import fs from 'fs';
 import path from 'path';
-import svg2img from 'svg2img';
+import sharp from 'sharp';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const svgPath = path.join(__dirname, '..', 'assets', 'icon.svg');
-const svgContent = fs.readFileSync(svgPath, 'utf8');
+const sourcePngPath = path.join(__dirname, '..', 'assets', 'LittleLLM.png');
 
 // Convert to different PNG sizes for ICO
 const sizes = [16, 32, 48, 64, 128, 256];
 
 async function convertIcon() {
-  console.log('Converting SVG to PNG formats...');
-  
+  console.log('Converting LittleLLM.png to various icon formats...');
+
+  if (!fs.existsSync(sourcePngPath)) {
+    console.error('Source PNG not found:', sourcePngPath);
+    return;
+  }
+
   for (const size of sizes) {
     try {
-      const pngBuffer = await new Promise((resolve, reject) => {
-        svg2img(svgContent, { width: size, height: size }, (error, buffer) => {
-          if (error) reject(error);
-          else resolve(buffer);
-        });
-      });
-      
       const outputPath = path.join(__dirname, '..', 'assets', `icon-${size}.png`);
-      fs.writeFileSync(outputPath, pngBuffer);
+      await sharp(sourcePngPath)
+        .resize(size, size)
+        .png()
+        .toFile(outputPath);
       console.log(`Created ${size}x${size} PNG: ${outputPath}`);
     } catch (error) {
       console.error(`Error creating ${size}x${size} PNG:`, error.message);
     }
   }
-  
+
   // Create a 256x256 PNG as the main icon
   try {
-    const mainPngBuffer = await new Promise((resolve, reject) => {
-      svg2img(svgContent, { width: 256, height: 256 }, (error, buffer) => {
-        if (error) reject(error);
-        else resolve(buffer);
-      });
-    });
-    
     const mainIconPath = path.join(__dirname, '..', 'assets', 'icon.png');
-    fs.writeFileSync(mainIconPath, mainPngBuffer);
+    await sharp(sourcePngPath)
+      .resize(256, 256)
+      .png()
+      .toFile(mainIconPath);
     console.log(`Created main icon: ${mainIconPath}`);
   } catch (error) {
     console.error('Error creating main PNG:', error.message);
