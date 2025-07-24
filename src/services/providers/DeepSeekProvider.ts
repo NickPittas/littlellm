@@ -169,8 +169,10 @@ export class DeepSeekProvider extends BaseProvider {
       return basePrompt;
     }
 
-    const toolInstructions = generateDeepSeekToolPrompt(tools);
-    return basePrompt + toolInstructions;
+    // DeepSeek uses structured tool calling with tools parameter and tool_choice
+    // Don't add XML tool instructions as they conflict with native function calling
+    console.log(`🔧 DeepSeek using structured tools, skipping XML tool instructions`);
+    return basePrompt;
   }
 
   validateToolCall(toolCall: { id?: string; name: string; arguments: Record<string, unknown> }): { valid: boolean; errors: string[] } {

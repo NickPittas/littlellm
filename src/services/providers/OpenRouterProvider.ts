@@ -172,18 +172,20 @@ export class OpenRouterProvider extends BaseProvider {
       requestBody.tool_choice = 'auto';
       console.log(`🚀 OpenRouter API call with ${tools.length} structured tools for ${underlyingProvider} model`);
     } else if (tools.length > 0) {
-      // For models without structured tools, include tool descriptions in system prompt
-      const toolDescriptions = this.formatToolsAsText(tools as ToolObject[]);
+      // For models without structured tools, use enhanced system prompt with proper tool calling instructions
+      const enhancedSystemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, tools as ToolObject[], underlyingProvider);
+      console.log(`🔧 OpenRouter enhanced system prompt for ${underlyingProvider} (${enhancedSystemPrompt.length - systemPrompt.length} chars added)`);
+
       if (underlyingProvider === 'anthropic') {
-        requestBody.system = `${systemPrompt}\n\nAvailable tools:\n${toolDescriptions}`;
+        requestBody.system = enhancedSystemPrompt;
       } else {
         // Update system message in messages array
         const systemMessageIndex = (messages as Array<{role: string, content: string}>).findIndex(m => m.role === 'system');
         if (systemMessageIndex >= 0) {
-          (messages as Array<{role: string, content: string}>)[systemMessageIndex].content = `${systemPrompt}\n\nAvailable tools:\n${toolDescriptions}`;
+          (messages as Array<{role: string, content: string}>)[systemMessageIndex].content = enhancedSystemPrompt;
         }
       }
-      console.log(`🚀 OpenRouter API call with ${tools.length} text-based tools for ${underlyingProvider} model (no structured tool support)`);
+      console.log(`🚀 OpenRouter API call with ${tools.length} text-based tools for ${underlyingProvider} model (enhanced system prompt)`);
     } else {
       console.log(`🚀 OpenRouter API call without tools for ${underlyingProvider} model`);
     }
@@ -209,6 +211,26 @@ export class OpenRouterProvider extends BaseProvider {
     const toolCalls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
     console.log(`🔍 OpenRouter parsing text for tool calls in content:`, content.substring(0, 200) + '...');
+
+    // Pattern 0: Simple functions.tool_name:id format (most common)
+    // functions.list_processes:0, functions.write_file:1, etc.
+    const simpleFunctionRegex = /functions\.([a-zA-Z_][a-zA-Z0-9_]*):(\d+)/gi;
+    let simpleMatch = simpleFunctionRegex.exec(content);
+    while (simpleMatch) {
+      const toolName = simpleMatch[1];
+      const toolId = simpleMatch[2];
+
+      // Check if this tool is available
+      if (availableTools.length === 0 || availableTools.includes(toolName)) {
+        // For simple format, we need to extract arguments from context or use empty object
+        const args = this.extractArgumentsForSimpleToolCall(content, toolName, toolId);
+        toolCalls.push({ name: toolName, arguments: args });
+        console.log(`✅ Found simple function format tool call: ${toolName}:${toolId} with args:`, args);
+      } else {
+        console.log(`⚠️ Tool ${toolName} not in available tools list:`, availableTools);
+      }
+      simpleMatch = simpleFunctionRegex.exec(content);
+    }
 
     // Pattern 1: Custom OpenRouter/model-specific format with delimiters
     // <|tool_calls_section_begin|><|tool_call_begin|>functions.tool_name:1<|tool_call_argument_begin|>{"arg": "value"}<|tool_call_end|><|tool_calls_section_end|>
@@ -287,6 +309,45 @@ export class OpenRouterProvider extends BaseProvider {
     console.log(`🔍 No structured tool calls found, searching for tool usage traces in text...`);
 
     return this.parseToolTracesFromText(content, availableTools);
+  }
+
+  /**
+   * Extract arguments for simple tool calls (functions.tool_name:id format)
+   * Looks for JSON objects or argument patterns near the tool call
+   */
+  private extractArgumentsForSimpleToolCall(content: string, toolName: string, toolId: string): Record<string, unknown> {
+    // Look for JSON objects near the tool call
+    const toolCallPattern = `functions\\.${toolName}:${toolId}`;
+    const toolCallIndex = content.search(new RegExp(toolCallPattern));
+
+    if (toolCallIndex === -1) {
+      return {};
+    }
+
+    // Search for JSON objects in the surrounding context (500 chars before and after)
+    const contextStart = Math.max(0, toolCallIndex - 500);
+    const contextEnd = Math.min(content.length, toolCallIndex + 500);
+    const context = content.substring(contextStart, contextEnd);
+
+    // Look for JSON objects in the context
+    const jsonRegex = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
+    let match;
+    while ((match = jsonRegex.exec(context)) !== null) {
+      try {
+        const parsed = JSON.parse(match[0]);
+        // If it's a valid object with reasonable properties, use it
+        if (typeof parsed === 'object' && parsed !== null && Object.keys(parsed).length > 0) {
+          console.log(`🔧 Extracted arguments for ${toolName} from context:`, parsed);
+          return parsed;
+        }
+      } catch (error) {
+        // Continue searching
+      }
+    }
+
+    // If no JSON found, return empty object (tool will use defaults)
+    console.log(`🔧 No arguments found for ${toolName}, using empty object`);
+    return {};
   }
 
   /**
@@ -407,7 +468,9 @@ export class OpenRouterProvider extends BaseProvider {
   ): Promise<LLMResponse> {
     // Detect underlying provider from model name
     const underlyingProvider = this.detectUnderlyingProvider(settings.model);
+    const supportsStructuredTools = this.modelSupportsStructuredTools(underlyingProvider);
     console.log(`🔍 OpenRouter model "${settings.model}" detected as underlying provider: ${underlyingProvider}`);
+    console.log(`🔍 OpenRouter structured tools support: ${supportsStructuredTools} for provider: ${underlyingProvider}`);
 
     // Get OpenRouter-specific formatted tools
     const openRouterTools = await this.getOpenRouterTools(settings);
@@ -511,13 +574,27 @@ export class OpenRouterProvider extends BaseProvider {
     return OPENROUTER_SYSTEM_PROMPT;
   }
 
-  enhanceSystemPromptWithTools(basePrompt: string, tools: ToolObject[]): string {
+  enhanceSystemPromptWithTools(basePrompt: string, tools: ToolObject[], underlyingProvider?: string): string {
     if (tools.length === 0) {
       return basePrompt;
     }
 
-    const toolInstructions = generateOpenRouterToolPrompt(tools);
-    return basePrompt + toolInstructions;
+    // For structured tool calling providers, don't add XML tool instructions
+    // The tools are sent via the tools parameter and the LLM should use native function calling
+    const provider = underlyingProvider || 'openai'; // Default to openai if not specified
+    const supportsStructuredTools = this.modelSupportsStructuredTools(provider);
+
+    if (supportsStructuredTools) {
+      // For structured tools, just return the base prompt
+      // The LLM will use native function calling based on the tools parameter
+      console.log(`🔧 OpenRouter using structured tools for ${provider}, skipping XML tool instructions`);
+      return basePrompt;
+    } else {
+      // For text-based tool calling, add the complex tool instructions with XML format
+      console.log(`🔧 OpenRouter using text-based tools for ${provider}, adding XML tool instructions`);
+      const toolInstructions = generateOpenRouterToolPrompt(tools);
+      return basePrompt + toolInstructions;
+    }
   }
 
   validateToolCall(toolCall: { id?: string; name: string; arguments: Record<string, unknown> }): { valid: boolean; errors: string[] } {
@@ -649,8 +726,12 @@ export class OpenRouterProvider extends BaseProvider {
     const toolResults = [];
     for (const toolCall of standardToolCalls) {
       try {
-        console.log(`🔧 Executing OpenRouter tool call: ${toolCall.name}`);
+        console.log(`🔧 Executing OpenRouter tool call: ${toolCall.name} with args:`, toolCall.arguments);
+        console.log(`🔧 OpenRouter executeMCPTool method available:`, typeof this.executeMCPTool);
+
         const toolResult = await this.executeMCPTool(toolCall.name, toolCall.arguments);
+        console.log(`✅ OpenRouter tool execution successful for ${toolCall.name}:`, toolResult?.substring(0, 100) + '...');
+
         toolResults.push({
           role: 'tool',
           tool_call_id: toolCall.id,
@@ -658,12 +739,19 @@ export class OpenRouterProvider extends BaseProvider {
           content: toolResult
         });
       } catch (error) {
-        console.error(`❌ OpenRouter tool execution failed:`, error);
+        console.error(`❌ OpenRouter tool execution failed for ${toolCall.name}:`, error);
+        console.error(`❌ Error details:`, {
+          name: error instanceof Error ? error.name : 'Unknown',
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
+
+        const errorMessage = `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`;
         toolResults.push({
           role: 'tool',
           tool_call_id: toolCall.id,
           name: toolCall.name,
-          content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
+          content: JSON.stringify({ error: errorMessage })
         });
       }
     }
@@ -683,7 +771,11 @@ export class OpenRouterProvider extends BaseProvider {
           }
         }))
       },
-      ...toolResults
+      ...toolResults,
+      {
+        role: 'user',
+        content: 'Please provide a final response based on the tool execution results above. Analyze the data and answer the user\'s most recent question directly. Do not repeat previous responses or refer to earlier requests in this conversation.'
+      }
     ];
 
     console.log(`🔄 Making OpenRouter follow-up call to process tool results...`);

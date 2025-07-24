@@ -13,6 +13,7 @@ import {
 import { FALLBACK_MODELS } from './constants';
 import { ToolNameUtils } from './utils';
 import { ANTHROPIC_SYSTEM_PROMPT, generateAnthropicToolPrompt } from './prompts/anthropic';
+import { debugLogger } from '../../utils/debugLogger';
 
 export class AnthropicProvider extends BaseProvider {
   readonly id = 'anthropic';
@@ -398,8 +399,10 @@ export class AnthropicProvider extends BaseProvider {
       return basePrompt;
     }
 
-    const toolInstructions = generateAnthropicToolPrompt(tools);
-    return basePrompt + toolInstructions;
+    // Anthropic uses structured tool calling with tools parameter and tool_choice
+    // Don't add XML tool instructions as they conflict with native function calling
+    console.log(`🔧 Anthropic using structured tools, skipping XML tool instructions`);
+    return basePrompt;
   }
 
   validateToolCall(toolCall: { id?: string; name: string; arguments: Record<string, unknown> }): { valid: boolean; errors: string[] } {
@@ -626,6 +629,14 @@ export class AnthropicProvider extends BaseProvider {
     }
 
     // If we have tool calls, execute them in parallel and make a follow-up streaming call
+    console.log(`🔍 Anthropic tool execution check:`, {
+      toolCallsCount: toolCalls.length,
+      hasExecuteMultipleToolsParallel: !!this._executeMultipleToolsParallel,
+      hasSummarizeToolResultsForModel: !!this._summarizeToolResultsForModel,
+      hasAggregateToolResults: !!this._aggregateToolResults,
+      hasFormatToolResult: !!this._formatToolResult
+    });
+
     if (toolCalls.length > 0 && this._executeMultipleToolsParallel && this._summarizeToolResultsForModel && this._aggregateToolResults && this._formatToolResult) {
       console.log(`🚀 Executing ${toolCalls.length} Anthropic tools in parallel before follow-up`);
 
@@ -715,7 +726,7 @@ export class AnthropicProvider extends BaseProvider {
 
       const baseSystemPrompt = hasCustomSystemPromptFollowUp ? settings.systemPrompt! : this.getSystemPrompt();
       const followUpSystemPrompt = baseSystemPrompt +
-        `\n\n## Follow-up Context\n\nBased on the tool results provided above, continue the conversation naturally. If you need to use additional tools to better answer the user's question, feel free to do so.`;
+        `\n\n## Follow-up Context\n\nBased on the tool results provided above, analyze the information and provide a complete, helpful response to the user's original question. Use the tool results to give specific, detailed information. If you need additional tools to provide a better answer, use them, but always conclude with a final response to the user.`;
 
       // Make follow-up streaming call with tools enabled for agentic behavior
       const followUpRequestBody = {
@@ -751,6 +762,8 @@ export class AnthropicProvider extends BaseProvider {
           const followUpResult = await this.handleStreamResponse(
             followUpResponse,
             (chunk: string) => {
+              console.log(`🔄 Anthropic streaming follow-up chunk:`, chunk.substring(0, 50) + '...');
+              debugLogger.logStreaming('Anthropic', chunk, true);
               onStream(chunk);
             },
             settings,
@@ -794,11 +807,36 @@ export class AnthropicProvider extends BaseProvider {
           };
         } catch (error) {
           console.error(`❌ Anthropic follow-up streaming failed:`, error);
+
+          // Check if it's a rate limit error and try local execution
+          if (error && typeof error === 'object' && 'error' in error) {
+            const apiError = error as any;
+            if (apiError.error?.type === 'rate_limit_error') {
+              console.warn('⚠️ Anthropic: Rate limit exceeded, attempting local tool execution');
+
+              // Try to execute tools locally if methods are available
+              if (this.executeMCPTool && toolCalls.length > 0) {
+                try {
+                  const localResults = await this.executeToolsLocally(toolCalls, fullContent, usage);
+                  return localResults;
+                } catch (localError) {
+                  console.error('❌ Local tool execution also failed:', localError);
+                }
+              }
+            }
+          }
+
           // Fall through to return original response
         }
       } else {
         console.error(`❌ Anthropic follow-up streaming call failed:`, await followUpResponse.text());
       }
+    }
+
+    // If we reach here, either no tool calls or tool execution methods not available
+    if (toolCalls.length > 0) {
+      console.warn(`⚠️ Anthropic: Tool calls detected but execution methods not available. Tool calls will not be executed.`);
+      console.warn(`⚠️ Anthropic: Returning tool calls for external handling.`);
     }
 
     return {
@@ -815,6 +853,49 @@ export class AnthropicProvider extends BaseProvider {
           name: tc.name!,
           arguments: tc.arguments as Record<string, unknown>
         })) : undefined
+    };
+  }
+
+  /**
+   * Execute tools locally when API calls fail (e.g., rate limits)
+   */
+  private async executeToolsLocally(toolCalls: any[], content: string, usage: any): Promise<any> {
+    console.log(`🔧 Executing ${toolCalls.length} tools locally due to API limitations`);
+
+    const toolResults = [];
+    for (const toolCall of toolCalls) {
+      try {
+        console.log(`🔧 Executing local tool: ${toolCall.name} with args:`, toolCall.arguments);
+        const result = await this.executeMCPTool!(toolCall.name, toolCall.arguments);
+        toolResults.push({
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
+          result: result
+        });
+        console.log(`✅ Local tool execution successful for ${toolCall.name}`);
+      } catch (error) {
+        console.error(`❌ Local tool execution failed for ${toolCall.name}:`, error);
+        toolResults.push({
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
+          result: `Error: ${error instanceof Error ? error.message : String(error)}`
+        });
+      }
+    }
+
+    // Format results for display
+    const resultsText = toolResults.map(tr =>
+      `**${tr.toolName}**: ${tr.result.substring(0, 500)}${tr.result.length > 500 ? '...' : ''}`
+    ).join('\n\n');
+
+    return {
+      content: `${content}\n\n**Tool Execution Results:**\n\n${resultsText}`,
+      usage: usage ? {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0
+      } : undefined,
+      toolCalls: undefined // Clear tool calls since they've been executed
     };
   }
 

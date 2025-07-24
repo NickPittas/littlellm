@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Brain, Copy, Check, Wrench } from 'lucide-react';
 import { Button } from './ui/button';
 import { parseTextWithContent } from '../lib/contentParser';
@@ -38,10 +38,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
   const [showTools, setShowTools] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Debug tool calls
-  if (toolCalls && toolCalls.length > 0) {
-    console.log('🔧 MessageWithThinking received toolCalls:', toolCalls);
-  }
+  // Debug tool calls - now handled in useEffect to prevent spam
 
   // Parse the message content to extract thinking sections, tool execution, and response
   const parseMessage = (text: string): ParsedMessage => {
@@ -170,8 +167,10 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
           const parsed = JSON.parse(jsonContent);
 
           if (parsed.tool_call && parsed.tool_call.name) {
+            // Create deterministic ID based on content to prevent re-render loops
+            const contentHash = btoa(JSON.stringify(parsed.tool_call)).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
             toolCalls.push({
-              id: `extracted_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              id: `extracted_json_${contentHash}`,
               name: parsed.tool_call.name,
               arguments: parsed.tool_call.arguments || {}
             });
@@ -195,8 +194,10 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
         if (jsonStr) {
           const parsed = JSON.parse(jsonStr);
           if (parsed.tool_call && parsed.tool_call.name) {
+            // Create deterministic ID based on content to prevent re-render loops
+            const contentHash = btoa(JSON.stringify(parsed.tool_call)).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
             toolCalls.push({
-              id: `extracted_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              id: `extracted_direct_${contentHash}`,
               name: parsed.tool_call.name,
               arguments: parsed.tool_call.arguments || {}
             });
@@ -226,8 +227,10 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
               }
             }
 
+            // Create deterministic ID based on content to prevent re-render loops
+            const contentHash = btoa(JSON.stringify({name: tc.function.name, args})).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
             toolCalls.push({
-              id: tc.id || `extracted_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              id: tc.id || `extracted_native_${contentHash}`,
               name: tc.function.name,
               arguments: args
             });
@@ -241,18 +244,40 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
     return toolCalls;
   };
 
-  const parsed = parseMessage(content);
+  const parsed = useMemo(() => parseMessage(content), [content]);
   const hasThinking = parsed.thinking.length > 0;
   const hasToolExecution = parsed.toolExecution.length > 0;
 
-  // Extract tool calls from content if not provided via props
-  const extractedToolCalls = extractToolCallsFromContent(content);
+  // Extract tool calls from content if not provided via props - MEMOIZED to prevent infinite loops
+  const extractedToolCalls = useMemo(() => {
+    // Only extract if no tool calls provided via props
+    if (toolCalls && toolCalls.length > 0) {
+      return [];
+    }
+    return extractToolCallsFromContent(content);
+  }, [content, toolCalls]);
+
   const allToolCalls = toolCalls && toolCalls.length > 0 ? toolCalls : extractedToolCalls;
   const hasTools = allToolCalls.length > 0;
 
   // Ensure we always show tool execution section if we have tool calls
   // This fixes inconsistencies across providers
   const shouldShowToolExecution = hasToolExecution || hasTools;
+
+  // Log tool calls only once per unique set to prevent spam
+  const toolCallsKey = useMemo(() => {
+    if (allToolCalls.length === 0) return '';
+    return allToolCalls.map(tc => `${tc.name}:${JSON.stringify(tc.arguments)}`).join('|');
+  }, [allToolCalls]);
+
+  const [loggedToolCallsKey, setLoggedToolCallsKey] = useState<string>('');
+
+  useEffect(() => {
+    if (toolCallsKey && toolCallsKey !== loggedToolCallsKey && allToolCalls.length > 0) {
+      console.log('🔧 MessageWithThinking received toolCalls:', allToolCalls);
+      setLoggedToolCallsKey(toolCallsKey);
+    }
+  }, [toolCallsKey, loggedToolCallsKey, allToolCalls]);
 
   // Copy function for the entire message content
   const handleCopy = async () => {

@@ -144,8 +144,10 @@ export class RequestyProvider extends BaseProvider {
       return basePrompt;
     }
 
-    const toolInstructions = generateRequestyToolPrompt(tools);
-    return basePrompt + toolInstructions;
+    // Requesty uses structured tool calling with tools parameter and tool_choice
+    // Don't add XML tool instructions as they conflict with native function calling
+    console.log(`🔧 Requesty using structured tools, skipping XML tool instructions`);
+    return basePrompt;
   }
 
   // Private helper methods

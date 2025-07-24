@@ -87,9 +87,31 @@ export interface UISettings {
   colorMode?: 'preset' | 'custom'; // Whether using preset or custom colors
 }
 
+export interface InternalCommandSettings {
+  enabled: boolean;
+  allowedDirectories: string[];
+  blockedCommands: string[];
+  fileReadLineLimit: number;
+  fileWriteLineLimit: number;
+  defaultShell: string;
+  enabledCommands: {
+    terminal: boolean;
+    filesystem: boolean;
+    textEditing: boolean;
+    system: boolean;
+  };
+  enabledTools?: Record<string, boolean>; // Individual tool toggles
+  terminalSettings: {
+    defaultTimeout: number;
+    maxProcesses: number;
+    allowInteractiveShells: boolean;
+  };
+}
+
 export interface AppSettings {
   chat: ChatSettings;
   mcpServers: MCPServerConfig[];
+  internalCommands: InternalCommandSettings;
   ui: UISettings;
   shortcuts: {
     toggleWindow: string;

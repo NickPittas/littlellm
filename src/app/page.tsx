@@ -4,6 +4,11 @@ import { useState, useEffect } from 'react';
 import { VoilaInterface } from '../components/VoilaInterface';
 import { OverlayRouter } from '../components/OverlayRouter';
 
+// Import test utilities for development
+import '../utils/testInternalCommands';
+import '../utils/readDebugLog';
+import '../utils/autoDebugReader';
+
 export default function Home() {
   // Home component rendering
   const [isOverlay, setIsOverlay] = useState(false);

@@ -3,15 +3,22 @@
 // This is the complete tool calling prompt used for Ollama
 
 export function generateOllamaToolPrompt(tools: unknown[]): string {
-  // Type guard for tool objects - EXACT copy from original
-  const isToolObject = (t: unknown): t is { function?: { name?: string; description?: string; parameters?: Record<string, unknown> } } => {
+  // Type guard for tool objects - supports both OpenAI format and direct name format
+  const isToolObject = (t: unknown): t is {
+    function?: { name?: string; description?: string; parameters?: Record<string, unknown> };
+    name?: string;
+    description?: string;
+  } => {
     return typeof t === 'object' && t !== null;
   };
 
   const availableToolNames = tools
     .filter(isToolObject)
-    .map(tool => tool.function?.name)
+    .map(tool => tool.function?.name || tool.name)  // Support both formats
     .filter(Boolean);
+
+  console.log(`🔧 generateOllamaToolPrompt: Extracted ${availableToolNames.length} tool names from ${tools.length} tools:`, availableToolNames);
+  console.log(`🔧 generateOllamaToolPrompt: Sample tool structure:`, tools[0]);
 
   const instructions = `
 # Concise Universal AI Assistant System Prompt
@@ -97,18 +104,18 @@ ${availableToolNames.length > 0 ? availableToolNames.join(', ') : 'No tools avai
 
 ## EXAMPLE WORKFLOW:
 
-**User Request:** "Get the weather in Paris and today's news"
+**User Request:** "List files in my Downloads folder and search for weather"
 
 **Stage 1 - Planning:**
-Task requires: (1) Weather data for Paris, (2) Current news headlines
+Task requires: (1) List directory contents, (2) Search for weather information
 
 **Stage 2 - Execution:**
 \`\`\`json
 {
   "tool_call": {
-    "name": "web_search",
+    "name": "list_directory",
     "arguments": {
-      "query": "Paris weather current temperature forecast"
+      "path": "C:\\Users\\username\\Downloads"
     }
   }
 }
@@ -116,7 +123,7 @@ Task requires: (1) Weather data for Paris, (2) Current news headlines
   "tool_call": {
     "name": "web_search",
     "arguments": {
-      "query": "today breaking news headlines"
+      "query": "current weather forecast"
     }
   }
 }
@@ -131,6 +138,8 @@ Task requires: (1) Weather data for Paris, (2) Current news headlines
 - Only use tools from the available list above: ${availableToolNames.join(', ')}
 - **ALWAYS start tool calls with \`\`\`json and end with \`\`\`**
 - Always use proper JSON formatting for tool calls
+- **IMPORTANT**: Use parameters directly in "arguments" object - NO "input" wrapper needed
+- **EXAMPLE**: {"tool_call": {"name": "list_directory", "arguments": {"path": "C:\\\\Users\\\\..."}}}
 - Complete the full workflow: Planning → Execution → Synthesis
 - Provide helpful, comprehensive final responses
 

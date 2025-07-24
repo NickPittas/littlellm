@@ -30,18 +30,30 @@ export class OllamaProvider extends BaseProvider {
   };
 
   // Check if a specific model supports structured tools
-  private async checkModelSupportsStructuredTools(model: string): Promise<boolean> {
+  private async checkModelSupportsStructuredTools(model: string, baseUrl?: string): Promise<boolean> {
     // Check cache first
-    if (OllamaProvider.modelToolSupportCache.has(model)) {
-      const cached = OllamaProvider.modelToolSupportCache.get(model)!;
+    const cacheKey = `${model}@${baseUrl || 'default'}`;
+    if (OllamaProvider.modelToolSupportCache.has(cacheKey)) {
+      const cached = OllamaProvider.modelToolSupportCache.get(cacheKey)!;
       console.log(`🔍 Ollama: Using cached tool support for model "${model}": ${cached}`);
       return cached;
     }
 
-    console.log(`🔍 Ollama: Testing structured tool support for model "${model}"...`);
+    console.log(`🔍 Ollama: Testing structured tool support for model "${model}" at ${baseUrl || 'http://localhost:11434'}...`);
 
+    // Most Ollama models don't support structured tools yet, so default to text-based
+    // This ensures models get tool descriptions in their system prompt
+    console.log(`🔍 Ollama: Defaulting to text-based tools for model "${model}" (most reliable approach)`);
+    OllamaProvider.modelToolSupportCache.set(cacheKey, false);
+    return false;
+
+    // TODO: Re-enable actual testing if needed, but for now this is more reliable
+    /*
     // Test with a simple tool call to detect support
     try {
+      const ollamaUrl = (baseUrl || 'http://localhost:11434').replace('/v1', '');
+      const endpoint = `${ollamaUrl}/api/chat`;
+
       const testRequestBody = {
         model: model,
         messages: [{ role: 'user', content: 'Test message' }],
@@ -61,7 +73,7 @@ export class OllamaProvider extends BaseProvider {
         }]
       };
 
-      const response = await fetch('http://192.168.100.5:11434/api/chat', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(testRequestBody)
@@ -70,28 +82,29 @@ export class OllamaProvider extends BaseProvider {
       if (response.ok) {
         // Model supports structured tools
         console.log(`✅ Ollama: Model "${model}" supports structured tools`);
-        OllamaProvider.modelToolSupportCache.set(model, true);
+        OllamaProvider.modelToolSupportCache.set(cacheKey, true);
         return true;
       } else {
         const errorText = await response.text();
         if (errorText.includes('does not support tools')) {
           // Model explicitly doesn't support tools
           console.log(`❌ Ollama: Model "${model}" does not support structured tools`);
-          OllamaProvider.modelToolSupportCache.set(model, false);
+          OllamaProvider.modelToolSupportCache.set(cacheKey, false);
           return false;
         } else {
           // Other error - assume no tool support to be safe
           console.log(`⚠️ Ollama: Model "${model}" tool support unknown (error: ${errorText}), assuming no support`);
-          OllamaProvider.modelToolSupportCache.set(model, false);
+          OllamaProvider.modelToolSupportCache.set(cacheKey, false);
           return false;
         }
       }
     } catch (error) {
       // Network or other error - assume no tool support to be safe
       console.log(`⚠️ Ollama: Failed to test tool support for model "${model}":`, error);
-      OllamaProvider.modelToolSupportCache.set(model, false);
+      OllamaProvider.modelToolSupportCache.set(cacheKey, false);
       return false;
     }
+    */
   }
 
   // Ollama-specific tool calling methods
@@ -195,17 +208,33 @@ export class OllamaProvider extends BaseProvider {
 
     // Add tool descriptions to system prompt (Ollama doesn't support structured tools)
     if (ollamaTools.length > 0) {
+      const originalLength = systemPrompt.length;
       systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, ollamaTools as ToolObject[]);
+      const newLength = systemPrompt.length;
       console.log(`🔧 Ollama enhanced system prompt with ${ollamaTools.length} text-based tool descriptions`);
+      console.log(`🔧 Ollama system prompt length: ${originalLength} → ${newLength} (+${newLength - originalLength} chars)`);
+      console.log(`🔧 Ollama tool names included:`, (ollamaTools as Array<{function?: {name?: string}, name?: string}>).map(t => t.function?.name || t.name).filter(Boolean));
     }
 
     console.log(`🔍 Ollama system prompt source:`, {
       hasCustom: hasCustomSystemPrompt,
       usingCustom: hasCustomSystemPrompt,
       promptLength: systemPrompt?.length || 0,
-      promptStart: systemPrompt?.substring(0, 100) + '...',
+      promptStart: systemPrompt?.substring(0, 200) + '...',
       toolsIncluded: ollamaTools.length > 0
     });
+
+    // Debug: Show a sample of the actual system prompt to verify tool descriptions are included
+    if (systemPrompt && systemPrompt.length > 1000) {
+      const toolSectionStart = systemPrompt.indexOf('Available Tools:');
+      if (toolSectionStart !== -1) {
+        const toolSection = systemPrompt.substring(toolSectionStart, toolSectionStart + 500);
+        console.log(`🔧 Ollama system prompt tool section preview:`, toolSection + '...');
+      } else {
+        console.warn(`⚠️ Ollama: "Available Tools:" section not found in system prompt!`);
+        console.log(`🔧 Ollama system prompt end preview:`, systemPrompt.substring(Math.max(0, systemPrompt.length - 500)));
+      }
+    }
 
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
@@ -316,7 +345,7 @@ export class OllamaProvider extends BaseProvider {
     };
 
     // Check if model supports structured tools
-    const supportsStructuredTools = await this.checkModelSupportsStructuredTools(settings.model);
+    const supportsStructuredTools = await this.checkModelSupportsStructuredTools(settings.model, baseUrl);
 
     if (supportsStructuredTools && ollamaTools.length > 0) {
       console.log(`🚀 Ollama API call with structured tools:`, {
@@ -350,6 +379,16 @@ export class OllamaProvider extends BaseProvider {
       // Include structured tools only if model supports them
       ...(supportsStructuredTools && ollamaTools.length > 0 && { tools: ollamaTools })
     };
+
+    // Debug: Show what's actually being sent to Ollama
+    console.log(`🔍 Ollama request debug:`, {
+      model: ollamaRequestBody.model,
+      messageCount: (ollamaRequestBody.messages as unknown[]).length,
+      hasStructuredTools: 'tools' in ollamaRequestBody,
+      structuredToolCount: supportsStructuredTools && ollamaTools.length > 0 ? ollamaTools.length : 0,
+      systemMessageLength: ((ollamaRequestBody.messages as Array<{role: string, content: string}>).find(m => m.role === 'system')?.content?.length || 0),
+      systemMessagePreview: ((ollamaRequestBody.messages as Array<{role: string, content: string}>).find(m => m.role === 'system')?.content?.substring(0, 200) || '') + '...'
+    });
 
     console.log(`🔍 Ollama: Native request body:`, JSON.stringify(ollamaRequestBody, null, 2));
 
@@ -515,39 +554,12 @@ export class OllamaProvider extends BaseProvider {
 
   // Check if a model supports tool calling
   private modelSupportsTools(modelName: string): boolean {
-    const modelLower = modelName.toLowerCase();
+    console.log(`🔍 Ollama: Assuming tool support for model: "${modelName}" (user can name models anything)`);
 
-    // First, exclude models that definitely don't support tools
-    const excludedPatterns = [
-      'vision',     // Vision models don't support tools
-      'embed',      // Embedding models don't support tools
-      'code',       // Code-specific models often don't support tools
-      'instruct',   // Some instruct models don't support tools
-    ];
-
-    // If model contains excluded patterns, it doesn't support tools
-    if (excludedPatterns.some(pattern => modelLower.includes(pattern))) {
-      console.log(`🔍 Ollama: Model "${modelName}" excluded from tool support (contains: ${excludedPatterns.find(p => modelLower.includes(p))})`);
-      return false;
-    }
-
-    // List of known tool-capable model families
-    const toolCapableModels = [
-      // Llama models with tool support (but not vision variants)
-      'llama3.1', 'llama3.2', 'llama3.3',
-      // Qwen models with tool support
-      'qwen2.5', 'qwen2', 'qwen',
-      // Mistral models with tool support
-      'mistral', 'mixtral',
-      // Other tool-capable models
-      'cogito', 'hermes', 'nous-hermes',
-      // Add more as needed
-    ];
-
-    // Check if the model name contains any of the tool-capable model names
-    const isToolCapable = toolCapableModels.some(capable => modelLower.includes(capable));
-    console.log(`🔍 Ollama: Model "${modelName}" tool support: ${isToolCapable}`);
-    return isToolCapable;
+    // ALWAYS return true - let the API determine if tools are supported
+    // Users can name their models anything in Ollama, so name-based detection is unreliable
+    // If a model doesn't support tools, the API will simply ignore the tools parameter
+    return true;
   }
 
   // Private helper methods
@@ -1091,7 +1103,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
     }
 
     // Check if model supports structured tools for follow-up call
-    const supportsStructuredTools = await this.checkModelSupportsStructuredTools(settings.model);
+    const supportsStructuredTools = await this.checkModelSupportsStructuredTools(settings.model, baseUrl);
 
     const requestBody = {
       model: settings.model,
