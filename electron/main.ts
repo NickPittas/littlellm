@@ -16,6 +16,7 @@ import {
   type Display,
 } from 'electron';
 import { KnowledgeBaseService } from '../src/services/KnowledgeBaseService.js';
+import { electronInternalCommandHandler } from '../src/electron/internalCommandHandler.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
@@ -1699,6 +1700,36 @@ function loadAppSettings() {
       saveConversationHistory: true,
       conversationHistoryLength: 10,
     },
+    mcpServers: [],
+    internalCommands: {
+      enabled: false,
+      allowedDirectories: [
+        // Common safe directories for file operations
+        process.env.HOME || process.env.USERPROFILE || '~', // User home directory
+        process.cwd(), // Current working directory
+        ...(process.env.DESKTOP ? [process.env.DESKTOP] : []), // Desktop if available
+        ...(process.env.DOWNLOADS ? [process.env.DOWNLOADS] : []), // Downloads if available
+      ].filter(Boolean), // Remove any undefined values
+      blockedCommands: [
+        'rm', 'del', 'format', 'fdisk', 'mkfs', 'dd', 'sudo', 'su',
+        'chmod 777', 'chown', 'passwd', 'useradd', 'userdel', 'groupadd',
+        'systemctl', 'service', 'shutdown', 'reboot', 'halt', 'poweroff'
+      ],
+      fileReadLineLimit: 1000,
+      fileWriteLineLimit: 50,
+      defaultShell: process.platform === 'win32' ? 'powershell' : 'bash',
+      enabledCommands: {
+        terminal: true,
+        filesystem: true,
+        textEditing: true,
+        system: true,
+      },
+      terminalSettings: {
+        defaultTimeout: 30000,
+        maxProcesses: 10,
+        allowInteractiveShells: true,
+      },
+    },
   };
 }
 
@@ -2198,6 +2229,10 @@ app.whenReady().then(async () => {
   const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
   await knowledgeBaseService.initialize(dbPath);
   console.log('Knowledge Base Service initialized.');
+
+  // Initialize the Internal Command Handler
+  // This sets up IPC handlers for internal commands
+  console.log('🔧 Internal Command Handler initialized');
 
   // Auto-connect enabled MCP servers immediately
   try {
@@ -3175,6 +3210,162 @@ function setupIPC() {
       return filePaths[0];
     }
     return null;
+  });
+
+  // General file/directory selection handler
+  ipcMain.handle('select-files', async (_, options: {
+    multiple?: boolean;
+    filters?: Array<{ name: string; extensions: string[] }>;
+    properties?: string[]
+  } = {}) => {
+    try {
+      const dialogOptions: any = {
+        properties: options.properties || ['openFile']
+      };
+
+      if (options.multiple) {
+        dialogOptions.properties.push('multiSelections');
+      }
+
+      if (options.filters) {
+        dialogOptions.filters = options.filters;
+      }
+
+      const { canceled, filePaths } = await dialog.showOpenDialog(dialogOptions);
+
+      if (canceled) {
+        return [];
+      }
+
+      return filePaths || [];
+    } catch (error) {
+      console.error('Error in select-files handler:', error);
+      return [];
+    }
+  });
+
+  // Internal Commands IPC handlers
+  ipcMain.handle('internal-commands:set-config', async (_, config) => {
+    try {
+      return await electronInternalCommandHandler.setConfig(config);
+    } catch (error) {
+      console.error('Failed to set internal commands config:', error);
+      return false;
+    }
+  });
+
+  ipcMain.handle('internal-commands:get-tools', async () => {
+    try {
+      return await electronInternalCommandHandler.getTools();
+    } catch (error) {
+      console.error('Failed to get internal commands tools:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('internal-commands:execute', async (_, data) => {
+    try {
+      // Handle both old and new parameter formats
+      if (typeof data === 'object' && data && 'toolName' in data && 'args' in data) {
+        return await electronInternalCommandHandler.execute(data.toolName, data.args);
+      } else {
+        // Legacy format: toolName as first param, args as second
+        const toolName = data;
+        const args = arguments[2];
+        return await electronInternalCommandHandler.execute(toolName, args);
+      }
+    } catch (error) {
+      console.error('Failed to execute internal command:', error);
+      return {
+        success: false,
+        content: [{ type: 'text', text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  });
+
+  ipcMain.handle('internal-commands:is-enabled', async () => {
+    try {
+      return await electronInternalCommandHandler.isEnabled();
+    } catch (error) {
+      console.error('Failed to check internal commands status:', error);
+      return false;
+    }
+  });
+
+  // Debug logging IPC handlers
+  ipcMain.handle('write-debug-log', async (_, logLine: string) => {
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+
+      // Use app.getPath('userData') which works correctly on Windows
+      const logDir = path.join(app.getPath('userData'), 'debug');
+      const logFile = path.join(logDir, 'debug.log');
+
+      console.log('🔧 Writing debug log to:', logFile);
+
+      // Ensure directory exists
+      await fs.mkdir(logDir, { recursive: true });
+
+      // Append to log file
+      await fs.appendFile(logFile, logLine, 'utf8');
+
+      return { success: true, logPath: logFile };
+    } catch (error) {
+      console.error('Failed to write debug log:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('clear-debug-log', async (_) => {
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+
+      // Use app.getPath('userData') which works correctly on Windows
+      const logDir = path.join(app.getPath('userData'), 'debug');
+      const logFile = path.join(logDir, 'debug.log');
+
+      console.log('🔧 Clearing debug log at:', logFile);
+
+      // Ensure directory exists
+      await fs.mkdir(logDir, { recursive: true });
+
+      // Clear the log file
+      await fs.writeFile(logFile, '', 'utf8');
+
+      return { success: true, logPath: logFile };
+    } catch (error) {
+      console.error('Failed to clear debug log:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('read-debug-log', async (_) => {
+    try {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+
+      // Use app.getPath('userData') which works correctly on Windows
+      const logDir = path.join(app.getPath('userData'), 'debug');
+      const logFile = path.join(logDir, 'debug.log');
+
+      console.log('🔧 Reading debug log from:', logFile);
+
+      // Read the log file
+      const content = await fs.readFile(logFile, 'utf8');
+
+      return { success: true, content, logPath: logFile };
+    } catch (error) {
+      if ((error as any).code === 'ENOENT') {
+        const logDir = path.join(app.getPath('userData'), 'debug');
+        const logFile = path.join(logDir, 'debug.log');
+        return { success: true, content: '', logPath: logFile }; // File doesn't exist yet
+      }
+      console.error('Failed to read debug log:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
   });
 
   // History window management

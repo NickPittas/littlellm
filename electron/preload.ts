@@ -70,6 +70,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDocuments: () => ipcRenderer.invoke('knowledge-base:get-documents'),
   searchKnowledgeBase: (query: string, limit?: number) => ipcRenderer.invoke('knowledge-base:search', query, limit),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
+  selectFiles: (options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }>; properties?: string[] }) =>
+    ipcRenderer.invoke('select-files', options),
 
   // Memory export/import operations
   saveMemoryExport: (exportData: any, filename: string) => ipcRenderer.invoke('save-memory-export', exportData, filename),
@@ -260,7 +262,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   removeTabChangeListener: (listener: any) => {
     ipcRenderer.removeListener('change-settings-tab', listener);
-  }
+  },
+
+  // Internal Commands operations
+  setInternalCommandsConfig: (config: unknown) => ipcRenderer.invoke('internal-commands:set-config', config),
+  getInternalCommandsTools: () => ipcRenderer.invoke('internal-commands:get-tools'),
+  executeInternalCommand: (toolName: string, args: unknown) => ipcRenderer.invoke('internal-commands:execute', { toolName, args }),
+  isInternalCommandsEnabled: () => ipcRenderer.invoke('internal-commands:is-enabled'),
+
+  // Debug Logging operations
+  writeDebugLog: (logLine: string) => ipcRenderer.invoke('write-debug-log', logLine),
+  clearDebugLog: () => ipcRenderer.invoke('clear-debug-log'),
+  readDebugLog: () => ipcRenderer.invoke('read-debug-log')
 });
 
 // Type definitions are now in src/types/electron.d.ts

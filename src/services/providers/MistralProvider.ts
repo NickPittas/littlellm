@@ -397,8 +397,10 @@ export class MistralProvider extends BaseProvider {
       return basePrompt;
     }
 
-    const toolInstructions = generateMistralToolPrompt(tools);
-    return basePrompt + toolInstructions;
+    // Mistral uses structured tool calling with tools parameter and tool_choice
+    // Don't add XML tool instructions as they conflict with native function calling
+    console.log(`🔧 Mistral using structured tools, skipping XML tool instructions`);
+    return basePrompt;
   }
 
   // Test method to help debug API connectivity

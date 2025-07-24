@@ -50,6 +50,25 @@ export function SettingsOverlay() {
     env: {} as Record<string, string>
   });
 
+  // Internal Commands state
+  const [internalCommandsEnabled, setInternalCommandsEnabled] = useState(false);
+  const [allowedDirectories, setAllowedDirectories] = useState<string[]>([]);
+  const [blockedCommands, setBlockedCommands] = useState<string[]>([]);
+  const [enabledCommandCategories, setEnabledCommandCategories] = useState({
+    terminal: true,
+    filesystem: true,
+    textEditing: true
+  });
+  const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({});
+  const [availableTools, setAvailableTools] = useState<Array<{
+    name: string;
+    description: string;
+    category: string;
+    inputSchema: any;
+  }>>([]);
+  const [newDirectory, setNewDirectory] = useState('');
+  const [newBlockedCommand, setNewBlockedCommand] = useState('');
+
   const handleClose = () => {
     if (typeof window !== 'undefined' && window.electronAPI) {
       window.electronAPI.closeSettingsOverlay();
@@ -61,7 +80,7 @@ export function SettingsOverlay() {
     // The title bar will use -webkit-app-region: drag
   };
 
-  const loadSettings = async () => {
+  const loadSettings = async (): Promise<AppSettings | undefined> => {
     setIsLoading(true);
     try {
       let loadedSettings: AppSettings;
@@ -77,8 +96,11 @@ export function SettingsOverlay() {
 
       // Load MCP servers
       await loadMcpServers();
+
+      return loadedSettings;
     } catch (error) {
       console.error('Failed to load settings:', error);
+      return undefined;
     } finally {
       setIsLoading(false);
     }
@@ -267,6 +289,262 @@ export function SettingsOverlay() {
     });
   };
 
+  // Internal Commands functions
+  const loadInternalCommandsSettings = async (loadedSettings?: AppSettings) => {
+    // Use the provided settings, current settings state, or fall back to service
+    const currentSettings = loadedSettings || settings || settingsService.getSettings();
+    const commandSettings = currentSettings.internalCommands;
+
+    console.log('🔧 Loading internal commands settings:', {
+      loadedSettings: !!loadedSettings,
+      currentSettings: !!currentSettings,
+      commandSettings,
+      hasInternalCommands: !!commandSettings
+    });
+
+    // Safety check in case internalCommands is not initialized
+    if (!commandSettings) {
+      console.warn('Internal commands settings not found, using defaults');
+      setInternalCommandsEnabled(false);
+      setAllowedDirectories([]);
+      setBlockedCommands([]);
+      setEnabledCommandCategories({
+        terminal: true,
+        filesystem: true,
+        textEditing: true
+      });
+      setEnabledTools({});
+      setAvailableTools([]);
+      return;
+    }
+
+    console.log('🔧 Setting internal commands state:', {
+      enabled: commandSettings.enabled,
+      allowedDirectories: commandSettings.allowedDirectories,
+      blockedCommands: commandSettings.blockedCommands,
+      enabledCommands: commandSettings.enabledCommands,
+      enabledTools: commandSettings.enabledTools
+    });
+
+    setInternalCommandsEnabled(commandSettings.enabled);
+    setAllowedDirectories(commandSettings.allowedDirectories);
+    setBlockedCommands(commandSettings.blockedCommands);
+    setEnabledCommandCategories(commandSettings.enabledCommands);
+
+    // Load individual tool settings
+    setEnabledTools(commandSettings.enabledTools || {});
+
+    // Load available tools
+    try {
+      const { internalCommandService } = await import('../services/internalCommandService');
+      // Ensure the service is initialized before getting tools
+      await internalCommandService.initialize();
+      const tools = internalCommandService.getAvailableTools();
+      console.log('🔧 Loaded available tools:', tools);
+      setAvailableTools(tools);
+    } catch (error) {
+      console.error('Failed to load available tools:', error);
+      setAvailableTools([]);
+    }
+  };
+
+  const saveInternalCommandsSettings = () => {
+    if (!formData) return;
+
+    // Ensure internalCommands exists with defaults
+    const defaultInternalCommands = {
+      enabled: false,
+      allowedDirectories: [],
+      blockedCommands: [],
+      fileReadLineLimit: 1000,
+      fileWriteLineLimit: 50,
+      defaultShell: 'bash',
+      enabledCommands: {
+        terminal: true,
+        filesystem: true,
+        textEditing: true
+      },
+      terminalSettings: {
+        defaultTimeout: 30000,
+        maxProcesses: 10,
+        allowInteractiveShells: true
+      }
+    };
+
+    const updatedInternalCommands = {
+      ...defaultInternalCommands,
+      ...formData.internalCommands,
+      enabled: internalCommandsEnabled,
+      allowedDirectories,
+      blockedCommands,
+      enabledCommands: enabledCommandCategories,
+      enabledTools
+    };
+
+    console.log('🔧 Saving internal commands settings:', {
+      current: {
+        enabled: internalCommandsEnabled,
+        allowedDirectories,
+        blockedCommands,
+        enabledCommandCategories,
+        enabledTools
+      },
+      updated: updatedInternalCommands
+    });
+
+    // Update formData to trigger hasChanges and enable save button
+    updateFormData({
+      internalCommands: updatedInternalCommands
+    });
+
+    console.log('🔧 Internal commands settings updated in form data');
+  };
+
+  const saveInternalCommandsSettingsWithDirectories = (directories: string[]) => {
+    if (!formData) return;
+
+    // Ensure internalCommands exists with defaults
+    const defaultInternalCommands = {
+      enabled: false,
+      allowedDirectories: [],
+      blockedCommands: [],
+      fileReadLineLimit: 1000,
+      fileWriteLineLimit: 50,
+      defaultShell: 'bash',
+      enabledCommands: {
+        terminal: true,
+        filesystem: true,
+        textEditing: true,
+      },
+      terminalSettings: {
+        defaultTimeout: 30000,
+        maxProcesses: 10,
+        allowInteractiveShells: true,
+      }
+    };
+
+    const updatedInternalCommands = {
+      ...defaultInternalCommands,
+      ...formData.internalCommands,
+      enabled: internalCommandsEnabled,
+      allowedDirectories: directories,
+      blockedCommands,
+      enabledCommands: enabledCommandCategories,
+      enabledTools
+    };
+
+    // Update formData to trigger hasChanges and enable save button
+    updateFormData({
+      internalCommands: updatedInternalCommands
+    });
+
+    console.log('🔧 Internal commands settings updated with directories:', directories);
+  };
+
+  const addAllowedDirectory = () => {
+    if (newDirectory.trim() && !allowedDirectories.includes(newDirectory.trim())) {
+      const updatedDirectories = [...allowedDirectories, newDirectory.trim()];
+      setAllowedDirectories(updatedDirectories);
+      setNewDirectory('');
+
+      // Immediately save the settings with the updated directories
+      saveInternalCommandsSettingsWithDirectories(updatedDirectories);
+    }
+  };
+
+  const removeAllowedDirectory = (index: number) => {
+    const updatedDirectories = allowedDirectories.filter((_, i) => i !== index);
+    setAllowedDirectories(updatedDirectories);
+
+    // Immediately save the settings with the updated directories
+    saveInternalCommandsSettingsWithDirectories(updatedDirectories);
+  };
+
+  const browseForDirectory = async () => {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      try {
+        // Use the existing file dialog but configure it for directories
+        const result = await window.electronAPI.selectFiles({
+          multiple: false,
+          properties: ['openDirectory']
+        });
+
+        if (result && result.length > 0) {
+          const selectedPath = result[0];
+          if (!allowedDirectories.includes(selectedPath)) {
+            const updatedDirectories = [...allowedDirectories, selectedPath];
+            setAllowedDirectories(updatedDirectories);
+            saveInternalCommandsSettingsWithDirectories(updatedDirectories);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to browse for directory:', error);
+        // Fallback to manual entry
+        alert('Directory browser not available. Please enter the path manually.');
+      }
+    }
+  };
+
+  const saveInternalCommandsSettingsWithCommands = (commands: string[]) => {
+    if (!formData) return;
+
+    // Ensure internalCommands exists with defaults
+    const defaultInternalCommands = {
+      enabled: false,
+      allowedDirectories: [],
+      blockedCommands: [],
+      fileReadLineLimit: 1000,
+      fileWriteLineLimit: 50,
+      defaultShell: 'bash',
+      enabledCommands: {
+        terminal: true,
+        filesystem: true,
+        textEditing: true,
+      },
+      terminalSettings: {
+        defaultTimeout: 30000,
+        maxProcesses: 10,
+        allowInteractiveShells: true,
+      }
+    };
+
+    const updatedInternalCommands = {
+      ...defaultInternalCommands,
+      ...formData.internalCommands,
+      enabled: internalCommandsEnabled,
+      allowedDirectories,
+      blockedCommands: commands,
+      enabledCommands: enabledCommandCategories,
+      enabledTools
+    };
+
+    // Update formData to trigger hasChanges and enable save button
+    updateFormData({
+      internalCommands: updatedInternalCommands
+    });
+
+    console.log('🔧 Internal commands settings updated with blocked commands:', commands);
+  };
+
+  const addBlockedCommand = () => {
+    if (newBlockedCommand.trim() && !blockedCommands.includes(newBlockedCommand.trim())) {
+      const updatedCommands = [...blockedCommands, newBlockedCommand.trim()];
+      setBlockedCommands(updatedCommands);
+      setNewBlockedCommand('');
+
+      // Immediately save the settings with the updated commands
+      saveInternalCommandsSettingsWithCommands(updatedCommands);
+    }
+  };
+
+  const removeBlockedCommand = (index: number) => {
+    const updatedCommands = blockedCommands.filter((_, i) => i !== index);
+    setBlockedCommands(updatedCommands);
+
+    // Immediately save the settings with the updated commands
+    saveInternalCommandsSettingsWithCommands(updatedCommands);
+  };
+
   const handleSave = async () => {
     if (!formData) return;
 
@@ -316,6 +594,17 @@ export function SettingsOverlay() {
           }
         } else {
           console.log('Settings overlay: No theme changes detected');
+        }
+
+        // Update internal commands configuration if it exists
+        if (formData.internalCommands) {
+          try {
+            const { internalCommandService } = await import('../services/internalCommandService');
+            await internalCommandService.updateConfiguration(formData.internalCommands);
+            console.log('🔧 Internal commands configuration updated');
+          } catch (error) {
+            console.error('Failed to update internal commands configuration:', error);
+          }
         }
 
         console.log('Settings saved successfully');
@@ -417,7 +706,11 @@ export function SettingsOverlay() {
   };
 
   useEffect(() => {
-    loadSettings();
+    const initializeSettings = async () => {
+      const loadedSettings = await loadSettings();
+      await loadInternalCommandsSettings(loadedSettings);
+    };
+    initializeSettings();
   }, []);
 
   return (
@@ -494,6 +787,14 @@ export function SettingsOverlay() {
               }`}
             >
               MCP
+            </button>
+            <button
+              onClick={() => setActiveTab('internal-commands')}
+              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                activeTab === 'internal-commands' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Commands
             </button>
             <button
               onClick={() => setActiveTab('memory')}
@@ -1216,6 +1517,230 @@ export function SettingsOverlay() {
                 <div>
                   <h3 className="text-lg font-medium mb-4">Memory System</h3>
                   <MemoryManagement />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'internal-commands' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium mb-4">Internal Commands</h3>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Configure internal command functionality that provides terminal, filesystem, and text editing capabilities to AI models.
+                    These commands run within the application with directory-scoped security restrictions.
+                  </p>
+
+                  {/* Enable/Disable Internal Commands */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label htmlFor="internal-commands-enabled" className="text-sm font-medium">
+                          Enable Internal Commands
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Allow AI models to execute terminal, filesystem, and text editing commands
+                        </p>
+                      </div>
+                      <ToggleSwitch
+                        enabled={internalCommandsEnabled}
+                        onToggle={(enabled) => {
+                          setInternalCommandsEnabled(enabled);
+                          saveInternalCommandsSettings();
+                        }}
+                      />
+                    </div>
+
+                    {internalCommandsEnabled && (
+                      <>
+                        {/* Command Categories */}
+                        <div className="border border-border rounded-lg p-4">
+                          <h4 className="text-sm font-medium mb-3">Enabled Command Categories</h4>
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <Label className="text-sm">Terminal Commands</Label>
+                                <p className="text-xs text-muted-foreground">Process execution, interactive shells, command output</p>
+                              </div>
+                              <ToggleSwitch
+                                enabled={enabledCommandCategories.terminal}
+                                onToggle={(enabled) => {
+                                  setEnabledCommandCategories(prev => ({ ...prev, terminal: enabled }));
+                                  saveInternalCommandsSettings();
+                                }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <Label className="text-sm">Filesystem Commands</Label>
+                                <p className="text-xs text-muted-foreground">File operations, directory management, search capabilities</p>
+                              </div>
+                              <ToggleSwitch
+                                enabled={enabledCommandCategories.filesystem}
+                                onToggle={(enabled) => {
+                                  setEnabledCommandCategories(prev => ({ ...prev, filesystem: enabled }));
+                                  saveInternalCommandsSettings();
+                                }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <Label className="text-sm">Text Editing Commands</Label>
+                                <p className="text-xs text-muted-foreground">Surgical text replacements with fuzzy search fallback</p>
+                              </div>
+                              <ToggleSwitch
+                                enabled={enabledCommandCategories.textEditing}
+                                onToggle={(enabled) => {
+                                  setEnabledCommandCategories(prev => ({ ...prev, textEditing: enabled }));
+                                  saveInternalCommandsSettings();
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Individual Tools */}
+                        {availableTools.length > 0 && (
+                          <div className="border border-border rounded-lg p-4">
+                            <h4 className="text-sm font-medium mb-3">Individual Tools</h4>
+                            <p className="text-xs text-muted-foreground mb-4">
+                              Enable or disable specific tools. Tools are grouped by category and only available when their category is enabled.
+                            </p>
+
+                            <div className="space-y-4">
+                              {/* Group tools by category */}
+                              {['terminal', 'filesystem', 'textEditing'].map(category => {
+                                const categoryTools = availableTools.filter(tool =>
+                                  tool.category.toLowerCase() === category.toLowerCase()
+                                );
+
+                                if (categoryTools.length === 0) return null;
+
+                                const categoryEnabled = enabledCommandCategories[category as keyof typeof enabledCommandCategories];
+
+                                return (
+                                  <div key={category} className="space-y-2">
+                                    <h5 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                      {category === 'textEditing' ? 'Text Editing' : category.charAt(0).toUpperCase() + category.slice(1)} Tools
+                                      {!categoryEnabled && <span className="ml-2 text-yellow-600">(Category Disabled)</span>}
+                                    </h5>
+                                    <div className="grid grid-cols-1 gap-2 pl-4">
+                                      {categoryTools.map(tool => (
+                                        <div key={tool.name} className={`flex items-center justify-between p-2 rounded ${!categoryEnabled ? 'opacity-50' : ''}`}>
+                                          <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                              <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">{tool.name}</code>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mt-1">{tool.description}</p>
+                                          </div>
+                                          <ToggleSwitch
+                                            enabled={categoryEnabled && (enabledTools[tool.name] !== false)}
+                                            onToggle={(enabled) => {
+                                              setEnabledTools(prev => ({
+                                                ...prev,
+                                                [tool.name]: enabled
+                                              }));
+                                              saveInternalCommandsSettings();
+                                            }}
+                                            disabled={!categoryEnabled}
+                                          />
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Allowed Directories */}
+                        <div className="border border-border rounded-lg p-4">
+                          <h4 className="text-sm font-medium mb-3">Allowed Directories</h4>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Specify directories where commands can operate. Leave empty to deny all filesystem access.
+                          </p>
+
+                          <div className="space-y-2 mb-3">
+                            {allowedDirectories.map((dir, index) => (
+                              <div key={index} className="flex items-center gap-2 p-2 bg-muted rounded">
+                                <span className="flex-1 text-sm font-mono">{dir}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeAllowedDirectory(index)}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Enter directory path..."
+                              value={newDirectory}
+                              onChange={(e) => setNewDirectory(e.target.value)}
+                              onKeyPress={(e) => e.key === 'Enter' && addAllowedDirectory()}
+                              className="flex-1"
+                            />
+                            <Button onClick={browseForDirectory} size="sm" variant="outline">
+                              Browse
+                            </Button>
+                            <Button onClick={addAllowedDirectory} size="sm">
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Blocked Commands */}
+                        <div className="border border-border rounded-lg p-4">
+                          <h4 className="text-sm font-medium mb-3">Blocked Commands</h4>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Commands or patterns that are blocked for security. These are checked against all terminal commands.
+                          </p>
+
+                          <div className="space-y-2 mb-3 max-h-32 overflow-y-auto">
+                            {blockedCommands.map((cmd, index) => (
+                              <div key={index} className="flex items-center gap-2 p-2 bg-muted rounded">
+                                <span className="flex-1 text-sm font-mono">{cmd}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeBlockedCommand(index)}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Enter command pattern to block..."
+                              value={newBlockedCommand}
+                              onChange={(e) => setNewBlockedCommand(e.target.value)}
+                              onKeyPress={(e) => e.key === 'Enter' && addBlockedCommand()}
+                              className="flex-1"
+                            />
+                            <Button onClick={addBlockedCommand} size="sm">
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Security Warning */}
+                        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                          <h4 className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">Security Notice</h4>
+                          <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                            Internal commands provide powerful capabilities to AI models. Only enable them if you trust the AI models you're using.
+                            Always configure allowed directories to limit filesystem access to specific paths.
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

@@ -954,8 +954,10 @@ export class OpenAIProvider extends BaseProvider {
       return basePrompt;
     }
 
-    const toolInstructions = generateOpenAIToolPrompt(tools);
-    return basePrompt + toolInstructions;
+    // OpenAI uses structured tool calling with tools parameter and tool_choice
+    // Don't add XML tool instructions as they conflict with native function calling
+    console.log(`🔧 OpenAI using structured tools, skipping XML tool instructions`);
+    return basePrompt;
   }
 
   validateToolCall(toolCall: { id?: string; name: string; arguments: Record<string, unknown> }): { valid: boolean; errors: string[] } {

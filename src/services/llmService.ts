@@ -30,7 +30,9 @@ export interface LLMSettings {
 import { mcpService } from './mcpService';
 import { getMemoryMCPTools, executeMemoryTool, isMemoryTool } from './memoryMCPTools';
 import { memoryContextService, MemoryContext } from './memoryContextService';
+import { internalCommandService } from './internalCommandService';
 import { ProviderAdapter } from './providers/ProviderAdapter';
+import { debugLogger } from '../utils/debugLogger';
 import {
   ToolObject,
   MessageContent,
@@ -82,6 +84,21 @@ export interface ToolExecutionResult {
 // function isMemoryToolType(tool: CombinedTool): tool is MemoryTool {
 //   return 'type' in tool && 'function' in tool;
 // }
+
+// Helper function to check if a tool is an internal command
+function isInternalCommand(toolName: string): boolean {
+  const internalCommandNames = [
+    // Terminal commands
+    'start_process', 'read_process_output', 'interact_with_process',
+    'force_terminate', 'list_sessions', 'kill_process', 'list_processes',
+    // Filesystem commands
+    'read_file', 'read_multiple_files', 'write_file', 'create_directory',
+    'list_directory', 'move_file', 'search_files', 'search_code', 'get_file_info',
+    // Text editing commands
+    'edit_block'
+  ];
+  return internalCommandNames.includes(toolName);
+}
 
 // ToolObject is imported from providers/types
 
@@ -246,6 +263,18 @@ class LLMService {
     // Initialize provider adapter and inject dependencies
     this.providerAdapter = new ProviderAdapter();
     this.setupProviderAdapter();
+
+    // Initialize internal command service
+    this.initializeInternalCommands();
+  }
+
+  private async initializeInternalCommands() {
+    try {
+      await internalCommandService.initialize();
+      console.log('🔧 Internal command service initialized in LLM service');
+    } catch (error) {
+      console.error('❌ Failed to initialize internal command service:', error);
+    }
   }
 
   private setupProviderAdapter() {
@@ -384,29 +413,75 @@ class LLMService {
       const memoryTools = getMemoryMCPTools();
       console.log(`🧠 Memory tools available (${memoryTools.length} tools):`, memoryTools.map(t => t.function.name));
 
+      // Get internal command tools if enabled
+      const isInternalEnabled = internalCommandService.isEnabled();
+      console.log(`🔧 Internal commands enabled: ${isInternalEnabled}`);
+      const internalTools = isInternalEnabled ? internalCommandService.getAvailableTools() : [];
+      console.log(`🔧 Internal command tools available (${internalTools.length} tools):`, internalTools.map(t => t.name));
+      if (internalTools.length === 0 && isInternalEnabled) {
+        console.warn(`⚠️ Internal commands are enabled but no tools returned. This indicates a configuration or filtering issue.`);
+      }
+
       // Convert all tools to a unified format that providers can handle
       const unifiedTools: Array<{type: string, function: {name: string, description: string, parameters: unknown}, serverId?: string}> = [];
-      
-      // Convert MCP tools to unified format
-      for (const tool of mcpTools) {
-        unifiedTools.push({
-          type: 'function',
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.inputSchema || {
-              type: 'object',
-              properties: {},
-              required: []
-            }
-          },
-          serverId: tool.serverId // Keep server ID for execution routing
-        });
+      const toolNames = new Set<string>(); // Track tool names to prevent duplicates
+
+      // First, add internal command tools (highest priority)
+      for (const tool of internalTools) {
+        if (!toolNames.has(tool.name)) {
+          unifiedTools.push({
+            type: 'function',
+            function: {
+              name: tool.name,
+              description: tool.description,
+              parameters: tool.inputSchema || {
+                type: 'object',
+                properties: {},
+                required: []
+              }
+            },
+            serverId: 'internal-commands' // Mark as internal command
+          });
+          toolNames.add(tool.name);
+          console.log(`🔧 Added internal command tool: ${tool.name}`);
+        }
       }
-      
-      // Add memory tools (already in unified format)
-      unifiedTools.push(...memoryTools);
-      
+
+      // Then add memory tools (medium priority)
+      for (const tool of memoryTools) {
+        const toolName = tool.function.name;
+        if (!toolNames.has(toolName)) {
+          unifiedTools.push(tool);
+          toolNames.add(toolName);
+          console.log(`🧠 Added memory tool: ${toolName}`);
+        } else {
+          console.log(`⚠️ Skipped duplicate memory tool: ${toolName} (already exists)`);
+        }
+      }
+
+      // Finally, add MCP tools (lowest priority - skip if name conflicts)
+      for (const tool of mcpTools) {
+        if (!toolNames.has(tool.name)) {
+          unifiedTools.push({
+            type: 'function',
+            function: {
+              name: tool.name,
+              description: tool.description,
+              parameters: tool.inputSchema || {
+                type: 'object',
+                properties: {},
+                required: []
+              }
+            },
+            serverId: tool.serverId // Keep server ID for execution routing
+          });
+          toolNames.add(tool.name);
+          console.log(`📋 Added MCP tool: ${tool.name} from server ${tool.serverId}`);
+        } else {
+          console.log(`⚠️ Skipped duplicate MCP tool: ${tool.name} from server ${tool.serverId} (conflicts with higher priority tool)`);
+        }
+      }
+
       console.log(`📋 Total unified tools available (${unifiedTools.length} tools):`, unifiedTools.map(t => t.function.name));
 
       if (!unifiedTools || unifiedTools.length === 0) {
@@ -443,7 +518,54 @@ class LLMService {
         const result = await executeMemoryTool(toolName, parsedArgs);
         console.log(`✅ Memory tool ${toolName} executed successfully:`, result);
         return JSON.stringify(result);
-      } else {
+      }
+      // Check if this is an internal command
+      else if (isInternalCommand(toolName)) {
+        console.log(`🔧 Executing internal command: ${toolName}`);
+
+        // Trigger thinking indicator for tool execution
+        if (typeof window !== 'undefined' && window.triggerToolThinking) {
+          window.triggerToolThinking(toolName);
+        }
+
+        const startTime = Date.now();
+        const result = await internalCommandService.executeCommand(toolName, parsedArgs);
+        const duration = Date.now() - startTime;
+
+        console.log(`✅ Internal command ${toolName} executed successfully:`, result);
+
+        // Automatically log tool execution for debugging
+        debugLogger.logToolExecution(toolName, parsedArgs, result, duration);
+
+        // Format result for LLM consumption
+        if (result.success) {
+          console.log(`🔧 Internal command result structure:`, result);
+          const textContent = result.content
+            .filter(item => item.type === 'text')
+            .map(item => item.text)
+            .join('\n');
+          console.log(`🔧 Extracted text content:`, textContent);
+
+          // Ensure we have meaningful content to return to the LLM
+          if (!textContent || textContent.trim() === '') {
+            const fallbackResult = `The ${toolName} command executed successfully but returned no output.`;
+            console.log(`🔧 No text content, using fallback:`, fallbackResult);
+            return fallbackResult;
+          }
+
+          console.log(`🔧 Final result being returned:`, textContent);
+          return textContent;
+        } else {
+          console.log(`🔧 Internal command failed:`, result);
+
+          // Format error in a user-friendly way for the LLM
+          const errorMessage = result.error || 'Command failed';
+          const friendlyError = `The ${toolName} command failed. ${this.formatErrorForLLM(errorMessage, toolName)}`;
+          console.log(`🔧 Formatted error for LLM:`, friendlyError);
+          return friendlyError;
+        }
+      }
+      else {
         // Execute as MCP tool
         console.log(`🔧 Executing MCP tool: ${toolName}`);
 
@@ -452,8 +574,46 @@ class LLMService {
           window.triggerToolThinking(toolName);
         }
 
+        const startTime = Date.now();
         const result = await mcpService.callTool(toolName, parsedArgs);
+        const duration = Date.now() - startTime;
+
         console.log(`✅ MCP tool ${toolName} executed successfully:`, result);
+
+        // Automatically log MCP tool execution for debugging
+        debugLogger.logToolExecution(toolName, parsedArgs, result, duration);
+
+        // Format MCP tool results consistently
+        if (result && typeof result === 'object') {
+          const resultObj = result as any; // Type assertion for MCP result object
+
+          // If result has content, extract it
+          if (resultObj.content && Array.isArray(resultObj.content)) {
+            const textContent = resultObj.content
+              .filter((item: any) => item.type === 'text')
+              .map((item: any) => item.text)
+              .join('\n');
+
+            if (textContent) {
+              console.log(`🔧 Extracted MCP text content:`, textContent);
+              return textContent;
+            }
+          }
+
+          // If result has a direct text property
+          if (resultObj.text) {
+            return resultObj.text;
+          }
+
+          // If result has error information
+          if (resultObj.error) {
+            const friendlyError = `The ${toolName} tool failed. ${this.formatErrorForLLM(resultObj.error, toolName)}`;
+            console.log(`🔧 Formatted MCP error for LLM:`, friendlyError);
+            return friendlyError;
+          }
+        }
+
+        // Fallback to JSON string if no specific format found
         return JSON.stringify(result);
       }
     } catch (error) {
@@ -601,7 +761,48 @@ class LLMService {
     }
   }
 
+  /**
+   * Format error messages in a user-friendly way for LLM consumption
+   */
+  private formatErrorForLLM(errorMessage: string, toolName: string): string {
+    // Common error patterns and their user-friendly explanations
+    const errorPatterns = [
+      {
+        pattern: /Unknown internal command/i,
+        replacement: `The command "${toolName}" is not available or not enabled in the current configuration.`
+      },
+      {
+        pattern: /Path is not allowed/i,
+        replacement: `Access to the specified path is not permitted. Please check the allowed directories in settings.`
+      },
+      {
+        pattern: /ENOENT|No such file or directory/i,
+        replacement: `The specified file or directory does not exist.`
+      },
+      {
+        pattern: /EACCES|Permission denied/i,
+        replacement: `Permission denied. The system does not allow access to this resource.`
+      },
+      {
+        pattern: /timeout|timed out/i,
+        replacement: `The operation timed out. The command may be taking too long to execute.`
+      },
+      {
+        pattern: /Not implemented in browser/i,
+        replacement: `This command is not available in the current environment.`
+      }
+    ];
 
+    // Try to match and replace with user-friendly message
+    for (const { pattern, replacement } of errorPatterns) {
+      if (pattern.test(errorMessage)) {
+        return replacement;
+      }
+    }
+
+    // If no pattern matches, return a generic friendly message
+    return `An error occurred: ${errorMessage}. Please check your configuration and try again.`;
+  }
 
   private truncateToolNameForAnthropic(name: string): string {
     if (name.length <= 64) return name;
@@ -660,7 +861,7 @@ class LLMService {
   // Private helper methods for tool execution
 
   /**
-   * Execute multiple MCP tools in parallel with optimized performance and proper error handling
+   * Execute multiple tools in parallel with proper routing (internal commands vs MCP tools)
    */
   private async executeMultipleToolsParallel(
     toolCalls: Array<{
@@ -680,39 +881,64 @@ class LLMService {
 
     const startTime = Date.now();
 
-    try {
-      // Try to use optimized concurrent execution via MCP service
-      const optimizedToolCalls = toolCalls.map(tc => ({
-        id: tc.id,
-        name: tc.name,
-        args: tc.arguments
-      }));
+    // IMPORTANT: Use executeMCPTool for each tool to ensure proper routing
+    // This handles internal commands vs MCP tools correctly
+    const toolPromises = toolCalls.map(async (toolCall, index) => {
+      const toolStartTime = Date.now();
+      try {
+        console.log(`🔧 [${index}] Starting parallel execution of ${toolCall.name} with proper routing`);
 
-      const mcpResults = await mcpService.callToolsOptimized(optimizedToolCalls);
-      const totalTime = Date.now() - startTime;
+        // Use executeMCPTool which has the correct routing logic for internal commands
+        const result = await this.executeMCPTool(toolCall.name, toolCall.arguments);
+        const executionTime = Date.now() - toolStartTime;
+        console.log(`✅ [${index}] Tool ${toolCall.name} completed in ${executionTime}ms`);
 
-      // Convert MCP results to expected format
-      const processedResults = mcpResults.map(mcpResult => ({
-        id: mcpResult.id,
-        name: mcpResult.name,
-        result: mcpResult.success ? JSON.stringify(mcpResult.result) : (mcpResult.error || 'Unknown error'),
-        success: mcpResult.success,
-        executionTime: mcpResult.executionTime
-      }));
+        return {
+          id: toolCall.id,
+          name: toolCall.name,
+          result,
+          success: true,
+          executionTime
+        };
+      } catch (error) {
+        const executionTime = Date.now() - toolStartTime;
+        console.error(`❌ [${index}] Tool ${toolCall.name} failed in ${executionTime}ms:`, error);
 
-      const successCount = processedResults.filter(r => r.success).length;
-      const failureCount = processedResults.length - successCount;
+        return {
+          id: toolCall.id,
+          name: toolCall.name,
+          result: error instanceof Error ? error.message : String(error),
+          success: false,
+          executionTime
+        };
+      }
+    });
 
-      console.log(`🏁 Optimized parallel execution completed in ${totalTime}ms: ${successCount} successful, ${failureCount} failed`);
+    // Execute all tools in parallel using Promise.allSettled for proper error handling
+    const results = await Promise.allSettled(toolPromises);
+    const totalTime = Date.now() - startTime;
 
-      return processedResults;
+    // Process results
+    const processedResults = results.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      } else {
+        return {
+          id: toolCalls[index].id,
+          name: toolCalls[index].name,
+          result: `Tool execution failed: ${result.reason}`,
+          success: false,
+          executionTime: 0
+        };
+      }
+    });
 
-    } catch (error) {
-      console.warn(`⚠️ Optimized execution failed, falling back to legacy parallel execution:`, error);
+    const successCount = processedResults.filter(r => r.success).length;
+    const failureCount = processedResults.length - successCount;
 
-      // Fallback to legacy parallel execution
-      return await this.executeMultipleToolsLegacy(toolCalls);
-    }
+    console.log(`🏁 Optimized parallel execution completed in ${totalTime}ms: ${successCount} successful, ${failureCount} failed`);
+
+    return processedResults;
   }
 
   /**

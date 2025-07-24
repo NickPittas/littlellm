@@ -12,6 +12,7 @@ import {
 } from './types';
 import { FALLBACK_MODELS } from './constants';
 import { GEMINI_SYSTEM_PROMPT, generateGeminiToolPrompt } from './prompts/gemini';
+import { debugLogger } from '../../utils/debugLogger';
 
 export class GeminiProvider extends BaseProvider {
   readonly id = 'gemini';
@@ -311,8 +312,10 @@ export class GeminiProvider extends BaseProvider {
       return basePrompt;
     }
 
-    const toolInstructions = generateGeminiToolPrompt(tools);
-    return basePrompt + toolInstructions;
+    // Gemini uses structured tool calling with tools parameter
+    // Don't add XML tool instructions as they conflict with native function calling
+    console.log(`🔧 Gemini using structured tools, skipping XML tool instructions`);
+    return basePrompt;
   }
 
   validateToolCall(toolCall: { id?: string; name: string; arguments: Record<string, unknown> }): { valid: boolean; errors: string[] } {
@@ -426,7 +429,12 @@ export class GeminiProvider extends BaseProvider {
             .join('');
 
           if (followupText) {
+            console.log(`🔄 Gemini streaming follow-up response:`, followupText.substring(0, 100) + '...');
+            debugLogger.logStreaming('Gemini', followupText, true);
             onStream(followupText);
+          } else {
+            console.warn(`⚠️ Gemini follow-up response has no text content`);
+            debugLogger.warn('FOLLOW_UP', 'Gemini follow-up response has no text content');
           }
 
           // Combine usage data

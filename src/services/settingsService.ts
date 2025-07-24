@@ -8,7 +8,8 @@ import type {
   MCPServerConfig,
   AppSettings,
   UISettings,
-  ColorSettings
+  ColorSettings,
+  InternalCommandSettings
 } from '../types/settings';
 
 // Re-export shared types for convenience
@@ -19,7 +20,8 @@ export type {
   MCPServerConfig,
   AppSettings,
   UISettings,
-  ColorSettings
+  ColorSettings,
+  InternalCommandSettings
 };
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -48,6 +50,35 @@ const DEFAULT_SETTINGS: AppSettings = {
     },
   },
   mcpServers: [],
+  internalCommands: {
+    enabled: false, // Disabled by default for security
+    allowedDirectories: [
+      // Common safe directories for file operations
+      process.env.HOME || process.env.USERPROFILE || '~', // User home directory
+      process.cwd(), // Current working directory
+      ...(process.env.DESKTOP ? [process.env.DESKTOP] : []), // Desktop if available
+      ...(process.env.DOWNLOADS ? [process.env.DOWNLOADS] : []), // Downloads if available
+    ].filter(Boolean), // Remove any undefined values
+    blockedCommands: [
+      'rm', 'del', 'format', 'fdisk', 'mkfs', 'dd', 'sudo', 'su',
+      'chmod 777', 'chown', 'passwd', 'useradd', 'userdel', 'groupadd',
+      'systemctl', 'service', 'shutdown', 'reboot', 'halt', 'poweroff'
+    ],
+    fileReadLineLimit: 1000,
+    fileWriteLineLimit: 50,
+    defaultShell: process.platform === 'win32' ? 'powershell' : 'bash',
+    enabledCommands: {
+      terminal: true,
+      filesystem: true,
+      textEditing: true,
+      system: true,
+    },
+    terminalSettings: {
+      defaultTimeout: 30000, // 30 seconds
+      maxProcesses: 10,
+      allowInteractiveShells: true,
+    },
+  },
   ui: {
     theme: 'system',
     alwaysOnTop: true,
@@ -110,7 +141,7 @@ class SettingsService {
     // Initialize with defaults
     this.settings = { ...DEFAULT_SETTINGS };
 
-    // Load settings immediately if Electron is available
+    // Load settings SYNCHRONOUSLY at startup to prevent race conditions
     this.loadSettingsSync();
     // Note: initialized will be set to true after settings are actually loaded
   }
@@ -309,8 +340,10 @@ class SettingsService {
 
   getSettings(): AppSettings {
     if (!this.initialized) {
-      // Return defaults if not initialized yet
-      return { ...DEFAULT_SETTINGS };
+      // Wait for initialization instead of returning defaults
+      console.warn('⚠️ Settings not yet initialized, waiting...');
+      // Return current settings even if not fully initialized to prevent defaults
+      return { ...this.settings };
     }
     return { ...this.settings };
   }
@@ -321,9 +354,9 @@ class SettingsService {
 
   getChatSettings(): ChatSettings {
     if (!this.initialized) {
-      // Return defaults if not initialized yet
-      console.log('🔍 getChatSettings: Not initialized, returning defaults');
-      return { ...DEFAULT_SETTINGS.chat };
+      // Wait for initialization instead of returning defaults
+      console.warn('⚠️ getChatSettings: Not initialized, returning current settings to preserve user data');
+      return { ...this.settings.chat };
     }
 
     // Ensure providers object exists for backward compatibility
@@ -379,8 +412,9 @@ class SettingsService {
     console.log('🔍 Old settings:', JSON.stringify(this.settings, null, 2));
     console.log('🔍 New settings:', JSON.stringify(newSettings, null, 2));
 
-    this.settings = { ...DEFAULT_SETTINGS, ...newSettings };
-    console.log('🔍 Merged settings:', JSON.stringify(this.settings, null, 2));
+    // DON'T merge with defaults - use the new settings as-is to preserve user data
+    this.settings = { ...newSettings };
+    console.log('🔍 Updated settings (no default merge):', JSON.stringify(this.settings, null, 2));
     console.log('🔍 Notifying', this.listeners.length, 'listeners');
 
     this.notifyListeners();
@@ -503,9 +537,10 @@ class SettingsService {
           if (typeof window !== 'undefined' && window.electronAPI) {
             const savedSettings = await window.electronAPI.getSettings();
             if (savedSettings) {
-              this.settings = { ...DEFAULT_SETTINGS, ...(savedSettings as AppSettings) };
+              // DON'T merge with defaults - use saved settings as-is to preserve user data
+              this.settings = { ...(savedSettings as AppSettings) };
               this.notifyListeners();
-              console.log('✅ Settings auto-reloaded from disk successfully');
+              console.log('✅ Settings auto-reloaded from disk successfully (no default merge)');
             }
           }
         } catch (error) {
@@ -573,6 +608,8 @@ class SettingsService {
           ui: { ...DEFAULT_SETTINGS.ui, ...imported.ui },
           shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...imported.shortcuts },
           general: { ...DEFAULT_SETTINGS.general, ...imported.general },
+          mcpServers: imported.mcpServers || DEFAULT_SETTINGS.mcpServers,
+          internalCommands: { ...DEFAULT_SETTINGS.internalCommands, ...imported.internalCommands },
         };
         
         await this.saveSettings();

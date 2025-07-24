@@ -88,7 +88,7 @@ export interface ElectronAPI {
   onDropdownItemSelected?: (callback: (value: string) => void) => void;
 
   // File operations
-  selectFiles: (options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<string[]>;
+  selectFiles: (options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }>; properties?: string[] }) => Promise<string[]>;
   readFile: (filePath: string) => Promise<{ name: string; content: string; type: string }>;
 
   // Event listeners
@@ -127,6 +127,12 @@ export interface ElectronAPI {
   getDocuments: () => Promise<{ success: boolean; documents: string[]; error?: string }>;
   searchKnowledgeBase: (query: string, limit?: number) => Promise<{ success: boolean; results: Array<{text: string, source: string, score?: number}>; error?: string }>;
   openFileDialog: () => Promise<string | null>;
+
+  // Internal Commands operations
+  setInternalCommandsConfig: (config: unknown) => Promise<boolean>;
+  getInternalCommandsTools: () => Promise<unknown[]>;
+  executeInternalCommand: (toolName: string, args: unknown) => Promise<unknown>;
+  isInternalCommandsEnabled: () => Promise<boolean>;
 
   // History operations
   openHistory: (conversations: unknown[]) => Promise<void>;
