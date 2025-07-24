@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const { contextBridge, ipcRenderer } = require('electron');
+import { contextBridge, ipcRenderer } from 'electron';
 
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
@@ -112,12 +112,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
         // Get current window position
         if (isInChatWindow) {
-          ipcRenderer.invoke('get-chat-window-position').then((pos) => {
+          ipcRenderer.invoke('get-chat-window-position').then((pos: { x: number; y: number }) => {
             windowX = pos.x;
             windowY = pos.y;
           });
         } else {
-          ipcRenderer.invoke('get-window-position').then((pos) => {
+          ipcRenderer.invoke('get-window-position').then((pos: { x: number; y: number }) => {
             windowX = pos.x;
             windowY = pos.y;
           });
@@ -194,10 +194,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // History event handlers (called from history window)
   onHistoryItemSelected: (callback: (conversationId: string) => void) => {
-    ipcRenderer.on('history-item-selected', (_, conversationId) => callback(conversationId));
+    ipcRenderer.on('history-item-selected', (_: any, conversationId: string) => callback(conversationId));
   },
   onHistoryItemDeleted: (callback: (conversationId: string) => void) => {
-    ipcRenderer.on('history-item-deleted', (_, conversationId) => callback(conversationId));
+    ipcRenderer.on('history-item-deleted', (_: any, conversationId: string) => callback(conversationId));
   },
   onClearAllHistory: (callback: () => void) => {
     ipcRenderer.on('clear-all-history', () => callback());
@@ -205,11 +205,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Event listeners
   onClipboardContent: (callback: (content: string) => void) => {
-    ipcRenderer.on('clipboard-content', (_, content) => callback(content));
+    ipcRenderer.on('clipboard-content', (_: any, content: string) => callback(content));
   },
 
   onProcessClipboard: (callback: (content: string) => void) => {
-    ipcRenderer.on('process-clipboard', (_, content) => callback(content));
+    ipcRenderer.on('process-clipboard', (_: any, content: string) => callback(content));
   },
 
   onOpenSettings: (callback: () => void) => {
@@ -217,7 +217,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onThemeChanged: (callback: (themeId: string) => void) => {
-    ipcRenderer.on('theme-changed', (_, themeId) => callback(themeId));
+    ipcRenderer.on('theme-changed', (_: any, themeId: string) => callback(themeId));
   },
 
   onThemeChange: (callback: (themeData: { customColors: unknown; useCustomColors: boolean }) => void) => {
@@ -231,11 +231,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onPromptSelected: (callback: (promptText: string) => void) => {
-    ipcRenderer.on('prompt-selected', (_, promptText) => callback(promptText));
+    ipcRenderer.on('prompt-selected', (_: any, promptText: string) => callback(promptText));
   },
 
   onMessagesUpdate: (callback: (messages: any[]) => void) => {
-    ipcRenderer.on('messages-update', (_, messages) => callback(messages));
+    ipcRenderer.on('messages-update', (_: any, messages: any[]) => callback(messages));
   },
 
   onRequestCurrentMessages: (callback: () => void) => {
@@ -243,7 +243,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   onDropdownItemSelected: (callback: (value: string) => void) => {
-    ipcRenderer.on('dropdown-item-selected', (_, value) => callback(value));
+    ipcRenderer.on('dropdown-item-selected', (_: any, value: string) => callback(value));
   },
 
   // Remove listeners
