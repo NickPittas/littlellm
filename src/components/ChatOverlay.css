@@ -55,13 +55,4 @@ html, body {
   height: 100%;
 }
 
-/* Title bar styles for frameless window */
-.draggable-title-bar {
-  -webkit-user-select: none;
-  user-select: none;
-  cursor: default;
-}
-
-.draggable-title-bar:hover {
-  background-color: rgba(var(--muted), 0.7);
-}
+/* Title bar styles for frameless window - now handled by CSS-based dragging */

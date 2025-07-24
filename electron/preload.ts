@@ -106,10 +106,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         isDragging = true;
         mouseX = e.screenX;
         mouseY = e.screenY;
-        
+
         // Determine which window we're in based on URL
         const isInChatWindow = window.location.search.includes('overlay=chat');
-        
+
         // Get current window position
         if (isInChatWindow) {
           ipcRenderer.invoke('get-chat-window-position').then((pos) => {
@@ -122,20 +122,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
             windowY = pos.y;
           });
         }
-        
+
         e.preventDefault();
       }
     };
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging) return;
-      
+
       const deltaX = e.screenX - mouseX;
       const deltaY = e.screenY - mouseY;
-      
+
       // Determine which window we're in based on URL
       const isInChatWindow = window.location.search.includes('overlay=chat');
-      
+
       // Update window position
       if (isInChatWindow) {
         ipcRenderer.invoke('set-chat-window-position', windowX + deltaX, windowY + deltaY);
@@ -152,7 +152,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     document.addEventListener('mousedown', handleMouseDown);
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-    
+
     // Return cleanup function
     return () => {
       document.removeEventListener('mousedown', handleMouseDown);

@@ -1271,7 +1271,14 @@ const isProduction = app.isPackaged || process.env.NODE_ENV === 'production';
 // Function to get the correct icon path for different environments
 function getIconPath(): string {
   // Use platform-appropriate icon format
-  const iconFile = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  let iconFile: string;
+  if (process.platform === 'win32') {
+    iconFile = 'icon.ico';
+  } else if (process.platform === 'darwin') {
+    iconFile = 'icon.icns';
+  } else {
+    iconFile = 'icon.png';
+  }
 
   const possiblePaths = [
     path.join(__dirname, '../assets', iconFile),

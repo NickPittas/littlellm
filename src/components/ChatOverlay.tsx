@@ -10,6 +10,7 @@ import { ThinkingIndicator } from './ThinkingIndicator';
 import { sessionService } from '../services/sessionService';
 import type { Message } from '../services/chatService';
 import type { SessionStats } from '../services/sessionService';
+import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag';
 import './ChatOverlay.css';
 
 interface ChatOverlayProps {
@@ -23,14 +24,8 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize window dragging
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.electronAPI?.startDrag) {
-      const cleanup = window.electronAPI.startDrag();
-      return cleanup;
-    }
-    return undefined;
-  }, []);
+  // Initialize CSS-based window dragging (same as main window)
+  const { isDragging } = useEnhancedWindowDrag();
 
   const handleClose = () => {
     if (typeof window !== 'undefined' && window.electronAPI) {
@@ -153,9 +148,9 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
 
   return (
     <div className="h-full w-full bg-background overflow-hidden flex flex-col">
-      {/* Title Bar - Simple draggable area */}
-      <div 
-        className="flex-none h-10 bg-muted/50 border-b border-border flex items-center justify-between px-3 select-none draggable-title-bar"
+      {/* Title Bar - CSS-based draggable area */}
+      <div
+        className="flex-none h-10 bg-muted/50 border-b border-border flex items-center justify-between px-3 select-none"
       >
         <span className="text-sm font-medium">CHAT WINDOW</span>
         
@@ -165,6 +160,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
             size="sm"
             onClick={handleMinimize}
             className="h-6 w-6 p-0 hover:bg-muted"
+            data-interactive="true"
           >
             <Minus className="h-3 w-3" />
           </Button>
@@ -173,6 +169,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
             size="sm"
             onClick={handleClose}
             className="h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground"
+            data-interactive="true"
           >
             <X className="h-3 w-3" />
           </Button>

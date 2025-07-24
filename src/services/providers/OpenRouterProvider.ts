@@ -13,7 +13,6 @@ import {
 } from './types';
 import { FALLBACK_MODELS } from './constants';
 import { OPENROUTER_SYSTEM_PROMPT, generateOpenRouterToolPrompt } from './prompts/openrouter';
-import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
 // import { RAGService } from '../RAGService'; // Moved to Electron main process, accessed via IPC
 
 export class OpenRouterProvider extends BaseProvider {
@@ -200,6 +199,201 @@ export class OpenRouterProvider extends BaseProvider {
 
       return `- ${name}: ${description}\n  Parameters: ${JSON.stringify(parameters, null, 2)}`;
     }).join('\n\n');
+  }
+
+  /**
+   * Parse text-based tool calls from model response content
+   * Handles various formats that models might use when structured tool calling isn't supported
+   */
+  private parseTextBasedToolCalls(content: string, availableTools: string[] = []): Array<{ name: string; arguments: Record<string, unknown> }> {
+    const toolCalls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+
+    console.log(`🔍 OpenRouter parsing text for tool calls in content:`, content.substring(0, 200) + '...');
+
+    // Pattern 1: Custom OpenRouter/model-specific format with delimiters
+    // <|tool_calls_section_begin|><|tool_call_begin|>functions.tool_name:1<|tool_call_argument_begin|>{"arg": "value"}<|tool_call_end|><|tool_calls_section_end|>
+    const customFormatRegex = /<\|tool_call_begin\|>(?:functions\.)?([^:]+):\d+<\|tool_call_argument_begin\|>(\{[\s\S]*?\})<\|tool_call_end\|>/gi;
+    let match = customFormatRegex.exec(content);
+    while (match) {
+      try {
+        const toolName = match[1];
+        let args = JSON.parse(match[2]);
+
+        // Handle nested input structure: {"input": {"path": "..."}} -> {"path": "..."}
+        if (args.input && typeof args.input === 'object' && Object.keys(args).length === 1) {
+          args = args.input;
+          console.log(`🔧 Unwrapped nested input structure for ${toolName}`);
+        }
+
+        toolCalls.push({ name: toolName, arguments: args });
+        console.log(`✅ Found custom format tool call: ${toolName} with args:`, args);
+      } catch (error) {
+        console.warn(`⚠️ Failed to parse custom format tool call:`, match[0], error);
+      }
+      match = customFormatRegex.exec(content);
+    }
+
+    // Pattern 2: Enhanced tool_call format with ```json wrapper (Option 2)
+    // ```json { "tool_call": { "name": "web_search", "arguments": {...} } } ```
+    const jsonWrappedToolCallRegex = /```json\s*(\{[\s\S]*?"tool_call"[\s\S]*?\})\s*```/gi;
+    match = jsonWrappedToolCallRegex.exec(content);
+    if (match) {
+      try {
+        const jsonObj = JSON.parse(match[1]);
+        if (jsonObj.tool_call && jsonObj.tool_call.name && jsonObj.tool_call.arguments) {
+          toolCalls.push({
+            name: jsonObj.tool_call.name,
+            arguments: jsonObj.tool_call.arguments
+          });
+          console.log(`✅ Found JSON-wrapped tool call: ${jsonObj.tool_call.name} with args:`, jsonObj.tool_call.arguments);
+          return toolCalls; // Return early if we found the structured format
+        }
+      } catch (error) {
+        console.log(`⚠️ Failed to parse JSON-wrapped tool call:`, match[1], error);
+      }
+    }
+
+    // Pattern 3: Direct JSON tool_call format (Option 1)
+    // { "tool_call": { "name": "web_search", "arguments": {...} } }
+    const directToolCallRegex = /\{\s*"tool_call"\s*:\s*\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[\s\S]*?\})\s*\}\s*\}/gi;
+    match = directToolCallRegex.exec(content);
+    if (match) {
+      try {
+        const toolName = match[1];
+        const args = JSON.parse(match[2]);
+        toolCalls.push({ name: toolName, arguments: args });
+        console.log(`✅ Found direct tool call: ${toolName} with args:`, args);
+        return toolCalls; // Return early if we found the structured format
+      } catch (error) {
+        console.log(`⚠️ Failed to parse direct tool call arguments:`, match[2], error);
+        // Try fallback parsing
+        const toolName = match[1];
+        const args = this.parseArgumentsFromText(match[2]);
+        if (Object.keys(args).length > 0) {
+          toolCalls.push({ name: toolName, arguments: args });
+          console.log(`✅ Found direct tool call with fallback parsing: ${toolName} with args:`, args);
+          return toolCalls;
+        }
+      }
+    }
+
+    // If we found structured tool calls, return them
+    if (toolCalls.length > 0) {
+      console.log(`✅ Found ${toolCalls.length} structured tool calls, returning them`);
+      return toolCalls;
+    }
+
+    // STEP 2: If no structured tool calls found, search for traces of tool usage in text
+    console.log(`🔍 No structured tool calls found, searching for tool usage traces in text...`);
+
+    return this.parseToolTracesFromText(content, availableTools);
+  }
+
+  /**
+   * Parse tool usage traces from natural language text
+   */
+  private parseToolTracesFromText(content: string, availableTools: string[]): Array<{ name: string; arguments: Record<string, unknown> }> {
+    const toolCalls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+
+    console.log(`🔍 Searching for tool usage traces in content...`);
+
+    for (const toolName of availableTools) {
+      // Pattern 1: Direct tool mentions with arguments
+      // "I'll use web_search with query 'weather Paris'"
+      const directMentionPattern = new RegExp(`(?:use|using|call|calling)\\s+${toolName}\\s+(?:with|for)\\s+([^.!?]+)`, 'gi');
+      const directMatch = directMentionPattern.exec(content);
+      if (directMatch && !toolCalls.find(tc => tc.name === toolName)) {
+        const argsText = directMatch[1].trim();
+        const args = this.parseArgumentsFromText(argsText);
+        if (Object.keys(args).length > 0) {
+          toolCalls.push({ name: toolName, arguments: args });
+          console.log(`✅ Found direct mention: ${toolName} with args:`, args);
+          continue;
+        }
+      }
+
+      // Pattern 2: Function call style mentions
+      // "web_search('weather Paris')" or "web_search(query='weather Paris')"
+      const functionCallPattern = new RegExp(`${toolName}\\s*\\(([^)]+)\\)`, 'gi');
+      const funcMatch = functionCallPattern.exec(content);
+      if (funcMatch && !toolCalls.find(tc => tc.name === toolName)) {
+        const argsText = funcMatch[1].trim();
+        const args = this.parseArgumentsFromText(argsText);
+        if (Object.keys(args).length > 0) {
+          toolCalls.push({ name: toolName, arguments: args });
+          console.log(`✅ Found function call: ${toolName}(${argsText}) -> args:`, args);
+          continue;
+        }
+      }
+
+      // Pattern 3: Action descriptions
+      // "I'll search for weather in Paris" (for web_search tool)
+      if (toolName === 'web_search' || toolName === 'web-search') {
+        const searchPattern = /(?:search|find|look up|query)(?:\s+for)?\s+([^.!?]+)/gi;
+        const searchMatch = searchPattern.exec(content);
+        if (searchMatch && !toolCalls.find(tc => tc.name === toolName)) {
+          const query = searchMatch[1].trim().replace(/['"]/g, '');
+          if (query.length > 2) {
+            toolCalls.push({ name: toolName, arguments: { query } });
+            console.log(`✅ Found search action: ${toolName} with query: "${query}"`);
+            continue;
+          }
+        }
+      }
+    }
+
+    console.log(`🔍 Found ${toolCalls.length} tool usage traces`);
+    return toolCalls;
+  }
+
+  /**
+   * Parse arguments from text using various heuristics
+   */
+  private parseArgumentsFromText(text: string): Record<string, unknown> {
+    const args: Record<string, unknown> = {};
+
+    try {
+      // Try to parse as JSON first
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+    } catch {
+      // Continue with other parsing methods
+    }
+
+    // Parse key=value pairs
+    const keyValuePattern = /(\w+)\s*[=:]\s*['"]?([^'",]+)['"]?/g;
+    let match;
+    while ((match = keyValuePattern.exec(text)) !== null) {
+      args[match[1]] = match[2].trim();
+    }
+
+    // If no key-value pairs found, treat as single query parameter
+    if (Object.keys(args).length === 0) {
+      const cleanText = text.replace(/['"]/g, '').trim();
+      if (cleanText.length > 0) {
+        args.query = cleanText;
+      }
+    }
+
+    return args;
+  }
+
+  /**
+   * Get available tool names for text-based parsing
+   */
+  private async getAvailableToolNames(settings: LLMSettings): Promise<string[]> {
+    try {
+      const tools = await this.getOpenRouterTools(settings);
+      return tools.map((tool: unknown) => {
+        const typedTool = tool as { function?: { name?: string } };
+        return typedTool.function?.name || 'unknown_tool';
+      }).filter(name => name !== 'unknown_tool');
+    } catch (error) {
+      console.error('❌ Failed to get tool names for parsing:', error);
+      return [];
+    }
   }
 
   async sendMessage(
@@ -494,13 +688,25 @@ export class OpenRouterProvider extends BaseProvider {
 
     console.log(`🔄 Making OpenRouter follow-up call to process tool results...`);
 
-    const followUpRequestBody = {
+    // Get tools for follow-up call to maintain structured tool calling context
+    const tools = await this.getOpenRouterTools(settings);
+    const underlyingProvider = this.detectUnderlyingProvider(settings.model);
+    const supportsStructuredTools = this.modelSupportsStructuredTools(underlyingProvider);
+
+    const followUpRequestBody: Record<string, unknown> = {
       model: settings.model,
       messages: followUpMessages,
       temperature: settings.temperature,
       max_tokens: settings.maxTokens,
       stream: false
     };
+
+    // Include tools in follow-up call to maintain structured tool calling context
+    if (supportsStructuredTools && tools.length > 0) {
+      followUpRequestBody.tools = tools;
+      followUpRequestBody.tool_choice = 'auto';
+      console.log(`🔧 OpenRouter follow-up call includes ${tools.length} structured tools to maintain context`);
+    }
 
     const followUpResponse = await fetch(`${provider.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -561,16 +767,148 @@ export class OpenRouterProvider extends BaseProvider {
     signal?: AbortSignal
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
-    // Use the shared OpenAI-compatible streaming handler
-    return OpenAICompatibleStreaming.handleStreamResponse(
-      response,
-      onStream,
-      settings,
-      provider,
-      conversationHistory,
-      'OpenRouter',
-      this.executeToolsAndFollowUp.bind(this)
-    );
+
+    console.log(`🔍 Starting OpenRouter stream response handling...`);
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+
+    let fullContent = '';
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
+    let chunkCount = 0;
+    const toolCalls: Array<{ id?: string; type?: string; function?: { name?: string; arguments?: string } }> = [];
+    const decoder = new TextDecoder();
+
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        chunkCount++;
+        if (chunkCount <= 3) {
+          console.log(`🔍 OpenRouter stream chunk ${chunkCount}:`, chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''));
+        }
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(data);
+              const delta = parsed.choices?.[0]?.delta;
+
+              if (delta?.content) {
+                fullContent += delta.content;
+                onStream(delta.content);
+              }
+
+              if (delta?.tool_calls) {
+                for (const toolCall of delta.tool_calls) {
+                  const index = toolCall.index || 0;
+                  if (!toolCalls[index]) {
+                    toolCalls[index] = {
+                      id: toolCall.id,
+                      type: toolCall.type,
+                      function: { name: '', arguments: '' }
+                    };
+                  }
+
+                  if (toolCall.function?.name) {
+                    toolCalls[index].function!.name = toolCall.function.name;
+                  }
+                  if (toolCall.function?.arguments) {
+                    toolCalls[index].function!.arguments += toolCall.function.arguments;
+                  }
+                }
+              }
+
+              if (parsed.usage) {
+                usage = parsed.usage;
+              }
+            } catch (error) {
+              console.error(`❌ OpenRouter error parsing chunk:`, error, `Data: ${data.substring(0, 100)}...`);
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    // Filter out empty tool calls and log final state
+    const validToolCalls = toolCalls.filter(tc => tc && tc.function?.name);
+
+    console.log(`🔍 OpenRouter stream response completed:`, {
+      contentLength: fullContent.length,
+      hasUsage: !!usage,
+      usage: usage,
+      toolCallsCount: validToolCalls.length
+    });
+
+    // Check for text-based tool calls if no structured tool calls found
+    if (validToolCalls.length === 0 && fullContent && (fullContent.includes('tool_call') || fullContent.includes('<|tool_call') || fullContent.includes('functions.'))) {
+      console.log(`🔍 OpenRouter: No structured tool calls found in stream, checking for text-based tool calls...`);
+
+      // Get available tool names for parsing
+      const availableTools = await this.getAvailableToolNames(settings);
+      const textBasedToolCalls = this.parseTextBasedToolCalls(fullContent, availableTools);
+
+      if (textBasedToolCalls.length > 0) {
+        console.log(`🔧 OpenRouter: Found ${textBasedToolCalls.length} text-based tool calls in stream:`, textBasedToolCalls);
+
+        // Convert to structured format and execute
+        const structuredToolCalls = textBasedToolCalls.map((tc, index) => ({
+          id: `call_${Date.now()}_${index}`,
+          type: 'function' as const,
+          function: {
+            name: tc.name,
+            arguments: JSON.stringify(tc.arguments)
+          }
+        }));
+
+        // Execute tools and get follow-up response
+        return this.executeToolsAndFollowUp(
+          structuredToolCalls,
+          fullContent,
+          usage,
+          settings,
+          provider,
+          conversationHistory,
+          onStream
+        );
+      }
+    }
+
+    if (validToolCalls.length > 0) {
+      console.log(`🔧 OpenRouter assembled ${validToolCalls.length} structured tool calls:`, validToolCalls.map(tc => ({
+        name: tc.function?.name,
+        arguments: tc.function?.arguments
+      })));
+
+      // Execute tools and make follow-up call
+      return this.executeToolsAndFollowUp(validToolCalls, fullContent, usage, settings, provider, conversationHistory, onStream);
+    }
+
+    return {
+      content: fullContent,
+      usage: usage ? {
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        totalTokens: usage.total_tokens || 0
+      } : undefined,
+      toolCalls: validToolCalls
+        .filter(tc => tc.id && tc.function?.name)
+        .map(tc => ({
+          id: tc.id!,
+          name: tc.function!.name!,
+          arguments: JSON.parse(tc.function!.arguments || '{}')
+        }))
+    };
   }
 
   /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -591,6 +929,41 @@ export class OpenRouterProvider extends BaseProvider {
       content: message.content,
       usage: data.usage
     });
+
+    // Check for text-based tool calls if no structured tool calls found
+    if (!message.tool_calls || message.tool_calls.length === 0) {
+      if (message.content && (message.content.includes('tool_call') || message.content.includes('<|tool_call') || message.content.includes('functions.'))) {
+        console.log(`🔍 OpenRouter: No structured tool calls found, checking for text-based tool calls...`);
+
+        // Get available tool names for parsing
+        const availableTools = await this.getAvailableToolNames(settings);
+        const textBasedToolCalls = this.parseTextBasedToolCalls(message.content, availableTools);
+
+        if (textBasedToolCalls.length > 0) {
+          console.log(`🔧 OpenRouter: Found ${textBasedToolCalls.length} text-based tool calls:`, textBasedToolCalls);
+
+          // Convert to structured format and execute
+          const structuredToolCalls = textBasedToolCalls.map((tc, index) => ({
+            id: `call_${Date.now()}_${index}`,
+            type: 'function' as const,
+            function: {
+              name: tc.name,
+              arguments: JSON.stringify(tc.arguments)
+            }
+          }));
+
+          // Execute tools and get follow-up response
+          return this.executeToolsAndFollowUp(
+            structuredToolCalls,
+            message.content || '',
+            data.usage,
+            settings,
+            { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1' } as LLMProvider,
+            conversationHistory
+          );
+        }
+      }
+    }
 
     // Handle tool calls if present (OpenAI format) - execute immediately like Anthropic
     if (message.tool_calls && message.tool_calls.length > 0) {
