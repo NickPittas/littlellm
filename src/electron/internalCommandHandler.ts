@@ -114,17 +114,17 @@ class ElectronInternalCommandHandler {
 
     // Terminal commands
     if (toolName === 'start_process') {
-      return this.startProcess(args as any);
+      return this.startProcess(args as { command: string; timeout_ms: number; shell?: string });
     } else if (toolName === 'read_process_output') {
-      return this.readProcessOutput(args as any);
+      return this.readProcessOutput(args as { pid: number });
     } else if (toolName === 'interact_with_process') {
-      return this.interactWithProcess(args as any);
+      return this.interactWithProcess(args as { pid: number; input: string });
     } else if (toolName === 'force_terminate') {
-      return this.forceTerminate(args as any);
+      return this.forceTerminate(args as { pid: number });
     } else if (toolName === 'list_sessions') {
       return this.listSessions();
     } else if (toolName === 'kill_process') {
-      return this.killProcess(args as any);
+      return this.killProcess(args as { pid: number });
     } else if (toolName === 'list_processes') {
       return this.listProcesses();
     } else if (toolName === 'get_cpu_usage') {
@@ -137,26 +137,26 @@ class ElectronInternalCommandHandler {
 
     // Filesystem commands
     else if (toolName === 'read_file') {
-      return this.readFile(args as any);
+      return this.readFile(args as { path: string; isUrl?: boolean; offset?: number; length?: number });
     } else if (toolName === 'write_file') {
-      return this.writeFile(args as any);
+      return this.writeFile(args as { path: string; content: string; append?: boolean });
     } else if (toolName === 'create_directory') {
-      return this.createDirectory(args as any);
+      return this.createDirectory(args as { path: string });
     } else if (toolName === 'list_directory') {
-      return this.listDirectory(args as any);
+      return this.listDirectory(args as { path: string });
     } else if (toolName === 'move_file') {
-      return this.moveFile(args as any);
+      return this.moveFile(args as { source: string; destination: string });
     } else if (toolName === 'search_files') {
-      return this.searchFiles(args as any);
+      return this.searchFiles(args as { path: string; pattern: string; recursive?: boolean });
     } else if (toolName === 'get_file_info') {
-      return this.getFileInfo(args as any);
+      return this.getFileInfo(args as { path: string });
     } else if (toolName === 'delete_file') {
-      return this.deleteFile(args as any);
+      return this.deleteFile(args as { path: string });
     }
 
     // Text editing commands
     else if (toolName === 'edit_block') {
-      return this.editBlock(args as any);
+      return this.editBlock(args as { file_path: string; old_string: string; new_string: string; expected_replacements?: number });
     }
 
     else {

@@ -12,7 +12,7 @@ import {
 } from './types';
 import { FALLBACK_MODELS } from './constants';
 import { ToolNameUtils } from './utils';
-import { ANTHROPIC_SYSTEM_PROMPT, generateAnthropicToolPrompt } from './prompts/anthropic';
+import { ANTHROPIC_SYSTEM_PROMPT } from './prompts/anthropic';
 import { debugLogger } from '../../utils/debugLogger';
 
 export class AnthropicProvider extends BaseProvider {
@@ -37,6 +37,9 @@ export class AnthropicProvider extends BaseProvider {
     results: Array<{ id?: string; name: string; result: string; success: boolean; executionTime: number }>
   ) => string;
 
+  // Injected tool executor method
+  public executeMCPTool?: (toolName: string, args: Record<string, unknown>) => Promise<string>;
+
   private _aggregateToolResults?: (
     results: Array<{ id?: string; name: string; result: string; success: boolean; executionTime: number }>
   ) => string;
@@ -59,10 +62,10 @@ export class AnthropicProvider extends BaseProvider {
 
       // Get raw tools from the centralized service
       const rawTools = await this._getMCPToolsForProvider!('anthropic', settings);
-      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: any) => t.function?.name));
+      console.log(`📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{ function?: { name?: string } }>).map(t => t.function?.name));
 
       // Format tools specifically for Anthropic
-      const formattedTools = this.formatToolsForAnthropic(rawTools);
+      const formattedTools = this.formatToolsForAnthropic(rawTools as Array<{ type?: string; function?: { name?: string; description?: string; parameters?: unknown } }>);
       console.log(`🔧 Formatted ${formattedTools.length} tools for Anthropic`);
 
       return formattedTools;
@@ -72,7 +75,7 @@ export class AnthropicProvider extends BaseProvider {
     }
   }
 
-  private formatToolsForAnthropic(rawTools: any[]): unknown[] {
+  private formatToolsForAnthropic(rawTools: Array<{ type?: string; function?: { name?: string; description?: string; parameters?: unknown } }>): unknown[] {
     return rawTools.map(tool => {
       // All tools now come in unified format with type: 'function' and function object
       if (tool.type === 'function' && tool.function) {
@@ -810,7 +813,7 @@ export class AnthropicProvider extends BaseProvider {
 
           // Check if it's a rate limit error and try local execution
           if (error && typeof error === 'object' && 'error' in error) {
-            const apiError = error as any;
+            const apiError = error as { error?: { type?: string } };
             if (apiError.error?.type === 'rate_limit_error') {
               console.warn('⚠️ Anthropic: Rate limit exceeded, attempting local tool execution');
 
@@ -818,7 +821,7 @@ export class AnthropicProvider extends BaseProvider {
               if (this.executeMCPTool && toolCalls.length > 0) {
                 try {
                   const localResults = await this.executeToolsLocally(toolCalls, fullContent, usage);
-                  return localResults;
+                  return localResults as unknown as LLMResponse;
                 } catch (localError) {
                   console.error('❌ Local tool execution also failed:', localError);
                 }
@@ -859,14 +862,18 @@ export class AnthropicProvider extends BaseProvider {
   /**
    * Execute tools locally when API calls fail (e.g., rate limits)
    */
-  private async executeToolsLocally(toolCalls: any[], content: string, usage: any): Promise<any> {
+  private async executeToolsLocally(
+    toolCalls: Array<Record<string, unknown>>,
+    content: string,
+    usage: Record<string, unknown> | undefined
+  ): Promise<Record<string, unknown>> {
     console.log(`🔧 Executing ${toolCalls.length} tools locally due to API limitations`);
 
     const toolResults = [];
     for (const toolCall of toolCalls) {
       try {
         console.log(`🔧 Executing local tool: ${toolCall.name} with args:`, toolCall.arguments);
-        const result = await this.executeMCPTool!(toolCall.name, toolCall.arguments);
+        const result = await this.executeMCPTool!(String(toolCall.name), toolCall.arguments as Record<string, unknown>);
         toolResults.push({
           toolCallId: toolCall.id,
           toolName: toolCall.name,
@@ -899,12 +906,14 @@ export class AnthropicProvider extends BaseProvider {
     };
   }
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   private async handleNonStreamResponse(
     response: Response,
-    settings: LLMSettings,
-    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    conversationId?: string
+    _settings: LLMSettings,
+    _conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    _conversationId?: string
   ): Promise<LLMResponse> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
     console.log('🔍 Anthropic raw response:', JSON.stringify(data, null, 2));
 

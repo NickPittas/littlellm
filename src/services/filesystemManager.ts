@@ -5,6 +5,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
 import { FileInfo } from '../types/internalCommands';
 // internalCommandService import removed - validation handled in main process
 
@@ -364,7 +365,7 @@ export class FilesystemManager {
               await execAsync(`gio trash "${filePath}"`);
             } catch {
               // Fallback: create .trash directory and move file there
-              const trashDir = path.join(require('os').homedir(), '.local', 'share', 'Trash', 'files');
+              const trashDir = path.join(os.homedir(), '.local', 'share', 'Trash', 'files');
               await fs.mkdir(trashDir, { recursive: true });
               const fileName = path.basename(filePath);
               const trashPath = path.join(trashDir, fileName);

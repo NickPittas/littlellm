@@ -124,5 +124,6 @@ export interface AppSettings {
     showNotifications: boolean;
     saveConversationHistory: boolean;
     conversationHistoryLength: number; // Number of previous messages to include in context
+    debugLogging: boolean; // Enable/disable debug logging
   };
 }

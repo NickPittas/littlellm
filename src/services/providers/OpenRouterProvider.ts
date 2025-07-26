@@ -340,7 +340,7 @@ export class OpenRouterProvider extends BaseProvider {
           console.log(`🔧 Extracted arguments for ${toolName} from context:`, parsed);
           return parsed;
         }
-      } catch (error) {
+      } catch {
         // Continue searching
       }
     }

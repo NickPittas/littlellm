@@ -21,7 +21,7 @@ try {
     console.log('🎨 Creating macOS icon (.icns)...');
     try {
       execSync('npm run create-mac-icon', { stdio: 'inherit' });
-    } catch (error) {
+    } catch {
       console.log('⚠️ Icon creation failed, continuing with existing icons...');
     }
   }

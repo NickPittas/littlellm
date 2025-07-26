@@ -11,7 +11,7 @@ import {
   ProviderCapabilities
 } from './types';
 import { FALLBACK_MODELS } from './constants';
-import { GEMINI_SYSTEM_PROMPT, generateGeminiToolPrompt } from './prompts/gemini';
+import { GEMINI_SYSTEM_PROMPT } from './prompts/gemini';
 import { debugLogger } from '../../utils/debugLogger';
 
 export class GeminiProvider extends BaseProvider {

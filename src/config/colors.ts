@@ -145,7 +145,7 @@ export function getDefaultHexColors() {
  * Apply colors to DOM and Electron window background
  * REQUIRES custom colors - no fallback to defaults
  */
-export function applyColorsToDOM(customColors: any) {
+export function applyColorsToDOM(customColors: Record<string, string>) {
   if (!customColors) {
     console.error('❌ CRITICAL: applyColorsToDOM called without colors - cannot apply theme');
     return;
@@ -170,7 +170,7 @@ export function applyColorsToDOM(customColors: any) {
 
   // Also update the Electron window background color
   if (typeof window !== 'undefined' && window.electronAPI && completeColors.background) {
-    window.electronAPI.setWindowBackgroundColor(completeColors.background).catch((error: any) => {
+    window.electronAPI.setWindowBackgroundColor(completeColors.background).catch((error: Error) => {
       console.error('Failed to set window background color:', error);
     });
   }

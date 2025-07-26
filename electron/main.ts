@@ -1699,6 +1699,7 @@ function loadAppSettings() {
       showNotifications: true,
       saveConversationHistory: true,
       conversationHistoryLength: 10,
+      debugLogging: false,
     },
     mcpServers: [],
     internalCommands: {
@@ -3219,8 +3220,8 @@ function setupIPC() {
     properties?: string[]
   } = {}) => {
     try {
-      const dialogOptions: any = {
-        properties: options.properties || ['openFile']
+      const dialogOptions: Electron.OpenDialogOptions = {
+        properties: (options.properties as Electron.OpenDialogOptions['properties']) || ['openFile']
       };
 
       if (options.multiple) {
@@ -3263,7 +3264,7 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('internal-commands:execute', async (_, data) => {
+  ipcMain.handle('internal-commands:execute', async (_, data, ...restArgs) => {
     try {
       // Handle both old and new parameter formats
       if (typeof data === 'object' && data && 'toolName' in data && 'args' in data) {
@@ -3271,7 +3272,7 @@ function setupIPC() {
       } else {
         // Legacy format: toolName as first param, args as second
         const toolName = data;
-        const args = arguments[2];
+        const args = restArgs[0];
         return await electronInternalCommandHandler.execute(toolName, args);
       }
     } catch (error) {
@@ -3318,7 +3319,7 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('clear-debug-log', async (_) => {
+  ipcMain.handle('clear-debug-log', async () => {
     try {
       const fs = await import('fs/promises');
       const path = await import('path');
@@ -3342,7 +3343,7 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('read-debug-log', async (_) => {
+  ipcMain.handle('read-debug-log', async () => {
     try {
       const fs = await import('fs/promises');
       const path = await import('path');
@@ -3358,7 +3359,7 @@ function setupIPC() {
 
       return { success: true, content, logPath: logFile };
     } catch (error) {
-      if ((error as any).code === 'ENOENT') {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         const logDir = path.join(app.getPath('userData'), 'debug');
         const logFile = path.join(logDir, 'debug.log');
         return { success: true, content: '', logPath: logFile }; // File doesn't exist yet
@@ -4163,39 +4164,57 @@ function setupIPC() {
       const colorMode = settings.ui.colorMode || 'preset';
       const useCustomColors = settings.ui.useCustomColors !== undefined ? settings.ui.useCustomColors : false;
 
-      // Apply fallbacks if missing and save corrected settings
-      if (!settings.ui.selectedThemePreset || !settings.ui.colorMode || settings.ui.useCustomColors === undefined) {
-        console.warn('⚠️ Main process: Theme settings missing, applying defaults');
+      // Only add missing properties, don't override existing ones
+      let needsSave = false;
+      if (!settings.ui.selectedThemePreset) {
         settings.ui.selectedThemePreset = selectedThemePreset;
+        needsSave = true;
+        console.log('🔧 Main process: Added missing selectedThemePreset');
+      }
+      if (!settings.ui.colorMode) {
         settings.ui.colorMode = colorMode;
+        needsSave = true;
+        console.log('🔧 Main process: Added missing colorMode');
+      }
+      if (settings.ui.useCustomColors === undefined) {
         settings.ui.useCustomColors = useCustomColors;
+        needsSave = true;
+        console.log('🔧 Main process: Added missing useCustomColors');
+      }
 
-        // Ensure customColors exist
-        if (!settings.ui.customColors) {
-          settings.ui.customColors = {
-            background: '#0a0a0f',
-            foreground: '#e0e0ff',
-            card: '#1a1a2e',
-            cardForeground: '#ffffff',
-            primary: '#00d4ff',
-            primaryForeground: '#000000',
-            secondary: '#ff6b9d',
-            secondaryForeground: '#000000',
-            accent: '#00d4ff',
-            accentForeground: '#000000',
-            muted: '#16213e',
-            mutedForeground: '#9ca3af',
-            border: '#3b3b68',
-            input: '#1e1b2e',
-            ring: '#00d4ff',
-            destructive: '#f44747',
-            destructiveForeground: '#ffffff',
-            systemText: '#e0e0ff',
-          };
-        }
+      // Ensure customColors exist
+      if (!settings.ui.customColors) {
+        settings.ui.customColors = {
+          background: '#0a0a0f',
+          foreground: '#e0e0ff',
+          card: '#1a1a2e',
+          cardForeground: '#ffffff',
+          primary: '#00d4ff',
+          primaryForeground: '#000000',
+          secondary: '#ff6b9d',
+          secondaryForeground: '#000000',
+          accent: '#00d4ff',
+          accentForeground: '#000000',
+          muted: '#16213e',
+          mutedForeground: '#9ca3af',
+          border: '#3b3b68',
+          input: '#1e1b2e',
+          ring: '#00d4ff',
+          destructive: '#f44747',
+          destructiveForeground: '#ffffff',
+          systemText: '#e0e0ff',
+        };
+        needsSave = true;
+        console.log('🔧 Main process: Added missing customColors');
+      }
 
-        // Save corrected settings
+      // Only save if we actually added missing properties
+      if (needsSave) {
+        console.log('💾 Main process: Saving settings with added missing properties (preserving existing values)');
         saveAppSettings(settings);
+        console.log('✅ Main process: Missing theme properties added and saved');
+      } else {
+        console.log('✅ Main process: All theme settings present, no changes needed');
       }
 
       // Loading theme settings

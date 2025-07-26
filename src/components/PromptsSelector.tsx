@@ -282,7 +282,7 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeletePrompt(prompt);
+                            handleDeletePrompt(prompt.id);
                           }}
                         >
                           <Trash2 className="h-3 w-3" />
