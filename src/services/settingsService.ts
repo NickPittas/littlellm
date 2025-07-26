@@ -11,6 +11,7 @@ import type {
   ColorSettings,
   InternalCommandSettings
 } from '../types/settings';
+import { serviceRegistry, SERVICE_NAMES, DebugLoggerInterface } from './serviceRegistry';
 
 // Re-export shared types for convenience
 export type {
@@ -136,58 +137,54 @@ class SettingsService {
   private settings: AppSettings = {} as AppSettings; // Don't initialize with defaults
   private listeners: Array<(settings: AppSettings) => void> = [];
   private initialized = false;
+  private initializationPromise: Promise<void> | null = null;
+  private saveInProgress = false;
 
 
   constructor() {
-    // DO NOT initialize with defaults - wait for actual settings to load
-    // this.settings will be set in loadSettingsSync()
+    // Register with service registry to break circular dependencies
+    serviceRegistry.registerService(SERVICE_NAMES.SETTINGS_SERVICE, this);
 
-    // Load settings SYNCHRONOUSLY at startup to prevent race conditions
-    this.loadSettingsSync();
-    // Note: initialized will be set to true after settings are actually loaded
+    // DO NOT initialize with defaults - wait for actual settings to load
+    // this.settings will be set in loadSettingsAsync()
+
+    // Start async initialization to prevent race conditions
+    this.initializationPromise = this.loadSettingsAsync();
   }
 
-  private loadSettingsSync() {
+  private async loadSettingsAsync(): Promise<void> {
     // Load settings from disk ONCE at startup
     if (typeof window !== 'undefined' && window.electronAPI) {
       try {
         console.log('Loading settings from disk...');
-        // This should be synchronous at startup
-        window.electronAPI.getSettings().then((savedSettings) => {
-          if (savedSettings) {
-            console.log('Settings loaded from disk:', savedSettings);
+        const savedSettings = await window.electronAPI.getSettings();
 
-            // Use saved settings directly without merging defaults to preserve user data
-            this.settings = savedSettings as AppSettings;
+        if (savedSettings) {
+          console.log('Settings loaded from disk:', savedSettings);
 
-            // Ensure essential structure exists without overriding user values
-            this.ensureEssentialStructure();
+          // Use saved settings directly without merging defaults to preserve user data
+          this.settings = savedSettings as AppSettings;
 
-            this.initialized = true;
-            this.notifyListeners();
-            console.log('✅ Settings loaded from file successfully');
-          } else {
-            console.log('🔧 No saved settings found - using defaults');
-            this.settings = { ...DEFAULT_SETTINGS };
-            this.initialized = true;
-            this.notifyListeners();
-          }
-        }).catch((error) => {
-          console.error('❌ CRITICAL: Failed to load settings from disk:', error);
-          console.warn('⚠️ FALLBACK: Using default settings due to load failure');
+          // Ensure essential structure exists without overriding user values
+          this.ensureEssentialStructure();
+
+          this.initialized = true;
+          this.notifyListeners();
+          console.log('✅ Settings loaded from file successfully');
+        } else {
+          console.log('🔧 No saved settings found - using defaults');
           this.settings = { ...DEFAULT_SETTINGS };
           this.initialized = true;
           this.notifyListeners();
-        });
+        }
       } catch (error) {
-        console.error('❌ CRITICAL: Error loading settings:', error);
-        console.warn('⚠️ FALLBACK: Using default settings due to initialization error');
-        this.settings = { ...DEFAULT_SETTINGS };
-        this.initialized = true;
-        this.notifyListeners();
+        console.error('❌ CRITICAL: Failed to load settings from disk:', error);
+        // Don't mask the error - let it propagate
+        this.initialized = false;
+        throw new Error(`Failed to load settings: ${error instanceof Error ? error.message : String(error)}`);
       }
     } else {
-      console.warn('⚠️ FALLBACK: Settings service initialized with defaults only (no Electron API)');
+      console.warn('⚠️ No Electron API available - settings will not persist');
       this.settings = { ...DEFAULT_SETTINGS };
       this.initialized = true;
       this.notifyListeners();
@@ -223,25 +220,26 @@ class SettingsService {
    * Update debug logger when debug setting changes
    */
   private updateDebugLogger() {
-    try {
-      // Import debugLogger dynamically to avoid circular dependency
-      const { debugLogger } = require('./debugLogger');
-      if (debugLogger && typeof debugLogger.refreshFromSettings === 'function') {
-        debugLogger.refreshFromSettings();
-        // No console output - this would create spam
-      }
-    } catch (error) {
-      // Silent failure - debug logger update is not critical
+    // Use service registry to avoid circular dependency
+    const debugLogger = serviceRegistry.getService<DebugLoggerInterface>(SERVICE_NAMES.DEBUG_LOGGER);
+    if (debugLogger && typeof debugLogger.refreshFromSettings === 'function') {
+      debugLogger.refreshFromSettings();
+      // No console output - this would create spam
     }
   }
 
-  // Save settings to JSON file via Electron
-  private async saveSettingsToFile() {
+  // Save settings to JSON file via Electron with race condition protection
+  private async saveSettingsToFile(): Promise<boolean> {
+    // Prevent concurrent saves
+    if (this.saveInProgress) {
+      console.log('⚠️ Save already in progress, skipping duplicate save');
+      return false;
+    }
+
+    this.saveInProgress = true;
+
     try {
       console.log('🔍 saveSettingsToFile called');
-      console.log('🔍 window available:', typeof window !== 'undefined');
-      console.log('🔍 electronAPI available:', typeof window !== 'undefined' && !!window.electronAPI);
-      console.log('🔍 updateAppSettings available:', typeof window !== 'undefined' && !!window.electronAPI?.updateAppSettings);
       console.log('🔍 Settings to save:', JSON.stringify(this.settings, null, 2));
 
       if (typeof window !== 'undefined' && window.electronAPI?.updateAppSettings) {
@@ -258,13 +256,13 @@ class SettingsService {
         }
       } else {
         console.error('❌ Electron API or updateAppSettings not available');
-        console.log('🔍 window:', typeof window);
-        console.log('🔍 electronAPI:', typeof window !== 'undefined' ? window.electronAPI : 'window undefined');
         return false;
       }
     } catch (error) {
       console.error('❌ Error saving settings to file:', error);
       return false;
+    } finally {
+      this.saveInProgress = false;
     }
   }
 
@@ -277,14 +275,9 @@ class SettingsService {
     this.listeners.forEach(listener => listener(this.settings));
 
     // Refresh debug logger state when settings change
-    try {
-      // Dynamic import to avoid circular dependency
-      const { debugLogger } = require('./debugLogger');
-      if (debugLogger && typeof debugLogger.refreshFromSettings === 'function') {
-        debugLogger.refreshFromSettings();
-      }
-    } catch (error) {
-      // Ignore errors if debug logger isn't available
+    const debugLogger = serviceRegistry.getService<DebugLoggerInterface>(SERVICE_NAMES.DEBUG_LOGGER);
+    if (debugLogger && typeof debugLogger.refreshFromSettings === 'function') {
+      debugLogger.refreshFromSettings();
     }
   }
 
@@ -300,6 +293,15 @@ class SettingsService {
 
   isInitialized(): boolean {
     return this.initialized;
+  }
+
+  /**
+   * Wait for settings to be initialized
+   */
+  async waitForInitialization(): Promise<void> {
+    if (this.initializationPromise) {
+      await this.initializationPromise;
+    }
   }
 
   getChatSettings(): ChatSettings {
@@ -416,6 +418,11 @@ class SettingsService {
 
   // Method for SettingsOverlay - SAVE TO DISK ONLY (no auto-reload)
   async updateSettings(updates: Partial<AppSettings>): Promise<boolean> {
+    // Wait for initialization to complete
+    if (this.initializationPromise) {
+      await this.initializationPromise;
+    }
+
     console.log('🔍 updateSettings called with:', JSON.stringify(updates, null, 2));
 
     // API keys are now handled by secureApiKeyService, not in settings
@@ -467,28 +474,8 @@ class SettingsService {
       this.notifyListeners();
       console.log('✅ Settings updated and listeners notified');
 
-      // Also trigger a reload from disk to ensure all components get the latest settings
-      setTimeout(async () => {
-        try {
-          console.log('🔄 Auto-reloading settings from disk after save...');
-          if (typeof window !== 'undefined' && window.electronAPI) {
-            const savedSettings = await window.electronAPI.getSettings();
-            if (savedSettings) {
-              // DON'T merge with defaults - use saved settings as-is to preserve user data
-              this.settings = { ...(savedSettings as AppSettings) };
-              this.notifyListeners();
-              console.log('✅ Settings auto-reloaded from disk successfully (no default merge)');
-
-              // Update debug logger if debug setting changed
-              if (updates.general?.debugLogging !== undefined) {
-                this.updateDebugLogger();
-              }
-            }
-          }
-        } catch (error) {
-          console.error('❌ Failed to auto-reload settings from disk:', error);
-        }
-      }, 100); // Small delay to ensure file is written
+      // No auto-reload - settings are already updated in memory and saved to disk
+      // Components should use the current in-memory settings
     } else {
       console.error('❌ Failed to save settings, not notifying listeners');
     }

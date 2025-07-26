@@ -200,8 +200,8 @@ export class GeminiProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.log('No Gemini API key provided, using fallback models');
-      return FALLBACK_MODELS.gemini;
+      console.error('❌ No Gemini API key provided - cannot fetch models');
+      throw new Error('Gemini API key is required to fetch available models. Please add your API key in settings.');
     }
 
     try {
@@ -209,8 +209,9 @@ export class GeminiProvider extends BaseProvider {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
 
       if (!response.ok) {
-        console.warn(`Gemini API error: ${response.status}, using fallback models`);
-        return FALLBACK_MODELS.gemini;
+        const errorText = await response.text();
+        console.error(`❌ Gemini API error: ${response.status}`, errorText);
+        throw new Error(`Failed to fetch Gemini models: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json() as { models?: Array<{ name: string; supportedGenerationMethods?: string[] }> };
@@ -219,10 +220,14 @@ export class GeminiProvider extends BaseProvider {
         ?.map((model) => model.name.replace('models/', ''))
         ?.sort() || [];
 
-      return models.length > 0 ? models : FALLBACK_MODELS.gemini;
+      if (models.length === 0) {
+        throw new Error('No Gemini models returned from API. This may indicate an API issue or insufficient permissions.');
+      }
+
+      return models;
     } catch (error) {
-      console.warn('Failed to fetch Gemini models, using fallback:', error);
-      return FALLBACK_MODELS.gemini;
+      console.error('❌ Failed to fetch Gemini models:', error);
+      throw error instanceof Error ? error : new Error(`Failed to fetch Gemini models: ${String(error)}`);
     }
   }
 

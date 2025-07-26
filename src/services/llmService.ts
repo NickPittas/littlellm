@@ -194,64 +194,7 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
   }
 ];
 
-// Fallback models for when API calls fail
-const FALLBACK_MODELS: Record<string, string[]> = {
-  openai: [
-    'gpt-4o',
-    'gpt-4o-mini',
-    'gpt-4-turbo',
-    'gpt-4',
-    'gpt-3.5-turbo'
-  ],
-  anthropic: [
-    'claude-3-5-sonnet-20241022',
-    'claude-3-5-haiku-20241022',
-    'claude-3-opus-20240229',
-    'claude-3-sonnet-20240229',
-    'claude-3-haiku-20240307'
-  ],
-  gemini: [
-    'gemini-1.5-pro-latest',
-    'gemini-1.5-flash-latest',
-    'gemini-1.0-pro'
-  ],
-  mistral: [
-    'mistral-medium-latest',      // Vision-capable
-    'pixtral-large-latest',       // Vision-capable
-    'pixtral-12b-2409',          // Vision-capable
-    'mistral-large-latest',       // Text-only
-    'mistral-small-latest'        // Text-only
-  ],
-  deepseek: [
-    'deepseek-chat',
-    'deepseek-coder'
-  ],
-  lmstudio: [
-    'local-model'
-  ],
-  ollama: [
-    'llama2',
-    'codellama',
-    'mistral'
-  ],
-  openrouter: [
-    'anthropic/claude-3.5-sonnet',
-    'openai/gpt-4o',
-    'meta-llama/llama-3.1-405b-instruct'
-  ],
-  requesty: [
-    'openai/gpt-4o',
-    'anthropic/claude-3.5-sonnet',
-    'meta-llama/llama-3.1-405b-instruct'
-  ],
-  replicate: [
-    'meta/llama-2-70b-chat',
-    'mistralai/mixtral-8x7b-instruct-v0.1'
-  ],
-  n8n: [
-    'n8n-workflow'
-  ]
-};
+// FALLBACK_MODELS removed - providers now properly throw errors instead of masking failures
 
 class LLMService {
   private providers: LLMProvider[] = DEFAULT_PROVIDERS;
@@ -270,8 +213,8 @@ class LLMService {
 
   private async initializeInternalCommands() {
     try {
+      // Only initialize once - service handles duplicate initialization prevention
       await internalCommandService.initialize();
-      // Removed debug spam - service handles its own logging
     } catch (error) {
       console.error('❌ Failed to initialize internal command service:', error);
     }

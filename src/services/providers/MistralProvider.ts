@@ -324,8 +324,8 @@ export class MistralProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.log('No Mistral API key provided, using fallback models');
-      return FALLBACK_MODELS.mistral;
+      console.error('❌ No Mistral API key provided - cannot fetch models');
+      throw new Error('Mistral API key is required to fetch available models. Please add your API key in settings.');
     }
 
     try {
@@ -345,17 +345,19 @@ export class MistralProvider extends BaseProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.warn(`Mistral API error: ${response.status} ${response.statusText}`, errorText);
+        console.error(`❌ Mistral API error: ${response.status} ${response.statusText}`, errorText);
 
         // Try to parse error for better debugging
+        let errorDetails = errorText;
         try {
           const errorObj = JSON.parse(errorText);
-          console.warn('Mistral API error details:', errorObj);
+          console.error('Mistral API error details:', errorObj);
+          errorDetails = errorObj.message || errorObj.error || errorText;
         } catch {
-          console.warn('Mistral API raw error:', errorText);
+          console.error('Mistral API raw error:', errorText);
         }
 
-        return FALLBACK_MODELS.mistral;
+        throw new Error(`Failed to fetch Mistral models: ${response.status} ${response.statusText} - ${errorDetails}`);
       }
 
       const data = await response.json() as APIResponseData;
@@ -365,10 +367,15 @@ export class MistralProvider extends BaseProvider {
       const models = data.data?.map((model) => model.id)?.sort() || [];
 
       console.log(`✅ Fetched ${models.length} Mistral models:`, models);
-      return models.length > 0 ? models : FALLBACK_MODELS.mistral;
+
+      if (models.length === 0) {
+        throw new Error('No Mistral models returned from API. This may indicate an API issue or insufficient permissions.');
+      }
+
+      return models;
     } catch (error) {
-      console.warn('❌ Failed to fetch Mistral models, using fallback:', error);
-      return FALLBACK_MODELS.mistral;
+      console.error('❌ Failed to fetch Mistral models:', error);
+      throw error instanceof Error ? error : new Error(`Failed to fetch Mistral models: ${String(error)}`);
     }
   }
 

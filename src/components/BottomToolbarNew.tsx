@@ -73,10 +73,24 @@ export function BottomToolbar({
     console.log('fetchModelsForProvider called with:', providerId);
     setIsLoadingModels(true);
     try {
+      // Wait for secure API key service to be initialized
+      await secureApiKeyService.waitForInitialization();
+
       // Get API key from secure storage instead of settings
-      const apiKeyData = secureApiKeyService.getApiKeyData(providerId);
-      const apiKey = apiKeyData?.apiKey || '';
-      const baseUrl = apiKeyData?.baseUrl || '';
+      let apiKeyData = null;
+      let apiKey = '';
+      let baseUrl = '';
+
+      try {
+        apiKeyData = secureApiKeyService.getApiKeyData(providerId);
+        apiKey = apiKeyData?.apiKey || '';
+        baseUrl = apiKeyData?.baseUrl || '';
+      } catch (error) {
+        console.error(`❌ Failed to get API key data for ${providerId}:`, error);
+        // Don't mask the error - let the user know there's an issue
+        setAvailableModels([]);
+        return;
+      }
 
       console.log('🔍 BottomToolbar fetchModels from secure storage:', {
         providerId,
@@ -444,30 +458,50 @@ export function BottomToolbar({
                   console.log('Current settings.model:', settings.model);
                   console.log('Current settings.providers:', settings.providers);
 
-                  // FIRST: Save the current model to the current provider's lastSelectedModel
+                  // FIRST: Save the current model to secure storage for the current provider
                   const currentProvider = settings.provider;
                   const currentModel = settings.model;
 
-                  const updatedProviders = { ...settings.providers };
-
                   if (currentProvider && currentModel && currentModel.trim() !== '') {
-                    console.log('💾 SAVING current model to current provider:', currentProvider, '->', currentModel);
-                    updatedProviders[currentProvider] = {
-                      ...updatedProviders[currentProvider],
-                      lastSelectedModel: currentModel
-                    };
+                    console.log('💾 SAVING current model to secure storage:', currentProvider, '->', currentModel);
+                    // Save to secure storage asynchronously
+                    setTimeout(async () => {
+                      try {
+                        await secureApiKeyService.waitForInitialization();
+
+                        try {
+                          const currentApiKeyData = secureApiKeyService.getApiKeyData(currentProvider);
+                          if (currentApiKeyData) {
+                            await secureApiKeyService.setApiKeyData(currentProvider, {
+                              ...currentApiKeyData,
+                              lastSelectedModel: currentModel
+                            });
+                          } else {
+                            await secureApiKeyService.setApiKeyData(currentProvider, {
+                              apiKey: '',
+                              baseUrl: '',
+                              lastSelectedModel: currentModel
+                            });
+                          }
+                          console.log('✅ Saved current model to secure storage');
+                        } catch (error) {
+                          console.error('❌ Failed to save current model to secure storage:', error);
+                          // Don't mask the error - let user know there's an issue
+                        }
+                      } catch (error) {
+                        console.error('❌ Failed to save current model to secure storage:', error);
+                      }
+                    }, 50);
                   }
 
                   // SECOND: ALWAYS CLEAR THE MODEL WHEN SWITCHING PROVIDERS
                   // The model will be restored ONLY when models are fetched and validated
                   console.log('🧹 CLEARING model field - will be restored after models are fetched');
-                  console.log('Final providers object:', updatedProviders);
                   console.log('=== END PROVIDER SWITCH DEBUG ===');
 
                   onSettingsChange({
                     provider: providerId,
-                    model: '', // ALWAYS CLEAR - will be restored in fetchModelsForProvider
-                    providers: updatedProviders // Include the updated providers object
+                    model: '' // ALWAYS CLEAR - will be restored in fetchModelsForProvider
                   });
                   console.log('Settings updated with provider:', providerId, 'and model:', '');
                 } else {
@@ -512,35 +546,46 @@ export function BottomToolbar({
                   }
 
                   if (value && settings.provider) {
-                    // Update the model and save it as the last selected model for the current provider
-                    const updatedProviders = {
-                      ...settings.providers,
-                      [settings.provider]: {
-                        ...settings.providers[settings.provider],
-                        lastSelectedModel: value
-                      }
-                    };
+                    // Update the current model in settings
+                    console.log('🔄 Updating current model to:', value);
+                    onSettingsChange({ model: value });
 
-                    console.log('Updating settings with:', { model: value, providers: updatedProviders });
-                    onSettingsChange({
-                      model: value,
-                      providers: updatedProviders
-                    });
-
-                    // Auto-save model selection to disk for persistence across restarts
+                    // Save the selected model to secure storage for this provider
                     setTimeout(async () => {
                       try {
-                        console.log('Auto-saving model selection to disk...');
-                        await settingsService.saveSettingsToDisk();
-                        console.log('Model selection auto-saved successfully');
-                      } catch (error) {
-                        console.error('Failed to auto-save model selection:', error);
-                      }
-                    }, 500); // Small delay to ensure settings are updated
+                        console.log('💾 Saving last selected model to secure storage...');
+                        await secureApiKeyService.waitForInitialization();
 
-                    console.log('Model settings updated successfully');
+                        try {
+                          const currentApiKeyData = secureApiKeyService.getApiKeyData(settings.provider);
+                          if (currentApiKeyData) {
+                            // Update existing API key data with new last selected model
+                            await secureApiKeyService.setApiKeyData(settings.provider, {
+                              ...currentApiKeyData,
+                              lastSelectedModel: value
+                            });
+                            console.log('✅ Last selected model saved to secure storage');
+                          } else {
+                            // Create new entry with just the last selected model
+                            await secureApiKeyService.setApiKeyData(settings.provider, {
+                              apiKey: '',
+                              baseUrl: '',
+                              lastSelectedModel: value
+                            });
+                            console.log('✅ Created new secure storage entry with last selected model');
+                          }
+                        } catch (error) {
+                          console.error('❌ Failed to save last selected model to secure storage:', error);
+                          // Don't mask the error - let user know there's an issue
+                        }
+                      } catch (error) {
+                        console.error('❌ Failed to save last selected model:', error);
+                      }
+                    }, 100); // Small delay to ensure settings are updated
+
+                    console.log('✅ Model selection completed');
                   } else {
-                    console.error('Invalid model selection:', { value, provider: settings.provider });
+                    console.error('❌ Invalid model selection:', { value, provider: settings.provider });
                   }
                 }}
                 placeholder="Select model..."

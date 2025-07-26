@@ -98,10 +98,15 @@ export class ReplicateProvider extends BaseProvider {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async fetchModels(_apiKey: string): Promise<string[]> {
-    // Replicate doesn't have a simple models endpoint
-    // Return fallback models which are version hashes
-    return FALLBACK_MODELS.replicate;
+  async fetchModels(apiKey: string): Promise<string[]> {
+    if (!apiKey) {
+      console.error('❌ No Replicate API key provided - cannot fetch models');
+      throw new Error('Replicate API key is required to fetch available models. Please add your API key in settings.');
+    }
+
+    // Replicate doesn't have a simple models endpoint like other providers
+    // Users need to specify the exact model version hash they want to use
+    throw new Error('Replicate requires specific model version hashes. Please specify the exact model version in the model field (e.g., "meta/llama-2-70b-chat:02e509c789964a7ea8736978a43525956ef40397be9033abf9fd2badfe68c9e3").');
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

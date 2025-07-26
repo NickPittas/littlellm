@@ -432,17 +432,22 @@ export class OllamaProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        console.warn(`Ollama API error: ${response.status}, using fallback models`);
-        return FALLBACK_MODELS.ollama;
+        const errorText = await response.text();
+        console.error(`❌ Ollama API error: ${response.status}`, errorText);
+        throw new Error(`Failed to connect to Ollama at ${ollamaUrl}. Status: ${response.status} - ${errorText}. Make sure Ollama is running and accessible.`);
       }
 
       const data = await response.json() as { models?: Array<{ name: string }> };
       const models = data.models?.map((model) => model.name)?.sort() || [];
 
-      return models.length > 0 ? models : FALLBACK_MODELS.ollama;
+      if (models.length === 0) {
+        throw new Error(`No models found in Ollama at ${ollamaUrl}. Please install some models using 'ollama pull <model-name>'.`);
+      }
+
+      return models;
     } catch (error) {
-      console.warn('Failed to fetch Ollama models, using fallback:', error);
-      return FALLBACK_MODELS.ollama;
+      console.error('❌ Failed to fetch Ollama models:', error);
+      throw error instanceof Error ? error : new Error(`Failed to fetch Ollama models: ${String(error)}`);
     }
   }
 

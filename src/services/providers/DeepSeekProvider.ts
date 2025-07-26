@@ -116,8 +116,8 @@ export class DeepSeekProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.log('No DeepSeek API key provided, using fallback models');
-      return FALLBACK_MODELS.deepseek;
+      console.error('❌ No DeepSeek API key provided - cannot fetch models');
+      throw new Error('DeepSeek API key is required to fetch available models. Please add your API key in settings.');
     }
 
     try {
@@ -130,17 +130,22 @@ export class DeepSeekProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        console.warn(`DeepSeek API error: ${response.status}, using fallback models`);
-        return FALLBACK_MODELS.deepseek;
+        const errorText = await response.text();
+        console.error(`❌ DeepSeek API error: ${response.status}`, errorText);
+        throw new Error(`Failed to fetch DeepSeek models: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json() as APIResponseData;
       const models = data.data?.map((model) => model.id)?.sort() || [];
 
-      return models.length > 0 ? models : FALLBACK_MODELS.deepseek;
+      if (models.length === 0) {
+        throw new Error('No DeepSeek models returned from API. This may indicate an API issue or insufficient permissions.');
+      }
+
+      return models;
     } catch (error) {
-      console.warn('Failed to fetch DeepSeek models, using fallback:', error);
-      return FALLBACK_MODELS.deepseek;
+      console.error('❌ Failed to fetch DeepSeek models:', error);
+      throw error instanceof Error ? error : new Error(`Failed to fetch DeepSeek models: ${String(error)}`);
     }
   }
 
