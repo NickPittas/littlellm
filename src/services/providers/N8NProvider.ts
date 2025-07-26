@@ -82,16 +82,21 @@ export class N8NProvider extends BaseProvider {
 
   async fetchModels(apiKey: string, baseUrl?: string): Promise<string[]> {
     if (!baseUrl) {
-      return FALLBACK_MODELS.n8n;
+      console.error('❌ No N8N workflow URL provided - cannot fetch models');
+      throw new Error('N8N workflow URL is required. Please add the workflow URL in settings.');
     }
 
     try {
       // For n8n workflows, we don't fetch models from an endpoint
       // Instead, we return a list of workflow names/IDs that the user can configure
       const workflowName = this.extractWorkflowNameFromUrl(baseUrl);
-      return workflowName ? [workflowName] : ['n8n-workflow'];
-    } catch {
-      return FALLBACK_MODELS.n8n;
+      if (!workflowName) {
+        throw new Error('Could not extract workflow name from N8N URL. Please check the URL format.');
+      }
+      return [workflowName];
+    } catch (error) {
+      console.error('❌ Failed to process N8N workflow URL:', error);
+      throw error instanceof Error ? error : new Error(`Failed to process N8N workflow URL: ${String(error)}`);
     }
   }
 

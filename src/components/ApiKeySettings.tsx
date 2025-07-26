@@ -50,28 +50,30 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
 
   // Load API keys on component mount
   useEffect(() => {
-    console.log('🔐 ApiKeySettings: Component mounted');
+    // Reduce console spam - only log once per session
+    if (!(window as any).__apiKeySettingsLogged) {
+      console.log('🔐 ApiKeySettings: Component mounted');
+      (window as any).__apiKeySettingsLogged = true;
+    }
 
     const initializeApiKeys = async () => {
       try {
         const service = getSecureApiKeyService();
-        console.log('🔐 ApiKeySettings: Secure API key service loaded');
-
-        // Check if service is initialized, if not wait for it
+        // Only log during first initialization attempt to reduce console spam
         if (!service.isInitialized()) {
-          console.log('🔐 ApiKeySettings: Service not initialized, waiting...');
-          // Retry initialization
-          await service.retryInitialization();
+          console.log('🔐 ApiKeySettings: Waiting for secure API key service...');
 
-          // Wait a bit more if still not initialized
+          // Wait for initialization without retrying (service handles its own initialization)
+          await service.waitForInitialization();
+
           if (!service.isInitialized()) {
-            console.log('🔐 ApiKeySettings: Waiting for service initialization...');
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            console.warn('🔐 ApiKeySettings: Service initialization timed out');
+            return;
           }
         }
 
         if (service.isInitialized()) {
-          console.log('🔐 ApiKeySettings: Service is initialized, loading API keys');
+          // Service is ready - only log once to reduce console spam
           loadApiKeys(true); // Force reset on initial load
 
           // Listen for API key changes
@@ -124,12 +126,15 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
           const data = service.getApiKeyData(provider.id);
           if (data) {
             loadedKeys[provider.id] = data;
-
           } else {
             loadedKeys[provider.id] = { apiKey: '', baseUrl: '', lastSelectedModel: '' };
           }
         } catch (error) {
           console.error(`🔐 ApiKeySettings: Error loading API key for ${provider.id}:`, error);
+          // Don't mask the error - let user know service is not ready
+          if (error instanceof Error && error.message.includes('not initialized')) {
+            console.warn('🔐 ApiKeySettings: Service not initialized, will retry when ready');
+          }
           loadedKeys[provider.id] = { apiKey: '', baseUrl: '', lastSelectedModel: '' };
         }
       });
@@ -226,34 +231,29 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
         return;
       }
 
-      // Save all API keys
-      let saveSuccessful = true;
+      // Save all API keys - now with proper error handling
       for (const [providerId, data] of Object.entries(apiKeys)) {
-        if (data.apiKey.trim() || data.baseUrl?.trim()) {
-          const success = await service.setApiKeyData(providerId, {
-            apiKey: data.apiKey.trim(),
-            baseUrl: data.baseUrl?.trim(),
-            lastSelectedModel: data.lastSelectedModel
-          });
-          if (!success) {
-            saveSuccessful = false;
-            console.error(`❌ Failed to save API key for ${providerId}`);
+        try {
+          if (data.apiKey.trim() || data.baseUrl?.trim()) {
+            await service.setApiKeyData(providerId, {
+              apiKey: data.apiKey.trim(),
+              baseUrl: data.baseUrl?.trim(),
+              lastSelectedModel: data.lastSelectedModel
+            });
+            console.log(`✅ Saved API key for ${providerId}`);
+          } else {
+            // Remove empty API key data
+            await service.removeApiKeyData(providerId);
+            console.log(`🗑️ Removed API key for ${providerId}`);
           }
-        } else {
-          // Remove empty API key data
-          const success = await service.removeApiKeyData(providerId);
-          if (!success) {
-            console.warn(`⚠️ Failed to remove API key for ${providerId}`);
-          }
+        } catch (error) {
+          console.error(`❌ Failed to save/remove API key for ${providerId}:`, error);
+          throw new Error(`Failed to save API key for ${providerId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
 
-      if (saveSuccessful) {
-        setHasChanges(false);
-        console.log('✅ API keys saved successfully');
-      } else {
-        throw new Error('Some API keys could not be saved. Please check the console for details and try again.');
-      }
+      setHasChanges(false);
+      console.log('✅ All API keys saved successfully');
     } catch (error) {
       console.error('❌ Failed to save API keys:', error);
       throw error; // Re-throw so parent can handle the error

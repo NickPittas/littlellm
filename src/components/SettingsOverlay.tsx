@@ -25,6 +25,8 @@ export function SettingsOverlay() {
   const [formData, setFormData] = useState<AppSettings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const apiKeySaveRef = useRef<(() => Promise<void>) | null>(null);
   const {
     customColors,
@@ -551,12 +553,17 @@ export function SettingsOverlay() {
     if (!formData) return;
 
     setIsLoading(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+
     try {
       // Save general settings
       const success = await settingsService.updateSettings(formData);
 
       // Always save API keys if the save function is available
       let apiKeySaveSuccess = true;
+      let apiKeyError: string | null = null;
+
       if (apiKeySaveRef.current) {
         try {
           console.log('🔐 SettingsOverlay: Triggering API key save via ref');
@@ -565,6 +572,7 @@ export function SettingsOverlay() {
         } catch (error) {
           console.error('🔐 SettingsOverlay: Failed to save API keys:', error);
           apiKeySaveSuccess = false;
+          apiKeyError = error instanceof Error ? error.message : 'Unknown API key save error';
         }
       }
 
@@ -635,10 +643,20 @@ export function SettingsOverlay() {
         }
 
         console.log('Settings saved successfully');
+        setSaveSuccess(true);
+
+        // Clear success message after 3 seconds
+        setTimeout(() => setSaveSuccess(false), 3000);
       } else {
-        console.error('Failed to save settings');
+        const errorMessage = !success
+          ? 'Failed to save general settings'
+          : apiKeyError || 'Failed to save API keys';
+        setSaveError(errorMessage);
+        console.error('Failed to save settings:', errorMessage);
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred while saving settings';
+      setSaveError(errorMessage);
       console.error('Error saving settings:', error);
     } finally {
       setIsLoading(false);
@@ -649,6 +667,8 @@ export function SettingsOverlay() {
     if (settings) {
       setFormData(JSON.parse(JSON.stringify(settings))); // Reset to original
       setHasChanges(false);
+      setSaveError(null);
+      setSaveSuccess(false);
     }
   };
 
@@ -661,6 +681,10 @@ export function SettingsOverlay() {
     const newFormData = { ...formData, ...updates };
     setFormData(newFormData);
     setHasChanges(true);
+
+    // Clear any previous save errors when user starts making changes
+    if (saveError) setSaveError(null);
+    if (saveSuccess) setSaveSuccess(false);
   };
 
   // Handle color changes and integrate with save system
@@ -1885,6 +1909,20 @@ export function SettingsOverlay() {
               </Button>
             </div>
           </div>
+
+          {/* Error and Success Messages */}
+          {saveError && (
+            <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+              <p className="text-sm text-destructive">❌ {saveError}</p>
+            </div>
+          )}
+
+          {saveSuccess && (
+            <div className="mt-4 p-3 bg-green-500/10 border border-green-500/20 rounded-md">
+              <p className="text-sm text-green-600">✅ Settings saved successfully!</p>
+            </div>
+          )}
+
           {hasChanges && (
             <div className="mt-2 text-xs text-muted-foreground">
               Changes will be applied immediately after saving

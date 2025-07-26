@@ -208,8 +208,8 @@ export class LMStudioProvider extends BaseProvider {
 
   async fetchModels(apiKey: string, baseUrl?: string): Promise<string[]> {
     if (!baseUrl) {
-      console.log('No LM Studio base URL provided, using fallback models');
-      return FALLBACK_MODELS.lmstudio;
+      console.error('❌ No LM Studio base URL provided - cannot fetch models');
+      throw new Error('LM Studio base URL is required to fetch available models. Please add the base URL in settings (e.g., http://localhost:1234).');
     }
 
     try {
@@ -221,17 +221,22 @@ export class LMStudioProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        console.warn(`LM Studio API error: ${response.status}, using fallback models`);
-        return FALLBACK_MODELS.lmstudio;
+        const errorText = await response.text();
+        console.error(`❌ LM Studio API error: ${response.status}`, errorText);
+        throw new Error(`Failed to connect to LM Studio at ${baseUrl}. Status: ${response.status} - ${errorText}. Make sure LM Studio is running and the server is started.`);
       }
 
       const data = await response.json() as APIResponseData;
       const models = data.data?.map((model) => model.id)?.sort() || [];
 
-      return models.length > 0 ? models : FALLBACK_MODELS.lmstudio;
+      if (models.length === 0) {
+        throw new Error(`No models found in LM Studio at ${baseUrl}. Please load a model in LM Studio first.`);
+      }
+
+      return models;
     } catch (error) {
-      console.warn('Failed to fetch LM Studio models, using fallback:', error);
-      return FALLBACK_MODELS.lmstudio;
+      console.error('❌ Failed to fetch LM Studio models:', error);
+      throw error instanceof Error ? error : new Error(`Failed to fetch LM Studio models: ${String(error)}`);
     }
   }
 

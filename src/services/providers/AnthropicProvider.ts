@@ -337,8 +337,8 @@ export class AnthropicProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.log('🔍 No Anthropic API key provided, using fallback models');
-      return FALLBACK_MODELS.anthropic;
+      console.error('❌ No Anthropic API key provided - cannot fetch models');
+      throw new Error('Anthropic API key is required to fetch available models. Please add your API key in settings.');
     }
 
     try {
@@ -352,18 +352,24 @@ export class AnthropicProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        console.warn(`Anthropic API error: ${response.status} ${response.statusText}, using fallback models`);
-        return FALLBACK_MODELS.anthropic;
+        const errorText = await response.text();
+        console.error(`❌ Anthropic API error: ${response.status} ${response.statusText}`, errorText);
+        throw new Error(`Failed to fetch Anthropic models: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json() as { data: Array<{ id: string; display_name: string }> };
       const models = data.data?.map((model) => model.id)?.sort() || [];
 
-      console.log(`🔍 Fetched ${models.length} Anthropic models from API:`, models);
-      return models.length > 0 ? models : FALLBACK_MODELS.anthropic;
+      console.log(`✅ Fetched ${models.length} Anthropic models from API:`, models);
+
+      if (models.length === 0) {
+        throw new Error('No Anthropic models returned from API. This may indicate an API issue or insufficient permissions.');
+      }
+
+      return models;
     } catch (error) {
-      console.warn('Failed to fetch Anthropic models from API, using fallback:', error);
-      return FALLBACK_MODELS.anthropic;
+      console.error('❌ Failed to fetch Anthropic models from API:', error);
+      throw error instanceof Error ? error : new Error(`Failed to fetch Anthropic models: ${String(error)}`);
     }
   }
 

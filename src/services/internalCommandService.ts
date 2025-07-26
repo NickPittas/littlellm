@@ -13,6 +13,8 @@ import {
   InternalCommandConfig
 } from '../types/internalCommands';
 import { settingsService } from './settingsService';
+import { initializationManager } from './initializationManager';
+import { serviceRegistry, SERVICE_NAMES, DebugLoggerInterface } from './serviceRegistry';
 
 class InternalCommandService {
   private availableTools: InternalCommandTool[] = [];
@@ -22,7 +24,12 @@ class InternalCommandService {
   constructor() {
     // Check if running in Electron
     this.isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
-    // Don't initialize tools in constructor - wait for initialize() method
+
+    // Register with initialization manager
+    initializationManager.registerService(InternalCommandService.SERVICE_NAME);
+
+    // Register with service registry to break circular dependencies
+    serviceRegistry.registerService(SERVICE_NAMES.INTERNAL_COMMAND_SERVICE, this);
   }
 
   /**
@@ -34,9 +41,12 @@ class InternalCommandService {
       return;
     }
 
-    const { debugLogger } = require('./debugLogger');
-    debugLogger.debug('Loading internal commands settings:', settingsService.getSettings().internalCommands);
-    debugLogger.debug('Setting internal commands state:', { isElectron: this.isElectron });
+    // Use service registry to avoid circular dependency
+    const debugLogger = serviceRegistry.getService<DebugLoggerInterface>(SERVICE_NAMES.DEBUG_LOGGER);
+    if (debugLogger) {
+      debugLogger.debug('Loading internal commands settings:', settingsService.getSettings().internalCommands);
+      debugLogger.debug('Setting internal commands state:', { isElectron: this.isElectron });
+    }
 
     if (this.isElectron) {
       // Send configuration to Electron main process

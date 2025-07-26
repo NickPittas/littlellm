@@ -1,9 +1,11 @@
 /**
  * Secure API Key Storage Service
- * 
+ *
  * This service handles encrypted storage and retrieval of API keys using Electron's safeStorage API.
  * API keys are stored separately from general settings for enhanced security.
  */
+
+import { initializationManager } from './initializationManager';
 
 export interface ProviderApiKeyData {
   apiKey: string;
@@ -21,36 +23,37 @@ export interface ApiKeyValidationResult {
 }
 
 class SecureApiKeyService {
-  private initialized = false;
+  private static readonly SERVICE_NAME = 'SecureApiKeyService';
   private apiKeys: SecureApiKeyStorage = {};
   private listeners: Array<(providerId: string, hasKey: boolean) => void> = [];
 
   constructor() {
+    // Register with initialization manager
+    initializationManager.registerService(SecureApiKeyService.SERVICE_NAME);
+
+    // Start initialization through the manager
     this.initializeService();
   }
 
   private async initializeService() {
-    try {
-      // Wait for Electron API to be available
-      await this.waitForElectronAPI();
+    // Use initialization manager to prevent duplicate initialization
+    return initializationManager.startInitialization(
+      SecureApiKeyService.SERVICE_NAME,
+      async () => {
+        // Wait for Electron API to be available
+        await this.waitForElectronAPI();
 
-      // Only proceed if we're in a browser environment
-      if (typeof window !== 'undefined') {
-        await this.loadApiKeys();
+        // Only proceed if we're in a browser environment
+        if (typeof window !== 'undefined') {
+          await this.loadApiKeys();
 
-        // Check for migration from old settings format
-        await this.checkAndMigrateFromSettings();
-
-        this.initialized = true;
-        console.log('✅ SecureApiKeyService initialized successfully');
-      } else {
-        console.log('🔐 SecureApiKeyService skipped initialization (server-side rendering)');
-        this.initialized = false;
+          // Check for migration from old settings format
+          await this.checkAndMigrateFromSettings();
+        } else {
+          console.log('🔐 SecureApiKeyService skipped initialization (server-side rendering)');
+        }
       }
-    } catch (error) {
-      console.warn('⚠️ SecureApiKeyService initialization failed, continuing without secure storage:', error);
-      this.initialized = false;
-    }
+    );
   }
 
   /**
@@ -151,9 +154,9 @@ class SecureApiKeyService {
    * Get API key data for a specific provider
    */
   getApiKeyData(providerId: string): ProviderApiKeyData | null {
-    if (!this.initialized) {
-      console.warn('⚠️ SecureApiKeyService not initialized yet');
-      return null;
+    if (!this.isInitialized()) {
+      console.error('❌ SecureApiKeyService not initialized - cannot retrieve API key data');
+      throw new Error('SecureApiKeyService not initialized. Please wait for initialization to complete.');
     }
 
     const data = this.apiKeys[providerId];
@@ -342,14 +345,21 @@ class SecureApiKeyService {
    * Check if the service is initialized
    */
   isInitialized(): boolean {
-    return this.initialized;
+    return initializationManager.isServiceInitialized(SecureApiKeyService.SERVICE_NAME);
+  }
+
+  /**
+   * Wait for the service to be initialized
+   */
+  async waitForInitialization(): Promise<void> {
+    return initializationManager.waitForService(SecureApiKeyService.SERVICE_NAME);
   }
 
   /**
    * Retry initialization (useful when window becomes available)
    */
   async retryInitialization(): Promise<void> {
-    if (!this.initialized && typeof window !== 'undefined') {
+    if (!this.isInitialized() && typeof window !== 'undefined') {
       console.log('🔐 Retrying SecureApiKeyService initialization...');
       await this.initializeService();
     }
