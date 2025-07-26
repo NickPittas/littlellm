@@ -531,7 +531,8 @@ export class OpenRouterProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      return FALLBACK_MODELS.openrouter;
+      console.log('❌ No OpenRouter API key provided - cannot fetch models');
+      return [];
     }
 
     try {
@@ -543,15 +544,17 @@ export class OpenRouterProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        return FALLBACK_MODELS.openrouter;
+        console.warn(`❌ OpenRouter API error: ${response.status} - check API key`);
+        return [];
       }
 
       const data = await response.json() as APIResponseData;
       const models = data.data?.map((model) => model.id)?.sort() || [];
 
-      return models.length > 0 ? models : FALLBACK_MODELS.openrouter;
-    } catch {
-      return FALLBACK_MODELS.openrouter;
+      return models;
+    } catch (error) {
+      console.warn('❌ Failed to fetch OpenRouter models:', error);
+      return [];
     }
   }
 

@@ -45,7 +45,5 @@ export async function clearDebugLogFile(): Promise<string> {
 if (typeof window !== 'undefined') {
   (window as any).readDebugLog = readDebugLogFile;
   (window as any).clearDebugLog = clearDebugLogFile;
-  console.log('🔧 Debug log utilities loaded:');
-  console.log('  - window.readDebugLog() - Read debug log content');
-  console.log('  - window.clearDebugLog() - Clear debug log');
+  // Removed debug spam - utilities loaded silently
 }

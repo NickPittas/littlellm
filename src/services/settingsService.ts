@@ -35,18 +35,18 @@ const DEFAULT_SETTINGS: AppSettings = {
     maxTokens: 8192,
     toolCallingEnabled: true,
     providers: {
-      openai: { apiKey: '', lastSelectedModel: '' },
-      anthropic: { apiKey: '', lastSelectedModel: '' },
-      gemini: { apiKey: '', lastSelectedModel: '' },
-      mistral: { apiKey: '', lastSelectedModel: '' },
-      deepseek: { apiKey: '', lastSelectedModel: '' },
-      groq: { apiKey: '', lastSelectedModel: '' },
-      lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-      ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-      openrouter: { apiKey: '', lastSelectedModel: '' },
-      requesty: { apiKey: '', lastSelectedModel: '' },
-      replicate: { apiKey: '', lastSelectedModel: '' },
-      n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+      openai: { lastSelectedModel: '' },
+      anthropic: { lastSelectedModel: '' },
+      gemini: { lastSelectedModel: '' },
+      mistral: { lastSelectedModel: '' },
+      deepseek: { lastSelectedModel: '' },
+      groq: { lastSelectedModel: '' },
+      lmstudio: { baseUrl: '', lastSelectedModel: '' },
+      ollama: { baseUrl: '', lastSelectedModel: '' },
+      openrouter: { lastSelectedModel: '' },
+      requesty: { lastSelectedModel: '' },
+      replicate: { lastSelectedModel: '' },
+      n8n: { baseUrl: '', lastSelectedModel: '' },
     },
   },
   mcpServers: [],
@@ -133,7 +133,7 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 class SettingsService {
-  private settings: AppSettings = DEFAULT_SETTINGS;
+  private settings: AppSettings = {} as AppSettings; // Don't initialize with defaults
   private listeners: Array<(settings: AppSettings) => void> = [];
   private initialized = false;
 
@@ -156,153 +156,82 @@ class SettingsService {
         window.electronAPI.getSettings().then((savedSettings) => {
           if (savedSettings) {
             console.log('Settings loaded from disk:', savedSettings);
-            const settings = savedSettings as {
-              chat?: {
-                model?: string;
-                providers?: Record<string, { lastSelectedModel?: string }>
-              }
-            };
 
-            // Migration fix: Check if model is set to a provider name and clear it
-            const providerNames = ['OpenAI', 'Anthropic', 'Google Gemini', 'Mistral AI', 'DeepSeek', 'LM Studio', 'Ollama (Local)', 'OpenRouter', 'Requesty', 'Replicate'];
-            if (settings.chat?.model && providerNames.includes(settings.chat.model)) {
-              console.log('Migration: Detected model set to provider name, clearing it:', settings.chat.model);
-              settings.chat.model = '';
-            }
-
-            // Also clean up any corrupted lastSelectedModel values in providers
-            if (settings.chat?.providers) {
-              Object.keys(settings.chat.providers).forEach(providerId => {
-                const provider = settings.chat!.providers![providerId];
-                if (provider.lastSelectedModel && providerNames.includes(provider.lastSelectedModel)) {
-                  console.log('Migration: Detected corrupted lastSelectedModel for provider', providerId, ':', provider.lastSelectedModel);
-                  provider.lastSelectedModel = '';
-                }
-              });
-            }
-
-            // Use saved settings as base, but ensure required theme properties exist
+            // Use saved settings directly without merging defaults to preserve user data
             this.settings = savedSettings as AppSettings;
 
-            // Only validate critical missing properties - don't override existing values
-            let needsSave = false;
-
-            // Ensure ui object exists
-            if (!this.settings.ui) {
-              this.settings.ui = { ...DEFAULT_SETTINGS.ui };
-              needsSave = true;
-              console.log('🔧 Created missing ui settings object');
-            }
-
-            // Only add missing required properties, don't override existing ones
-            if (!this.settings.ui.selectedThemePreset) {
-              this.settings.ui.selectedThemePreset = 'cyberpunk';
-              needsSave = true;
-              console.log('🔧 Added missing selectedThemePreset');
-            }
-            if (!this.settings.ui.colorMode) {
-              this.settings.ui.colorMode = 'preset';
-              needsSave = true;
-              console.log('🔧 Added missing colorMode');
-            }
-            if (this.settings.ui.useCustomColors === undefined) {
-              this.settings.ui.useCustomColors = false;
-              needsSave = true;
-              console.log('🔧 Added missing useCustomColors');
-            }
-
-            // Ensure customColors exist
-            if (!this.settings.ui.customColors) {
-              this.settings.ui.customColors = {
-                background: '#0a0a0f',
-                foreground: '#e0e0ff',
-                card: '#1a1a2e',
-                cardForeground: '#ffffff',
-                primary: '#00d4ff',
-                primaryForeground: '#000000',
-                secondary: '#ff6b9d',
-                secondaryForeground: '#000000',
-                accent: '#00d4ff',
-                accentForeground: '#000000',
-                muted: '#16213e',
-                mutedForeground: '#9ca3af',
-                border: '#3b3b68',
-                input: '#1e1b2e',
-                ring: '#00d4ff',
-                destructive: '#f44747',
-                destructiveForeground: '#ffffff',
-                systemText: '#e0e0ff',
-              };
-              needsSave = true;
-              console.log('🔧 Added missing customColors');
-            }
-
-            // Only save if we actually added missing properties
-            if (needsSave) {
-              console.log('💾 Saving settings with added missing properties (preserving existing values)');
-              this.saveSettings();
-              console.log('✅ Missing theme properties added and saved');
-            } else {
-              console.log('✅ All theme settings present, no changes needed');
-            }
+            // Ensure essential structure exists without overriding user values
+            this.ensureEssentialStructure();
 
             this.initialized = true;
             this.notifyListeners();
-            console.log('✅ Settings loaded from file with valid theme settings:', this.settings.ui);
+            console.log('✅ Settings loaded from file successfully');
           } else {
-            console.log('🔧 No saved settings found - creating initial settings with cyberpunk theme');
-            // Create initial settings with cyberpunk theme (user's preferred theme)
-            const initialSettings: AppSettings = {
-              ...DEFAULT_SETTINGS,
-              ui: {
-                ...DEFAULT_SETTINGS.ui,
-                selectedThemePreset: 'cyberpunk',
-                colorMode: 'preset',
-                useCustomColors: false,
-                customColors: {
-                  background: '#0a0a0f',
-                  foreground: '#e0e0ff',
-                  card: '#1a1a2e',
-                  cardForeground: '#ffffff',
-                  primary: '#00d4ff',
-                  primaryForeground: '#000000',
-                  secondary: '#ff6b9d',
-                  secondaryForeground: '#000000',
-                  accent: '#00d4ff',
-                  accentForeground: '#000000',
-                  muted: '#16213e',
-                  mutedForeground: '#a0a0b0',
-                  border: '#2a2a5e',
-                  input: '#16213e',
-                  ring: '#00d4ff',
-                  destructive: '#ff4757',
-                  destructiveForeground: '#ffffff',
-                  systemText: '#e0e0ff',
-                }
-              }
-            };
-
-            this.settings = initialSettings;
+            console.log('🔧 No saved settings found - using defaults');
+            this.settings = { ...DEFAULT_SETTINGS };
             this.initialized = true;
-
-            // Save initial settings to file
-            this.saveSettingsToFile().then(() => {
-              console.log('✅ Initial settings saved to file');
-              this.notifyListeners();
-            }).catch((error) => {
-              console.error('❌ Failed to save initial settings:', error);
-            });
+            this.notifyListeners();
           }
         }).catch((error) => {
-          console.error('Failed to load settings from disk:', error);
-          console.log('Using default settings');
+          console.error('❌ CRITICAL: Failed to load settings from disk:', error);
+          console.warn('⚠️ FALLBACK: Using default settings due to load failure');
+          this.settings = { ...DEFAULT_SETTINGS };
+          this.initialized = true;
+          this.notifyListeners();
         });
       } catch (error) {
-        console.error('Error loading settings:', error);
-        console.log('Settings service initialized with defaults only');
+        console.error('❌ CRITICAL: Error loading settings:', error);
+        console.warn('⚠️ FALLBACK: Using default settings due to initialization error');
+        this.settings = { ...DEFAULT_SETTINGS };
+        this.initialized = true;
+        this.notifyListeners();
       }
     } else {
-      console.log('Settings service initialized with defaults only (no Electron API)');
+      console.warn('⚠️ FALLBACK: Settings service initialized with defaults only (no Electron API)');
+      this.settings = { ...DEFAULT_SETTINGS };
+      this.initialized = true;
+      this.notifyListeners();
+    }
+  }
+
+  /**
+   * Ensure essential structure exists without overriding user values
+   */
+  private ensureEssentialStructure() {
+    // Only add missing essential properties, never override existing ones
+    if (!this.settings.ui) {
+      this.settings.ui = { ...DEFAULT_SETTINGS.ui };
+    }
+    if (!this.settings.chat) {
+      this.settings.chat = { ...DEFAULT_SETTINGS.chat };
+    }
+    if (!this.settings.general) {
+      this.settings.general = { ...DEFAULT_SETTINGS.general };
+    }
+    if (!this.settings.shortcuts) {
+      this.settings.shortcuts = { ...DEFAULT_SETTINGS.shortcuts };
+    }
+    if (!this.settings.mcpServers) {
+      this.settings.mcpServers = [];
+    }
+    if (!this.settings.internalCommands) {
+      this.settings.internalCommands = { ...DEFAULT_SETTINGS.internalCommands };
+    }
+  }
+
+  /**
+   * Update debug logger when debug setting changes
+   */
+  private updateDebugLogger() {
+    try {
+      // Import debugLogger dynamically to avoid circular dependency
+      const { debugLogger } = require('./debugLogger');
+      if (debugLogger && typeof debugLogger.refreshFromSettings === 'function') {
+        debugLogger.refreshFromSettings();
+        // No console output - this would create spam
+      }
+    } catch (error) {
+      // Silent failure - debug logger update is not critical
     }
   }
 
@@ -385,30 +314,27 @@ class SettingsService {
     if (!chatSettings.providers) {
       console.log('🔍 getChatSettings: No providers found, creating defaults');
       chatSettings.providers = {
-        openai: { apiKey: '', lastSelectedModel: '' },
-        anthropic: { apiKey: '', lastSelectedModel: '' },
-        gemini: { apiKey: '', lastSelectedModel: '' },
-        mistral: { apiKey: '', lastSelectedModel: '' },
-        deepseek: { apiKey: '', lastSelectedModel: '' },
-        groq: { apiKey: '', lastSelectedModel: '' },
-        lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-        ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-        openrouter: { apiKey: '', lastSelectedModel: '' },
-        requesty: { apiKey: '', lastSelectedModel: '' },
-        replicate: { apiKey: '', lastSelectedModel: '' },
-        n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+        openai: { lastSelectedModel: '' },
+        anthropic: { lastSelectedModel: '' },
+        gemini: { lastSelectedModel: '' },
+        mistral: { lastSelectedModel: '' },
+        deepseek: { lastSelectedModel: '' },
+        groq: { lastSelectedModel: '' },
+        lmstudio: { baseUrl: '', lastSelectedModel: '' },
+        ollama: { baseUrl: '', lastSelectedModel: '' },
+        openrouter: { lastSelectedModel: '' },
+        requesty: { lastSelectedModel: '' },
+        replicate: { lastSelectedModel: '' },
+        n8n: { baseUrl: '', lastSelectedModel: '' },
       };
     } else {
-      // Debug loaded API keys
+      // Clean up any legacy API keys that might still be in settings
       Object.entries(chatSettings.providers).forEach(([provider, config]) => {
-        if (config.apiKey) {
-          console.log(`🔍 getChatSettings: Loaded API key for ${provider}:`, {
-            hasKey: !!config.apiKey,
-            keyLength: config.apiKey.length,
-            keyStart: config.apiKey.substring(0, 10),
-            keyType: typeof config.apiKey,
-            startsWithSkAnt: provider === 'anthropic' ? config.apiKey.startsWith('sk-ant-') : 'N/A'
-          });
+        if ('apiKey' in config) {
+          console.log(`🔄 Removing legacy API key from settings for ${provider}`);
+          // Remove apiKey from the config object
+          const { apiKey, ...cleanConfig } = config as any;
+          chatSettings.providers[provider] = cleanConfig;
         }
       });
     }
@@ -492,50 +418,33 @@ class SettingsService {
   async updateSettings(updates: Partial<AppSettings>): Promise<boolean> {
     console.log('🔍 updateSettings called with:', JSON.stringify(updates, null, 2));
 
-    // Debug API keys in the updates
-    if (updates.chat?.providers) {
-      Object.entries(updates.chat.providers).forEach(([provider, config]) => {
-        if (config.apiKey) {
-          console.log(`🔍 Updating API key for ${provider}:`, {
-            hasKey: !!config.apiKey,
-            keyLength: config.apiKey.length,
-            keyStart: config.apiKey.substring(0, 10),
-            keyType: typeof config.apiKey,
-            startsWithSkAnt: provider === 'anthropic' ? config.apiKey.startsWith('sk-ant-') : 'N/A'
-          });
-        }
-      });
-    }
+    // API keys are now handled by secureApiKeyService, not in settings
 
     // Update settings in memory with deep merge
     const oldSettings = { ...this.settings };
 
     // Deep merge for nested objects like ui, chat, etc.
-    this.settings = {
-      ...this.settings,
-      ...updates,
-      // Deep merge ui object if it exists in updates
-      ...(updates.ui && {
-        ui: {
-          ...this.settings.ui,
-          ...updates.ui
-        }
-      }),
-      // Deep merge chat object if it exists in updates
-      ...(updates.chat && {
-        chat: {
-          ...this.settings.chat,
-          ...updates.chat,
-          // Deep merge providers if it exists
-          ...(updates.chat.providers && {
-            providers: {
-              ...this.settings.chat.providers,
-              ...updates.chat.providers
-            }
-          })
-        }
-      })
-    };
+    this.settings = { ...this.settings, ...updates };
+
+    // Handle deep merge for ui object
+    if (updates.ui) {
+      this.settings.ui = { ...this.settings.ui, ...updates.ui };
+    }
+
+    // Handle deep merge for chat object
+    if (updates.chat) {
+      this.settings.chat = { ...this.settings.chat, ...updates.chat };
+
+      // Handle deep merge for providers
+      if (updates.chat.providers) {
+        this.settings.chat.providers = { ...this.settings.chat.providers, ...updates.chat.providers };
+      }
+    }
+
+    // Handle deep merge for general object
+    if (updates.general) {
+      this.settings.general = { ...this.settings.general, ...updates.general };
+    }
 
     console.log('🔍 Settings updated in memory from:', JSON.stringify(oldSettings, null, 2));
     console.log('🔍 Settings updated in memory to:', JSON.stringify(this.settings, null, 2));
@@ -547,6 +456,13 @@ class SettingsService {
 
     if (success) {
       console.log('🔍 Notifying listeners...');
+
+      // Update debug logger immediately if debug setting changed
+      if (updates.general?.debugLogging !== undefined) {
+        this.updateDebugLogger();
+        // No console output - this would create spam
+      }
+
       // Notify listeners immediately after successful save
       this.notifyListeners();
       console.log('✅ Settings updated and listeners notified');
@@ -562,6 +478,11 @@ class SettingsService {
               this.settings = { ...(savedSettings as AppSettings) };
               this.notifyListeners();
               console.log('✅ Settings auto-reloaded from disk successfully (no default merge)');
+
+              // Update debug logger if debug setting changed
+              if (updates.general?.debugLogging !== undefined) {
+                this.updateDebugLogger();
+              }
             }
           }
         } catch (error) {
@@ -585,7 +506,9 @@ class SettingsService {
         const savedSettings = await window.electronAPI.getSettings();
         if (savedSettings) {
           console.log('Settings reloaded for MCP change:', savedSettings);
-          this.settings = { ...DEFAULT_SETTINGS, ...(savedSettings as AppSettings) };
+          // Don't merge with defaults - use saved settings as-is to preserve user data
+          this.settings = { ...(savedSettings as AppSettings) };
+          this.ensureEssentialStructure(); // Only add missing structure, don't override
           this.notifyListeners();
         }
       } catch (error) {

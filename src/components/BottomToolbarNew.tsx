@@ -16,6 +16,7 @@ import { chatService } from '../services/chatService';
 import type { ChatSettings } from '../services/chatService';
 import { settingsService } from '../services/settingsService';
 import { conversationHistoryService } from '../services/conversationHistoryService';
+import { secureApiKeyService } from '../services/secureApiKeyService';
 
 interface BottomToolbarProps {
   onFileUpload?: (files: FileList) => void;
@@ -72,41 +73,26 @@ export function BottomToolbar({
     console.log('fetchModelsForProvider called with:', providerId);
     setIsLoadingModels(true);
     try {
-      const currentSettings = settingsRef.current;
-      const providerSettings = currentSettings.providers?.[providerId] || { apiKey: '' };
-      console.log('Provider settings:', providerSettings);
+      // Get API key from secure storage instead of settings
+      const apiKeyData = secureApiKeyService.getApiKeyData(providerId);
+      const apiKey = apiKeyData?.apiKey || '';
+      const baseUrl = apiKeyData?.baseUrl || '';
+
+      console.log('🔍 BottomToolbar fetchModels from secure storage:', {
+        providerId,
+        hasApiKey: !!apiKey,
+        apiKeyLength: apiKey.length,
+        hasBaseUrl: !!baseUrl,
+        secureServiceInitialized: secureApiKeyService.isInitialized()
+      });
 
       // Only fetch models if we have an API key (except for Ollama, LM Studio, and n8n which don't require one)
-      if (providerId !== 'ollama' && providerId !== 'lmstudio' && providerId !== 'n8n' && !providerSettings.apiKey) {
-        console.log(`No API key configured for ${providerId}, using fallback models`);
-        const models = await chatService.fetchModels(providerId, '', '');
-        console.log(`✅ Fallback models loaded for ${providerId}:`, models.length, 'models available');
-        setAvailableModels(models);
-
-        if (models.length === 0) {
-          console.warn(`⚠️ No fallback models available for ${providerId}`);
-        }
-
-        // ONLY restore model if it exists in the fetched models list
-        const lastSelectedModel = currentSettings.providers?.[providerId]?.lastSelectedModel;
-
-        if (!currentSettings.model && lastSelectedModel && models.includes(lastSelectedModel)) {
-          console.log('✅ RESTORING valid model for provider (no API key):', providerId, '->', lastSelectedModel);
-          onSettingsChange({ model: lastSelectedModel });
-        } else if (lastSelectedModel && !models.includes(lastSelectedModel)) {
-          console.log('❌ INVALID model found, NOT restoring:', lastSelectedModel, 'not in models:', models.slice(0, 3));
-        }
+      if (providerId !== 'ollama' && providerId !== 'lmstudio' && providerId !== 'n8n' && !apiKey) {
+        console.log(`❌ No API key configured for ${providerId} - cannot fetch models`);
+        setAvailableModels([]);
         return;
       }
 
-      const baseUrl = providerSettings.baseUrl || '';
-      const apiKey = providerSettings.apiKey || '';
-      console.log('🔍 BottomToolbar fetchModels:', {
-        providerId,
-        hasApiKey: !!apiKey,
-        baseUrl,
-        providerSettings: JSON.stringify(providerSettings, null, 2)
-      });
       const models = await chatService.fetchModels(providerId, apiKey, baseUrl);
       console.log(`✅ Models fetched for ${providerId} with API key:`, models.length, 'models available');
       setAvailableModels(models);
@@ -116,7 +102,9 @@ export function BottomToolbar({
       }
 
       // ONLY restore model if it exists in the fetched models list
-      const lastSelectedModel = currentSettings.providers?.[providerId]?.lastSelectedModel;
+      // Get last selected model from secure storage
+      const lastSelectedModel = apiKeyData?.lastSelectedModel;
+      const currentSettings = settingsRef.current;
 
       if (!currentSettings.model && lastSelectedModel && models.includes(lastSelectedModel)) {
         console.log('✅ RESTORING valid model for provider (with API key):', providerId, '->', lastSelectedModel);
@@ -154,6 +142,26 @@ export function BottomToolbar({
       fetchModelsForProvider(settings.provider);
     }
   }, [settings.provider]); // Only watch provider changes, not the callback
+
+  // Listen for settings saved events to refresh models
+  useEffect(() => {
+    const handleSettingsSaved = (event: CustomEvent) => {
+      console.log('🔄 Settings saved event received, clearing cache and refreshing models');
+
+      // Clear model cache to force fresh fetch
+      chatService.clearModelCache();
+
+      if (settings.provider) {
+        console.log('🔄 Refreshing models for current provider:', settings.provider);
+        fetchModelsForProvider(settings.provider);
+      }
+    };
+
+    window.addEventListener('settingsSaved', handleSettingsSaved as EventListener);
+    return () => {
+      window.removeEventListener('settingsSaved', handleSettingsSaved as EventListener);
+    };
+  }, [settings.provider, fetchModelsForProvider]);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleFileUpload = () => {

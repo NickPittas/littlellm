@@ -52,7 +52,7 @@ class ElectronInternalCommandHandler {
    */
   public async setConfig(config: InternalCommandConfig): Promise<boolean> {
     this.config = config;
-    console.log('🔧 Internal commands config updated:', config);
+    // Removed debug spam - config updated silently
     return true;
   }
 

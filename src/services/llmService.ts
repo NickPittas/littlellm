@@ -271,7 +271,7 @@ class LLMService {
   private async initializeInternalCommands() {
     try {
       await internalCommandService.initialize();
-      console.log('🔧 Internal command service initialized in LLM service');
+      // Removed debug spam - service handles its own logging
     } catch (error) {
       console.error('❌ Failed to initialize internal command service:', error);
     }
@@ -318,13 +318,28 @@ class LLMService {
       return models;
     } catch (error) {
       console.warn(`Failed to fetch models for ${providerId}:`, error);
-      return FALLBACK_MODELS[providerId] || [];
+      // Don't return fallback models - let the UI handle the empty state
+      return [];
     }
   }
 
   // Alias for backward compatibility with frontend
   async fetchModels(providerId: string, apiKey?: string, baseUrl?: string): Promise<string[]> {
     return this.getModels(providerId, apiKey, baseUrl);
+  }
+
+  // Clear model cache for a specific provider (useful when API keys change)
+  clearModelCache(providerId?: string): void {
+    if (providerId) {
+      // Clear cache for specific provider
+      const keysToDelete = Array.from(this.modelCache.keys()).filter(key => key.startsWith(`${providerId}-`));
+      keysToDelete.forEach(key => this.modelCache.delete(key));
+      console.log(`🗑️ Cleared model cache for provider: ${providerId}`);
+    } else {
+      // Clear all cache
+      this.modelCache.clear();
+      console.log('🗑️ Cleared all model cache');
+    }
   }
 
   async sendMessage(
@@ -415,12 +430,8 @@ class LLMService {
 
       // Get internal command tools if enabled
       const isInternalEnabled = internalCommandService.isEnabled();
-      console.log(`🔧 Internal commands enabled: ${isInternalEnabled}`);
       const internalTools = isInternalEnabled ? internalCommandService.getAvailableTools() : [];
-      console.log(`🔧 Internal command tools available (${internalTools.length} tools):`, internalTools.map(t => t.name));
-      if (internalTools.length === 0 && isInternalEnabled) {
-        console.warn(`⚠️ Internal commands are enabled but no tools returned. This indicates a configuration or filtering issue.`);
-      }
+      // Removed debug spam - tools are loaded silently
 
       // Convert all tools to a unified format that providers can handle
       const unifiedTools: Array<{type: string, function: {name: string, description: string, parameters: unknown}, serverId?: string}> = [];

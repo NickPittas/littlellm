@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -13,6 +13,7 @@ import { MemoryManagement } from './MemoryManagement';
 import KnowledgeBaseSettings from './KnowledgeBaseSettings';
 import { mcpService, type MCPServer } from '../services/mcpService';
 import { PromptsContent } from './PromptsContent';
+import { ApiKeySettings } from './ApiKeySettings';
 import { Plus, Trash2, Server, Zap, Edit, FileText, Palette, RotateCcw } from 'lucide-react';
 import { ColorPicker } from './ui/color-picker';
 import { ThemeSelector } from './ui/theme-selector';
@@ -24,6 +25,7 @@ export function SettingsOverlay() {
   const [formData, setFormData] = useState<AppSettings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const apiKeySaveRef = useRef<(() => Promise<void>) | null>(null);
   const {
     customColors,
     setCustomColors,
@@ -84,13 +86,10 @@ export function SettingsOverlay() {
   const loadSettings = async (): Promise<AppSettings | undefined> => {
     setIsLoading(true);
     try {
-      let loadedSettings: AppSettings;
-      if (typeof window !== 'undefined' && window.electronAPI) {
-        const electronSettings = await window.electronAPI.getAppSettings();
-        loadedSettings = electronSettings as AppSettings;
-      } else {
-        loadedSettings = settingsService.getSettings();
-      }
+      // Always use the settings service to ensure consistency
+      const loadedSettings = settingsService.getSettings();
+      console.log('🔍 SettingsOverlay: Loaded settings from service:', loadedSettings);
+
       setSettings(loadedSettings);
       setFormData(JSON.parse(JSON.stringify(loadedSettings))); // Deep copy
       setHasChanges(false);
@@ -336,13 +335,11 @@ export function SettingsOverlay() {
     // Load individual tool settings
     setEnabledTools(commandSettings.enabledTools || {});
 
-    // Load available tools
+    // Load available tools (service should already be initialized by LLMService)
     try {
       const { internalCommandService } = await import('../services/internalCommandService');
-      // Ensure the service is initialized before getting tools
-      await internalCommandService.initialize();
+      // Don't re-initialize - service should already be ready
       const tools = internalCommandService.getAvailableTools();
-      console.log('🔧 Loaded available tools:', tools);
       setAvailableTools(tools);
     } catch (error) {
       console.error('Failed to load available tools:', error);
@@ -555,10 +552,35 @@ export function SettingsOverlay() {
 
     setIsLoading(true);
     try {
+      // Save general settings
       const success = await settingsService.updateSettings(formData);
-      if (success) {
+
+      // Always save API keys if the save function is available
+      let apiKeySaveSuccess = true;
+      if (apiKeySaveRef.current) {
+        try {
+          console.log('🔐 SettingsOverlay: Triggering API key save via ref');
+          await apiKeySaveRef.current();
+          console.log('🔐 SettingsOverlay: API key save completed');
+        } catch (error) {
+          console.error('🔐 SettingsOverlay: Failed to save API keys:', error);
+          apiKeySaveSuccess = false;
+        }
+      }
+
+      if (success && apiKeySaveSuccess) {
         setSettings(formData);
+        // Always reset hasChanges after successful save
         setHasChanges(false);
+
+        // Trigger model refresh for all components by dispatching a custom event
+        console.log('🔄 Settings saved successfully - triggering model refresh');
+        window.dispatchEvent(new CustomEvent('settingsSaved', {
+          detail: {
+            apiKeysSaved: apiKeySaveSuccess,
+            provider: formData.chat?.provider
+          }
+        }));
 
         // If any theme-related settings were changed, notify other windows
         if (formData.ui?.customColors ||
@@ -716,7 +738,19 @@ export function SettingsOverlay() {
       await loadInternalCommandsSettings(loadedSettings);
     };
     initializeSettings();
-  }, []);
+
+    // Subscribe to settings changes to keep the overlay in sync
+    const unsubscribe = settingsService.subscribe((newSettings) => {
+      console.log('🔍 SettingsOverlay: Settings changed via subscription:', newSettings);
+      setSettings(newSettings);
+      // Only update form data if we don't have unsaved changes
+      if (!hasChanges) {
+        setFormData(JSON.parse(JSON.stringify(newSettings)));
+      }
+    });
+
+    return unsubscribe;
+  }, []); // Remove hasChanges dependency to prevent re-initialization loop
 
   return (
     <div
@@ -838,284 +872,21 @@ export function SettingsOverlay() {
           {/* Content Area */}
           <div className="flex-1 overflow-y-auto min-h-0">
             {activeTab === 'api-keys' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-medium mb-4">API Configuration</h3>
-                  <div className="space-y-4">
-                    {formData?.chat?.providers && (
-                      <>
-                        <div className="space-y-2">
-                          <Label htmlFor="openai-key">OpenAI API Key</Label>
-                          <Input
-                            id="openai-key"
-                            type="password"
-                            value={formData.chat.providers.openai?.apiKey || ''}
-                            placeholder="sk-..."
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  openai: { ...formData.chat.providers.openai, apiKey: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="anthropic-key">Anthropic API Key</Label>
-                          <Input
-                            id="anthropic-key"
-                            type="password"
-                            value={formData.chat.providers.anthropic?.apiKey || ''}
-                            placeholder="sk-ant-..."
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  anthropic: { ...formData.chat.providers.anthropic, apiKey: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="gemini-key">Google Gemini API Key</Label>
-                          <Input
-                            id="gemini-key"
-                            type="password"
-                            value={formData.chat.providers.gemini?.apiKey || ''}
-                            placeholder="AI..."
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  gemini: { ...formData.chat.providers.gemini, apiKey: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="mistral-key">Mistral AI API Key</Label>
-                          <Input
-                            id="mistral-key"
-                            type="password"
-                            value={formData.chat.providers.mistral?.apiKey || ''}
-                            placeholder="API Key..."
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  mistral: { ...formData.chat.providers.mistral, apiKey: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="deepseek-key">DeepSeek API Key</Label>
-                          <Input
-                            id="deepseek-key"
-                            type="password"
-                            value={formData.chat.providers.deepseek?.apiKey || ''}
-                            placeholder="sk-..."
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  deepseek: { ...formData.chat.providers.deepseek, apiKey: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="openrouter-key">OpenRouter API Key</Label>
-                          <Input
-                            id="openrouter-key"
-                            type="password"
-                            value={formData.chat.providers.openrouter?.apiKey || ''}
-                            placeholder="sk-or-..."
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  openrouter: { ...formData.chat.providers.openrouter, apiKey: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="lmstudio-key">LM Studio API Key</Label>
-                          <Input
-                            id="lmstudio-key"
-                            type="password"
-                            value={formData.chat.providers.lmstudio?.apiKey || ''}
-                            placeholder="API Key..."
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  lmstudio: { ...formData.chat.providers.lmstudio, apiKey: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="lmstudio-url">LM Studio Base URL</Label>
-                          <Input
-                            id="lmstudio-url"
-                            type="text"
-                            value={formData.chat.providers.lmstudio?.baseUrl || ''}
-                            placeholder="http://localhost:1234/v1"
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  lmstudio: { ...formData.chat.providers.lmstudio, baseUrl: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="ollama-key">Ollama API Key</Label>
-                          <Input
-                            id="ollama-key"
-                            type="password"
-                            value={formData.chat.providers.ollama?.apiKey || ''}
-                            placeholder="API Key..."
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  ollama: { ...formData.chat.providers.ollama, apiKey: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="ollama-url">Ollama Base URL</Label>
-                          <Input
-                            id="ollama-url"
-                            type="text"
-                            value={formData.chat.providers.ollama?.baseUrl || ''}
-                            placeholder="http://localhost:11434"
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  ollama: { ...formData.chat.providers.ollama, baseUrl: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="requesty-key">Requesty API Key</Label>
-                          <Input
-                            id="requesty-key"
-                            type="password"
-                            value={formData.chat.providers.requesty?.apiKey || ''}
-                            placeholder="API Key..."
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  requesty: { ...formData.chat.providers.requesty, apiKey: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="replicate-key">Replicate API Key</Label>
-                          <Input
-                            id="replicate-key"
-                            type="password"
-                            value={formData.chat.providers.replicate?.apiKey || ''}
-                            placeholder="r8_..."
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  replicate: { ...formData.chat.providers.replicate, apiKey: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="n8n-key">N8N API Key</Label>
-                          <Input
-                            id="n8n-key"
-                            type="password"
-                            value={formData.chat.providers.n8n?.apiKey || ''}
-                            placeholder="API Key..."
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  n8n: { ...formData.chat.providers.n8n, apiKey: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="n8n-url">N8N Base URL</Label>
-                          <Input
-                            id="n8n-url"
-                            type="text"
-                            value={formData.chat.providers.n8n?.baseUrl || ''}
-                            placeholder="https://your-n8n-instance.com"
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
-                            onChange={(e) => updateFormData({
-                              chat: {
-                                ...formData.chat,
-                                providers: {
-                                  ...formData.chat.providers,
-                                  n8n: { ...formData.chat.providers.n8n, baseUrl: e.target.value }
-                                }
-                              }
-                            })}
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <ApiKeySettings
+                onApiKeyChange={() => {
+                  // API keys changed - this is just for tracking, button is always enabled
+                  setHasChanges(true);
+                }}
+                onRegisterSaveFunction={(saveFunction: () => Promise<void>) => {
+                  // Register the API key save function so the main save button can use it
+                  apiKeySaveRef.current = saveFunction;
+                }}
+              />
             )}
+
+
+
+
 
             {activeTab === 'shortcuts' && (
               <div className="space-y-6">
@@ -2094,25 +1865,21 @@ export function SettingsOverlay() {
               >
                 {isLoading ? 'Loading...' : 'Reload Settings'}
               </Button>
-              {hasChanges && (
-                <span className="text-sm text-muted-foreground">
-                  • Unsaved changes
-                </span>
-              )}
+
             </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"
                 onClick={handleCancel}
-                disabled={!hasChanges || isLoading}
+                disabled={isLoading}
                 className="bg-muted/50 border-input hover:bg-muted/70 transition-colors"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSave}
-                disabled={!hasChanges || isLoading}
-                className={hasChanges ? 'bg-primary text-primary-foreground' : ''}
+                disabled={isLoading}
+                className="bg-primary text-primary-foreground"
               >
                 {isLoading ? 'Saving...' : 'Save Settings'}
               </Button>

@@ -3,6 +3,12 @@ import { sessionService } from './sessionService';
 import { settingsService } from './settingsService';
 import { documentParserService } from './DocumentParserService';
 
+// Conditionally import secureApiKeyService only in browser environment
+let secureApiKeyService: any = null;
+if (typeof window !== 'undefined') {
+  secureApiKeyService = require('./secureApiKeyService').secureApiKeyService;
+}
+
 // Type for content array items used in vision API
 interface ContentItem {
   type: 'text' | 'image_url' | 'document';
@@ -409,31 +415,32 @@ export const chatService = {
         }
       }
 
-      // Convert ChatSettings to LLMSettings
-      const providerSettings = settings.providers?.[settings.provider] || { apiKey: '' };
+      // Get provider settings and API key from secure storage
+      const providerSettings = settings.providers?.[settings.provider] || {};
+      const apiKeyData = secureApiKeyService?.getApiKeyData(settings.provider);
+      const apiKey = apiKeyData?.apiKey || '';
 
       // Debug provider settings
       console.log('🔍 ChatService provider settings debug:', {
         provider: settings.provider,
         hasProviderSettings: !!providerSettings,
-        hasApiKey: !!providerSettings.apiKey,
-        apiKeyLength: providerSettings.apiKey?.length || 0,
-        apiKeyStart: providerSettings.apiKey?.substring(0, 10) || 'undefined'
+        hasApiKey: !!apiKey,
+        apiKeyLength: apiKey?.length || 0,
+        apiKeyStart: apiKey?.substring(0, 10) || 'undefined',
+        fromSecureStorage: !!apiKeyData
       });
 
       // Check if API key is required and missing
       // ollama, lmstudio, and n8n don't require API keys
-      if (settings.provider !== 'ollama' && settings.provider !== 'lmstudio' && settings.provider !== 'n8n' && !providerSettings.apiKey) {
+      if (settings.provider !== 'ollama' && settings.provider !== 'lmstudio' && settings.provider !== 'n8n' && !apiKey) {
         throw new Error(`API key is required for ${settings.provider}. Please configure it in Settings.`);
       }
-
-
 
       const llmSettings: LLMSettings = {
         provider: settings.provider,
         model: settings.model,
-        apiKey: providerSettings.apiKey,
-        baseUrl: providerSettings.baseUrl,
+        apiKey: apiKey,
+        baseUrl: apiKeyData?.baseUrl || providerSettings.baseUrl,
         temperature: settings.temperature,
         maxTokens: settings.maxTokens,
         systemPrompt: settings.systemPrompt,
@@ -571,11 +578,14 @@ export const chatService = {
   async testConnection(settings: ChatSettings): Promise<boolean> {
     try {
       const providerSettings = settings.providers[settings.provider];
+      const apiKeyData = secureApiKeyService?.getApiKeyData(settings.provider);
+      const apiKey = apiKeyData?.apiKey || '';
+
       const llmSettings: LLMSettings = {
         provider: settings.provider,
         model: settings.model,
-        apiKey: providerSettings?.apiKey || '',
-        baseUrl: providerSettings?.baseUrl,
+        apiKey: apiKey,
+        baseUrl: apiKeyData?.baseUrl || providerSettings?.baseUrl,
         temperature: settings.temperature,
         maxTokens: 100, // Use fewer tokens for testing
         systemPrompt: settings.systemPrompt,
@@ -598,6 +608,10 @@ export const chatService = {
 
   async fetchModels(providerId: string, apiKey?: string, baseUrl?: string): Promise<string[]> {
     return await llmService.fetchModels(providerId, apiKey, baseUrl);
+  },
+
+  clearModelCache(providerId?: string): void {
+    return llmService.clearModelCache(providerId);
   },
 
   // Helper method to get provider instance

@@ -13,7 +13,7 @@ import {
 import { FALLBACK_MODELS } from './constants';
 import { ToolNameUtils } from './utils';
 import { ANTHROPIC_SYSTEM_PROMPT } from './prompts/anthropic';
-import { debugLogger } from '../../utils/debugLogger';
+import { debugLogger } from '../debugLogger';
 
 export class AnthropicProvider extends BaseProvider {
   readonly id = 'anthropic';

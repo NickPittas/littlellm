@@ -17,6 +17,10 @@ export interface ElectronAPI {
   getStorageItem: (key: string) => Promise<unknown>;
   setStorageItem: (key: string, value: unknown) => Promise<boolean>;
 
+  // Secure API Key operations
+  getSecureApiKeys: () => Promise<Record<string, { apiKey: string; baseUrl?: string; lastSelectedModel?: string }>>;
+  setSecureApiKeys: (apiKeys: Record<string, { apiKey: string; baseUrl?: string; lastSelectedModel?: string }>) => Promise<boolean>;
+
   // State file operations (separate from settings)
   getStateFile: (filename: string) => Promise<unknown>;
   saveStateFile: (filename: string, data: unknown) => Promise<boolean>;

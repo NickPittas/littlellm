@@ -7,7 +7,7 @@ import {
   ContentItem,
   LLMProvider
 } from '../types';
-import { debugLogger } from '../../../utils/debugLogger';
+import { debugLogger } from '../../debugLogger';
 
 export interface OpenAICompatibleToolCall {
   id?: string;
