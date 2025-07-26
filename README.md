@@ -1,4 +1,4 @@
-# LittleLLM v2.0.1 🤖💬
+# LittleLLM v2.1.0 🤖💬
 
 A powerful, cross-platform desktop AI chat application that provides seamless access to multiple AI providers with advanced features like MCP (Model Context Protocol) integration, tool calling, memory context, and enhanced vision support.
 
@@ -39,9 +39,13 @@ A powerful, cross-platform desktop AI chat application that provides seamless ac
 - ESC key to close window
 
 ### 🛠️ **Advanced Features**
+
 - **MCP (Model Context Protocol) Integration**: Full support for MCP servers and tools ✨
 - **Tool Calling**: User-controlled tool execution with native provider support ✨
 - **Memory Context**: Intelligent conversation memory with automatic context retrieval ✨
+- **Secure API Key Storage**: Encrypted storage with per-provider model memory ✨
+- **Real-time Settings**: Debug logging and settings changes apply immediately ✨
+- **Error-Free Experience**: Comprehensive error handling with actionable messages ✨
 - **Model Persistence**: Each provider remembers your last selected model across restarts
 - **Thinking Sections**: Collapsible display of model reasoning for `<think>` tags
 - **Clipboard Integration**: Prompts automatically include clipboard content via `{content}` placeholder
@@ -73,28 +77,28 @@ A powerful, cross-platform desktop AI chat application that provides seamless ac
 
 #### Windows
 **Installer (Recommended)**
-1. Download `LittleLLM-Setup-2.0.1.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
+1. Download `LittleLLM-Setup-2.1.0.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
 2. Run the installer (may need "Run as administrator")
 3. Follow installation wizard
 4. Launch from Desktop shortcut or Start Menu
 
 **Portable Version**
-1. Download `LittleLLM-Portable-2.0.1.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
+1. Download `LittleLLM-Portable-2.1.0.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
 2. Place anywhere (Desktop, USB drive, etc.)
 3. Double-click to run - no installation needed
 
 #### macOS
 1. Download the appropriate DMG for your Mac:
-   - Intel Macs: `LittleLLM-2.0.1-x64.dmg`
-   - Apple Silicon: `LittleLLM-2.0.1-arm64.dmg`
-   - Universal: `LittleLLM-2.0.1-universal.dmg`
+   - Intel Macs: `LittleLLM-2.1.0-x64.dmg`
+   - Apple Silicon: `LittleLLM-2.1.0-arm64.dmg`
+   - Universal: `LittleLLM-2.1.0-universal.dmg`
 2. Open DMG and drag LittleLLM to Applications folder
 3. Right-click and select "Open" on first launch (Gatekeeper)
 
 #### Linux
-1. Download `LittleLLM-2.0.1.AppImage` from [Releases](https://github.com/NickPittas/littlellm/releases)
-2. Make executable: `chmod +x LittleLLM-2.0.1.AppImage`
-3. Run: `./LittleLLM-2.0.1.AppImage`
+1. Download `LittleLLM-2.1.0.AppImage` from [Releases](https://github.com/NickPittas/littlellm/releases)
+2. Make executable: `chmod +x LittleLLM-2.1.0.AppImage`
+3. Run: `./LittleLLM-2.1.0.AppImage`
 
 > **✅ Cross-platform builds include all 11 AI providers with MCP integration, tool calling, and enhanced vision support**
 
@@ -257,28 +261,39 @@ npm run dist:linux          # Linux (AppImage)
 - **AppImage**: Download, make executable (`chmod +x`), and run
 - **Dependencies**: Most modern Linux distributions should work out of the box
 
-## 🆕 What's New in v2.0.1
+## 🆕 What's New in v2.1.0
 
-### 🍎 **Cross-Platform Support** ✨
-- **macOS Native Support**: Full compatibility with Intel and Apple Silicon Macs
-- **Linux AppImage**: Universal Linux distribution format
-- **Universal Binaries**: Single macOS app works on both architectures
-- **Platform-Specific Optimizations**: Tailored performance for each operating system
+### 🔒 **Enterprise-Grade Security & Reliability** ✨
+- **Secure API Key Storage**: All API keys now encrypted with Electron's safeStorage
+- **Per-Provider Model Memory**: Each provider remembers your last selected model
+- **Real-time Settings Integration**: Debug logging and settings changes apply immediately
+- **Comprehensive Error Handling**: Clear, actionable error messages instead of silent failures
+- **Race Condition Elimination**: Robust initialization system prevents timing issues
 
-### 🔧 **Enhanced Build System**
-- **Cross-Platform Dependencies**: Automatic platform-specific binary selection
-- **Professional Installers**: DMG for macOS, NSIS for Windows, AppImage for Linux
-- **Code Signing Ready**: Proper entitlements and security configurations
-- **ES Module Support**: Modern JavaScript module system
+### 🛠️ **System Architecture Improvements**
+- **Service Registry**: Dependency injection system eliminates circular dependencies
+- **Initialization Manager**: Centralized service initialization prevents duplicate loading
+- **Error-Free Model Fetching**: Providers throw proper errors instead of using fallback models
+- **Settings Persistence**: Race condition-free settings saving and loading
+- **Console Spam Elimination**: Clean, professional console output
 
-### 🛠️ **Technical Improvements**
-- **LanceDB Cross-Platform**: Fixed Windows-only dependency limitation
-- **Icon Generation**: Platform-appropriate formats (.ico, .icns, .png)
-- **Build Scripts**: Comprehensive automation for all platforms
-- **Documentation**: Detailed installation guides for each platform
+### 🎯 **User Experience Enhancements**
+- **Always-Functional Save Button**: Settings save button works reliably in all scenarios
+- **Immediate Model Loading**: Real models fetched instantly after API key entry
+- **Visual Feedback**: Success/error messages for all operations
+- **Persistent Preferences**: Model selections and settings remembered across sessions
+- **Professional Error Messages**: Clear guidance on how to fix issues
+
+### 🔧 **Technical Excellence**
+- **No Silent Failures**: All errors are properly reported and handled
+- **Proper Initialization**: Services initialize once and work reliably
+- **Memory Efficiency**: Eliminated initialization loops and redundant processing
+- **Clean Architecture**: Removed circular dependencies and improved code organization
+- **Production Ready**: Enterprise-grade reliability and error handling
 
 ### 🎯 **Continued Excellence**
-All existing features from v1.9.0 remain fully functional:
+All existing features from v2.0.1 remain fully functional:
+- **Cross-Platform Support**: Windows, macOS (Intel + Apple Silicon), and Linux
 - **MCP Integration**: Model Context Protocol with tool calling
 - **11 AI Providers**: OpenAI, Anthropic, Gemini, Mistral, and more
 - **Vision Support**: Image processing across all platforms
@@ -306,20 +321,20 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**LittleLLM v2.0.1** - Your cross-platform AI companion with MCP integration, tool calling, and memory context 🚀
+**LittleLLM v2.1.0** - Your cross-platform AI companion with enterprise-grade security, reliability, and advanced features 🚀
 
 ## 📦 **Production Builds**
 
 ### Windows
-- **Installer**: `LittleLLM-Setup-2.0.1.exe` with proper installation and shortcuts
-- **Portable**: `LittleLLM-Portable-2.0.1.exe` for USB/standalone use
+- **Installer**: `LittleLLM-Setup-2.1.0.exe` with proper installation and shortcuts
+- **Portable**: `LittleLLM-Portable-2.1.0.exe` for USB/standalone use
 
 ### macOS
-- **Intel Macs**: `LittleLLM-2.0.1-x64.dmg`
-- **Apple Silicon**: `LittleLLM-2.0.1-arm64.dmg`
-- **Universal**: `LittleLLM-2.0.1-universal.dmg` (works on both)
+- **Intel Macs**: `LittleLLM-2.1.0-x64.dmg`
+- **Apple Silicon**: `LittleLLM-2.1.0-arm64.dmg`
+- **Universal**: `LittleLLM-2.1.0-universal.dmg` (works on both)
 
 ### Linux
-- **AppImage**: `LittleLLM-2.0.1.AppImage` for universal compatibility
+- **AppImage**: `LittleLLM-2.1.0.AppImage` for universal compatibility
 
 > **✅ All platforms**: No CORS issues, full feature parity, MCP integration included

@@ -4,11 +4,7 @@ import { useState, useEffect } from 'react';
 import { VoilaInterface } from '../components/VoilaInterface';
 import { OverlayRouter } from '../components/OverlayRouter';
 
-// Import test utilities for development
-import '../utils/testInternalCommands';
-import '../utils/readDebugLog';
-import '../utils/readTestResults';
-// Removed autoDebugReader - it was causing debug spam
+// Test utilities removed - clean production build
 
 export default function Home() {
   // Home component rendering
