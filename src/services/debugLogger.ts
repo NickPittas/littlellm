@@ -8,15 +8,15 @@
 export class DebugLogger {
   private static instance: DebugLogger;
   private isDebugEnabled = false;
+  private hasInitialized = false;
 
   private constructor() {
-    // Start with debug disabled to prevent circular dependency during settings initialization
+    // Start with debug STRICTLY disabled - no fallbacks
     this.isDebugEnabled = false;
+    this.hasInitialized = false;
 
-    // Delay initialization to avoid circular dependency with settings service
-    setTimeout(() => {
-      this.updateDebugState();
-    }, 100);
+    // NO automatic initialization - only initialize when explicitly called
+    // This prevents circular dependencies and unwanted debug output
   }
 
   public static getInstance(): DebugLogger {
@@ -26,26 +26,43 @@ export class DebugLogger {
     return DebugLogger.instance;
   }
 
+  /**
+   * Ensure the debug logger is initialized (lazy initialization)
+   */
+  private ensureInitialized(): void {
+    if (!this.hasInitialized) {
+      this.updateDebugState();
+      this.hasInitialized = true;
+    }
+  }
+
   private updateDebugState(): void {
     try {
       // Import settingsService dynamically to avoid circular dependency
       const { settingsService } = require('./settingsService');
 
-      // Check if settings service is initialized
+      // STRICT: If settings service is not available, debug is DISABLED
       if (!settingsService || typeof settingsService.getSettings !== 'function') {
         this.isDebugEnabled = false;
         return;
       }
 
-      const settings = settingsService.getSettings();
-      this.isDebugEnabled = settings?.general?.debugLogging || false;
-
-      if (this.isDebugEnabled) {
-        console.log('🐛 Debug logging enabled');
+      // Check if settings service is properly initialized
+      if (!settingsService.isInitialized || !settingsService.isInitialized()) {
+        this.isDebugEnabled = false;
+        return;
       }
+
+      const settings = settingsService.getSettings();
+
+      // STRICT: Only enable if explicitly set to true in settings
+      this.isDebugEnabled = settings?.general?.debugLogging === true;
+
+      // NO console output about debug state - this would create spam
     } catch (error) {
-      // Fallback to false if settings can't be loaded
+      // STRICT: Any error means debug is DISABLED
       this.isDebugEnabled = false;
+      // Don't log the error - this could create circular logging
     }
   }
 
@@ -53,6 +70,7 @@ export class DebugLogger {
    * Log a debug message (only if debug logging is enabled)
    */
   public debug(...args: unknown[]): void {
+    this.ensureInitialized();
     if (this.isDebugEnabled) {
       console.log('🐛 [DEBUG]', ...args);
     }
@@ -62,6 +80,7 @@ export class DebugLogger {
    * Log debug info with a specific prefix
    */
   public info(prefix: string, ...args: unknown[]): void {
+    this.ensureInitialized();
     if (this.isDebugEnabled) {
       console.log(`ℹ️ [${prefix}]`, ...args);
     }
@@ -71,6 +90,7 @@ export class DebugLogger {
    * Log debug warning (only if debug logging is enabled)
    */
   public warn(prefix: string, ...args: unknown[]): void {
+    this.ensureInitialized();
     if (this.isDebugEnabled) {
       console.warn(`⚠️ [${prefix}]`, ...args);
     }
@@ -80,6 +100,7 @@ export class DebugLogger {
    * Log debug error (only if debug logging is enabled)
    */
   public error(prefix: string, ...args: unknown[]): void {
+    this.ensureInitialized();
     if (this.isDebugEnabled) {
       console.error(`❌ [${prefix}]`, ...args);
     }
@@ -89,6 +110,7 @@ export class DebugLogger {
    * Log debug success (only if debug logging is enabled)
    */
   public success(prefix: string, ...args: unknown[]): void {
+    this.ensureInitialized();
     if (this.isDebugEnabled) {
       console.log(`✅ [${prefix}]`, ...args);
     }
@@ -98,6 +120,7 @@ export class DebugLogger {
    * Log debug timing information
    */
   public time(label: string): void {
+    this.ensureInitialized();
     if (this.isDebugEnabled) {
       console.time(`⏱️ [DEBUG] ${label}`);
     }
@@ -107,6 +130,7 @@ export class DebugLogger {
    * End debug timing
    */
   public timeEnd(label: string): void {
+    this.ensureInitialized();
     if (this.isDebugEnabled) {
       console.timeEnd(`⏱️ [DEBUG] ${label}`);
     }
@@ -116,6 +140,7 @@ export class DebugLogger {
    * Log debug table (only if debug logging is enabled)
    */
   public table(data: unknown): void {
+    this.ensureInitialized();
     if (this.isDebugEnabled) {
       console.log('📊 [DEBUG] Table data:');
       console.table(data);
@@ -126,6 +151,7 @@ export class DebugLogger {
    * Log debug group start
    */
   public group(label: string): void {
+    this.ensureInitialized();
     if (this.isDebugEnabled) {
       console.group(`📁 [DEBUG] ${label}`);
     }
@@ -135,6 +161,7 @@ export class DebugLogger {
    * Log debug group end
    */
   public groupEnd(): void {
+    this.ensureInitialized();
     if (this.isDebugEnabled) {
       console.groupEnd();
     }
@@ -152,14 +179,16 @@ export class DebugLogger {
    */
   public setEnabled(enabled: boolean): void {
     this.isDebugEnabled = enabled;
-    console.log(`🐛 Debug logging ${enabled ? 'enabled' : 'disabled'} (forced)`);
+    // NO console output - this would create spam
   }
 
   /**
    * Refresh debug state from settings (call this when settings are updated)
    */
   public refreshFromSettings(): void {
+    this.hasInitialized = false; // Force re-initialization
     this.updateDebugState();
+    this.hasInitialized = true;
   }
 
   /**

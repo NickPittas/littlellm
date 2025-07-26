@@ -7,7 +7,8 @@ import { OverlayRouter } from '../components/OverlayRouter';
 // Import test utilities for development
 import '../utils/testInternalCommands';
 import '../utils/readDebugLog';
-import '../utils/autoDebugReader';
+import '../utils/readTestResults';
+// Removed autoDebugReader - it was causing debug spam
 
 export default function Home() {
   // Home component rendering

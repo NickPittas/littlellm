@@ -96,7 +96,8 @@ export class RequestyProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      return FALLBACK_MODELS.requesty;
+      console.log('❌ No Requesty API key provided - cannot fetch models');
+      return [];
     }
 
     try {
@@ -108,15 +109,17 @@ export class RequestyProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        return FALLBACK_MODELS.requesty;
+        console.warn(`❌ Requesty API error: ${response.status} - check API key`);
+        return [];
       }
 
       const data = await response.json() as APIResponseData;
       const models = data.data?.map((model) => model.id)?.sort() || [];
 
-      return models.length > 0 ? models : FALLBACK_MODELS.requesty;
-    } catch {
-      return FALLBACK_MODELS.requesty;
+      return models;
+    } catch (error) {
+      console.warn('❌ Failed to fetch Requesty models:', error);
+      return [];
     }
   }
 

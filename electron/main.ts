@@ -12,6 +12,7 @@ import {
   globalShortcut,
   nativeImage,
   desktopCapturer,
+  safeStorage,
   type BrowserWindowConstructorOptions,
   type Display,
 } from 'electron';
@@ -1627,23 +1628,34 @@ function loadAppSettings() {
       const data = fs.readFileSync(settingsPath, 'utf8');
       const settings = JSON.parse(data);
 
+      // Clean up any legacy API keys from settings (they're now in secure storage)
+      if (settings.chat && settings.chat.providers) {
+        Object.keys(settings.chat.providers).forEach(providerId => {
+          const provider = settings.chat.providers[providerId];
+          if (provider && 'apiKey' in provider) {
+            console.log(`🧹 Removing legacy API key from settings for ${providerId}`);
+            delete provider.apiKey;
+          }
+        });
+      }
+
       // Ensure the settings have the expected structure
       if (!settings.chat) {
         settings.chat = {};
       }
       if (!settings.chat.providers) {
         settings.chat.providers = {
-          openai: { apiKey: '', lastSelectedModel: '' },
-          anthropic: { apiKey: '', lastSelectedModel: '' },
-          gemini: { apiKey: '', lastSelectedModel: '' },
-          mistral: { apiKey: '', lastSelectedModel: '' },
-          deepseek: { apiKey: '', lastSelectedModel: '' },
-          lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
-          ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-          openrouter: { apiKey: '', lastSelectedModel: '' },
-          requesty: { apiKey: '', lastSelectedModel: '' },
-          replicate: { apiKey: '', lastSelectedModel: '' },
-          n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+          openai: { lastSelectedModel: '' },
+          anthropic: { lastSelectedModel: '' },
+          gemini: { lastSelectedModel: '' },
+          mistral: { lastSelectedModel: '' },
+          deepseek: { lastSelectedModel: '' },
+          lmstudio: { baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
+          ollama: { baseUrl: '', lastSelectedModel: '' },
+          openrouter: { lastSelectedModel: '' },
+          requesty: { lastSelectedModel: '' },
+          replicate: { lastSelectedModel: '' },
+          n8n: { baseUrl: '', lastSelectedModel: '' },
         };
       }
 
@@ -1662,17 +1674,17 @@ function loadAppSettings() {
       maxTokens: 8192,
       systemPrompt: '',
       providers: {
-        openai: { apiKey: '', lastSelectedModel: '' },
-        anthropic: { apiKey: '', lastSelectedModel: '' },
-        gemini: { apiKey: '', lastSelectedModel: '' },
-        mistral: { apiKey: '', lastSelectedModel: '' },
-        deepseek: { apiKey: '', lastSelectedModel: '' },
-        lmstudio: { apiKey: '', baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
-        ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-        openrouter: { apiKey: '', lastSelectedModel: '' },
-        requesty: { apiKey: '', lastSelectedModel: '' },
-        replicate: { apiKey: '', lastSelectedModel: '' },
-        n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+        openai: { lastSelectedModel: '' },
+        anthropic: { lastSelectedModel: '' },
+        gemini: { lastSelectedModel: '' },
+        mistral: { lastSelectedModel: '' },
+        deepseek: { lastSelectedModel: '' },
+        lmstudio: { baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
+        ollama: { baseUrl: '', lastSelectedModel: '' },
+        openrouter: { lastSelectedModel: '' },
+        requesty: { lastSelectedModel: '' },
+        replicate: { lastSelectedModel: '' },
+        n8n: { baseUrl: '', lastSelectedModel: '' },
       },
     },
     ui: {
@@ -2417,6 +2429,59 @@ function setupIPC() {
       return saveAppSettings(settings);
     } catch (error) {
       console.error('Failed to remove storage item:', error);
+      return false;
+    }
+  });
+
+  // Secure API Key Storage handlers
+  ipcMain.handle('get-secure-api-keys', () => {
+    try {
+      const apiKeysPath = path.join(app.getPath('userData'), 'secure-api-keys.json');
+
+      if (fs.existsSync(apiKeysPath)) {
+        // Try to read as encrypted data first
+        if (app.isReady() && safeStorage.isEncryptionAvailable()) {
+          try {
+            const encryptedData = fs.readFileSync(apiKeysPath);
+            const decryptedBuffer = safeStorage.decryptString(encryptedData);
+            const apiKeys = JSON.parse(decryptedBuffer);
+            console.log('🔐 Successfully decrypted API keys for providers:', Object.keys(apiKeys));
+            return apiKeys;
+          } catch (decryptError) {
+            console.error('❌ Failed to decrypt API keys - file may be corrupted');
+            return {};
+          }
+        } else {
+          console.error('❌ Encryption not available - cannot read encrypted API keys');
+          return {};
+        }
+      } else {
+        console.log('🔐 No secure API keys file found');
+        return {};
+      }
+    } catch (error) {
+      console.error('❌ Failed to load secure API keys:', error);
+      return {};
+    }
+  });
+
+  ipcMain.handle('set-secure-api-keys', (_, apiKeys: Record<string, unknown>) => {
+    try {
+      const apiKeysPath = path.join(app.getPath('userData'), 'secure-api-keys.json');
+      const dataToStore = JSON.stringify(apiKeys, null, 2);
+
+      // Only save if encryption is available - NEVER save as plain text
+      if (app.isReady() && safeStorage.isEncryptionAvailable()) {
+        const encryptedData = safeStorage.encryptString(dataToStore);
+        fs.writeFileSync(apiKeysPath, encryptedData);
+        console.log('🔐 Successfully encrypted and saved API keys');
+        return true;
+      } else {
+        console.error('❌ Encryption not available - cannot save API keys securely');
+        return false;
+      }
+    } catch (error) {
+      console.error('❌ Failed to save secure API keys:', error);
       return false;
     }
   });
@@ -3304,7 +3369,8 @@ function setupIPC() {
       const logDir = path.join(app.getPath('userData'), 'debug');
       const logFile = path.join(logDir, 'debug.log');
 
-      console.log('🔧 Writing debug log to:', logFile);
+      // Only log to console if debug logging is enabled in settings
+      // (Don't spam console with debug file writes)
 
       // Ensure directory exists
       await fs.mkdir(logDir, { recursive: true });
@@ -3328,7 +3394,7 @@ function setupIPC() {
       const logDir = path.join(app.getPath('userData'), 'debug');
       const logFile = path.join(logDir, 'debug.log');
 
-      console.log('🔧 Clearing debug log at:', logFile);
+      // Removed debug spam - don't log file operations to console
 
       // Ensure directory exists
       await fs.mkdir(logDir, { recursive: true });
@@ -3352,7 +3418,7 @@ function setupIPC() {
       const logDir = path.join(app.getPath('userData'), 'debug');
       const logFile = path.join(logDir, 'debug.log');
 
-      console.log('🔧 Reading debug log from:', logFile);
+      // Removed debug spam - don't log file operations to console
 
       // Read the log file
       const content = await fs.readFile(logFile, 'utf8');

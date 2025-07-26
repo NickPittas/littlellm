@@ -12,7 +12,7 @@ import {
 } from './types';
 import { FALLBACK_MODELS } from './constants';
 import { GEMINI_SYSTEM_PROMPT } from './prompts/gemini';
-import { debugLogger } from '../../utils/debugLogger';
+import { debugLogger } from '../debugLogger';
 
 export class GeminiProvider extends BaseProvider {
   readonly id = 'gemini';

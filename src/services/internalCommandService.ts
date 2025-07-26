@@ -17,6 +17,7 @@ import { settingsService } from './settingsService';
 class InternalCommandService {
   private availableTools: InternalCommandTool[] = [];
   private isElectron: boolean = false;
+  private initialized: boolean = false;
 
   constructor() {
     // Check if running in Electron
@@ -28,6 +29,15 @@ class InternalCommandService {
    * Initialize the service and load configuration
    */
   async initialize(): Promise<void> {
+    if (this.initialized) {
+      // Already initialized, don't do it again
+      return;
+    }
+
+    const { debugLogger } = require('./debugLogger');
+    debugLogger.debug('Loading internal commands settings:', settingsService.getSettings().internalCommands);
+    debugLogger.debug('Setting internal commands state:', { isElectron: this.isElectron });
+
     if (this.isElectron) {
       // Send configuration to Electron main process
       const settings = settingsService.getSettings();
@@ -39,7 +49,9 @@ class InternalCommandService {
       // In browser mode, use static tool definitions
       this.defineStaticTools();
     }
-    console.log('🔧 Internal Command Service initialized');
+
+    this.initialized = true;
+    debugLogger.debug('Internal Command Service initialized');
   }
 
   /**
@@ -345,12 +357,14 @@ class InternalCommandService {
     const settings = settingsService.getSettings();
     const commandSettings = settings.internalCommands;
 
-    console.log(`🔧 InternalCommandService.getAvailableTools() called`);
-    console.log(`🔧 Settings:`, commandSettings);
-    console.log(`🔧 Available tools before filtering:`, this.availableTools.length);
+    // Use debug logger instead of console.log to respect debug settings
+    const { debugLogger } = require('./debugLogger');
+    debugLogger.debug(`InternalCommandService.getAvailableTools() called`);
+    debugLogger.debug(`Settings:`, commandSettings);
+    debugLogger.debug(`Available tools before filtering:`, this.availableTools.length);
 
     if (!commandSettings.enabled) {
-      console.log(`🔧 Internal commands disabled, returning empty array`);
+      debugLogger.debug(`Internal commands disabled, returning empty array`);
       return [];
     }
 
@@ -361,11 +375,11 @@ class InternalCommandService {
         (tool.category === 'textEditing' && commandSettings.enabledCommands.textEditing) ||
         (tool.category === 'system' && commandSettings.enabledCommands.system);
 
-      console.log(`🔧 Tool ${tool.name} (${tool.category}): ${isEnabled ? 'ENABLED' : 'DISABLED'}`);
+      debugLogger.debug(`Tool ${tool.name} (${tool.category}): ${isEnabled ? 'ENABLED' : 'DISABLED'}`);
       return isEnabled;
     });
 
-    console.log(`🔧 Filtered tools:`, filteredTools.map(t => t.name));
+    debugLogger.debug(`Filtered tools:`, filteredTools.map(t => t.name));
     return filteredTools;
   }
 

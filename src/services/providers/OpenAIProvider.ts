@@ -899,8 +899,8 @@ export class OpenAIProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.log('No OpenAI API key provided, using fallback models');
-      return FALLBACK_MODELS.openai;
+      console.log('❌ No OpenAI API key provided - cannot fetch models');
+      return [];
     }
 
     try {
@@ -912,8 +912,8 @@ export class OpenAIProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        console.warn(`OpenAI API error: ${response.status}, using fallback models`);
-        return FALLBACK_MODELS.openai;
+        console.warn(`❌ OpenAI API error: ${response.status} - check API key`);
+        return [];
       }
 
       const data = await response.json() as { data: Array<{ id: string }> };
@@ -922,10 +922,10 @@ export class OpenAIProvider extends BaseProvider {
         .map((model) => model.id)
         .sort();
 
-      return models.length > 0 ? models : FALLBACK_MODELS.openai;
+      return models;
     } catch (error) {
-      console.warn('Failed to fetch OpenAI models, using fallback:', error);
-      return FALLBACK_MODELS.openai;
+      console.warn('❌ Failed to fetch OpenAI models:', error);
+      return [];
     }
   }
 

@@ -2,8 +2,16 @@
  * Shared type definitions for settings across the application
  */
 
-export interface ProviderSettings {
+// Legacy interface for backward compatibility (includes API keys)
+export interface LegacyProviderSettings {
   apiKey: string;
+  lastSelectedModel?: string;
+  baseUrl?: string;
+  enabled?: boolean;
+}
+
+// New interface without API keys (API keys are now stored securely)
+export interface ProviderSettings {
   lastSelectedModel?: string;
   baseUrl?: string;
   enabled?: boolean;
@@ -21,6 +29,21 @@ export interface ProvidersConfig {
   ollama: ProviderSettings;
   requesty: ProviderSettings;
   n8n: ProviderSettings;
+}
+
+// Legacy interface for backward compatibility
+export interface LegacyProvidersConfig {
+  [key: string]: LegacyProviderSettings;
+  openai: LegacyProviderSettings;
+  anthropic: LegacyProviderSettings;
+  gemini: LegacyProviderSettings;
+  mistral: LegacyProviderSettings;
+  deepseek: LegacyProviderSettings;
+  groq: LegacyProviderSettings;
+  lmstudio: LegacyProviderSettings;
+  ollama: LegacyProviderSettings;
+  requesty: LegacyProviderSettings;
+  n8n: LegacyProviderSettings;
 }
 
 export interface ChatSettings {

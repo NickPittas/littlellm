@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getStorageItem: (key: string) => ipcRenderer.invoke('get-storage-item', key),
   setStorageItem: (key: string, value: any) => ipcRenderer.invoke('set-storage-item', key, value),
 
+  // Secure API Key operations
+  getSecureApiKeys: () => ipcRenderer.invoke('get-secure-api-keys'),
+  setSecureApiKeys: (apiKeys: any) => ipcRenderer.invoke('set-secure-api-keys', apiKeys),
+
   // State file operations (separate from settings)
   getStateFile: (filename: string) => ipcRenderer.invoke('get-state-file', filename),
   saveStateFile: (filename: string, data: any) => ipcRenderer.invoke('save-state-file', filename, data),
