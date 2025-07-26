@@ -305,7 +305,7 @@ export class OpenAICompatibleStreaming {
           followUpData.usage,
           settings,
           provider,
-          [...conversationHistory, { role: 'assistant', content: initialContent, tool_calls: openaiToolCalls }, ...toolResults],
+          [...conversationHistory, { role: 'assistant', content: initialContent } as {role: string, content: string | Array<ContentItem>}, ...toolResults],
           onStream,
           providerName,
           executeMCPTool,

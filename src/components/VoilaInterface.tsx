@@ -835,9 +835,8 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
           const resources = await window.electronAPI.getAllMCPResources();
           const prompts = await window.electronAPI.getAllMCPPrompts();
 
-          // Simplified MCP summary
+          // Simplified MCP summary - servers data available for future use
           const servers = (status && typeof status === 'object' && 'servers' in status) ? (status as {servers: Record<string, {connected: boolean}>}).servers : {};
-          const connectedCount = Object.keys(servers).filter((id: string) => servers[id]?.connected).length;
 
           // MCP summary data collected
 

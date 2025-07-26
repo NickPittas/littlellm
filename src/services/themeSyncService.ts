@@ -4,7 +4,7 @@
  */
 
 export interface ThemeData {
-  customColors: any;
+  customColors: Record<string, string>;
   useCustomColors: boolean;
 }
 
@@ -25,9 +25,9 @@ class ThemeSyncService {
   initialize() {
     if (typeof window !== 'undefined' && window.electronAPI) {
       // Listen for theme changes from other windows
-      window.electronAPI.onThemeChange((themeData: ThemeData) => {
+      window.electronAPI.onThemeChange((themeData: { customColors: unknown; useCustomColors: boolean }) => {
         console.log('ThemeSyncService: Received theme change:', themeData);
-        this.notifyListeners(themeData);
+        this.notifyListeners(themeData as ThemeData);
       });
     }
   }

@@ -1,10 +1,10 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { settingsService, type ColorSettings } from '../services/settingsService';
+import { settingsService } from '../services/settingsService';
 import { themeSyncService } from '../services/themeSyncService';
 import { getDefaultHexColors, applyColorsToDOM } from '../config/colors';
-import { THEME_PRESETS, getThemePreset, getDefaultThemePreset, type ThemePreset } from '../config/themes';
+import { THEME_PRESETS, getThemePreset, type ThemePreset } from '../config/themes';
 import type { ColorSettings } from '../types/settings';
 
 export interface Theme {
@@ -108,9 +108,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
           if (currentTheme?.customColors) {
             // Apply theme immediately
-            setCustomColors(currentTheme.customColors);
+            setCustomColors(currentTheme.customColors as unknown as ColorSettings);
             setUseCustomColors(currentTheme.useCustomColors);
-            applyColorsToDOM(currentTheme.customColors);
+            applyColorsToDOM(currentTheme.customColors as unknown as ColorSettings);
             // Theme applied successfully
             return;
           }

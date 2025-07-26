@@ -56,7 +56,7 @@ export function UserMessage({ content, className = '' }: UserMessageProps) {
 
       {/* Message Content */}
       <div
-        className="whitespace-pre-wrap select-text break-words"
+        className="whitespace-pre-wrap select-text break-words text-sm"
         style={{
           WebkitAppRegion: 'no-drag',
           userSelect: 'text',

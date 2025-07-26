@@ -337,7 +337,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                     <span>Thinking {parsed.thinking.length > 1 ? `${index + 1}` : ''}</span>
                   </div>
                   <div
-                    className="whitespace-pre-wrap text-foreground select-text break-words"
+                    className="whitespace-pre-wrap text-foreground select-text break-words text-sm"
                     style={{
                       WebkitAppRegion: 'no-drag',
                       userSelect: 'text',
@@ -508,7 +508,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                     ) : (
                       // Fallback to showing raw text if parsing failed
                       <div
-                        className="whitespace-pre-wrap text-foreground select-text break-words"
+                        className="whitespace-pre-wrap text-foreground select-text break-words text-sm"
                         style={{
                           WebkitAppRegion: 'no-drag',
                           userSelect: 'text',
@@ -651,7 +651,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
       {/* Main Response */}
       {parsed.response && (
         <div
-          className="whitespace-pre-wrap select-text break-words"
+          className="whitespace-pre-wrap select-text break-words text-sm"
           style={{
             WebkitAppRegion: 'no-drag',
             userSelect: 'text',

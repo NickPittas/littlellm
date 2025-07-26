@@ -128,6 +128,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     showNotifications: true,
     saveConversationHistory: true,
     conversationHistoryLength: 10, // Default to last 10 messages
+    debugLogging: false, // Debug logging disabled by default
   },
 };
 
@@ -138,8 +139,8 @@ class SettingsService {
 
 
   constructor() {
-    // Initialize with defaults
-    this.settings = { ...DEFAULT_SETTINGS };
+    // DO NOT initialize with defaults - wait for actual settings to load
+    // this.settings will be set in loadSettingsSync()
 
     // Load settings SYNCHRONOUSLY at startup to prevent race conditions
     this.loadSettingsSync();
@@ -183,57 +184,66 @@ class SettingsService {
             // Use saved settings as base, but ensure required theme properties exist
             this.settings = savedSettings as AppSettings;
 
-            // Validate and fix required theme settings if missing
-            if (!this.settings.ui?.selectedThemePreset || !this.settings.ui?.colorMode || this.settings.ui?.useCustomColors === undefined) {
-              console.warn('⚠️ Saved settings missing required theme properties, applying defaults:', {
-                selectedThemePreset: this.settings.ui?.selectedThemePreset,
-                colorMode: this.settings.ui?.colorMode,
-                useCustomColors: this.settings.ui?.useCustomColors
-              });
+            // Only validate critical missing properties - don't override existing values
+            let needsSave = false;
 
-              // Ensure ui object exists
-              if (!this.settings.ui) {
-                this.settings.ui = { ...DEFAULT_SETTINGS.ui };
-              }
+            // Ensure ui object exists
+            if (!this.settings.ui) {
+              this.settings.ui = { ...DEFAULT_SETTINGS.ui };
+              needsSave = true;
+              console.log('🔧 Created missing ui settings object');
+            }
 
-              // Apply theme defaults if missing
-              if (!this.settings.ui.selectedThemePreset) {
-                this.settings.ui.selectedThemePreset = 'cyberpunk';
-              }
-              if (!this.settings.ui.colorMode) {
-                this.settings.ui.colorMode = 'preset';
-              }
-              if (this.settings.ui.useCustomColors === undefined) {
-                this.settings.ui.useCustomColors = false;
-              }
+            // Only add missing required properties, don't override existing ones
+            if (!this.settings.ui.selectedThemePreset) {
+              this.settings.ui.selectedThemePreset = 'cyberpunk';
+              needsSave = true;
+              console.log('🔧 Added missing selectedThemePreset');
+            }
+            if (!this.settings.ui.colorMode) {
+              this.settings.ui.colorMode = 'preset';
+              needsSave = true;
+              console.log('🔧 Added missing colorMode');
+            }
+            if (this.settings.ui.useCustomColors === undefined) {
+              this.settings.ui.useCustomColors = false;
+              needsSave = true;
+              console.log('🔧 Added missing useCustomColors');
+            }
 
-              // Ensure customColors exist
-              if (!this.settings.ui.customColors) {
-                this.settings.ui.customColors = {
-                  background: '#0a0a0f',
-                  foreground: '#e0e0ff',
-                  card: '#1a1a2e',
-                  cardForeground: '#ffffff',
-                  primary: '#00d4ff',
-                  primaryForeground: '#000000',
-                  secondary: '#ff6b9d',
-                  secondaryForeground: '#000000',
-                  accent: '#00d4ff',
-                  accentForeground: '#000000',
-                  muted: '#16213e',
-                  mutedForeground: '#9ca3af',
-                  border: '#3b3b68',
-                  input: '#1e1b2e',
-                  ring: '#00d4ff',
-                  destructive: '#f44747',
-                  destructiveForeground: '#ffffff',
-                  systemText: '#e0e0ff',
-                };
-              }
+            // Ensure customColors exist
+            if (!this.settings.ui.customColors) {
+              this.settings.ui.customColors = {
+                background: '#0a0a0f',
+                foreground: '#e0e0ff',
+                card: '#1a1a2e',
+                cardForeground: '#ffffff',
+                primary: '#00d4ff',
+                primaryForeground: '#000000',
+                secondary: '#ff6b9d',
+                secondaryForeground: '#000000',
+                accent: '#00d4ff',
+                accentForeground: '#000000',
+                muted: '#16213e',
+                mutedForeground: '#9ca3af',
+                border: '#3b3b68',
+                input: '#1e1b2e',
+                ring: '#00d4ff',
+                destructive: '#f44747',
+                destructiveForeground: '#ffffff',
+                systemText: '#e0e0ff',
+              };
+              needsSave = true;
+              console.log('🔧 Added missing customColors');
+            }
 
-              // Save the corrected settings
+            // Only save if we actually added missing properties
+            if (needsSave) {
+              console.log('💾 Saving settings with added missing properties (preserving existing values)');
               this.saveSettings();
-              console.log('✅ Theme settings corrected and saved');
+              console.log('✅ Missing theme properties added and saved');
+            } else {
+              console.log('✅ All theme settings present, no changes needed');
             }
 
             this.initialized = true;
@@ -336,6 +346,17 @@ class SettingsService {
 
   private notifyListeners() {
     this.listeners.forEach(listener => listener(this.settings));
+
+    // Refresh debug logger state when settings change
+    try {
+      // Dynamic import to avoid circular dependency
+      const { debugLogger } = require('./debugLogger');
+      if (debugLogger && typeof debugLogger.refreshFromSettings === 'function') {
+        debugLogger.refreshFromSettings();
+      }
+    } catch (error) {
+      // Ignore errors if debug logger isn't available
+    }
   }
 
   getSettings(): AppSettings {

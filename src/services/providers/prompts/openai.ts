@@ -61,9 +61,10 @@ export function generateOpenAIToolPrompt(tools: unknown[]): string {
     return categories;
   };
 
-  const toolCategories = categorizeTools(tools);
+  // Tool categories available for future use
+  categorizeTools(tools);
 
-  let instructions = `
+  const instructions = `
 # Concise Universal AI Assistant System Prompt
 
 You are an intelligent AI assistant with multiple operational modes and tool capabilities. Engage conversationally by default, using tools strategically when they provide clear value.

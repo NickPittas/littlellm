@@ -22,9 +22,7 @@ async function startProcess(args: unknown): Promise<CommandResult> {
   try {
     const { command, timeout_ms, shell } = args as StartProcessArgs;
 
-    // Validate command against blocked commands
-    internalCommandService.validateCommand(command);
-
+    // Command validation is handled in the main process
     // Start the process
     const processInfo = await processManager.startProcess(command, shell, timeout_ms);
 

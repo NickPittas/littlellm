@@ -12,7 +12,7 @@ import {
   APIResponseData
 } from './types';
 import { FALLBACK_MODELS } from './constants';
-import { REQUESTY_SYSTEM_PROMPT, generateRequestyToolPrompt } from './prompts/requesty';
+import { REQUESTY_SYSTEM_PROMPT } from './prompts/requesty';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
 
 export class RequestyProvider extends BaseProvider {

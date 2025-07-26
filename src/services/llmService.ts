@@ -32,7 +32,7 @@ import { getMemoryMCPTools, executeMemoryTool, isMemoryTool } from './memoryMCPT
 import { memoryContextService, MemoryContext } from './memoryContextService';
 import { internalCommandService } from './internalCommandService';
 import { ProviderAdapter } from './providers/ProviderAdapter';
-import { debugLogger } from '../utils/debugLogger';
+import { debugLogger } from './debugLogger';
 import {
   ToolObject,
   MessageContent,
@@ -585,13 +585,17 @@ class LLMService {
 
         // Format MCP tool results consistently
         if (result && typeof result === 'object') {
-          const resultObj = result as any; // Type assertion for MCP result object
+          const resultObj = result as {
+            content?: Array<{ type: string; text?: string }>;
+            text?: string;
+            error?: unknown;
+          }; // Type assertion for MCP result object
 
           // If result has content, extract it
           if (resultObj.content && Array.isArray(resultObj.content)) {
             const textContent = resultObj.content
-              .filter((item: any) => item.type === 'text')
-              .map((item: any) => item.text)
+              .filter((item: { type: string; text?: string }) => item.type === 'text')
+              .map((item: { type: string; text?: string }) => item.text)
               .join('\n');
 
             if (textContent) {
@@ -607,7 +611,7 @@ class LLMService {
 
           // If result has error information
           if (resultObj.error) {
-            const friendlyError = `The ${toolName} tool failed. ${this.formatErrorForLLM(resultObj.error, toolName)}`;
+            const friendlyError = `The ${toolName} tool failed. ${this.formatErrorForLLM(String(resultObj.error), toolName)}`;
             console.log(`🔧 Formatted MCP error for LLM:`, friendlyError);
             return friendlyError;
           }

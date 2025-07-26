@@ -131,17 +131,18 @@ class ProcessManager extends EventEmitter {
         }
       };
 
-      session.process!.stdout?.on('data', onData);
-      session.process!.stderr?.on('data', onData);
-      session.process!.on('close', onClose);
-      session.process!.on('error', onError);
+      const childProcess = session.process as ChildProcess;
+      childProcess.stdout?.on('data', onData);
+      childProcess.stderr?.on('data', onData);
+      childProcess.on('close', onClose);
+      childProcess.on('error', onError);
 
       // Clean up listeners after resolution
       const cleanup = () => {
-        session.process!.stdout?.off('data', onData);
-        session.process!.stderr?.off('data', onData);
-        session.process!.off('close', onClose);
-        session.process!.off('error', onError);
+        childProcess.stdout?.off('data', onData);
+        childProcess.stderr?.off('data', onData);
+        childProcess.off('close', onClose);
+        childProcess.off('error', onError);
       };
 
       // Ensure cleanup happens
@@ -158,12 +159,13 @@ class ProcessManager extends EventEmitter {
       throw new Error(`Process ${pid} not found`);
     }
 
-    if (!session.process || !session.process.stdin) {
+    const childProcess = session.process as ChildProcess;
+    if (!childProcess || !childProcess.stdin) {
       throw new Error(`Process ${pid} is not accepting input`);
     }
 
     // Send input to the process
-    session.process.stdin.write(input + '\n');
+    childProcess.stdin.write(input + '\n');
     session.lastActivity = new Date();
 
     // Wait for output
@@ -181,12 +183,13 @@ class ProcessManager extends EventEmitter {
 
     try {
       if (session.process) {
-        session.process.kill('SIGTERM');
-        
+        const childProcess = session.process as ChildProcess;
+        childProcess.kill('SIGTERM');
+
         // If process doesn't terminate gracefully, force kill
         setTimeout(() => {
-          if (session.process && !session.process.killed) {
-            session.process.kill('SIGKILL');
+          if (session.process && !childProcess.killed) {
+            childProcess.kill('SIGKILL');
           }
         }, 5000);
       }

@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { ToggleSwitch } from './ui/toggle-switch';
 import { Textarea } from './ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { settingsService, type AppSettings } from '../services/settingsService';
+import { settingsService, type AppSettings, type ColorSettings } from '../services/settingsService';
 import { MemoryManagement } from './MemoryManagement';
 import KnowledgeBaseSettings from './KnowledgeBaseSettings';
 import { mcpService, type MCPServer } from '../services/mcpService';
@@ -57,14 +57,15 @@ export function SettingsOverlay() {
   const [enabledCommandCategories, setEnabledCommandCategories] = useState({
     terminal: true,
     filesystem: true,
-    textEditing: true
+    textEditing: true,
+    system: true
   });
   const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({});
   const [availableTools, setAvailableTools] = useState<Array<{
     name: string;
     description: string;
     category: string;
-    inputSchema: any;
+    inputSchema: Record<string, unknown>;
   }>>([]);
   const [newDirectory, setNewDirectory] = useState('');
   const [newBlockedCommand, setNewBlockedCommand] = useState('');
@@ -311,7 +312,8 @@ export function SettingsOverlay() {
       setEnabledCommandCategories({
         terminal: true,
         filesystem: true,
-        textEditing: true
+        textEditing: true,
+        system: true
       });
       setEnabledTools({});
       setAvailableTools([]);
@@ -362,7 +364,8 @@ export function SettingsOverlay() {
       enabledCommands: {
         terminal: true,
         filesystem: true,
-        textEditing: true
+        textEditing: true,
+        system: true
       },
       terminalSettings: {
         defaultTimeout: 30000,
@@ -415,6 +418,7 @@ export function SettingsOverlay() {
         terminal: true,
         filesystem: true,
         textEditing: true,
+        system: true
       },
       terminalSettings: {
         defaultTimeout: 30000,
@@ -500,6 +504,7 @@ export function SettingsOverlay() {
         terminal: true,
         filesystem: true,
         textEditing: true,
+        system: true
       },
       terminalSettings: {
         defaultTimeout: 30000,
@@ -637,10 +642,10 @@ export function SettingsOverlay() {
   };
 
   // Handle color changes and integrate with save system
-  const handleColorChange = (colors: any) => {
+  const handleColorChange = (colors: Record<string, string>) => {
     // Update theme immediately for preview (don't save yet)
     if (typeof setCustomColors === 'function') {
-      (setCustomColors as any)(colors, false);
+      (setCustomColors as unknown as (colors: Record<string, string>, shouldSave: boolean) => void)(colors, false);
     }
 
     // Update form data to trigger save system
@@ -648,7 +653,7 @@ export function SettingsOverlay() {
       updateFormData({
         ui: {
           ...formData.ui,
-          customColors: colors
+          customColors: colors as unknown as ColorSettings
         }
       });
     }
@@ -657,7 +662,7 @@ export function SettingsOverlay() {
   const handleUseCustomColorsChange = (enabled: boolean) => {
     // Update theme immediately for preview (don't save yet)
     if (typeof setUseCustomColors === 'function') {
-      (setUseCustomColors as any)(enabled, false);
+      (setUseCustomColors as unknown as (enabled: boolean, shouldSave: boolean) => void)(enabled, false);
     }
 
     // Update form data to trigger save system
@@ -671,10 +676,10 @@ export function SettingsOverlay() {
     }
   };
 
-  const handleThemePresetChange = (theme: any) => {
+  const handleThemePresetChange = (theme: { id: string; name: string }) => {
     // Update theme immediately for preview (don't save yet)
     if (typeof setSelectedThemePreset === 'function') {
-      (setSelectedThemePreset as any)(theme.id, false);
+      (setSelectedThemePreset as unknown as (themeId: string, shouldSave: boolean) => void)(theme.id, false);
     }
 
     // Update form data to trigger save system
@@ -691,7 +696,7 @@ export function SettingsOverlay() {
   const handleColorModeChange = (mode: 'preset' | 'custom') => {
     // Update theme immediately for preview (don't save yet)
     if (typeof setColorMode === 'function') {
-      (setColorMode as any)(mode, false);
+      (setColorMode as unknown as (mode: 'preset' | 'custom', shouldSave: boolean) => void)(mode, false);
     }
 
     // Update form data to trigger save system
@@ -1734,7 +1739,7 @@ export function SettingsOverlay() {
                         <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
                           <h4 className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">Security Notice</h4>
                           <p className="text-xs text-yellow-700 dark:text-yellow-300">
-                            Internal commands provide powerful capabilities to AI models. Only enable them if you trust the AI models you're using.
+                            Internal commands provide powerful capabilities to AI models. Only enable them if you trust the AI models you&apos;re using.
                             Always configure allowed directories to limit filesystem access to specific paths.
                           </p>
                         </div>
@@ -2054,6 +2059,18 @@ export function SettingsOverlay() {
                           />
                           <p className="text-sm text-muted-foreground">
                             Number of previous messages to include in context
+                          </p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <ToggleSwitch
+                            enabled={formData.general.debugLogging || false}
+                            onToggle={(enabled: boolean) => updateFormData({
+                              general: { ...formData.general, debugLogging: enabled }
+                            })}
+                          />
+                          <Label>Debug Logging</Label>
+                          <p className="text-sm text-muted-foreground ml-2">
+                            Enable detailed console logging for troubleshooting
                           </p>
                         </div>
                       </>

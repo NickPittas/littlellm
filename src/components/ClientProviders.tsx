@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import SquircleWindow from '@/components/SquircleWindow';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { TransparencyProvider } from '@/contexts/TransparencyContext';
 
@@ -29,9 +28,7 @@ export default function ClientProviders({
   return (
     <ThemeProvider>
       <TransparencyProvider>
-        <SquircleWindow cornerRadius={32} cornerSmoothing={0.9} enabled={false}>
-          {children}
-        </SquircleWindow>
+        {children}
       </TransparencyProvider>
     </ThemeProvider>
   );
