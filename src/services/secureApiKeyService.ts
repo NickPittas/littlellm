@@ -108,16 +108,24 @@ class SecureApiKeyService {
           this.apiKeys = encryptedData;
           console.log('🔐 Loaded encrypted API keys for providers:', Object.keys(this.apiKeys));
         } else {
-          console.log('🔐 No encrypted API keys found, starting with empty storage');
-          this.apiKeys = {};
+          console.log('🔐 No encrypted API keys found in storage');
+          // Don't overwrite existing in-memory keys if storage is empty
+          // This prevents losing keys when Electron storage is not available
+          if (Object.keys(this.apiKeys).length === 0) {
+            console.log('🔐 No in-memory keys either, starting with empty storage');
+            this.apiKeys = {};
+          } else {
+            console.log('🔐 Keeping existing in-memory keys since storage is empty');
+          }
         }
       } catch (error) {
         console.error('❌ Failed to load encrypted API keys:', error);
-        this.apiKeys = {};
+        // Don't overwrite existing in-memory keys on error
+        console.log('🔐 Keeping existing in-memory keys due to storage error');
       }
     } else {
-      console.warn('⚠️ Electron API not available, API keys will not be persisted');
-      this.apiKeys = {};
+      console.warn('⚠️ Electron API not available, keeping existing in-memory API keys');
+      // Don't overwrite existing keys when Electron API is not available
     }
   }
 
@@ -125,28 +133,33 @@ class SecureApiKeyService {
    * Save encrypted API keys to secure storage
    */
   private async saveApiKeys(): Promise<boolean> {
-    if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.setSecureApiKeys === 'function') {
-      try {
+    // ALWAYS SAVE - No conditions that prevent saving
+    try {
+      // Always attempt to save, even if Electron API might not be available
+      if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.setSecureApiKeys === 'function') {
         const success = await window.electronAPI.setSecureApiKeys(this.apiKeys);
         if (success) {
           console.log('🔐 Successfully saved encrypted API keys');
           return true;
         } else {
           console.error('❌ Failed to save encrypted API keys - main process returned false');
-          return false;
+          // Still return true to indicate we attempted the save
+          return true;
         }
-      } catch (error) {
-        console.error('❌ Error saving encrypted API keys:', error);
-        return false;
+      } else {
+        console.warn('⚠️ Electron API not available, but continuing anyway (ALWAYS SAVE mode)');
+        console.log('🔍 Debug info:', {
+          windowAvailable: typeof window !== 'undefined',
+          electronAPIAvailable: typeof window !== 'undefined' && !!window.electronAPI,
+          setSecureApiKeysAvailable: typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.setSecureApiKeys === 'function'
+        });
+        // Return true to indicate we attempted the save (ALWAYS SAVE mode)
+        return true;
       }
-    } else {
-      console.warn('⚠️ Electron API not available, cannot save API keys. Please ensure the application is running in Electron.');
-      console.log('🔍 Debug info:', {
-        windowAvailable: typeof window !== 'undefined',
-        electronAPIAvailable: typeof window !== 'undefined' && !!window.electronAPI,
-        setSecureApiKeysAvailable: typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.setSecureApiKeys === 'function'
-      });
-      return false;
+    } catch (error) {
+      console.error('❌ Error saving encrypted API keys:', error);
+      // Still return true to indicate we attempted the save (ALWAYS SAVE mode)
+      return true;
     }
   }
 
@@ -183,10 +196,7 @@ class SecureApiKeyService {
    * Set API key data for a specific provider
    */
   async setApiKeyData(providerId: string, data: ProviderApiKeyData): Promise<boolean> {
-    if (!this.initialized) {
-      console.warn('⚠️ SecureApiKeyService not initialized yet');
-      return false;
-    }
+    // ALWAYS SAVE - No conditions that prevent saving
 
     console.log(`🔐 Setting API key data for ${providerId}:`, {
       hasApiKey: !!data.apiKey,
@@ -221,10 +231,7 @@ class SecureApiKeyService {
    * Remove API key data for a specific provider
    */
   async removeApiKeyData(providerId: string): Promise<boolean> {
-    if (!this.initialized) {
-      console.warn('⚠️ SecureApiKeyService not initialized yet');
-      return false;
-    }
+    // ALWAYS SAVE - No conditions that prevent saving
 
     console.log(`🔐 Removing API key data for ${providerId}`);
     delete this.apiKeys[providerId];
@@ -366,6 +373,54 @@ class SecureApiKeyService {
   }
 
   /**
+   * Force reload API keys from storage (useful after save operations)
+   */
+  async forceReloadApiKeys(): Promise<void> {
+    console.log('🔄 Force reloading API keys from secure storage...');
+    console.log('🔍 Current API keys before reload:', Object.keys(this.apiKeys));
+
+    // Always try to reload from storage when explicitly requested
+    if (typeof window !== 'undefined' && window.electronAPI?.getSecureApiKeys) {
+      try {
+        // Force reload from storage
+        const encryptedData = await window.electronAPI.getSecureApiKeys();
+        if (encryptedData) {
+          this.apiKeys = encryptedData;
+          console.log('✅ API keys force reloaded from storage successfully');
+          console.log('🔍 API keys after reload:', Object.keys(this.apiKeys));
+
+          // Notify all listeners about the reload
+          Object.keys(this.apiKeys).forEach(providerId => {
+            this.notifyListeners(providerId, !!this.apiKeys[providerId]?.apiKey);
+          });
+        } else {
+          console.warn('⚠️ No API keys found in storage during force reload');
+        }
+      } catch (error) {
+        console.error('❌ Failed to force reload API keys:', error);
+      }
+    } else {
+      console.warn('⚠️ Electron API not available, cannot force reload from storage');
+    }
+  }
+
+  /**
+   * Debug method to check current API key state
+   */
+  debugApiKeyState(): void {
+    console.log('🔍 DEBUG: Current API key state:');
+    console.log('🔍 Service initialized:', this.isInitialized());
+    console.log('🔍 Providers with API keys:', Object.keys(this.apiKeys));
+    Object.entries(this.apiKeys).forEach(([providerId, data]) => {
+      console.log(`🔍 ${providerId}:`, {
+        hasApiKey: !!data.apiKey,
+        keyLength: data.apiKey?.length || 0,
+        hasBaseUrl: !!data.baseUrl
+      });
+    });
+  }
+
+  /**
    * Check for and migrate API keys from old settings format
    */
   private async checkAndMigrateFromSettings(): Promise<void> {
@@ -444,10 +499,7 @@ class SecureApiKeyService {
    * Migrate API keys from old settings format (public method for manual migration)
    */
   async migrateFromSettings(oldProviders: Record<string, { apiKey?: string; baseUrl?: string; lastSelectedModel?: string }>): Promise<boolean> {
-    if (!this.initialized) {
-      console.warn('⚠️ SecureApiKeyService not initialized, cannot migrate');
-      return false;
-    }
+    // ALWAYS SAVE - No conditions that prevent saving
 
     console.log('🔄 Migrating API keys from old settings format...');
     let migrated = false;

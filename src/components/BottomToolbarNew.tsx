@@ -157,17 +157,22 @@ export function BottomToolbar({
     }
   }, [settings.provider]); // Only watch provider changes, not the callback
 
-  // Listen for settings saved events to refresh models
+  // Listen for settings saved events to refresh models and API keys
   useEffect(() => {
-    const handleSettingsSaved = (event: CustomEvent) => {
-      console.log('🔄 Settings saved event received, clearing cache and refreshing models');
+    const handleSettingsSaved = async (event: CustomEvent) => {
+      console.log('🔄 BottomToolbar: Settings saved event received, refreshing API keys and models');
 
-      // Clear model cache to force fresh fetch
-      chatService.clearModelCache();
+      // Always force refresh API keys from secure storage after save
+      // This ensures the provider dropdown gets the fresh API keys
+      console.log('🔄 BottomToolbar: Force refreshing API keys from storage...');
+      await chatService.forceRefreshApiKeys();
 
       if (settings.provider) {
-        console.log('🔄 Refreshing models for current provider:', settings.provider);
-        fetchModelsForProvider(settings.provider);
+        console.log('🔄 BottomToolbar: Refreshing models for current provider:', settings.provider);
+        // Add a small delay to ensure API keys are refreshed first
+        setTimeout(() => {
+          fetchModelsForProvider(settings.provider);
+        }, 300);
       }
     };
 
