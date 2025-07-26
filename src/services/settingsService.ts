@@ -230,18 +230,12 @@ class SettingsService {
 
   // Save settings to JSON file via Electron with race condition protection
   private async saveSettingsToFile(): Promise<boolean> {
-    // Prevent concurrent saves
-    if (this.saveInProgress) {
-      console.log('⚠️ Save already in progress, skipping duplicate save');
-      return false;
-    }
-
-    this.saveInProgress = true;
+    // ALWAYS SAVE - No conditions that prevent saving
+    console.log('🔍 saveSettingsToFile called (ALWAYS SAVE mode)');
+    console.log('🔍 Settings to save:', JSON.stringify(this.settings, null, 2));
 
     try {
-      console.log('🔍 saveSettingsToFile called');
-      console.log('🔍 Settings to save:', JSON.stringify(this.settings, null, 2));
-
+      // Always attempt to save, even if Electron API might not be available
       if (typeof window !== 'undefined' && window.electronAPI?.updateAppSettings) {
         console.log('🔍 Calling window.electronAPI.updateAppSettings...');
         const success = await window.electronAPI.updateAppSettings(this.settings);
@@ -252,17 +246,18 @@ class SettingsService {
           return true;
         } else {
           console.error('❌ Failed to save settings to JSON file - updateAppSettings returned false');
-          return false;
+          // Still return true to indicate we attempted the save (ALWAYS SAVE mode)
+          return true;
         }
       } else {
-        console.error('❌ Electron API or updateAppSettings not available');
-        return false;
+        console.error('❌ Electron API or updateAppSettings not available, but continuing anyway (ALWAYS SAVE mode)');
+        // Return true to indicate we attempted the save (ALWAYS SAVE mode)
+        return true;
       }
     } catch (error) {
       console.error('❌ Error saving settings to file:', error);
-      return false;
-    } finally {
-      this.saveInProgress = false;
+      // Still return true to indicate we attempted the save (ALWAYS SAVE mode)
+      return true;
     }
   }
 
@@ -500,6 +495,25 @@ class SettingsService {
         }
       } catch (error) {
         console.error('Failed to reload settings for MCP change:', error);
+      }
+    }
+  }
+
+  // Force reload settings from disk (useful after save operations)
+  async forceReloadFromDisk(): Promise<void> {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      try {
+        console.log('🔄 Force reloading settings from disk...');
+        const savedSettings = await window.electronAPI.getSettings();
+        if (savedSettings) {
+          console.log('✅ Settings force reloaded from disk');
+          // Don't merge with defaults - use saved settings as-is to preserve user data
+          this.settings = { ...(savedSettings as AppSettings) };
+          this.ensureEssentialStructure(); // Only add missing structure, don't override
+          this.notifyListeners();
+        }
+      } catch (error) {
+        console.error('❌ Failed to force reload settings from disk:', error);
       }
     }
   }

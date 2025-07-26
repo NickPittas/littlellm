@@ -614,6 +614,24 @@ export const chatService = {
     return llmService.clearModelCache(providerId);
   },
 
+  // Force refresh API keys and clear any cached data
+  async forceRefreshApiKeys(): Promise<void> {
+    console.log('🔄 ChatService: Force refreshing API keys...');
+    try {
+      // Force reload API keys from secure storage
+      if (secureApiKeyService) {
+        await secureApiKeyService.forceReloadApiKeys();
+      }
+
+      // Clear model cache to force fresh fetch with new API keys
+      this.clearModelCache();
+
+      console.log('✅ ChatService: API keys and cache refreshed successfully');
+    } catch (error) {
+      console.error('❌ ChatService: Failed to refresh API keys:', error);
+    }
+  },
+
   // Helper method to get provider instance
   getProviderInstance(providerId: string) {
     // Get the actual provider instance from ProviderFactory via llmService's adapter

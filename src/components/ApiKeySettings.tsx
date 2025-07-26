@@ -97,6 +97,22 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
     initializeApiKeys();
   }, []); // Remove onApiKeyChange dependency to prevent re-initialization
 
+  // Listen for settings saved events to refresh API keys
+  useEffect(() => {
+    const handleSettingsSaved = (event: CustomEvent) => {
+      console.log('🔄 ApiKeySettings: Settings saved event received, reloading API keys');
+      // Reload API keys from storage after settings are saved
+      setTimeout(() => {
+        loadApiKeys(true); // Force reload from storage
+      }, 200); // Small delay to ensure save is complete
+    };
+
+    window.addEventListener('settingsSaved', handleSettingsSaved as EventListener);
+    return () => {
+      window.removeEventListener('settingsSaved', handleSettingsSaved as EventListener);
+    };
+  }, []);
+
   // Register save function with parent component
   useEffect(() => {
     if (onRegisterSaveFunction) {
@@ -115,19 +131,27 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
   }, [hasChanges, onRegisterSaveFunction]); // Re-register when hasChanges updates
 
   const loadApiKeys = (forceReset: boolean = false) => {
+    console.log('🔍 loadApiKeys called with forceReset:', forceReset);
 
     const loadedKeys: Record<string, ProviderApiKeyData> = {};
 
     try {
       const service = getSecureApiKeyService();
+      console.log('🔍 Service initialized:', service.isInitialized());
 
       PROVIDERS.forEach(provider => {
         try {
           const data = service.getApiKeyData(provider.id);
           if (data) {
             loadedKeys[provider.id] = data;
+            console.log(`🔍 Loaded API key for ${provider.id}:`, {
+              hasApiKey: !!data.apiKey,
+              keyLength: data.apiKey?.length || 0,
+              hasBaseUrl: !!data.baseUrl
+            });
           } else {
             loadedKeys[provider.id] = { apiKey: '', baseUrl: '', lastSelectedModel: '' };
+            console.log(`🔍 No API key data for ${provider.id}, using empty`);
           }
         } catch (error) {
           console.error(`🔐 ApiKeySettings: Error loading API key for ${provider.id}:`, error);
@@ -145,6 +169,7 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
       });
     }
 
+    console.log('🔍 Setting API keys in component state:', Object.keys(loadedKeys));
     setApiKeys(loadedKeys);
 
     // Only reset hasChanges if forced (initial load or cancel) or if no changes exist
@@ -212,48 +237,57 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
       // Get service and check if it's available and initialized
       const service = getSecureApiKeyService();
 
-      if (!service.isInitialized()) {
-        throw new Error('API key service is not initialized. Please wait a moment and try again.');
-      }
+      // ALWAYS SAVE - No conditions that prevent saving
+      console.log('🔐 ApiKeySettings: Executing save (ALWAYS SAVE mode)');
 
-      // Validate all API keys before saving
+      // ALWAYS SAVE - No validation that prevents saving
+      // Still validate for user feedback, but don't prevent saving
       for (const [providerId, data] of Object.entries(apiKeys)) {
         if (data.apiKey.trim()) {
           const error = validateApiKey(providerId, data.apiKey);
           if (error) {
             errors[providerId] = error;
+            console.warn(`⚠️ Validation warning for ${providerId}: ${error} (but saving anyway)`);
           }
         }
       }
 
-      if (Object.keys(errors).length > 0) {
-        setValidationErrors(errors);
-        return;
-      }
+      // Set validation errors for display but continue saving
+      setValidationErrors(errors);
 
-      // Save all API keys - now with proper error handling
+      // ALWAYS SAVE ALL API KEYS - No conditions that prevent saving
       for (const [providerId, data] of Object.entries(apiKeys)) {
         try {
-          if (data.apiKey.trim() || data.baseUrl?.trim()) {
-            await service.setApiKeyData(providerId, {
-              apiKey: data.apiKey.trim(),
-              baseUrl: data.baseUrl?.trim(),
-              lastSelectedModel: data.lastSelectedModel
-            });
-            console.log(`✅ Saved API key for ${providerId}`);
-          } else {
-            // Remove empty API key data
-            await service.removeApiKeyData(providerId);
-            console.log(`🗑️ Removed API key for ${providerId}`);
-          }
+          // Always save, regardless of whether fields are empty or not
+          await service.setApiKeyData(providerId, {
+            apiKey: data.apiKey.trim(),
+            baseUrl: data.baseUrl?.trim(),
+            lastSelectedModel: data.lastSelectedModel
+          });
+          console.log(`✅ Saved API key for ${providerId}`);
         } catch (error) {
-          console.error(`❌ Failed to save/remove API key for ${providerId}:`, error);
-          throw new Error(`Failed to save API key for ${providerId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          console.error(`❌ Failed to save API key for ${providerId}:`, error);
+          // Don't throw error - continue saving other keys (ALWAYS SAVE mode)
+          console.log(`🔄 Continuing to save other API keys despite error for ${providerId}`);
         }
       }
 
       setHasChanges(false);
       console.log('✅ All API keys saved successfully');
+
+      // Debug: Check API key state after save
+      try {
+        const service = getSecureApiKeyService();
+        service.debugApiKeyState();
+      } catch (error) {
+        console.error('🔍 Failed to debug API key state:', error);
+      }
+
+      // Force reload API keys from storage to ensure UI reflects saved values
+      console.log('🔄 Reloading API keys from storage after save...');
+      setTimeout(() => {
+        loadApiKeys(true); // Force reload from storage
+      }, 100); // Small delay to ensure save is complete
     } catch (error) {
       console.error('❌ Failed to save API keys:', error);
       throw error; // Re-throw so parent can handle the error

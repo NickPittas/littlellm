@@ -577,6 +577,10 @@ export function SettingsOverlay() {
       }
 
       if (success && apiKeySaveSuccess) {
+        // Don't reload settings from disk - this might interfere with API keys
+        // API keys are stored separately in secure storage, not in the JSON file
+        console.log('🔄 Settings and API keys saved successfully');
+
         setSettings(formData);
         // Always reset hasChanges after successful save
         setHasChanges(false);
