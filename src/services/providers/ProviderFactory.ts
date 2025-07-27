@@ -1,6 +1,7 @@
 // Provider factory for managing LLM providers
 
 import { ILLMProvider } from './BaseProvider';
+import { debugLogger } from '../debugLogger';
 import { OpenAIProvider } from './OpenAIProvider';
 import { AnthropicProvider } from './AnthropicProvider';
 import { GeminiProvider } from './GeminiProvider';
@@ -49,7 +50,7 @@ export class ProviderFactory {
 
   private static registerProvider(provider: ILLMProvider): void {
     this.providers.set(provider.id, provider);
-    console.log(`📋 Registered provider: ${provider.id} (${provider.name})`);
+    debugLogger.info('PROVIDER', `Registered provider: ${provider.id} (${provider.name})`);
   }
 
   static getProvider(providerId: string): ILLMProvider | null {

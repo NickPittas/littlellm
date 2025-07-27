@@ -2,6 +2,7 @@ import { llmService, type LLMSettings } from './llmService';
 import { sessionService } from './sessionService';
 import { settingsService } from './settingsService';
 import { documentParserService } from './DocumentParserService';
+import { debugLogger } from './debugLogger';
 
 // Conditionally import secureApiKeyService only in browser environment
 let secureApiKeyService: any = null;
@@ -26,6 +27,14 @@ interface ContentItem {
 // Type for tool call arguments - can be any valid JSON value
 type ToolCallArguments = Record<string, unknown>;
 
+export interface Source {
+  type: 'knowledge_base' | 'web' | 'document';
+  title: string;
+  url?: string;
+  score?: number;
+  snippet?: string;
+}
+
 export interface Message {
   id: string;
   content: string | Array<ContentItem>;
@@ -48,6 +57,7 @@ export interface Message {
     name: string;
     arguments: ToolCallArguments;
   }>;
+  sources?: Source[];
 }
 
 // Import shared types
@@ -182,9 +192,10 @@ export const chatService = {
     conversationHistory: Message[] = [],
     onStream?: (chunk: string) => void,
     signal?: AbortSignal,
-    conversationId?: string // Add conversation ID for tool optimization
+    conversationId?: string, // Add conversation ID for tool optimization
+    onKnowledgeBaseSearch?: (isSearching: boolean, query?: string) => void
   ): Promise<Message> {
-    console.log('🚀 ChatService.sendMessage called with:', {
+    debugLogger.info('CHAT', 'sendMessage called', {
       message: message.substring(0, 100) + '...',
       provider: settings.provider,
       model: settings.model,
@@ -206,14 +217,19 @@ export const chatService = {
     try {
       // RAG Integration: Augment message with knowledge base context if enabled
       let augmentedMessage = message;
+      let sources: Source[] = [];
+
       if (settings.ragEnabled && typeof window !== 'undefined' && window.electronAPI) {
         try {
           console.log('🧠 RAG enabled, searching knowledge base for:', message.substring(0, 100));
-          
+
+          // Notify UI that knowledge base search is starting
+          onKnowledgeBaseSearch?.(true, message);
+
           // Detect if this is a comprehensive query that needs all documents
           const isComprehensiveQuery = /\b(all|total|sum|add|combine|every|each)\b/i.test(message);
           const searchLimit = isComprehensiveQuery ? 20 : 5; // Higher limit for comprehensive queries
-          
+
           const ragResult = await window.electronAPI.searchKnowledgeBase(message, searchLimit);
           
           if (ragResult.success && ragResult.results && ragResult.results.length > 0) {
@@ -260,16 +276,30 @@ export const chatService = {
             
             augmentedMessage = `${contextIntro}:\n\n${contextChunks}\n\n---\n\nUser Question: ${message}`;
             
+            // Collect sources from RAG results
+            sources = selectedChunks.map((result: RAGResult) => ({
+              type: 'knowledge_base' as const,
+              title: result.source,
+              score: result.score,
+              snippet: result.text.substring(0, 150) + (result.text.length > 150 ? '...' : '')
+            }));
+
             console.log('🧠 Message augmented with RAG context:', {
               originalLength: message.length,
               augmentedLength: augmentedMessage.length,
-              contextChunks: ragResult.results.length
+              contextChunks: ragResult.results.length,
+              sources: sources.length
             });
           } else {
             console.log('🧠 No relevant context found in knowledge base');
           }
+
+          // Notify UI that knowledge base search is complete
+          onKnowledgeBaseSearch?.(false);
         } catch (ragError) {
           console.error('🧠 RAG search failed:', ragError);
+          // Notify UI that knowledge base search is complete (even on error)
+          onKnowledgeBaseSearch?.(false);
           // Continue with original message if RAG fails
         }
       }
@@ -495,6 +525,16 @@ export const chatService = {
         conversationId
       );
 
+      // Extract sources from tool execution content if any web search tools were used
+      if (response.toolCalls && response.toolCalls.length > 0) {
+        console.log('🔧 Extracting sources from tool calls:', response.toolCalls.map(tc => tc.name));
+        const webSearchSources = this.extractSourcesFromResponseContent(response.content, response.toolCalls);
+        console.log('📚 Extracted web search sources:', webSearchSources);
+        sources = [...sources, ...webSearchSources];
+      }
+
+      console.log('📊 Final sources collected:', sources);
+
       const endTime = performance.now();
       const duration = endTime - startTime;
 
@@ -559,7 +599,8 @@ export const chatService = {
           duration,
           tokensPerSecond
         },
-        toolCalls: response.toolCalls // Include tool calls in the message
+        toolCalls: response.toolCalls, // Include tool calls in the message
+        sources: sources // Always include sources array, even if empty
       };
 
       console.log('📋 Created message with toolCalls:', {
@@ -573,6 +614,180 @@ export const chatService = {
       console.error('❌ Chat service error:', error);
       throw new Error(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  },
+
+  /**
+   * Extract sources from response content that contains tool execution results
+   */
+  extractSourcesFromResponseContent(content: string, toolCalls: Array<{id: string, name: string, arguments: ToolCallArguments}>): Source[] {
+    const sources: Source[] = [];
+
+    // Look for web search tools in the tool calls
+    const webSearchTools = toolCalls.filter(tc => this.isWebSearchTool(tc.name));
+
+    if (webSearchTools.length === 0) {
+      return sources;
+    }
+
+    // Extract sources from formatted tool results in the content
+    for (const toolCall of webSearchTools) {
+      try {
+        // Look for tool execution blocks or formatted results
+        const toolSources = this.extractSourcesFromToolContent(content, toolCall);
+        sources.push(...toolSources);
+      } catch (error) {
+        console.warn(`Failed to extract sources from tool content ${toolCall.name}:`, error);
+      }
+    }
+
+    return sources;
+  },
+
+  /**
+   * Extract sources from tool execution content for a specific tool
+   */
+  extractSourcesFromToolContent(content: string, toolCall: {name: string, arguments: ToolCallArguments}): Source[] {
+    const sources: Source[] = [];
+    const query = toolCall.arguments.query as string || 'web search';
+
+    // Pattern 1: Look for structured search results with URLs
+    const urlPattern = /(?:https?:\/\/[^\s\)]+)/g;
+    const urls = content.match(urlPattern) || [];
+
+    // Pattern 2: Look for numbered search results
+    const numberedResultPattern = /(\d+)\.\s*\*\*([^*]+)\*\*[^\n]*\n[^\n]*🔗\s*(https?:\/\/[^\s\n]+)/g;
+    let match;
+    while ((match = numberedResultPattern.exec(content)) !== null) {
+      sources.push({
+        type: 'web',
+        title: match[2].trim(),
+        url: match[3],
+        snippet: `Search result for: ${query}`
+      });
+    }
+
+    // Pattern 3: Look for title and URL pairs
+    const titleUrlPattern = /\*\*([^*]+)\*\*[^\n]*\n[^\n]*(?:🔗|URL:)\s*(https?:\/\/[^\s\n]+)/g;
+    while ((match = titleUrlPattern.exec(content)) !== null) {
+      if (!sources.find(s => s.url === match[2])) { // Avoid duplicates
+        sources.push({
+          type: 'web',
+          title: match[1].trim(),
+          url: match[2],
+          snippet: `Search result for: ${query}`
+        });
+      }
+    }
+
+    // Pattern 4: If no structured results found, create generic sources from URLs
+    if (sources.length === 0 && urls.length > 0) {
+      urls.slice(0, 5).forEach((url, index) => {
+        sources.push({
+          type: 'web',
+          title: `Web result ${index + 1}`,
+          url: url,
+          snippet: `Search result for: ${query}`
+        });
+      });
+    }
+
+    // Pattern 5: If still no sources, create a generic web search source
+    if (sources.length === 0) {
+      sources.push({
+        type: 'web',
+        title: `Web search: ${query}`,
+        snippet: 'Web search was performed but specific sources could not be extracted'
+      });
+    }
+
+    return sources;
+  },
+
+  /**
+   * Check if a tool name is a web search tool
+   */
+  isWebSearchTool(toolName: string): boolean {
+    const webSearchTools = [
+      'web_search', 'web-search', 'search', 'google_search',
+      'tavily-search', 'brave_web_search', 'brave_local_search',
+      'web-fetch', 'fetch', 'fetch_content'
+    ];
+    return webSearchTools.includes(toolName);
+  },
+
+  /**
+   * Parse web search results to extract sources
+   */
+  parseWebSearchSources(result: unknown, args: ToolCallArguments): Source[] {
+    const sources: Source[] = [];
+
+    try {
+      // Handle different result formats
+      if (typeof result === 'string') {
+        // Try to parse as JSON
+        try {
+          const parsed = JSON.parse(result);
+          return this.parseWebSearchSources(parsed, args);
+        } catch {
+          // If not JSON, create a generic source
+          const query = args.query as string || 'web search';
+          sources.push({
+            type: 'web',
+            title: `Web search: ${query}`,
+            snippet: result.substring(0, 150) + (result.length > 150 ? '...' : '')
+          });
+        }
+      } else if (typeof result === 'object' && result !== null) {
+        const resultObj = result as Record<string, unknown>;
+
+        // Handle Tavily search results
+        if (resultObj.results && Array.isArray(resultObj.results)) {
+          for (const item of resultObj.results) {
+            if (typeof item === 'object' && item !== null) {
+              const itemObj = item as Record<string, unknown>;
+              sources.push({
+                type: 'web',
+                title: itemObj.title as string || 'Web result',
+                url: itemObj.url as string,
+                snippet: itemObj.content as string || itemObj.snippet as string
+              });
+            }
+          }
+        }
+
+        // Handle Brave search results
+        if (resultObj.web && typeof resultObj.web === 'object') {
+          const webObj = resultObj.web as Record<string, unknown>;
+          if (webObj.results && Array.isArray(webObj.results)) {
+            for (const item of webObj.results) {
+              if (typeof item === 'object' && item !== null) {
+                const itemObj = item as Record<string, unknown>;
+                sources.push({
+                  type: 'web',
+                  title: itemObj.title as string || 'Web result',
+                  url: itemObj.url as string,
+                  snippet: itemObj.description as string || itemObj.snippet as string
+                });
+              }
+            }
+          }
+        }
+
+        // Handle generic web search results
+        if (resultObj.url || resultObj.title) {
+          sources.push({
+            type: 'web',
+            title: resultObj.title as string || 'Web result',
+            url: resultObj.url as string,
+            snippet: resultObj.content as string || resultObj.description as string || resultObj.snippet as string
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to parse web search sources:', error);
+    }
+
+    return sources;
   },
 
   async testConnection(settings: ChatSettings): Promise<boolean> {

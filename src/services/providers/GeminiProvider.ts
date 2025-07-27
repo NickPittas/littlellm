@@ -704,6 +704,13 @@ export class GeminiProvider extends BaseProvider {
                         result: toolResult
                       });
 
+                      // Add tool result to conversation history for follow-up
+                      conversationHistory.push({
+                        role: 'function',
+                        name: part.functionCall.name,
+                        content: JSON.stringify(toolResult)
+                      });
+
                     } catch (error) {
                       console.error(`❌ Gemini streaming tool call failed:`, error);
 

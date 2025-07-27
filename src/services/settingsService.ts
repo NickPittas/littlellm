@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     temperature: 0.3,
     maxTokens: 8192,
     toolCallingEnabled: true,
+    ragEnabled: false,
     providers: {
       openai: { lastSelectedModel: '' },
       anthropic: { lastSelectedModel: '' },

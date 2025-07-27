@@ -82,6 +82,8 @@ export interface ElectronAPI {
   closeChatWindow: () => Promise<void>;
   syncMessagesToChat: (messages: unknown[]) => Promise<void>;
   requestCurrentMessages: () => Promise<void>;
+  syncKnowledgeBaseSearch: (isSearching: boolean, query?: string) => Promise<void>;
+  openExternal: (url: string) => Promise<{success: boolean, error?: string}>;
   notifyThemeChange: (themeData: { customColors: unknown; useCustomColors: boolean }) => Promise<void>;
   getCurrentTheme: () => Promise<{ customColors: Record<string, string>; useCustomColors: boolean } | null>;
 
@@ -103,6 +105,7 @@ export interface ElectronAPI {
   onThemeChange: (callback: (themeData: { customColors: unknown; useCustomColors: boolean }) => void) => any;
   removeThemeChangeListener?: (wrappedCallback: any) => void;
   onMessagesUpdate?: (callback: (messages: unknown[]) => void) => void;
+  onKnowledgeBaseSearchUpdate?: (callback: (data: {isSearching: boolean, query?: string}) => void) => void;
   onRequestCurrentMessages: (callback: () => void) => void;
   onClipboardContent?: (callback: (content: string) => void) => void;
   onProcessClipboard?: (callback: (content: string) => void) => void;
@@ -142,6 +145,7 @@ export interface ElectronAPI {
   // Progress monitoring
   onExportProgress: (callback: (progress: {step: string, current: number, total: number, message: string}) => void) => () => void;
   onImportProgress: (callback: (progress: {step: string, current: number, total: number, message: string}) => void) => () => void;
+  onBatchProgress: (callback: (progress: {step: string, message: string, fileIndex: number, totalFiles: number, fileName: string, chunkCount?: number, status: 'processing' | 'success' | 'error', error?: string}) => void) => () => void;
 
   // Internal Commands operations
   setInternalCommandsConfig: (config: unknown) => Promise<boolean>;

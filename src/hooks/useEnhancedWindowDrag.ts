@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { debugLogger } from '../services/debugLogger';
 
 /**
  * Simple window dragging hook using Electron's built-in web API
@@ -65,7 +66,7 @@ export function useEnhancedWindowDrag() {
         }
       });
 
-      console.log('🎯 Applied CSS drag regions to', interactiveElements.length, 'interactive elements');
+      debugLogger.debug('Applied CSS drag regions to', interactiveElements.length, 'interactive elements');
     };
 
     // Apply drag regions immediately

@@ -85,9 +85,68 @@ const KnowledgeBaseSettings = () => {
       setImportProgress(progress);
     });
 
+    const batchUnsubscribe = window.electronAPI.onBatchProgress((progress) => {
+      // Add real-time progress entries for batch operations
+      const operationId = `batch-upload-${Date.now()}`;
+
+      if (progress.status === 'processing') {
+        addProgressEntry(
+          'info',
+          operationId,
+          progress.message,
+          { current: progress.fileIndex, total: progress.totalFiles },
+          {
+            fileName: progress.fileName,
+            step: progress.step,
+            chunkCount: progress.chunkCount
+          }
+        );
+      } else if (progress.status === 'success') {
+        addProgressEntry(
+          'success',
+          operationId,
+          progress.message,
+          { current: progress.fileIndex, total: progress.totalFiles },
+          {
+            fileName: progress.fileName,
+            chunkCount: progress.chunkCount
+          }
+        );
+      } else if (progress.status === 'error') {
+        addProgressEntry(
+          'error',
+          operationId,
+          progress.message,
+          { current: progress.fileIndex, total: progress.totalFiles },
+          {
+            fileName: progress.fileName,
+            error: progress.error
+          }
+        );
+      }
+
+      // Update the upload progress state for the UI
+      setUploadProgress(prev => {
+        const newProgress = [...prev];
+        const fileIndex = progress.fileIndex - 1; // Convert to 0-based index
+
+        if (fileIndex >= 0 && fileIndex < newProgress.length) {
+          newProgress[fileIndex] = {
+            fileName: progress.fileName,
+            status: progress.status === 'success' ? 'success' :
+                   progress.status === 'error' ? 'error' : 'processing',
+            error: progress.error
+          };
+        }
+
+        return newProgress;
+      });
+    });
+
     return () => {
       exportUnsubscribe();
       importUnsubscribe();
+      batchUnsubscribe();
     };
   }, []);
 
@@ -178,37 +237,30 @@ const KnowledgeBaseSettings = () => {
         }));
         setUploadProgress(initialProgress);
 
-        // Show warning for large files
-        const largeFiles = filePaths.filter(path => {
-          // This is a rough estimate - we can't get file size from path alone
-          return path.toLowerCase().includes('large') || filePaths.length > 10;
-        });
-
         if (filePaths.length > 5) {
           setMessage(`Processing ${filePaths.length} documents. This may take several minutes for large documents...`);
           addProgressEntry('warning', operationId, `Large batch detected: ${filePaths.length} files may take several minutes to process`);
         }
 
-        addProgressEntry('info', operationId, 'Sending batch to processing service...', { current: 0, total: filePaths.length });
-
+        // The real-time progress updates will be handled by the batch progress listener
         const result = await window.electronAPI.addDocumentsBatch(filePaths);
 
         if (result.success) {
           setMessage(result.summary || `Successfully added ${filePaths.length} documents`);
           addProgressEntry('success', operationId, result.summary || `Batch upload completed: ${filePaths.length} documents processed`);
 
-          // Update progress with results
+          // Log summary statistics
           if (result.results) {
-            const finalProgress = result.results.map(r => ({
-              fileName: r.filePath.split(/[\\/]/).pop() || r.filePath,
-              status: r.success ? 'success' as const : 'error' as const,
-              error: r.error
-            }));
-            setUploadProgress(finalProgress);
-
-            // Log individual file results
             const successCount = result.results.filter(r => r.success).length;
             const errorCount = result.results.length - successCount;
+            const totalChunks = result.results.reduce((sum, r) => sum + (r.chunkCount || 0), 0);
+
+            addProgressEntry('info', operationId, `Final statistics: ${successCount} successful, ${errorCount} failed, ${totalChunks} total chunks generated`, undefined, {
+              successCount,
+              errorCount,
+              totalFiles: result.results.length,
+              totalChunks
+            });
 
             if (errorCount > 0) {
               addProgressEntry('warning', operationId, `${errorCount} files failed to process`, undefined, {
@@ -224,17 +276,10 @@ const KnowledgeBaseSettings = () => {
         } else {
           setMessage(`Failed to add documents: ${result.error}`);
           addProgressEntry('error', operationId, `Batch upload failed: ${result.error}`);
-
-          // Update progress to show error
-          const errorProgress = initialProgress.map(p => ({
-            ...p,
-            status: 'error' as const,
-            error: result.error
-          }));
-          setUploadProgress(errorProgress);
         }
       } else {
         setMessage('No files selected.');
+        addProgressEntry('info', 'batch-upload', 'Upload cancelled: No files selected');
       }
     } catch (error) {
       console.error('Error adding documents:', error);
