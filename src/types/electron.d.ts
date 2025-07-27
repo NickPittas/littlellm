@@ -127,10 +127,14 @@ export interface ElectronAPI {
 
   // Knowledge Base operations
   addDocument: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  addDocumentsBatch: (filePaths: string[]) => Promise<{ success: boolean; results?: Array<{filePath: string, success: boolean, error?: string}>; summary?: string; error?: string }>;
+  addDocumentFromUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
   removeDocument: (documentId: string) => Promise<{ success: boolean; error?: string }>;
   getDocuments: () => Promise<{ success: boolean; documents: string[]; error?: string }>;
+  getDocumentsWithMetadata: () => Promise<{ success: boolean; documents: Array<{source: string, metadata: Record<string, unknown>, chunkCount: number, addedAt?: string}>; error?: string }>;
   searchKnowledgeBase: (query: string, limit?: number) => Promise<{ success: boolean; results: Array<{text: string, source: string, score?: number}>; error?: string }>;
   openFileDialog: () => Promise<string | null>;
+  openKnowledgebaseFileDialog: () => Promise<string[]>;
 
   // Internal Commands operations
   setInternalCommandsConfig: (config: unknown) => Promise<boolean>;

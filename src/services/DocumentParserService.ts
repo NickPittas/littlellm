@@ -119,6 +119,14 @@ export class DocumentParserService {
           result = await this.parsePowerPoint(file);
           break;
 
+        case '.txt':
+          result = await this.parseTextFile(file);
+          break;
+
+        case '.md':
+          result = await this.parseMarkdownFile(file);
+          break;
+
         default:
           // Create a fallback document for unsupported formats
           console.log('📄 Unsupported format, creating fallback document...');
@@ -421,16 +429,16 @@ export class DocumentParserService {
    */
   private async parseXml(file: File): Promise<ParsedDocument> {
     const xmlContent = await this.fileToText(file);
-    
+
     return new Promise((resolve, reject) => {
       parseXml(xmlContent, (err, result) => {
         if (err) {
           reject(new Error(`Failed to parse XML: ${err.message}`));
           return;
         }
-        
+
         const formattedXml = JSON.stringify(result, null, 2);
-        
+
         resolve({
           text: formattedXml,
           metadata: {
@@ -441,6 +449,48 @@ export class DocumentParserService {
         });
       });
     });
+  }
+
+  /**
+   * Parse plain text files (.txt)
+   */
+  private async parseTextFile(file: File): Promise<ParsedDocument> {
+    const textContent = await this.fileToText(file);
+
+    return {
+      text: textContent,
+      metadata: {
+        format: 'Plain Text',
+        title: file.name,
+        characterCount: textContent.length,
+        lineCount: textContent.split('\n').length
+      }
+    };
+  }
+
+  /**
+   * Parse Markdown files (.md)
+   */
+  private async parseMarkdownFile(file: File): Promise<ParsedDocument> {
+    const markdownContent = await this.fileToText(file);
+
+    // Extract basic markdown metadata
+    const lines = markdownContent.split('\n');
+    const headings = lines.filter(line => line.trim().startsWith('#'));
+    const firstHeading = headings.length > 0 ? headings[0].replace(/^#+\s*/, '') : undefined;
+
+    return {
+      text: markdownContent,
+      metadata: {
+        format: 'Markdown',
+        title: firstHeading || file.name,
+        originalTitle: file.name,
+        characterCount: markdownContent.length,
+        lineCount: lines.length,
+        headingCount: headings.length,
+        headings: headings.slice(0, 10).map(h => h.replace(/^#+\s*/, '')) // First 10 headings
+      }
+    };
   }
 
   /**
