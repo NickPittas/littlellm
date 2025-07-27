@@ -7,6 +7,7 @@ import { X, Minus, MessageSquare, ChevronDown } from 'lucide-react';
 import { MessageWithThinking } from './MessageWithThinking';
 import { UserMessage } from './UserMessage';
 import { ThinkingIndicator } from './ThinkingIndicator';
+import { KnowledgeBaseIndicator } from './KnowledgeBaseIndicator';
 import { sessionService } from '../services/sessionService';
 import type { Message } from '../services/chatService';
 import type { SessionStats } from '../services/sessionService';
@@ -21,6 +22,8 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionStats, setSessionStats] = useState<SessionStats>(sessionService.getSessionStats());
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [isKnowledgeBaseSearching, setIsKnowledgeBaseSearching] = useState(false);
+  const [knowledgeBaseSearchQuery, setKnowledgeBaseSearchQuery] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -62,7 +65,16 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
 
       // Listen for message updates from main window
       const handleMessagesUpdate = (newMessages: unknown[]) => {
-        setMessages(newMessages as Message[]);
+        const messages = newMessages as Message[];
+        console.log('📨 ChatOverlay received messages:', messages.map(m => ({
+          id: m.id,
+          role: m.role,
+          hasContent: !!m.content,
+          hasSources: !!m.sources,
+          sourcesCount: m.sources?.length || 0,
+          sources: m.sources
+        })));
+        setMessages(messages);
         // Store messages in localStorage for persistence
         localStorage.setItem('chatWindowMessages', JSON.stringify(newMessages));
       };
@@ -70,12 +82,23 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
       // Set up IPC listener for messages
       window.electronAPI.onMessagesUpdate?.(handleMessagesUpdate);
 
+      // Set up IPC listener for knowledge base search updates
+      const handleKnowledgeBaseSearchUpdate = (data: {isSearching: boolean, query?: string}) => {
+        setIsKnowledgeBaseSearching(data.isSearching);
+        if (data.query) {
+          setKnowledgeBaseSearchQuery(data.query);
+        }
+      };
+
+      window.electronAPI.onKnowledgeBaseSearchUpdate?.(handleKnowledgeBaseSearchUpdate);
+
       // Load initial state
       loadInitialMessages();
 
       return () => {
-        // Clean up listener
+        // Clean up listeners
         window.electronAPI.removeAllListeners?.('messages-update');
+        window.electronAPI.removeAllListeners?.('knowledge-base-search-update');
       };
     }
   }, []);
@@ -178,6 +201,16 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
 
       {/* Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden p-4">
+        {/* Knowledge Base Search Indicator */}
+        {isKnowledgeBaseSearching && (
+          <div className="mb-4">
+            <KnowledgeBaseIndicator
+              isSearching={isKnowledgeBaseSearching}
+              searchQuery={knowledgeBaseSearchQuery}
+            />
+          </div>
+        )}
+
         {messages.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
             <div>
@@ -221,6 +254,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
                           usage={message.usage}
                           timing={message.timing}
                           toolCalls={message.toolCalls}
+                          sources={message.sources}
                         />
                       )
                     ) : (

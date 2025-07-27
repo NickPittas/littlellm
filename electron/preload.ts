@@ -91,6 +91,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('knowledge-base:import-progress', (_, progress) => callback(progress));
     return () => ipcRenderer.removeAllListeners('knowledge-base:import-progress');
   },
+  onBatchProgress: (callback: (progress: any) => void) => {
+    ipcRenderer.on('knowledge-base:batch-progress', (_, progress) => callback(progress));
+    return () => ipcRenderer.removeAllListeners('knowledge-base:batch-progress');
+  },
   selectFiles: (options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }>; properties?: string[] }) =>
     ipcRenderer.invoke('select-files', options),
 
@@ -194,6 +198,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeChatWindow: () => ipcRenderer.invoke('close-chat-window'),
   syncMessagesToChat: (messages: any[]) => ipcRenderer.invoke('sync-messages-to-chat', messages),
   requestCurrentMessages: () => ipcRenderer.invoke('request-current-messages'),
+  syncKnowledgeBaseSearch: (isSearching: boolean, query?: string) => ipcRenderer.invoke('sync-knowledge-base-search', isSearching, query),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   notifyThemeChange: (themeData: { customColors: any; useCustomColors: boolean }) => ipcRenderer.invoke('notify-theme-change', themeData),
   getCurrentTheme: () => ipcRenderer.invoke('get-current-theme'),
 
@@ -259,6 +265,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onMessagesUpdate: (callback: (messages: any[]) => void) => {
     ipcRenderer.on('messages-update', (_: any, messages: any[]) => callback(messages));
+  },
+
+  onKnowledgeBaseSearchUpdate: (callback: (data: {isSearching: boolean, query?: string}) => void) => {
+    ipcRenderer.on('knowledge-base-search-update', (_: any, data: {isSearching: boolean, query?: string}) => callback(data));
   },
 
   onRequestCurrentMessages: (callback: () => void) => {

@@ -110,18 +110,33 @@ export class KnowledgeBaseService {
    * Adds a document to the knowledge base.
    * The document is processed, chunked, embedded, and stored in the vector database.
    * @param filePath - The path to the file to be added (e.g., a PDF).
+   * @param metadata - Optional metadata to include with the document.
+   * @param progressCallback - Optional callback for progress updates.
    */
-  public async addDocument(filePath: string): Promise<void>;
+  public async addDocument(
+    filePath: string,
+    metadata?: Record<string, unknown>,
+    progressCallback?: (progress: {step: string, message: string, current?: number, total?: number, chunkCount?: number}) => void
+  ): Promise<void>;
 
   /**
    * Adds a document to the knowledge base from a File object.
    * The document is processed, chunked, embedded, and stored in the vector database.
    * @param file - The File object to be added.
    * @param metadata - Optional metadata to include with the document.
+   * @param progressCallback - Optional callback for progress updates.
    */
-  public async addDocument(file: File, metadata?: Record<string, unknown>): Promise<void>;
+  public async addDocument(
+    file: File,
+    metadata?: Record<string, unknown>,
+    progressCallback?: (progress: {step: string, message: string, current?: number, total?: number, chunkCount?: number}) => void
+  ): Promise<void>;
 
-  public async addDocument(filePathOrFile: string | File, metadata?: Record<string, unknown>): Promise<void> {
+  public async addDocument(
+    filePathOrFile: string | File,
+    metadata?: Record<string, unknown>,
+    progressCallback?: (progress: {step: string, message: string, current?: number, total?: number, chunkCount?: number}) => void
+  ): Promise<void> {
     if (!this.table) {
       throw new Error('Knowledge base is not initialized.');
     }
@@ -134,6 +149,8 @@ export class KnowledgeBaseService {
       if (typeof filePathOrFile === 'string') {
         // Handle file path (existing PDF functionality)
         const filePath = filePathOrFile;
+        documentSource = path.basename(filePath);
+        progressCallback?.({step: 'reading', message: `Reading file: ${documentSource}`});
         console.log(`Starting to process document from path: ${filePath}`);
 
         // Check if file exists
@@ -142,7 +159,8 @@ export class KnowledgeBaseService {
 
         // Determine file type and parse accordingly
         const fileExtension = path.extname(filePath).toLowerCase();
-        documentSource = path.basename(filePath);
+
+        progressCallback?.({step: 'parsing', message: `Parsing ${fileExtension.toUpperCase()} file: ${documentSource}`});
 
         if (fileExtension === '.pdf') {
           // Use existing PDF parsing logic
@@ -165,10 +183,12 @@ export class KnowledgeBaseService {
       } else {
         // Handle File object (new functionality)
         const file = filePathOrFile;
+        documentSource = file.name;
+        progressCallback?.({step: 'reading', message: `Reading file: ${documentSource}`});
         console.log(`Starting to process document from File object: ${file.name}`);
         console.log(`File size: ${file.size} bytes, type: ${file.type}`);
 
-        documentSource = file.name;
+        progressCallback?.({step: 'parsing', message: `Parsing file: ${documentSource}`});
 
         // Use DocumentParserService to parse the file
         const parsedDocument = await documentParserService.parseDocument(file);
@@ -188,15 +208,21 @@ export class KnowledgeBaseService {
         throw new Error('No text content found in the document');
       }
 
+      progressCallback?.({step: 'chunking', message: `Chunking text for: ${documentSource}`});
       const chunks = this.chunkText(text);
       console.log(`Document chunked into ${chunks.length} pieces.`);
+      progressCallback?.({step: 'chunking', message: `Generated ${chunks.length} chunks for: ${documentSource}`, chunkCount: chunks.length});
 
       const records = [];
       console.log(`Using document source: ${documentSource}`);
 
+      progressCallback?.({step: 'embedding', message: `Creating embeddings for: ${documentSource}`, current: 0, total: chunks.length});
+
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         console.log(`Processing chunk ${i + 1}/${chunks.length}`);
+        progressCallback?.({step: 'embedding', message: `Processing chunk ${i + 1}/${chunks.length} for: ${documentSource}`, current: i + 1, total: chunks.length});
+
         const embedding = await this.createEmbedding(chunk);
         records.push({
           vector: embedding,
@@ -207,6 +233,7 @@ export class KnowledgeBaseService {
         });
       }
 
+      progressCallback?.({step: 'storing', message: `Storing ${records.length} records for: ${documentSource}`});
       console.log(`Adding ${records.length} records to the knowledge base...`);
       await this.table.add(records);
       console.log(`Successfully added ${records.length} records to the knowledge base for document: ${documentSource}`);
@@ -217,11 +244,143 @@ export class KnowledgeBaseService {
       const documentRecords = allRecords.filter(r => (r as {source: string}).source === documentSource);
       console.log(`Verification: Found ${documentRecords.length} records for document ${documentSource} in the database`);
 
+      progressCallback?.({step: 'complete', message: `Successfully processed: ${documentSource}`, chunkCount: chunks.length});
+
     } catch (error) {
       const errorMessage = typeof filePathOrFile === 'string' ? filePathOrFile : filePathOrFile.name;
       console.error(`Error adding document ${errorMessage}:`, error);
+      progressCallback?.({step: 'error', message: `Failed to process: ${errorMessage} - ${error instanceof Error ? error.message : 'Unknown error'}`});
       throw error;
     }
+  }
+
+  /**
+   * Adds multiple documents to the knowledge base with real-time progress updates.
+   * @param filePaths - Array of file paths to process.
+   * @param progressCallback - Callback for real-time progress updates.
+   * @returns Promise with batch processing results.
+   */
+  public async addDocumentsBatch(
+    filePaths: string[],
+    progressCallback?: (progress: {
+      step: string;
+      message: string;
+      fileIndex: number;
+      totalFiles: number;
+      fileName: string;
+      chunkCount?: number;
+      status: 'processing' | 'success' | 'error';
+      error?: string;
+    }) => void
+  ): Promise<{success: boolean, results: Array<{filePath: string, success: boolean, error?: string, chunkCount?: number}>, summary: string}> {
+    if (!this.table) {
+      throw new Error('Knowledge base is not initialized.');
+    }
+
+    const results: Array<{filePath: string, success: boolean, error?: string, chunkCount?: number}> = [];
+    let successCount = 0;
+    let errorCount = 0;
+
+    progressCallback?.({
+      step: 'starting',
+      message: `Starting batch processing of ${filePaths.length} documents`,
+      fileIndex: 0,
+      totalFiles: filePaths.length,
+      fileName: '',
+      status: 'processing'
+    });
+
+    for (let i = 0; i < filePaths.length; i++) {
+      const filePath = filePaths[i];
+      const fileName = path.basename(filePath);
+
+      try {
+        progressCallback?.({
+          step: 'processing',
+          message: `Processing file ${i + 1}/${filePaths.length}: ${fileName}`,
+          fileIndex: i + 1,
+          totalFiles: filePaths.length,
+          fileName,
+          status: 'processing'
+        });
+
+        // Process individual document with progress tracking
+        let chunkCount = 0;
+        await this.addDocument(filePath, undefined, (docProgress) => {
+          if (docProgress.chunkCount) {
+            chunkCount = docProgress.chunkCount;
+          }
+
+          progressCallback?.({
+            step: docProgress.step,
+            message: `File ${i + 1}/${filePaths.length}: ${docProgress.message}`,
+            fileIndex: i + 1,
+            totalFiles: filePaths.length,
+            fileName,
+            chunkCount: docProgress.chunkCount,
+            status: 'processing'
+          });
+        });
+
+        results.push({
+          filePath,
+          success: true,
+          chunkCount
+        });
+
+        successCount++;
+
+        progressCallback?.({
+          step: 'complete',
+          message: `Successfully processed ${fileName} (${chunkCount} chunks)`,
+          fileIndex: i + 1,
+          totalFiles: filePaths.length,
+          fileName,
+          chunkCount,
+          status: 'success'
+        });
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+        results.push({
+          filePath,
+          success: false,
+          error: errorMessage
+        });
+
+        errorCount++;
+
+        progressCallback?.({
+          step: 'error',
+          message: `Failed to process ${fileName}: ${errorMessage}`,
+          fileIndex: i + 1,
+          totalFiles: filePaths.length,
+          fileName,
+          status: 'error',
+          error: errorMessage
+        });
+
+        console.error(`Error processing file ${filePath}:`, error);
+      }
+    }
+
+    const summary = `Batch processing completed: ${successCount} successful, ${errorCount} failed out of ${filePaths.length} total files`;
+
+    progressCallback?.({
+      step: 'finished',
+      message: summary,
+      fileIndex: filePaths.length,
+      totalFiles: filePaths.length,
+      fileName: '',
+      status: successCount === filePaths.length ? 'success' : errorCount === filePaths.length ? 'error' : 'processing'
+    });
+
+    return {
+      success: errorCount === 0,
+      results,
+      summary
+    };
   }
 
   /**

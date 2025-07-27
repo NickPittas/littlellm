@@ -4,6 +4,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Brain, Copy, Check, Wrench } from 'lucide-react';
 import { Button } from './ui/button';
 import { parseTextWithContent } from '../lib/contentParser';
+import { SourceAttribution } from './SourceAttribution';
+import type { Source } from '../services/chatService';
+import { debugLogger } from '../services/debugLogger';
 
 interface MessageWithThinkingProps {
   content: string;
@@ -24,6 +27,7 @@ interface MessageWithThinkingProps {
     name: string;
     arguments: Record<string, unknown>;
   }>;
+  sources?: Source[];
 }
 
 interface ParsedMessage {
@@ -32,7 +36,7 @@ interface ParsedMessage {
   response: string;
 }
 
-export function MessageWithThinking({ content, className = '', usage, timing, toolCalls }: MessageWithThinkingProps) {
+export function MessageWithThinking({ content, className = '', usage, timing, toolCalls, sources }: MessageWithThinkingProps) {
   const [showThinking, setShowThinking] = useState(false);
   const [showToolExecution, setShowToolExecution] = useState(false);
   const [showTools, setShowTools] = useState(false);
@@ -274,7 +278,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
 
   useEffect(() => {
     if (toolCallsKey && toolCallsKey !== loggedToolCallsKey && allToolCalls.length > 0) {
-      console.log('🔧 MessageWithThinking received toolCalls:', allToolCalls);
+      debugLogger.info('MESSAGE', 'MessageWithThinking received toolCalls:', allToolCalls);
       setLoggedToolCallsKey(toolCallsKey);
     }
   }, [toolCallsKey, loggedToolCallsKey, allToolCalls]);
@@ -689,6 +693,11 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
             )}
           </div>
         </div>
+      )}
+
+      {/* Source Attribution */}
+      {sources && sources.length > 0 && (
+        <SourceAttribution sources={sources} />
       )}
     </div>
   );

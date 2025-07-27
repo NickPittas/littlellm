@@ -17,6 +17,7 @@ import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag';
 import { Card } from './ui/card';
 import { BottomToolbar } from './BottomToolbarNew';
 import { useHistoryOverlay } from './HistoryOverlay';
+import { KnowledgeBaseIndicator } from './KnowledgeBaseIndicator';
 
 // Settings handled by separate overlay window
 
@@ -43,6 +44,8 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   const [showChat, setShowChat] = useState(false); // Hide chat until first message
   const [isLoading, setIsLoading] = useState(false); // Loading state for thinking indicator
   const [userResizedWindow, setUserResizedWindow] = useState(false); // Track if user manually resized
+  const [isKnowledgeBaseSearching, setIsKnowledgeBaseSearching] = useState(false);
+  const [knowledgeBaseSearchQuery, setKnowledgeBaseSearchQuery] = useState<string>('');
 
   // Sync messages to chat window whenever they change
   useEffect(() => {
@@ -143,6 +146,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
     maxTokens: 8192,
     systemPrompt: '',
     toolCallingEnabled: true,
+    ragEnabled: false,
     providers: {
       openai: { apiKey: '', lastSelectedModel: '' },
       anthropic: { apiKey: '', lastSelectedModel: '' },
@@ -678,7 +682,20 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
         },
         undefined, // signal
-        conversationHistoryService.getCurrentConversationId() || undefined
+        conversationHistoryService.getCurrentConversationId() || undefined,
+        (isSearching: boolean, query?: string) => {
+          // Handle knowledge base search indicator
+          console.log('🔍 Knowledge base search state changed:', { isSearching, query });
+          setIsKnowledgeBaseSearching(isSearching);
+          if (query) {
+            setKnowledgeBaseSearchQuery(query);
+          }
+
+          // Sync knowledge base search state to chat window
+          if (typeof window !== 'undefined' && window.electronAPI) {
+            window.electronAPI.syncKnowledgeBaseSearch(isSearching, query);
+          }
+        }
       );
 
       // If we get here and still loading, it means no streaming occurred
@@ -707,24 +724,25 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
               timestamp: new Date(),
               usage: response.usage,
               toolCalls: response.toolCalls,
+              sources: response.sources, // Include sources from response
               isThinking: false, // No longer thinking
             }]);
           } else {
             // Update the original assistant message
             return prev.map(msg =>
               msg.id === assistantMessage.id
-                ? { ...msg, content: response.content, usage: response.usage, toolCalls: response.toolCalls }
+                ? { ...msg, content: response.content, usage: response.usage, toolCalls: response.toolCalls, sources: response.sources }
                 : msg
             );
           }
         });
       } else {
-        // Streaming occurred, just update usage and toolCalls without changing content
-        console.log(`🔄 Streaming occurred, updating only usage and toolCalls`);
+        // Streaming occurred, just update usage, toolCalls, and sources without changing content
+        console.log(`🔄 Streaming occurred, updating only usage, toolCalls, and sources`);
         setMessages(prev =>
           prev.map(msg =>
             msg.id === assistantMessage.id
-              ? { ...msg, usage: response.usage, toolCalls: response.toolCalls }
+              ? { ...msg, usage: response.usage, toolCalls: response.toolCalls, sources: response.sources }
               : msg
           )
         );
@@ -743,9 +761,9 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       // Save conversation to history
       const currentConversationId = conversationHistoryService.getCurrentConversationId();
       if (currentConversationId) {
-        await conversationHistoryService.updateConversation(currentConversationId, [...messages, userMessage, { ...assistantMessage, content: response.content, usage: response.usage, toolCalls: response.toolCalls }]);
+        await conversationHistoryService.updateConversation(currentConversationId, [...messages, userMessage, { ...assistantMessage, content: response.content, usage: response.usage, toolCalls: response.toolCalls, sources: response.sources }]);
       } else {
-        const newConversationId = await conversationHistoryService.createNewConversation([userMessage, { ...assistantMessage, content: response.content, usage: response.usage, toolCalls: response.toolCalls }]);
+        const newConversationId = await conversationHistoryService.createNewConversation([userMessage, { ...assistantMessage, content: response.content, usage: response.usage, toolCalls: response.toolCalls, sources: response.sources }]);
         conversationHistoryService.setCurrentConversationId(newConversationId);
       }
     } catch (error) {
@@ -760,6 +778,18 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       };
 
       setMessages(prev => [...prev, errorMessage]);
+
+      // Auto-focus the input textarea after error
+      setTimeout(() => {
+        if (textareaRef.current) {
+          try {
+            textareaRef.current.focus();
+            console.log('🎯 Auto-focused input after error');
+          } catch (error) {
+            console.warn('Failed to auto-focus input after error:', error);
+          }
+        }
+      }, 100);
     } finally {
       // Clean up tool thinking trigger
       delete window.triggerToolThinking;
@@ -769,6 +799,18 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
       // Remove any remaining thinking bubbles that might have been added during tool execution
       setMessages(prev => prev.filter(msg => !msg.isThinking));
+
+      // Auto-focus the input textarea after response is complete
+      setTimeout(() => {
+        if (textareaRef.current) {
+          try {
+            textareaRef.current.focus();
+            console.log('🎯 Auto-focused input after response completion');
+          } catch (error) {
+            console.warn('Failed to auto-focus input after response:', error);
+          }
+        }
+      }, 100); // Small delay to ensure UI updates are complete
 
       console.log('🔄 Message handling completed, reset all loading states and cleared thinking bubbles');
     }
@@ -954,6 +996,16 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Knowledge Base Search Indicator */}
+          {isKnowledgeBaseSearching && (
+            <div className="mb-3">
+              <KnowledgeBaseIndicator
+                isSearching={isKnowledgeBaseSearching}
+                searchQuery={knowledgeBaseSearchQuery}
+              />
             </div>
           )}
 

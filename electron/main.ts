@@ -3211,7 +3211,7 @@ function setupIPC() {
   });
 
   // IPC handler for adding multiple documents to the knowledge base
-  ipcMain.handle('knowledge-base:add-documents-batch', async (_, filePaths: string[]) => {
+  ipcMain.handle('knowledge-base:add-documents-batch', async (event, filePaths: string[]) => {
     try {
       const knowledgeBaseService = KnowledgeBaseService.getInstance();
 
@@ -3221,25 +3221,13 @@ function setupIPC() {
         await knowledgeBaseService.initialize(dbPath);
       }
 
-      const results = [];
-      for (const filePath of filePaths) {
-        try {
-          await knowledgeBaseService.addDocument(filePath);
-          results.push({ filePath, success: true });
-        } catch (error) {
-          console.error(`Failed to add document ${filePath}:`, error);
-          results.push({ filePath, success: false, error: (error as Error).message });
-        }
-      }
+      // Use the new batch method with progress callbacks
+      const result = await knowledgeBaseService.addDocumentsBatch(filePaths, (progress) => {
+        // Send progress updates to the renderer process
+        event.sender.send('knowledge-base:batch-progress', progress);
+      });
 
-      const successCount = results.filter(r => r.success).length;
-      const failureCount = results.length - successCount;
-
-      return {
-        success: failureCount === 0,
-        results,
-        summary: `${successCount} documents added successfully${failureCount > 0 ? `, ${failureCount} failed` : ''}`
-      };
+      return result;
     } catch (error) {
       console.error('Failed to add documents to knowledge base:', error);
       return { success: false, error: (error as Error).message };
@@ -4236,6 +4224,25 @@ function setupIPC() {
   ipcMain.handle('sync-messages-to-chat', (_, messages) => {
     if (chatWindow) {
       chatWindow.webContents.send('messages-update', messages);
+    }
+  });
+
+  // Handle knowledge base search state synchronization between main window and chat window
+  ipcMain.handle('sync-knowledge-base-search', (_, isSearching, query) => {
+    if (chatWindow) {
+      chatWindow.webContents.send('knowledge-base-search-update', { isSearching, query });
+    }
+  });
+
+  // Handle opening external URLs
+  ipcMain.handle('open-external', async (_, url: string) => {
+    try {
+      const { shell } = await import('electron');
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to open external URL:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
 
