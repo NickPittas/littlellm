@@ -3209,6 +3209,61 @@ function setupIPC() {
     }
   });
 
+  // IPC handler for adding multiple documents to the knowledge base
+  ipcMain.handle('knowledge-base:add-documents-batch', async (_, filePaths: string[]) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        await knowledgeBaseService.initialize(dbPath);
+      }
+
+      const results = [];
+      for (const filePath of filePaths) {
+        try {
+          await knowledgeBaseService.addDocument(filePath);
+          results.push({ filePath, success: true });
+        } catch (error) {
+          console.error(`Failed to add document ${filePath}:`, error);
+          results.push({ filePath, success: false, error: (error as Error).message });
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      const failureCount = results.length - successCount;
+
+      return {
+        success: failureCount === 0,
+        results,
+        summary: `${successCount} documents added successfully${failureCount > 0 ? `, ${failureCount} failed` : ''}`
+      };
+    } catch (error) {
+      console.error('Failed to add documents to knowledge base:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // IPC handler for adding a document from Google Docs URL
+  ipcMain.handle('knowledge-base:add-document-from-url', async (_, url: string) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        await knowledgeBaseService.initialize(dbPath);
+      }
+
+      await knowledgeBaseService.addDocumentFromUrl(url);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to add document from URL to knowledge base:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
   // IPC handler for removing a document from the knowledge base
   ipcMain.handle('knowledge-base:remove-document', async (_, documentId) => {
     try {
@@ -3247,6 +3302,25 @@ function setupIPC() {
     }
   });
 
+  // IPC handler for getting list of documents with metadata in the knowledge base
+  ipcMain.handle('knowledge-base:get-documents-with-metadata', async () => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        await knowledgeBaseService.initialize(dbPath);
+      }
+
+      const documents = await knowledgeBaseService.getDocumentsWithMetadata();
+      return { success: true, documents };
+    } catch (error) {
+      console.error('Failed to get documents with metadata from knowledge base:', error);
+      return { success: false, error: (error as Error).message, documents: [] };
+    }
+  });
+
   // IPC handler for RAG search in the knowledge base
   ipcMain.handle('knowledge-base:search', async (_, query, limit) => {
     try {
@@ -3276,6 +3350,24 @@ function setupIPC() {
       return filePaths[0];
     }
     return null;
+  });
+
+  // IPC handler for opening a file dialog for knowledgebase documents
+  ipcMain.handle('dialog:open-knowledgebase-files', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'All Supported Documents', extensions: ['pdf', 'txt', 'md', 'docx', 'doc'] },
+        { name: 'PDF Documents', extensions: ['pdf'] },
+        { name: 'Text Files', extensions: ['txt', 'md'] },
+        { name: 'Word Documents', extensions: ['docx', 'doc'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    if (!canceled) {
+      return filePaths;
+    }
+    return [];
   });
 
   // General file/directory selection handler

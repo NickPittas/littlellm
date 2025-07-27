@@ -70,10 +70,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Knowledge Base operations
   addDocument: (filePath: string) => ipcRenderer.invoke('knowledge-base:add-document', filePath),
+  addDocumentsBatch: (filePaths: string[]) => ipcRenderer.invoke('knowledge-base:add-documents-batch', filePaths),
+  addDocumentFromUrl: (url: string) => ipcRenderer.invoke('knowledge-base:add-document-from-url', url),
   removeDocument: (documentId: string) => ipcRenderer.invoke('knowledge-base:remove-document', documentId),
   getDocuments: () => ipcRenderer.invoke('knowledge-base:get-documents'),
+  getDocumentsWithMetadata: () => ipcRenderer.invoke('knowledge-base:get-documents-with-metadata'),
   searchKnowledgeBase: (query: string, limit?: number) => ipcRenderer.invoke('knowledge-base:search', query, limit),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
+  openKnowledgebaseFileDialog: () => ipcRenderer.invoke('dialog:open-knowledgebase-files'),
   selectFiles: (options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }>; properties?: string[] }) =>
     ipcRenderer.invoke('select-files', options),
 
