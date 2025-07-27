@@ -425,6 +425,7 @@ export class GeminiProvider extends BaseProvider {
 
         // Get the follow-up response as JSON instead of streaming
         const followupData = await followupResponse.json();
+        console.log(`🔍 Gemini follow-up response data:`, JSON.stringify(followupData, null, 2));
 
         // Process the follow-up response as a single chunk to prevent double replies
         if (followupData.candidates?.[0]?.content?.parts) {
@@ -435,7 +436,7 @@ export class GeminiProvider extends BaseProvider {
 
           if (followupText) {
             console.log(`🔄 Gemini streaming follow-up response:`, followupText.substring(0, 100) + '...');
-            debugLogger.logStreaming('Gemini', followupText, true);
+            // DISABLED: debugLogger.logStreaming('Gemini', followupText, true);
             onStream(followupText);
           } else {
             console.warn(`⚠️ Gemini follow-up response has no text content`);
@@ -462,9 +463,34 @@ export class GeminiProvider extends BaseProvider {
       } else {
         const errorText = await followupResponse.text();
         console.error(`❌ Gemini follow-up call failed (${followupResponse.status}):`, errorText);
+
+        // Provide a fallback response with tool results
+        const fallbackMessage = `\n\n**Tool execution completed successfully, but follow-up request failed (${followupResponse.status}). Here are the tool results:**\n\n`;
+        onStream(fallbackMessage);
+
+        // Stream the tool results as fallback
+        const toolSummary = toolCalls.map(tc =>
+          `**${tc.name}**: ${typeof tc.result === 'string' ? tc.result.substring(0, 200) : JSON.stringify(tc.result).substring(0, 200)}${(tc.result && tc.result.length > 200) ? '...' : ''}`
+        ).join('\n\n');
+        onStream(toolSummary);
       }
     } catch (error) {
       console.error(`❌ Gemini follow-up call error:`, error);
+      console.error(`❌ Error details:`, {
+        errorType: typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined
+      });
+
+      // Provide a fallback response with tool results
+      const fallbackMessage = `\n\n**Tool execution completed successfully, but follow-up call failed. Here are the tool results:**\n\n`;
+      onStream(fallbackMessage);
+
+      // Stream the tool results as fallback
+      const toolSummary = toolCalls.map(tc =>
+        `**${tc.name}**: ${typeof tc.result === 'string' ? tc.result.substring(0, 200) : JSON.stringify(tc.result).substring(0, 200)}${(tc.result && tc.result.length > 200) ? '...' : ''}`
+      ).join('\n\n');
+      onStream(toolSummary);
     }
 
     // Return original response if follow-up fails

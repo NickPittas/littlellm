@@ -232,6 +232,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('clear-all-history', () => callback());
   },
 
+  // Console logging for debug window
+  onConsoleLog: (callback: (level: string, message: string, timestamp: number) => void) => {
+    ipcRenderer.on('console-log', (_: any, level: string, message: string, timestamp: number) => {
+      callback(level, message, timestamp);
+    });
+  },
+
+  // Toggle console window
+  toggleConsoleWindow: () => ipcRenderer.invoke('toggle-console-window'),
+
   // Event listeners
   onClipboardContent: (callback: (content: string) => void) => {
     ipcRenderer.on('clipboard-content', (_: any, content: string) => callback(content));

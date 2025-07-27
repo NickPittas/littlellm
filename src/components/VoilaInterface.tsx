@@ -494,7 +494,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
   // Listen for clear all history event from history window
   useEffect(() => {
     if (typeof window !== 'undefined' && window.electronAPI) {
-      window.electronAPI.onClearAllHistory(async () => {
+      const handleClearAllHistory = async () => {
         console.log('🗑️ Main window received clear-all-history event');
         try {
           // Clear the current conversation and messages
@@ -503,7 +503,16 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
         } catch (error) {
           console.error('❌ Failed to clear chat in main window:', error);
         }
-      });
+      };
+
+      window.electronAPI.onClearAllHistory(handleClearAllHistory);
+
+      // Cleanup function to remove listeners on unmount
+      return () => {
+        if (window.electronAPI && window.electronAPI.removeAllListeners) {
+          window.electronAPI.removeAllListeners('clear-all-history');
+        }
+      };
     }
   }, []);
 

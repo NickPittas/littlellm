@@ -85,6 +85,9 @@ export interface ElectronAPI {
   syncKnowledgeBaseSearch: (isSearching: boolean, query?: string) => Promise<void>;
   openExternal: (url: string) => Promise<{success: boolean, error?: string}>;
   notifyThemeChange: (themeData: { customColors: unknown; useCustomColors: boolean }) => Promise<void>;
+
+  // Console window
+  toggleConsoleWindow: () => Promise<void>;
   getCurrentTheme: () => Promise<{ customColors: Record<string, string>; useCustomColors: boolean } | null>;
 
   // Dropdown operations

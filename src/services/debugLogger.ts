@@ -264,6 +264,18 @@ export class DebugLogger {
       console.groupEnd();
     }
   }
+
+  /**
+   * Log streaming content (only if debug logging is enabled)
+   */
+  public logStreaming(provider: string, content: string, isFollowUp: boolean = false): void {
+    this.ensureInitialized();
+    if (this.isDebugEnabled) {
+      const prefix = isFollowUp ? '🔄 [STREAM-FOLLOWUP]' : '📡 [STREAM]';
+      const truncatedContent = content.length > 100 ? content.substring(0, 100) + '...' : content;
+      console.log(`${prefix} ${provider}:`, truncatedContent);
+    }
+  }
 }
 
 // Export singleton instance
