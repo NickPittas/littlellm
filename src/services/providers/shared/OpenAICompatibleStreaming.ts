@@ -318,7 +318,7 @@ export class OpenAICompatibleStreaming {
       // Stream the follow-up content with type safety
       if (followUpMessage?.content && typeof followUpMessage.content === 'string') {
         console.log(`🔄 ${providerName} streaming follow-up content:`, followUpMessage.content.substring(0, 100) + '...');
-        debugLogger.logStreaming(providerName, followUpMessage.content, true);
+        // DISABLED: debugLogger.logStreaming(providerName, followUpMessage.content, true);
         onStream(followUpMessage.content);
       } else if (followUpMessage?.content) {
         console.warn('⚠️ Follow-up content is not a string:', typeof followUpMessage.content, followUpMessage.content);

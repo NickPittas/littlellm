@@ -478,6 +478,9 @@ export class AnthropicProvider extends BaseProvider {
     return this._formatToolResult ? this._formatToolResult(toolName, result) : JSON.stringify(result);
   }
 
+  private static streamingCallCount = 0;
+  private static readonly MAX_STREAMING_CALLS = 5;
+
   private async handleStreamResponse(
     response: Response,
     onStream: (chunk: string) => void,
@@ -486,6 +489,15 @@ export class AnthropicProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
+    // Prevent infinite recursion
+    AnthropicProvider.streamingCallCount++;
+    if (AnthropicProvider.streamingCallCount > AnthropicProvider.MAX_STREAMING_CALLS) {
+      console.error('❌ CRITICAL: Too many streaming calls detected - preventing infinite loop');
+      AnthropicProvider.streamingCallCount = 0;
+      throw new Error('Maximum streaming calls exceeded - preventing infinite loop');
+    }
+
+    try {
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('No response body');
@@ -629,12 +641,20 @@ export class AnthropicProvider extends BaseProvider {
             } catch (e) {
               // Skip invalid JSON
               console.warn('Failed to parse streaming event:', e);
+
+              // Prevent infinite loops from debug logger errors
+              if (e instanceof Error && e.message.includes('debugLogger') && e.message.includes('is not a function')) {
+                console.error('❌ Critical: Debug logger method missing - breaking streaming loop to prevent infinite recursion');
+                break; // Exit the streaming loop
+              }
             }
           }
         }
       }
     } finally {
       reader.releaseLock();
+      // Reset counter when streaming completes normally
+      AnthropicProvider.streamingCallCount = Math.max(0, AnthropicProvider.streamingCallCount - 1);
     }
 
     // If we have tool calls, execute them in parallel and make a follow-up streaming call
@@ -772,7 +792,7 @@ export class AnthropicProvider extends BaseProvider {
             followUpResponse,
             (chunk: string) => {
               console.log(`🔄 Anthropic streaming follow-up chunk:`, chunk.substring(0, 50) + '...');
-              debugLogger.logStreaming('Anthropic', chunk, true);
+              // DISABLED: debugLogger.logStreaming('Anthropic', chunk, true);
               onStream(chunk);
             },
             settings,
@@ -816,6 +836,28 @@ export class AnthropicProvider extends BaseProvider {
           };
         } catch (error) {
           console.error(`❌ Anthropic follow-up streaming failed:`, error);
+          console.error(`❌ Error details:`, {
+            errorType: typeof error,
+            errorMessage: error instanceof Error ? error.message : String(error),
+            errorStack: error instanceof Error ? error.stack : undefined
+          });
+
+          // Reset streaming counter on error to prevent permanent lockout
+          AnthropicProvider.streamingCallCount = 0;
+
+          // Prevent infinite loops by not retrying on specific errors
+          if (error instanceof Error && error.message.includes('debugLogger') && error.message.includes('is not a function')) {
+            console.error('❌ Critical: Debug logger method missing - this would cause infinite loops. Stopping retry attempts.');
+            // Don't retry, just provide fallback response
+          }
+
+          // Provide a fallback response with tool results
+          const fallbackMessage = `\n\n**Tool execution completed successfully, but follow-up response failed. Here are the tool results:**\n\n`;
+          onStream(fallbackMessage);
+
+          // Stream the tool summary as fallback
+          const toolSummary = this._summarizeToolResultsForModel!(parallelResults);
+          onStream(toolSummary);
 
           // Check if it's a rate limit error and try local execution
           if (error && typeof error === 'object' && 'error' in error) {
@@ -838,7 +880,17 @@ export class AnthropicProvider extends BaseProvider {
           // Fall through to return original response
         }
       } else {
-        console.error(`❌ Anthropic follow-up streaming call failed:`, await followUpResponse.text());
+        const errorText = await followUpResponse.text();
+        console.error(`❌ Anthropic follow-up streaming call failed:`, followUpResponse.status, followUpResponse.statusText);
+        console.error(`❌ Follow-up error details:`, errorText);
+
+        // Provide a fallback response with tool results
+        const fallbackMessage = `\n\n**Tool execution completed successfully, but follow-up request failed (${followUpResponse.status}). Here are the tool results:**\n\n`;
+        onStream(fallbackMessage);
+
+        // Stream the tool summary as fallback
+        const toolSummary = this._summarizeToolResultsForModel!(parallelResults);
+        onStream(toolSummary);
       }
     }
 
@@ -863,6 +915,12 @@ export class AnthropicProvider extends BaseProvider {
           arguments: tc.arguments as Record<string, unknown>
         })) : undefined
     };
+    } catch (error) {
+      // Reset streaming counter on error to prevent permanent lockout
+      AnthropicProvider.streamingCallCount = 0;
+      console.error('❌ Anthropic streaming error:', error);
+      throw error;
+    }
   }
 
   /**

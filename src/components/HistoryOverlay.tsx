@@ -71,12 +71,15 @@ export function useHistoryOverlay(onLoadConversation: (conversation: Conversatio
 
       // Cleanup function to remove listeners on unmount
       return () => {
-        // Note: Electron API should provide removeListener methods
-        // For now, we'll rely on the component unmounting to clean up
-        // This prevents the memory leak by ensuring listeners are only added once
+        // Remove listeners to prevent memory leaks
+        if (window.electronAPI && window.electronAPI.removeAllListeners) {
+          window.electronAPI.removeAllListeners('history-item-selected');
+          window.electronAPI.removeAllListeners('history-item-deleted');
+          window.electronAPI.removeAllListeners('clear-all-history');
+        }
       };
     }
-  }, [handleLoadConversation, handleDeleteConversation, handleClearAllHistory]);
+  }, []); // Remove dependencies to prevent re-adding listeners
 
   return {
     openHistory,

@@ -1423,6 +1423,7 @@ let actionMenuWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let chatWindow: BrowserWindow | null = null;
 let dropdownWindow: BrowserWindow | null = null;
+let consoleWindow: BrowserWindow | null = null;
 
 // Helper function to get current background color from settings
 function getCurrentBackgroundColor(): string {
@@ -2006,6 +2007,153 @@ async function createWindow() {
   });
 }
 
+// Console window for debugging
+function createConsoleWindow() {
+  if (consoleWindow) {
+    consoleWindow.focus();
+    return;
+  }
+
+  // Calculate position for console window (to the left of main window)
+  const mainBounds = mainWindow?.getBounds() || { x: 100, y: 100, width: 400, height: 600 };
+  const consoleWidth = 800;
+  const consoleHeight = 600;
+  const consoleX = Math.max(0, mainBounds.x - consoleWidth - 10); // 10px gap, ensure not off-screen
+  const consoleY = mainBounds.y;
+
+  consoleWindow = new BrowserWindow({
+    width: consoleWidth,
+    height: consoleHeight,
+    x: consoleX,
+    y: consoleY,
+    show: false,
+    frame: true, // Keep frame for console window
+    resizable: true,
+    alwaysOnTop: false, // Don't keep console always on top
+    skipTaskbar: false, // Show in taskbar
+    title: 'LittleLLM - Console Logs',
+    backgroundColor: '#1a1a1a',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: false,
+    },
+  });
+
+  // Create HTML content for console window
+  const consoleHTML = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>LittleLLM Console</title>
+        <style>
+          body {
+            margin: 0;
+            padding: 10px;
+            background: #1a1a1a;
+            color: #ffffff;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            overflow-x: auto;
+          }
+          .log-entry {
+            margin: 2px 0;
+            padding: 2px 5px;
+            border-radius: 3px;
+            white-space: pre-wrap;
+            word-break: break-word;
+          }
+          .log-info { color: #87CEEB; }
+          .log-warn { color: #FFA500; background: rgba(255, 165, 0, 0.1); }
+          .log-error { color: #FF6B6B; background: rgba(255, 107, 107, 0.1); }
+          .log-debug { color: #98FB98; }
+          .log-timestamp { color: #888; font-size: 10px; }
+          .clear-button {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #333;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+          }
+          .clear-button:hover {
+            background: #555;
+          }
+          #logs {
+            padding-bottom: 50px;
+          }
+        </style>
+      </head>
+      <body>
+        <button class="clear-button" onclick="clearLogs()">Clear</button>
+        <div id="logs"></div>
+        <script>
+          const logsContainer = document.getElementById('logs');
+          let logCount = 0;
+          const MAX_LOGS = 1000; // Limit to prevent memory issues
+
+          function addLog(level, message, timestamp) {
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry log-' + level;
+
+            const time = new Date(timestamp).toLocaleTimeString();
+            logEntry.innerHTML = '<span class="log-timestamp">[' + time + ']</span> ' +
+                                escapeHtml(String(message));
+
+            logsContainer.appendChild(logEntry);
+            logCount++;
+
+            // Remove old logs if we exceed the limit
+            if (logCount > MAX_LOGS) {
+              const firstLog = logsContainer.firstChild;
+              if (firstLog) {
+                logsContainer.removeChild(firstLog);
+                logCount--;
+              }
+            }
+
+            // Auto-scroll to bottom
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+          }
+
+          function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+          }
+
+          function clearLogs() {
+            logsContainer.innerHTML = '';
+            logCount = 0;
+          }
+
+          // Listen for log messages from main process
+          if (window.electronAPI) {
+            window.electronAPI.onConsoleLog((level, message, timestamp) => {
+              addLog(level, message, timestamp);
+            });
+          }
+        </script>
+      </body>
+    </html>
+  `;
+
+  consoleWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(consoleHTML));
+
+  consoleWindow.on('closed', () => {
+    consoleWindow = null;
+  });
+
+  consoleWindow.once('ready-to-show', () => {
+    consoleWindow?.show();
+  });
+}
+
 function createTray() {
   // Create tray icon using our custom icon
   const trayIconPath = getIconPath();
@@ -2055,6 +2203,21 @@ function createTray() {
           mainWindow.webContents.send('open-settings');
           mainWindow.show();
           mainWindow.focus();
+        }
+      }
+    },
+    {
+      label: 'Console Logs',
+      click: () => {
+        if (consoleWindow) {
+          if (consoleWindow.isVisible()) {
+            consoleWindow.hide();
+          } else {
+            consoleWindow.show();
+            consoleWindow.focus();
+          }
+        } else {
+          createConsoleWindow();
         }
       }
     },
@@ -2232,6 +2395,10 @@ if (!gotTheLock) {
 
 app.whenReady().then(async () => {
   await createWindow();
+
+  // Create console window for debugging
+  createConsoleWindow();
+
   createTray();
   registerGlobalShortcuts();
 
@@ -3631,6 +3798,51 @@ function setupIPC() {
 
   // History window management
   let historyWindow: BrowserWindow | null = null;
+
+// Console logging interceptor
+const originalConsole = {
+  log: console.log,
+  error: console.error,
+  warn: console.warn,
+  info: console.info,
+  debug: console.debug
+};
+
+function sendToConsoleWindow(level: string, ...args: any[]) {
+  if (consoleWindow && !consoleWindow.isDestroyed()) {
+    const message = args.map(arg =>
+      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+    ).join(' ');
+
+    consoleWindow.webContents.send('console-log', level, message, Date.now());
+  }
+}
+
+// Override console methods to send to console window
+console.log = (...args: any[]) => {
+  originalConsole.log(...args);
+  sendToConsoleWindow('info', ...args);
+};
+
+console.error = (...args: any[]) => {
+  originalConsole.error(...args);
+  sendToConsoleWindow('error', ...args);
+};
+
+console.warn = (...args: any[]) => {
+  originalConsole.warn(...args);
+  sendToConsoleWindow('warn', ...args);
+};
+
+console.info = (...args: any[]) => {
+  originalConsole.info(...args);
+  sendToConsoleWindow('info', ...args);
+};
+
+console.debug = (...args: any[]) => {
+  originalConsole.debug(...args);
+  sendToConsoleWindow('debug', ...args);
+};
 
   // Handle history window creation
   ipcMain.handle('open-history', async (_, conversations: Array<{id: string, title: string, timestamp: number, createdAt?: number, messages?: Array<unknown>}>) => {
@@ -5102,6 +5314,20 @@ function setupIPC() {
   ipcMain.handle('log-to-terminal', (_, message: string) => {
     console.log('[HISTORY WINDOW]', message);
   });
+
+  // Handle console window toggle
+  ipcMain.handle('toggle-console-window', () => {
+    if (consoleWindow) {
+      if (consoleWindow.isVisible()) {
+        consoleWindow.hide();
+      } else {
+        consoleWindow.show();
+        consoleWindow.focus();
+      }
+    } else {
+      createConsoleWindow();
+    }
+  });
 }
 
 app.on('window-all-closed', () => {
@@ -5111,6 +5337,12 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', async () => {
   isQuitting = true;
+
+  // Close console window
+  if (consoleWindow) {
+    consoleWindow.close();
+    consoleWindow = null;
+  }
 
   // Disconnect all MCP servers before quitting
   try {

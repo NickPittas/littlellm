@@ -10,7 +10,8 @@ import {
   Settings,
   Wand2,
   RotateCcw,
-  MessageSquare
+  MessageSquare,
+  Terminal
 } from 'lucide-react';
 import { chatService } from '../services/chatService';
 import type { ChatSettings } from '../services/chatService';
@@ -695,6 +696,21 @@ export function BottomToolbar({
           data-interactive="true"
         >
           <Settings className="h-4 w-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            if (typeof window !== 'undefined' && window.electronAPI) {
+              window.electronAPI.toggleConsoleWindow();
+            }
+          }}
+          className="h-8 w-8 p-0"
+          title="Toggle Console Logs"
+          data-interactive="true"
+        >
+          <Terminal className="h-4 w-4" />
         </Button>
       </div>
     </div>
