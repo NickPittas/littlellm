@@ -133,8 +133,15 @@ export interface ElectronAPI {
   getDocuments: () => Promise<{ success: boolean; documents: string[]; error?: string }>;
   getDocumentsWithMetadata: () => Promise<{ success: boolean; documents: Array<{source: string, metadata: Record<string, unknown>, chunkCount: number, addedAt?: string}>; error?: string }>;
   searchKnowledgeBase: (query: string, limit?: number) => Promise<{ success: boolean; results: Array<{text: string, source: string, score?: number}>; error?: string }>;
+  exportKnowledgeBase: () => Promise<{ success: boolean; filePath?: string; stats?: {totalRecords: number, totalDocuments: number, exportSize: number, exportTime: number}; error?: string }>;
+  importKnowledgeBase: (options?: {mode: 'replace' | 'merge'}) => Promise<{ success: boolean; stats?: {importedRecords: number, importedDocuments: number, skippedRecords: number, importTime: number}; filePath?: string; error?: string }>;
+  getKnowledgeBaseStats: () => Promise<{ success: boolean; stats?: {totalRecords: number, totalDocuments: number, databaseSize: number}; error?: string }>;
   openFileDialog: () => Promise<string | null>;
   openKnowledgebaseFileDialog: () => Promise<string[]>;
+
+  // Progress monitoring
+  onExportProgress: (callback: (progress: {step: string, current: number, total: number, message: string}) => void) => () => void;
+  onImportProgress: (callback: (progress: {step: string, current: number, total: number, message: string}) => void) => () => void;
 
   // Internal Commands operations
   setInternalCommandsConfig: (config: unknown) => Promise<boolean>;

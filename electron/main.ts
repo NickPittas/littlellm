@@ -20,6 +20,7 @@ import { KnowledgeBaseService } from '../src/services/KnowledgeBaseService.js';
 import { electronInternalCommandHandler } from '../src/electron/internalCommandHandler.js';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as fsPromises from 'fs/promises';
 import * as http from 'http';
 import * as mime from 'mime-types';
 import { spawn } from 'child_process';
@@ -3261,6 +3262,119 @@ function setupIPC() {
     } catch (error) {
       console.error('Failed to add document from URL to knowledge base:', error);
       return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // IPC handler for exporting knowledge base
+  ipcMain.handle('knowledge-base:export', async (event) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        await knowledgeBaseService.initialize(dbPath);
+      }
+
+      // Show save dialog
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Export Knowledge Base',
+        defaultPath: `knowledge-base-export-${new Date().toISOString().split('T')[0]}.json`,
+        filters: [
+          { name: 'JSON Files', extensions: ['json'] },
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      });
+
+      if (canceled || !filePath) {
+        return { success: false, error: 'Export cancelled by user' };
+      }
+
+      // Export with progress callback
+      const result = await knowledgeBaseService.exportKnowledgeBase((progress) => {
+        event.sender.send('knowledge-base:export-progress', progress);
+      });
+
+      // Write to file
+      await fsPromises.writeFile(filePath, JSON.stringify(result.data, null, 2), 'utf-8');
+
+      return {
+        success: true,
+        filePath,
+        stats: result.stats
+      };
+    } catch (error) {
+      console.error('Failed to export knowledge base:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // IPC handler for importing knowledge base
+  ipcMain.handle('knowledge-base:import', async (event, options: {mode: 'replace' | 'merge'} = {mode: 'replace'}) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        await knowledgeBaseService.initialize(dbPath);
+      }
+
+      // Show open dialog
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        title: 'Import Knowledge Base',
+        properties: ['openFile'],
+        filters: [
+          { name: 'JSON Files', extensions: ['json'] },
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      });
+
+      if (canceled || !filePaths || filePaths.length === 0) {
+        return { success: false, error: 'Import cancelled by user' };
+      }
+
+      // Read and parse import file
+      const importFilePath = filePaths[0];
+      const fileContent = await fsPromises.readFile(importFilePath, 'utf-8');
+      const importData = JSON.parse(fileContent);
+
+      // Import with progress callback
+      const result = await knowledgeBaseService.importKnowledgeBase(
+        importData,
+        options,
+        (progress) => {
+          event.sender.send('knowledge-base:import-progress', progress);
+        }
+      );
+
+      return {
+        success: result.success,
+        stats: result.stats,
+        filePath: importFilePath
+      };
+    } catch (error) {
+      console.error('Failed to import knowledge base:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  // IPC handler for getting knowledge base statistics
+  ipcMain.handle('knowledge-base:get-stats', async () => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        await knowledgeBaseService.initialize(dbPath);
+      }
+
+      const stats = await knowledgeBaseService.getKnowledgeBaseStats();
+      return { success: true, stats };
+    } catch (error) {
+      console.error('Failed to get knowledge base stats:', error);
+      return { success: false, error: (error as Error).message, stats: null };
     }
   });
 
