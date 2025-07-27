@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ProgressLogPanel } from './ProgressLogPanel';
 
 interface UploadProgress {
   fileName: string;
@@ -13,6 +14,12 @@ interface DocumentWithMetadata {
   addedAt?: string;
 }
 
+interface KnowledgeBaseStats {
+  totalRecords: number;
+  totalDocuments: number;
+  databaseSize: number;
+}
+
 const KnowledgeBaseSettings = () => {
   const [message, setMessage] = useState('');
   const [documents, setDocuments] = useState<DocumentWithMetadata[]>([]);
@@ -20,6 +27,21 @@ const KnowledgeBaseSettings = () => {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
   const [googleDocsUrl, setGoogleDocsUrl] = useState<string>('');
   const [isUrlImporting, setIsUrlImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [kbStats, setKbStats] = useState<KnowledgeBaseStats | null>(null);
+  const [exportProgress, setExportProgress] = useState<{step: string, current: number, total: number, message: string} | null>(null);
+  const [importProgress, setImportProgress] = useState<{step: string, current: number, total: number, message: string} | null>(null);
+  const [progressEntries, setProgressEntries] = useState<Array<{
+    id: string;
+    timestamp: Date;
+    level: 'info' | 'warning' | 'error' | 'success';
+    operation: string;
+    message: string;
+    progress?: { current: number; total: number; percentage: number };
+    metadata?: Record<string, unknown>;
+  }>>([]);
+  const [isProgressLogCollapsed, setIsProgressLogCollapsed] = useState(false);
 
   const loadDocuments = async () => {
     try {
@@ -39,29 +61,99 @@ const KnowledgeBaseSettings = () => {
     }
   };
 
+  const loadKnowledgeBaseStats = async () => {
+    try {
+      const result = await window.electronAPI.getKnowledgeBaseStats();
+      if (result.success && result.stats) {
+        setKbStats(result.stats);
+      }
+    } catch (error) {
+      console.error('Error loading knowledge base stats:', error);
+    }
+  };
+
   useEffect(() => {
     loadDocuments();
+    loadKnowledgeBaseStats();
+
+    // Set up progress listeners
+    const exportUnsubscribe = window.electronAPI.onExportProgress((progress) => {
+      setExportProgress(progress);
+    });
+
+    const importUnsubscribe = window.electronAPI.onImportProgress((progress) => {
+      setImportProgress(progress);
+    });
+
+    return () => {
+      exportUnsubscribe();
+      importUnsubscribe();
+    };
   }, []);
+
+  const addProgressEntry = (
+    level: 'info' | 'warning' | 'error' | 'success',
+    operation: string,
+    message: string,
+    progress?: { current: number; total: number },
+    metadata?: Record<string, unknown>
+  ) => {
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date(),
+      level,
+      operation,
+      message,
+      progress: progress ? {
+        current: progress.current,
+        total: progress.total,
+        percentage: Math.round((progress.current / progress.total) * 100)
+      } : undefined,
+      metadata
+    };
+
+    setProgressEntries(prev => {
+      const newEntries = [...prev, entry];
+      // Limit to last 500 entries to prevent memory issues
+      return newEntries.slice(-500);
+    });
+  };
+
+  const clearProgressLog = () => {
+    setProgressEntries([]);
+    addProgressEntry('info', 'system', 'Progress log cleared');
+  };
 
   const handleAddDocument = async () => {
     try {
       setIsLoading(true);
       const filePath = await window.electronAPI.openFileDialog();
       if (filePath) {
+        const operationId = `single-upload-${Date.now()}`;
+        const fileName = filePath.split(/[\\/]/).pop() || filePath;
+
+        addProgressEntry('info', operationId, `Starting upload: ${fileName}`);
         setMessage(`Adding document: ${filePath}...`);
+
         const result = await window.electronAPI.addDocument(filePath);
         if (result.success) {
           setMessage(`Successfully added document: ${filePath}`);
+          addProgressEntry('success', operationId, `Successfully uploaded: ${fileName}`);
           await loadDocuments(); // Refresh document list
+          await loadKnowledgeBaseStats(); // Refresh stats
         } else {
           setMessage(`Failed to add document: ${result.error}`);
+          addProgressEntry('error', operationId, `Failed to upload ${fileName}: ${result.error}`);
         }
       } else {
         setMessage('No file selected.');
+        addProgressEntry('info', 'single-upload', 'Upload cancelled: No file selected');
       }
     } catch (error) {
       console.error('Error adding document:', error);
-      setMessage(`Error adding document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = `Error adding document: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      setMessage(errorMessage);
+      addProgressEntry('error', 'single-upload', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -74,6 +166,9 @@ const KnowledgeBaseSettings = () => {
       const filePaths = await window.electronAPI.openKnowledgebaseFileDialog();
 
       if (filePaths && filePaths.length > 0) {
+        const operationId = `batch-upload-${Date.now()}`;
+        addProgressEntry('info', operationId, `Starting batch upload of ${filePaths.length} documents`);
+
         setMessage(`Adding ${filePaths.length} documents...`);
 
         // Initialize progress tracking
@@ -91,12 +186,16 @@ const KnowledgeBaseSettings = () => {
 
         if (filePaths.length > 5) {
           setMessage(`Processing ${filePaths.length} documents. This may take several minutes for large documents...`);
+          addProgressEntry('warning', operationId, `Large batch detected: ${filePaths.length} files may take several minutes to process`);
         }
+
+        addProgressEntry('info', operationId, 'Sending batch to processing service...', { current: 0, total: filePaths.length });
 
         const result = await window.electronAPI.addDocumentsBatch(filePaths);
 
         if (result.success) {
           setMessage(result.summary || `Successfully added ${filePaths.length} documents`);
+          addProgressEntry('success', operationId, result.summary || `Batch upload completed: ${filePaths.length} documents processed`);
 
           // Update progress with results
           if (result.results) {
@@ -106,11 +205,25 @@ const KnowledgeBaseSettings = () => {
               error: r.error
             }));
             setUploadProgress(finalProgress);
+
+            // Log individual file results
+            const successCount = result.results.filter(r => r.success).length;
+            const errorCount = result.results.length - successCount;
+
+            if (errorCount > 0) {
+              addProgressEntry('warning', operationId, `${errorCount} files failed to process`, undefined, {
+                successCount,
+                errorCount,
+                totalFiles: result.results.length
+              });
+            }
           }
 
           await loadDocuments(); // Refresh document list
+          await loadKnowledgeBaseStats(); // Refresh stats
         } else {
           setMessage(`Failed to add documents: ${result.error}`);
+          addProgressEntry('error', operationId, `Batch upload failed: ${result.error}`);
 
           // Update progress to show error
           const errorProgress = initialProgress.map(p => ({
@@ -142,27 +255,125 @@ const KnowledgeBaseSettings = () => {
   const handleAddFromGoogleDocs = async () => {
     if (!googleDocsUrl.trim()) {
       setMessage('Please enter a Google Docs URL.');
+      addProgressEntry('warning', 'google-docs-import', 'Import cancelled: No URL provided');
       return;
     }
 
     try {
       setIsUrlImporting(true);
+      const operationId = `google-docs-import-${Date.now()}`;
+
+      addProgressEntry('info', operationId, `Starting Google Docs import: ${googleDocsUrl}`);
       setMessage(`Importing document from Google Docs...`);
 
       const result = await window.electronAPI.addDocumentFromUrl(googleDocsUrl);
 
       if (result.success) {
         setMessage(`Successfully imported document from Google Docs`);
+        addProgressEntry('success', operationId, 'Google Docs import completed successfully');
         setGoogleDocsUrl(''); // Clear the URL input
         await loadDocuments(); // Refresh document list
+        await loadKnowledgeBaseStats(); // Refresh stats
       } else {
         setMessage(`Failed to import from Google Docs: ${result.error}`);
+        addProgressEntry('error', operationId, `Google Docs import failed: ${result.error}`);
       }
     } catch (error) {
       console.error('Error importing from Google Docs:', error);
-      setMessage(`Error importing from Google Docs: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = `Error importing from Google Docs: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      setMessage(errorMessage);
+      addProgressEntry('error', 'google-docs-import', errorMessage);
     } finally {
       setIsUrlImporting(false);
+    }
+  };
+
+  const handleExportKnowledgeBase = async () => {
+    try {
+      setIsExporting(true);
+      setExportProgress(null);
+      const operationId = `export-${Date.now()}`;
+
+      addProgressEntry('info', operationId, 'Starting knowledge base export...');
+      setMessage('Starting knowledge base export...');
+
+      const result = await window.electronAPI.exportKnowledgeBase();
+
+      if (result.success && result.stats) {
+        const sizeInMB = (result.stats.exportSize / (1024 * 1024)).toFixed(2);
+        const timeInSeconds = (result.stats.exportTime / 1000).toFixed(1);
+        const successMessage = `Export completed: ${result.stats.totalDocuments} documents, ${result.stats.totalRecords} chunks exported. File size: ${sizeInMB}MB, Time: ${timeInSeconds}s`;
+
+        setMessage(`✅ ${successMessage}`);
+        addProgressEntry('success', operationId, successMessage, undefined, {
+          totalDocuments: result.stats.totalDocuments,
+          totalRecords: result.stats.totalRecords,
+          exportSize: result.stats.exportSize,
+          exportTime: result.stats.exportTime,
+          filePath: result.filePath
+        });
+
+        await loadKnowledgeBaseStats(); // Refresh stats
+      } else {
+        const errorMessage = `Export failed: ${result.error}`;
+        setMessage(`❌ ${errorMessage}`);
+        addProgressEntry('error', operationId, errorMessage);
+      }
+    } catch (error) {
+      console.error('Error exporting knowledge base:', error);
+      const errorMessage = `Export error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      setMessage(`❌ ${errorMessage}`);
+      addProgressEntry('error', 'export', errorMessage);
+    } finally {
+      setIsExporting(false);
+      setExportProgress(null);
+    }
+  };
+
+  const handleImportKnowledgeBase = async (mode: 'replace' | 'merge' = 'replace') => {
+    try {
+      setIsImporting(true);
+      setImportProgress(null);
+      const operationId = `import-${mode}-${Date.now()}`;
+
+      addProgressEntry('info', operationId, `Starting knowledge base import (${mode} mode)...`);
+      setMessage(`Starting knowledge base import (${mode} mode)...`);
+
+      const result = await window.electronAPI.importKnowledgeBase({ mode });
+
+      if (result.success && result.stats) {
+        const timeInSeconds = (result.stats.importTime / 1000).toFixed(1);
+        const successMessage = `Import completed: ${result.stats.importedDocuments} documents, ${result.stats.importedRecords} chunks imported. ${result.stats.skippedRecords > 0 ? `${result.stats.skippedRecords} records skipped. ` : ''}Time: ${timeInSeconds}s`;
+
+        setMessage(`✅ ${successMessage}`);
+        addProgressEntry('success', operationId, successMessage, undefined, {
+          mode,
+          importedDocuments: result.stats.importedDocuments,
+          importedRecords: result.stats.importedRecords,
+          skippedRecords: result.stats.skippedRecords,
+          importTime: result.stats.importTime,
+          filePath: result.filePath
+        });
+
+        if (result.stats.skippedRecords > 0) {
+          addProgressEntry('warning', operationId, `${result.stats.skippedRecords} records were skipped during import`);
+        }
+
+        await loadDocuments(); // Refresh document list
+        await loadKnowledgeBaseStats(); // Refresh stats
+      } else {
+        const errorMessage = `Import failed: ${result.error}`;
+        setMessage(`❌ ${errorMessage}`);
+        addProgressEntry('error', operationId, errorMessage);
+      }
+    } catch (error) {
+      console.error('Error importing knowledge base:', error);
+      const errorMessage = `Import error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      setMessage(`❌ ${errorMessage}`);
+      addProgressEntry('error', 'import', errorMessage);
+    } finally {
+      setIsImporting(false);
+      setImportProgress(null);
     }
   };
 
@@ -274,6 +485,107 @@ const KnowledgeBaseSettings = () => {
         )}
 
         {message && <p className="text-sm text-gray-500">{message}</p>}
+      </div>
+
+      {/* Knowledge Base Management Section */}
+      <div className="mb-6">
+        <h3 className="text-md font-semibold mb-3">Knowledge Base Management</h3>
+
+        {/* Statistics Display */}
+        {kbStats && (
+          <div className="mb-4 p-3 bg-muted rounded text-sm">
+            <p className="font-medium mb-1 text-foreground">Current Knowledge Base:</p>
+            <div className="text-muted-foreground space-y-1">
+              <div className="flex justify-between">
+                <span>Documents:</span>
+                <span className="font-medium">{kbStats.totalDocuments.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Chunks:</span>
+                <span className="font-medium">{kbStats.totalRecords.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Estimated Size:</span>
+                <span className="font-medium">{(kbStats.databaseSize / (1024 * 1024)).toFixed(1)} MB</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Export/Import Controls */}
+        <div className="flex items-center space-x-4 mb-4">
+          <button
+            onClick={handleExportKnowledgeBase}
+            disabled={isLoading || isExporting || isImporting || isUrlImporting}
+            className="bg-blue-500 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded"
+          >
+            {isExporting ? 'Exporting...' : 'Export Knowledge Base'}
+          </button>
+
+          <button
+            onClick={() => handleImportKnowledgeBase('replace')}
+            disabled={isLoading || isExporting || isImporting || isUrlImporting}
+            className="bg-orange-500 hover:bg-orange-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded"
+          >
+            {isImporting ? 'Importing...' : 'Import (Replace)'}
+          </button>
+
+          <button
+            onClick={() => handleImportKnowledgeBase('merge')}
+            disabled={isLoading || isExporting || isImporting || isUrlImporting}
+            className="bg-green-500 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded"
+          >
+            {isImporting ? 'Importing...' : 'Import (Merge)'}
+          </button>
+        </div>
+
+        {/* Export/Import Progress */}
+        {(exportProgress || importProgress) && (
+          <div className="mb-4 p-3 border border-gray-300 rounded">
+            <h4 className="font-medium mb-2">
+              {exportProgress ? 'Export Progress' : 'Import Progress'}
+            </h4>
+            {(exportProgress || importProgress) && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span>{(exportProgress || importProgress)?.message}</span>
+                  <span className="font-medium">
+                    {(exportProgress || importProgress)?.current}% / {(exportProgress || importProgress)?.total}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(exportProgress || importProgress)?.current || 0}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Step: {(exportProgress || importProgress)?.step}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Import Mode Information */}
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
+          <p className="font-medium mb-1 text-yellow-800">Import Modes:</p>
+          <div className="text-yellow-700 space-y-1">
+            <p><strong>Replace:</strong> Clears existing knowledge base and imports new data</p>
+            <p><strong>Merge:</strong> Adds imported data to existing knowledge base</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Progress Log Panel */}
+      <div className="mb-6">
+        <ProgressLogPanel
+          entries={progressEntries}
+          isCollapsed={isProgressLogCollapsed}
+          onToggleCollapse={() => setIsProgressLogCollapsed(!isProgressLogCollapsed)}
+          onClear={clearProgressLog}
+          maxHeight="250px"
+        />
       </div>
 
       {/* Documents List Section */}

@@ -76,8 +76,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDocuments: () => ipcRenderer.invoke('knowledge-base:get-documents'),
   getDocumentsWithMetadata: () => ipcRenderer.invoke('knowledge-base:get-documents-with-metadata'),
   searchKnowledgeBase: (query: string, limit?: number) => ipcRenderer.invoke('knowledge-base:search', query, limit),
+  exportKnowledgeBase: () => ipcRenderer.invoke('knowledge-base:export'),
+  importKnowledgeBase: (options?: {mode: 'replace' | 'merge'}) => ipcRenderer.invoke('knowledge-base:import', options),
+  getKnowledgeBaseStats: () => ipcRenderer.invoke('knowledge-base:get-stats'),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
   openKnowledgebaseFileDialog: () => ipcRenderer.invoke('dialog:open-knowledgebase-files'),
+
+  // Progress monitoring
+  onExportProgress: (callback: (progress: any) => void) => {
+    ipcRenderer.on('knowledge-base:export-progress', (_, progress) => callback(progress));
+    return () => ipcRenderer.removeAllListeners('knowledge-base:export-progress');
+  },
+  onImportProgress: (callback: (progress: any) => void) => {
+    ipcRenderer.on('knowledge-base:import-progress', (_, progress) => callback(progress));
+    return () => ipcRenderer.removeAllListeners('knowledge-base:import-progress');
+  },
   selectFiles: (options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }>; properties?: string[] }) =>
     ipcRenderer.invoke('select-files', options),
 

@@ -493,4 +493,253 @@ export class KnowledgeBaseService {
       return [];
     }
   }
+
+  /**
+   * Exports the entire knowledge base to a portable JSON format.
+   * @param progressCallback - Optional callback to report export progress.
+   * @returns {Promise<{data: any, stats: {totalRecords: number, totalDocuments: number, exportSize: number, exportTime: number}}>} The exported data and statistics.
+   */
+  public async exportKnowledgeBase(progressCallback?: (progress: {step: string, current: number, total: number, message: string}) => void): Promise<{data: any, stats: {totalRecords: number, totalDocuments: number, exportSize: number, exportTime: number}}> {
+    if (!this.table) {
+      throw new Error('Knowledge base is not initialized.');
+    }
+
+    const startTime = Date.now();
+    progressCallback?.({step: 'initializing', current: 0, total: 100, message: 'Starting knowledge base export...'});
+
+    try {
+      // Get all records from the database
+      progressCallback?.({step: 'fetching', current: 10, total: 100, message: 'Fetching all records from database...'});
+      const dummyEmbedding = new Array(384).fill(0); // MiniLM-L6-v2 has 384 dimensions
+      const allRecords = await this.table.search(dummyEmbedding).limit(50000).execute();
+
+      progressCallback?.({step: 'processing', current: 30, total: 100, message: `Processing ${allRecords.length} records...`});
+
+      // Filter out system entries and organize data
+      const validRecords = allRecords.filter(r => (r as {source: string}).source !== 'system');
+
+      // Create export structure
+      const exportData = {
+        version: '1.0.0',
+        exportDate: new Date().toISOString(),
+        embeddingDimensions: 384,
+        records: validRecords.map(record => ({
+          vector: (record as {vector: number[]}).vector,
+          text: (record as {text: string}).text,
+          source: (record as {source: string}).source,
+          metadata: (record as {metadata?: Record<string, unknown>}).metadata || {},
+          chunkIndex: (record as {chunkIndex?: number}).chunkIndex || 0
+        }))
+      };
+
+      progressCallback?.({step: 'finalizing', current: 80, total: 100, message: 'Finalizing export data...'});
+
+      // Calculate statistics
+      const uniqueSources = new Set(exportData.records.map(r => r.source));
+      const exportTime = Date.now() - startTime;
+      const exportSize = JSON.stringify(exportData).length;
+
+      const stats = {
+        totalRecords: exportData.records.length,
+        totalDocuments: uniqueSources.size,
+        exportSize,
+        exportTime
+      };
+
+      progressCallback?.({step: 'complete', current: 100, total: 100, message: `Export completed: ${stats.totalDocuments} documents, ${stats.totalRecords} chunks`});
+
+      console.log(`✅ Knowledge base exported: ${stats.totalDocuments} documents, ${stats.totalRecords} records, ${Math.round(exportSize / 1024)}KB`);
+
+      return { data: exportData, stats };
+    } catch (error) {
+      console.error('❌ Failed to export knowledge base:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Imports knowledge base data from a previously exported format.
+   * @param importData - The data to import.
+   * @param options - Import options including merge vs replace mode.
+   * @param progressCallback - Optional callback to report import progress.
+   * @returns {Promise<{success: boolean, stats: {importedRecords: number, importedDocuments: number, skippedRecords: number, importTime: number}}>} Import results and statistics.
+   */
+  public async importKnowledgeBase(
+    importData: any,
+    options: {mode: 'replace' | 'merge', validateEmbeddings?: boolean} = {mode: 'replace', validateEmbeddings: true},
+    progressCallback?: (progress: {step: string, current: number, total: number, message: string}) => void
+  ): Promise<{success: boolean, stats: {importedRecords: number, importedDocuments: number, skippedRecords: number, importTime: number}}> {
+    if (!this.table) {
+      throw new Error('Knowledge base is not initialized.');
+    }
+
+    const startTime = Date.now();
+    progressCallback?.({step: 'validating', current: 0, total: 100, message: 'Validating import data...'});
+
+    try {
+      // Validate import data structure
+      if (!this.validateImportData(importData)) {
+        throw new Error('Invalid import data format. Please ensure you are importing a valid knowledge base export file.');
+      }
+
+      const records = importData.records || [];
+      progressCallback?.({step: 'preparing', current: 10, total: 100, message: `Preparing to import ${records.length} records...`});
+
+      // Clear existing data if replace mode
+      if (options.mode === 'replace') {
+        progressCallback?.({step: 'clearing', current: 20, total: 100, message: 'Clearing existing knowledge base...'});
+        await this.clearKnowledgeBase();
+      }
+
+      // Process records in batches for better performance
+      const batchSize = 100;
+      let importedRecords = 0;
+      let skippedRecords = 0;
+      const uniqueSources = new Set<string>();
+
+      for (let i = 0; i < records.length; i += batchSize) {
+        const batch = records.slice(i, i + batchSize);
+        const progress = 30 + ((i / records.length) * 60);
+
+        progressCallback?.({
+          step: 'importing',
+          current: Math.round(progress),
+          total: 100,
+          message: `Importing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(records.length / batchSize)}...`
+        });
+
+        try {
+          // Validate and prepare batch records
+          const validBatch = batch.filter((record: any) => {
+            if (options.validateEmbeddings && (!record.vector || record.vector.length !== 384)) {
+              skippedRecords++;
+              return false;
+            }
+            if (!record.text || !record.source) {
+              skippedRecords++;
+              return false;
+            }
+            return true;
+          });
+
+          if (validBatch.length > 0) {
+            await this.table.add(validBatch);
+            importedRecords += validBatch.length;
+            validBatch.forEach((record: any) => uniqueSources.add(record.source));
+          }
+        } catch (batchError) {
+          console.error(`❌ Failed to import batch ${Math.floor(i / batchSize) + 1}:`, batchError);
+          skippedRecords += batch.length;
+        }
+      }
+
+      const importTime = Date.now() - startTime;
+      const stats = {
+        importedRecords,
+        importedDocuments: uniqueSources.size,
+        skippedRecords,
+        importTime
+      };
+
+      progressCallback?.({step: 'complete', current: 100, total: 100, message: `Import completed: ${stats.importedDocuments} documents, ${stats.importedRecords} records imported`});
+
+      console.log(`✅ Knowledge base imported: ${stats.importedDocuments} documents, ${stats.importedRecords} records imported, ${stats.skippedRecords} skipped`);
+
+      return { success: true, stats };
+    } catch (error) {
+      console.error('❌ Failed to import knowledge base:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Validates the structure of import data.
+   * @param data - The data to validate.
+   * @returns {boolean} True if the data is valid for import.
+   */
+  private validateImportData(data: any): boolean {
+    if (!data || typeof data !== 'object') {
+      return false;
+    }
+
+    // Check required fields
+    if (!data.version || !data.records || !Array.isArray(data.records)) {
+      return false;
+    }
+
+    // Check version compatibility
+    if (data.version !== '1.0.0') {
+      console.warn(`⚠️ Import data version ${data.version} may not be fully compatible with current version 1.0.0`);
+    }
+
+    // Validate a sample of records
+    const sampleSize = Math.min(10, data.records.length);
+    for (let i = 0; i < sampleSize; i++) {
+      const record = data.records[i];
+      if (!record.text || !record.source || !Array.isArray(record.vector)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * Clears all data from the knowledge base.
+   * @returns {Promise<void>} A promise that resolves when the knowledge base is cleared.
+   */
+  public async clearKnowledgeBase(): Promise<void> {
+    if (!this.table) {
+      throw new Error('Knowledge base is not initialized.');
+    }
+
+    try {
+      // Get all records to delete them
+      const dummyEmbedding = new Array(384).fill(0);
+      const allRecords = await this.table.search(dummyEmbedding).limit(50000).execute();
+
+      // Delete all non-system records
+      for (const record of allRecords) {
+        const source = (record as {source: string}).source;
+        if (source !== 'system') {
+          await this.table.delete(`source = '${source}'`);
+        }
+      }
+
+      console.log('✅ Knowledge base cleared successfully');
+    } catch (error) {
+      console.error('❌ Failed to clear knowledge base:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Gets statistics about the current knowledge base.
+   * @returns {Promise<{totalRecords: number, totalDocuments: number, databaseSize: number}>} Knowledge base statistics.
+   */
+  public async getKnowledgeBaseStats(): Promise<{totalRecords: number, totalDocuments: number, databaseSize: number}> {
+    if (!this.table) {
+      throw new Error('Knowledge base is not initialized.');
+    }
+
+    try {
+      const dummyEmbedding = new Array(384).fill(0);
+      const allRecords = await this.table.search(dummyEmbedding).limit(50000).execute();
+
+      const validRecords = allRecords.filter(r => (r as {source: string}).source !== 'system');
+      const uniqueSources = new Set(validRecords.map(r => (r as {source: string}).source));
+
+      // Estimate database size (rough calculation)
+      const estimatedSize = validRecords.length * (384 * 4 + 500); // 4 bytes per float + estimated text size
+
+      return {
+        totalRecords: validRecords.length,
+        totalDocuments: uniqueSources.size,
+        databaseSize: estimatedSize
+      };
+    } catch (error) {
+      console.error('Error getting knowledge base stats:', error);
+      return { totalRecords: 0, totalDocuments: 0, databaseSize: 0 };
+    }
+  }
 }
