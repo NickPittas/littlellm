@@ -18,7 +18,8 @@ export function ProviderLogo({ provider, className = "", size = 20 }: ProviderLo
   }, [])
 
   // Convert relative URLs to absolute URLs for Electron compatibility
-  const getAbsoluteUrl = (url: string) => {
+  const getAbsoluteUrl = (url: string | undefined) => {
+    if (!url) return '';
     if (url.startsWith('http')) return url;
     if (typeof window !== 'undefined') {
       // Use window.location.origin to get the correct port dynamically
@@ -27,7 +28,21 @@ export function ProviderLogo({ provider, className = "", size = 20 }: ProviderLo
     return url;
   };
 
-  const logoSrc = getAbsoluteUrl(isDarkTheme ? provider.logo : (provider.logoLight || provider.logo));
+  const logoUrl = isDarkTheme ? provider.logo : (provider.logoLight || provider.logo);
+  const logoSrc = getAbsoluteUrl(logoUrl);
+
+  // If no logo available, show a fallback
+  if (!logoSrc) {
+    return (
+      <div
+        className={`bg-gray-600 text-white rounded flex items-center justify-center text-xs font-bold ${className}`}
+        style={{ width: size, height: size }}
+        title={provider.name}
+      >
+        {provider.name.charAt(0).toUpperCase()}
+      </div>
+    );
+  }
 
   return (
     <img

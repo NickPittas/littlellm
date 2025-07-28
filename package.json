@@ -1,6 +1,6 @@
 {
   "name": "littlellm",
-  "version": "2.1.5",
+  "version": "3.0.0",
   "description": "A powerful desktop AI chat application with enterprise-grade security, encrypted API key storage, and advanced features",
   "author": "LittleLLM Team",
   "private": true,
@@ -72,6 +72,7 @@
     "csv-parser": "^3.2.0",
     "electron-is-dev": "^3.0.1",
     "flatbuffers": "^23.5.26",
+    "framer-motion": "^12.23.9",
     "ical.js": "^2.2.0",
     "lucide-react": "^0.352.0",
     "mammoth": "^1.9.1",
@@ -130,10 +131,10 @@
     "wait-on": "^8.0.3"
   },
   "optionalDependencies": {
-    "@lancedb/vectordb-win32-x64-msvc": "^0.21.1",
-    "@lancedb/vectordb-darwin-x64": "^0.21.1",
     "@lancedb/vectordb-darwin-arm64": "^0.21.1",
+    "@lancedb/vectordb-darwin-x64": "^0.21.1",
     "@lancedb/vectordb-linux-x64-gnu": "^0.21.1",
+    "@lancedb/vectordb-win32-x64-msvc": "^0.21.1",
     "pdf-parse": "^1.1.1"
   }
 }

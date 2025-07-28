@@ -98,7 +98,8 @@ export interface ElectronAPI {
 
   // File operations
   selectFiles: (options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }>; properties?: string[] }) => Promise<string[]>;
-  readFile: (filePath: string) => Promise<{ name: string; content: string; type: string }>;
+  readFile: (filePath: string) => Promise<{ success: boolean; content?: string; name?: string; type?: string; error?: string }>;
+  selectDirectory: () => Promise<string | null>;
 
   // Event listeners
   onSettingsChanged: (callback: (settings: unknown) => void) => void;

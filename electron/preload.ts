@@ -98,6 +98,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   selectFiles: (options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }>; properties?: string[] }) =>
     ipcRenderer.invoke('select-files', options),
 
+  // File reading API
+  readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
+
+  // Directory selection API
+  selectDirectory: () => ipcRenderer.invoke('select-directory'),
+
   // Memory export/import operations
   saveMemoryExport: (exportData: any, filename: string) => ipcRenderer.invoke('save-memory-export', exportData, filename),
   loadMemoryExport: () => ipcRenderer.invoke('load-memory-export'),

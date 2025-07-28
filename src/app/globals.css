@@ -48,6 +48,38 @@
     color: hsl(var(--foreground)) !important;
   }
 
+  /* Modern Interface Specific Styles */
+  .modern-chat-interface {
+    --modern-bg-primary: #0a0a0a;
+    --modern-bg-secondary: #1a1a1a;
+    --modern-bg-tertiary: #2a2a2a;
+    --modern-border: #333333;
+    --modern-text-primary: #ffffff;
+    --modern-text-secondary: #a0a0a0;
+    --modern-text-muted: #666666;
+    --modern-accent-blue: #3b82f6;
+    --modern-accent-green: #10b981;
+    --modern-accent-purple: #8b5cf6;
+  }
+
+  /* Ensure proper scrollbar styling for modern interface */
+  .modern-chat-interface ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .modern-chat-interface ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .modern-chat-interface ::-webkit-scrollbar-thumb {
+    background: #333333;
+    border-radius: 3px;
+  }
+
+  .modern-chat-interface ::-webkit-scrollbar-thumb:hover {
+    background: #444444;
+  }
+
   /* Ensure all text elements use theme colors */
   h1, h2, h3, h4, h5, h6, p, span, div, label {
     color: inherit !important;
