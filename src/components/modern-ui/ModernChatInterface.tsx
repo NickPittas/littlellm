@@ -182,7 +182,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
     loadSettings();
     loadPremadePrompts();
-  }, [loadModelsForProvider]); // Include the dependency
+  }, []); // Empty dependency array to prevent infinite loop
 
   // Handle sidebar item clicks
   const handleSidebarItemClick = (itemId: string) => {
