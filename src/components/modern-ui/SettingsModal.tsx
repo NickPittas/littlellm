@@ -187,17 +187,37 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
   const loadInternalCommandsSettings = async () => {
     try {
       const currentSettings = settingsService.getSettings();
+      console.log('🔧 Loading internal commands settings:', currentSettings?.internalCommands);
       if (currentSettings?.internalCommands) {
-        setInternalCommandsEnabled(currentSettings.internalCommands.enabled || false);
-        setAllowedDirectories(currentSettings.internalCommands.allowedDirectories || []);
-        setBlockedCommands(currentSettings.internalCommands.blockedCommands || []);
-        setEnabledCommandCategories(currentSettings.internalCommands.enabledCommands || {
+        const enabled = currentSettings.internalCommands.enabled || false;
+        const directories = currentSettings.internalCommands.allowedDirectories || [];
+        const blocked = currentSettings.internalCommands.blockedCommands || [];
+        const commands = currentSettings.internalCommands.enabledCommands || {
           terminal: true,
           filesystem: true,
           textEditing: true,
           system: true
-        });
-        setEnabledTools(currentSettings.internalCommands.enabledTools || {});
+        };
+        const tools = currentSettings.internalCommands.enabledTools || {};
+
+        setInternalCommandsEnabled(enabled);
+        setAllowedDirectories(directories);
+        setBlockedCommands(blocked);
+        setEnabledCommandCategories(commands);
+        setEnabledTools(tools);
+
+        // Also update formData to ensure it's in sync
+        setFormData(prev => prev ? {
+          ...prev,
+          internalCommands: {
+            ...prev.internalCommands,
+            enabled: enabled,
+            allowedDirectories: directories,
+            blockedCommands: blocked,
+            enabledCommands: commands,
+            enabledTools: tools
+          }
+        } : null);
       }
     } catch (error) {
       console.error('Failed to load internal commands settings:', error);
@@ -253,6 +273,21 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       const updatedDirectories = [...allowedDirectories, newDirectory.trim()];
       setAllowedDirectories(updatedDirectories);
       setNewDirectory('');
+      setHasChanges(true);
+
+      // Update formData with directory changes
+      setFormData(prev => prev ? {
+        ...prev,
+        internalCommands: {
+          ...prev.internalCommands,
+          enabled: internalCommandsEnabled,
+          allowedDirectories: updatedDirectories,
+          blockedCommands: blockedCommands,
+          enabledCommands: enabledCommandCategories,
+          enabledTools: enabledTools
+        }
+      } : null);
+
       saveInternalCommandsSettings();
     }
   };
@@ -260,6 +295,21 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
   const handleRemoveDirectory = (directory: string) => {
     const updatedDirectories = allowedDirectories.filter(d => d !== directory);
     setAllowedDirectories(updatedDirectories);
+    setHasChanges(true);
+
+    // Update formData with directory changes
+    setFormData(prev => prev ? {
+      ...prev,
+      internalCommands: {
+        ...prev.internalCommands,
+        enabled: internalCommandsEnabled,
+        allowedDirectories: updatedDirectories,
+        blockedCommands: blockedCommands,
+        enabledCommands: enabledCommandCategories,
+        enabledTools: enabledTools
+      }
+    } : null);
+
     saveInternalCommandsSettings();
   };
 
@@ -268,6 +318,21 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       const updatedCommands = [...blockedCommands, newBlockedCommand.trim()];
       setBlockedCommands(updatedCommands);
       setNewBlockedCommand('');
+      setHasChanges(true);
+
+      // Update formData with blocked command changes
+      setFormData(prev => prev ? {
+        ...prev,
+        internalCommands: {
+          ...prev.internalCommands,
+          enabled: internalCommandsEnabled,
+          allowedDirectories: allowedDirectories,
+          blockedCommands: updatedCommands,
+          enabledCommands: enabledCommandCategories,
+          enabledTools: enabledTools
+        }
+      } : null);
+
       saveInternalCommandsSettings();
     }
   };
@@ -275,6 +340,21 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
   const handleRemoveBlockedCommand = (command: string) => {
     const updatedCommands = blockedCommands.filter(c => c !== command);
     setBlockedCommands(updatedCommands);
+    setHasChanges(true);
+
+    // Update formData with blocked command changes
+    setFormData(prev => prev ? {
+      ...prev,
+      internalCommands: {
+        ...prev.internalCommands,
+        enabled: internalCommandsEnabled,
+        allowedDirectories: allowedDirectories,
+        blockedCommands: updatedCommands,
+        enabledCommands: enabledCommandCategories,
+        enabledTools: enabledTools
+      }
+    } : null);
+
     saveInternalCommandsSettings();
   };
 
@@ -284,6 +364,20 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       [category]: enabled
     };
     setEnabledCommandCategories(updatedCommands);
+    setHasChanges(true);
+
+    // Update formData with command category changes
+    setFormData(prev => prev ? {
+      ...prev,
+      internalCommands: {
+        ...prev.internalCommands,
+        enabled: internalCommandsEnabled,
+        allowedDirectories: allowedDirectories,
+        blockedCommands: blockedCommands,
+        enabledCommands: updatedCommands,
+        enabledTools: enabledTools
+      }
+    } : null);
 
     // Immediately save the settings with the updated commands
     saveInternalCommandsSettingsWithCommands(updatedCommands);
@@ -316,7 +410,13 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
   // Main save function (copied from SettingsOverlay)
   const handleSave = async () => {
-    if (!formData) return;
+    if (!formData) {
+      console.error('🔧 No formData to save');
+      return;
+    }
+
+    console.log('🔧 Starting save process with formData:', formData);
+    console.log('🔧 Theme data being saved:', formData.ui);
 
     setIsLoading(true);
     setSaveError(null);
@@ -324,7 +424,9 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
     try {
       // Save general settings
+      console.log('🔧 Calling settingsService.updateSettings...');
       const success = await settingsService.updateSettings(formData);
+      console.log('🔧 Settings save result:', success);
 
       // Always save API keys if the save function is available
       let apiKeySaveSuccess = true;
@@ -491,7 +593,10 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
             <div className="text-sm text-green-600 mb-2">Settings saved successfully!</div>
           )}
           <Button
-            onClick={handleSave}
+            onClick={() => {
+              console.log('🔧 Save button clicked - hasChanges:', hasChanges, 'formData:', formData);
+              handleSave();
+            }}
             disabled={isLoading || !hasChanges}
             className="w-full"
           >
@@ -861,7 +966,26 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                   <div className="flex items-center space-x-2">
                     <ToggleSwitch
                       enabled={internalCommandsEnabled}
-                      onToggle={setInternalCommandsEnabled}
+                      onToggle={(enabled) => {
+                        setInternalCommandsEnabled(enabled);
+                        setHasChanges(true);
+
+                        // Update formData with internal commands changes
+                        setFormData(prev => prev ? {
+                          ...prev,
+                          internalCommands: {
+                            ...prev.internalCommands,
+                            enabled: enabled,
+                            allowedDirectories: allowedDirectories,
+                            blockedCommands: blockedCommands,
+                            enabledCommands: enabledCommandCategories,
+                            enabledTools: enabledTools
+                          }
+                        } : null);
+
+                        // Also save immediately
+                        saveInternalCommandsSettings();
+                      }}
                     />
                     <div>
                       <Label>Enable Internal Commands</Label>
@@ -1038,6 +1162,17 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                         setSelectedThemePreset(theme.id);
                         setHasChanges(true);
 
+                        // Update formData with theme changes
+                        setFormData(prev => prev ? {
+                          ...prev,
+                          ui: {
+                            ...prev.ui,
+                            selectedThemePreset: theme.id,
+                            colorMode: 'preset',
+                            customColors: theme.colors
+                          }
+                        } : null);
+
                         // Apply theme change immediately
                         if (typeof window !== 'undefined' && window.electronAPI) {
                           console.log('Applying theme preset change immediately:', theme.colors);
@@ -1058,15 +1193,29 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                         setColorMode(value);
                         setHasChanges(true);
 
+                        // Determine colors to apply
+                        let colorsToApply = customColors;
+                        if (value === 'preset') {
+                          const preset = themePresets.find(p => p.id === selectedThemePreset);
+                          if (preset) {
+                            colorsToApply = preset.colors;
+                          }
+                        }
+
+                        // Update formData with theme changes
+                        setFormData(prev => prev ? {
+                          ...prev,
+                          ui: {
+                            ...prev.ui,
+                            colorMode: value,
+                            selectedThemePreset: selectedThemePreset,
+                            customColors: colorsToApply,
+                            useCustomColors: value === 'custom'
+                          }
+                        } : null);
+
                         // Apply theme change immediately
                         if (typeof window !== 'undefined' && window.electronAPI) {
-                          let colorsToApply = customColors;
-                          if (value === 'preset') {
-                            const preset = themePresets.find(p => p.id === selectedThemePreset);
-                            if (preset) {
-                              colorsToApply = preset.colors;
-                            }
-                          }
                           console.log('Applying theme change immediately:', colorsToApply);
                           window.electronAPI.notifyThemeChange({
                             customColors: colorsToApply,
@@ -1097,6 +1246,17 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               setCustomColors(newColors);
                               setHasChanges(true);
 
+                              // Update formData with custom color changes
+                              setFormData(prev => prev ? {
+                                ...prev,
+                                ui: {
+                                  ...prev.ui,
+                                  customColors: newColors,
+                                  colorMode: 'custom',
+                                  useCustomColors: true
+                                }
+                              } : null);
+
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
                                 console.log('Applying background color change immediately:', newColors);
@@ -1116,6 +1276,17 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               const newColors = { ...customColors, foreground: color };
                               setCustomColors(newColors);
                               setHasChanges(true);
+
+                              // Update formData with custom color changes
+                              setFormData(prev => prev ? {
+                                ...prev,
+                                ui: {
+                                  ...prev.ui,
+                                  customColors: newColors,
+                                  colorMode: 'custom',
+                                  useCustomColors: true
+                                }
+                              } : null);
 
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
@@ -1137,6 +1308,17 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               setCustomColors(newColors);
                               setHasChanges(true);
 
+                              // Update formData with custom color changes
+                              setFormData(prev => prev ? {
+                                ...prev,
+                                ui: {
+                                  ...prev.ui,
+                                  customColors: newColors,
+                                  colorMode: 'custom',
+                                  useCustomColors: true
+                                }
+                              } : null);
+
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
                                 console.log('Applying primary color change immediately:', newColors);
@@ -1156,6 +1338,17 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               const newColors = { ...customColors, secondary: color };
                               setCustomColors(newColors);
                               setHasChanges(true);
+
+                              // Update formData with custom color changes
+                              setFormData(prev => prev ? {
+                                ...prev,
+                                ui: {
+                                  ...prev.ui,
+                                  customColors: newColors,
+                                  colorMode: 'custom',
+                                  useCustomColors: true
+                                }
+                              } : null);
 
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
