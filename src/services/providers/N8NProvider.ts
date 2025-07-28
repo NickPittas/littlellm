@@ -82,9 +82,17 @@ export class N8NProvider extends BaseProvider {
       signal
     });
 
+    console.log('🔗 N8N response status:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      url: response.url
+    });
+
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`N8N workflow error: ${error}`);
+      console.error('🚨 N8N workflow error response:', error);
+      throw new Error(`N8N workflow error (${response.status}): ${error}`);
     }
 
     if (onStream) {
@@ -178,7 +186,28 @@ export class N8NProvider extends BaseProvider {
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     try {
-      const data = await response.json();
+      // First check if response has content
+      const responseText = await response.text();
+      console.log('🔗 N8N raw response:', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        bodyLength: responseText.length,
+        bodyPreview: responseText.substring(0, 200)
+      });
+
+      if (!responseText.trim()) {
+        throw new Error('N8N webhook returned empty response. Check your workflow configuration.');
+      }
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('🚨 N8N JSON parse error:', parseError);
+        throw new Error(`N8N webhook returned invalid JSON: ${responseText.substring(0, 100)}...`);
+      }
+
       console.log('🔗 N8N workflow response:', JSON.stringify(data, null, 2));
 
       // Handle different possible response formats from N8N workflows
