@@ -3,14 +3,10 @@
 import { useState } from 'react';
 import {
   Server,
-  Monitor,
-  FolderOpen,
   FileText,
   Settings,
-  ChevronRight,
   History,
-  Terminal,
-  Plus
+  Terminal
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { cn } from '@/lib/utils';
@@ -39,7 +35,7 @@ export function LeftSidebar({
     {
       id: 'mcp-servers',
       label: 'MCP SERVERS',
-      icon: Settings,
+      icon: Server,
       onClick: () => handleItemClick('mcp-servers')
     },
     {

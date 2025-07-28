@@ -2,17 +2,17 @@
 
 import { useState, useRef, useEffect } from 'react';
 import {
-  Send,
   Paperclip,
   Camera,
-  Settings,
   Database,
   Wrench,
   ChevronDown,
   ArrowUp,
-  Plus
+  Plus,
+  Search
 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { Input } from '../ui/input';
 import { cn } from '@/lib/utils';
 
 interface BottomInputAreaProps {
@@ -60,7 +60,9 @@ export function BottomInputArea({
   const [inputValue, setInputValue] = useState(value);
   const [isFocused, setIsFocused] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [modelSearchQuery, setModelSearchQuery] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const modelSearchRef = useRef<HTMLInputElement>(null);
 
   // Sync local input value with prop value (for prompt selection)
   useEffect(() => {
@@ -68,6 +70,52 @@ export function BottomInputArea({
       setInputValue(value);
     }
   }, [value]);
+
+  // Simple fuzzy search function
+  const fuzzySearch = (query: string, text: string): number => {
+    if (!query) return 1; // No query means perfect match
+
+    const queryLower = query.toLowerCase();
+    const textLower = text.toLowerCase();
+
+    // Exact match gets highest score
+    if (textLower.includes(queryLower)) {
+      return 1;
+    }
+
+    // Character-by-character fuzzy matching
+    let queryIndex = 0;
+    let score = 0;
+
+    for (let i = 0; i < textLower.length && queryIndex < queryLower.length; i++) {
+      if (textLower[i] === queryLower[queryIndex]) {
+        score++;
+        queryIndex++;
+      }
+    }
+
+    // Return score as percentage of query characters found
+    return queryIndex === queryLower.length ? score / queryLower.length : 0;
+  };
+
+  // Filter and sort models based on search query
+  const filteredModels = availableModels
+    .map(model => ({
+      model,
+      score: fuzzySearch(modelSearchQuery, model)
+    }))
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(item => item.model);
+
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (showModelDropdown && modelSearchRef.current) {
+      setTimeout(() => {
+        modelSearchRef.current?.focus();
+      }, 100);
+    }
+  }, [showModelDropdown]);
 
   // Handle input change
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -191,7 +239,12 @@ export function BottomInputArea({
                 variant="ghost"
                 size="sm"
                 className="h-8 px-3 text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors"
-                onClick={() => setShowModelDropdown(!showModelDropdown)}
+                onClick={() => {
+                  setShowModelDropdown(!showModelDropdown);
+                  if (!showModelDropdown) {
+                    setModelSearchQuery(''); // Clear search when opening
+                  }
+                }}
                 title={`Current Model: ${selectedModel}`}
               >
                 <span className="text-sm mr-2">{selectedModel}</span>
@@ -200,13 +253,39 @@ export function BottomInputArea({
 
               {/* Model Dropdown */}
               {showModelDropdown && (
-                <div className="absolute bottom-full left-0 mb-2 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50">
-                  <div className="p-2 border-b border-gray-700">
-                    <span className="text-xs text-gray-400">Available Models ({selectedProvider})</span>
+                <div className="absolute bottom-full left-0 mb-2 w-80 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50">
+                  <div className="p-3 border-b border-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-gray-400">Available Models ({selectedProvider})</span>
+                      <span className="text-xs text-gray-500">{filteredModels.length} of {availableModels.length}</span>
+                    </div>
+
+                    {/* Search Input */}
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400" />
+                      <Input
+                        ref={modelSearchRef}
+                        value={modelSearchQuery}
+                        onChange={(e) => setModelSearchQuery(e.target.value)}
+                        placeholder="Search models..."
+                        className="pl-7 h-7 text-xs bg-gray-700 border-gray-600 focus:border-blue-500 text-white placeholder-gray-400"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setShowModelDropdown(false);
+                            setModelSearchQuery('');
+                          } else if (e.key === 'Enter' && filteredModels.length > 0) {
+                            onModelChange?.(filteredModels[0]);
+                            setShowModelDropdown(false);
+                            setModelSearchQuery('');
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
+
                   <div className="max-h-48 overflow-y-auto">
-                    {availableModels.length > 0 ? (
-                      availableModels.map((model) => (
+                    {filteredModels.length > 0 ? (
+                      filteredModels.map((model) => (
                         <button
                           key={model}
                           className={cn(
@@ -216,16 +295,21 @@ export function BottomInputArea({
                           onClick={() => {
                             onModelChange?.(model);
                             setShowModelDropdown(false);
+                            setModelSearchQuery('');
                           }}
                         >
                           {model}
                         </button>
                       ))
-                    ) : (
+                    ) : modelSearchQuery ? (
+                      <div className="px-3 py-2 text-sm text-gray-500">
+                        No models match &quot;{modelSearchQuery}&quot;
+                      </div>
+                    ) : availableModels.length === 0 ? (
                       <div className="px-3 py-2 text-sm text-gray-500">
                         No models available. Select a provider first.
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               )}
@@ -235,33 +319,22 @@ export function BottomInputArea({
           {/* Toggle buttons */}
           <div className="flex items-center gap-2">
             <Button
-              variant={toolsEnabled ? "default" : "ghost"}
+              variant={(toolsEnabled && mcpEnabled) ? "default" : "ghost"}
               size="sm"
-              onClick={() => onToggleTools?.(!toolsEnabled)}
+              onClick={() => {
+                const newState = !(toolsEnabled && mcpEnabled);
+                onToggleTools?.(newState);
+                onToggleMCP?.(newState);
+              }}
               className={cn(
                 "h-8 w-8 p-0 transition-colors",
-                toolsEnabled
+                (toolsEnabled && mcpEnabled)
                   ? "bg-blue-600 text-white hover:bg-blue-700"
                   : "text-gray-400 hover:text-white hover:bg-gray-800/50"
               )}
-              title={toolsEnabled ? "Disable Tool Calling" : "Enable Tool Calling"}
+              title={(toolsEnabled && mcpEnabled) ? "Disable Tool Calling" : "Enable Tool Calling"}
             >
               <Wrench className="w-4 h-4" />
-            </Button>
-
-            <Button
-              variant={mcpEnabled ? "default" : "ghost"}
-              size="sm"
-              onClick={() => onToggleMCP?.(!mcpEnabled)}
-              className={cn(
-                "h-8 w-8 p-0 transition-colors",
-                mcpEnabled
-                  ? "bg-green-600 text-white hover:bg-green-700"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800/50"
-              )}
-              title={mcpEnabled ? "Disable Internal Tools (MCP)" : "Enable Internal Tools (MCP)"}
-            >
-              <Settings className="w-4 h-4" />
             </Button>
 
             <Button

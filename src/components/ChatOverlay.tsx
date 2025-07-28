@@ -120,14 +120,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
     }, 100);
   };
 
-  // Check if user is at bottom of scroll
-  const checkScrollPosition = () => {
-    if (!scrollContainerRef.current) return;
 
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
-    setShowScrollToBottom(!isAtBottom && messages.length > 0);
-  };
 
   // Auto-scroll to bottom when messages change (only if user was already at bottom)
   useEffect(() => {
@@ -152,20 +145,48 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
         scrollToBottomOnComplete();
       }
     }
-  }, [messages.length, messages[messages.length - 1]?.content]);
+  }, [messages]);
+
+  // Auto-scroll during streaming (when message content changes)
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage && lastMessage.role === 'assistant' && !lastMessage.isThinking) {
+        // Check if user is at bottom before scrolling during streaming
+        if (!scrollContainerRef.current) return;
+
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+        const wasAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+
+        if (wasAtBottom) {
+          setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          }, 10); // Faster scroll during streaming
+        }
+      }
+    }
+  }, [messages]);
 
   // Add scroll listener
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) return;
 
-    scrollContainer.addEventListener('scroll', checkScrollPosition);
+    const handleScroll = () => {
+      if (!scrollContainerRef.current) return;
+
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
+      setShowScrollToBottom(!isAtBottom && messages.length > 0);
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll);
 
     // Initial check
-    checkScrollPosition();
+    handleScroll();
 
     return () => {
-      scrollContainer.removeEventListener('scroll', checkScrollPosition);
+      scrollContainer.removeEventListener('scroll', handleScroll);
     };
   }, [messages.length]);
 

@@ -8,13 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { ToggleSwitch } from '../ui/toggle-switch';
 import { Textarea } from '../ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
-import { settingsService, type AppSettings, type ColorSettings } from '../../services/settingsService';
+import { settingsService, type AppSettings } from '../../services/settingsService';
 import { MemoryManagement } from '../MemoryManagement';
 import KnowledgeBaseSettings from '../KnowledgeBaseSettings';
 import { mcpService, type MCPServer } from '../../services/mcpService';
 import { PromptsContent } from '../PromptsContent';
 import { ApiKeySettings } from '../ApiKeySettings';
-import { Plus, Trash2, Server, Zap, Edit, FileText, Palette, RotateCcw, X, Key, Keyboard, MessageSquare, Terminal, Brain, Database, Settings } from 'lucide-react';
+import { Plus, Trash2, Server, FileText, Palette, RotateCcw, X, Key, Keyboard, MessageSquare, Terminal, Brain, Database, Settings } from 'lucide-react';
 import { ColorPicker } from '../ui/color-picker';
 import { ThemeSelector } from '../ui/theme-selector';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -48,7 +48,6 @@ const sidebarItems: SidebarItem[] = [
 export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps) {
   // Copy all state from SettingsOverlay
   const [activeTab, setActiveTab] = useState('api-keys');
-  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [formData, setFormData] = useState<AppSettings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -58,8 +57,6 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
   const {
     customColors,
     setCustomColors,
-    useCustomColors,
-    setUseCustomColors,
     resetToDefaults,
     selectedThemePreset,
     setSelectedThemePreset,
@@ -110,7 +107,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
   const loadMcpJson = async () => {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
-        const jsonData = await window.electronAPI.loadMCPServers();
+        const jsonData = await window.electronAPI.getMCPServers();
         setMcpJsonContent(JSON.stringify(jsonData, null, 2));
         setShowMcpJsonEditor(true);
       }
@@ -189,7 +186,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
   // Internal Commands functions
   const loadInternalCommandsSettings = async () => {
     try {
-      const currentSettings = await settingsService.getSettings();
+      const currentSettings = settingsService.getSettings();
       if (currentSettings?.internalCommands) {
         setInternalCommandsEnabled(currentSettings.internalCommands.enabled || false);
         setAllowedDirectories(currentSettings.internalCommands.allowedDirectories || []);
@@ -209,7 +206,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
   const saveInternalCommandsSettings = async () => {
     try {
-      const currentSettings = await settingsService.getSettings();
+      const currentSettings = settingsService.getSettings();
       const updatedSettings = {
         ...currentSettings,
         internalCommands: {
@@ -229,9 +226,9 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
     }
   };
 
-  const saveInternalCommandsSettingsWithCommands = async (commands: Record<string, boolean>) => {
+  const saveInternalCommandsSettingsWithCommands = async (commands: { terminal: boolean; filesystem: boolean; textEditing: boolean; system: boolean }) => {
     try {
-      const currentSettings = await settingsService.getSettings();
+      const currentSettings = settingsService.getSettings();
       const updatedSettings = {
         ...currentSettings,
         internalCommands: {
@@ -348,7 +345,6 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       if (success && apiKeySaveSuccess) {
         console.log('🔄 Settings and API keys saved successfully');
 
-        setSettings(formData);
         setHasChanges(false);
 
         // Trigger model refresh for all components by dispatching a custom event
@@ -382,7 +378,10 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
             }
 
             console.log('Notifying theme change with colors:', colorsToApply);
-            window.electronAPI.notifyThemeChange(colorsToApply);
+            window.electronAPI.notifyThemeChange({
+              customColors: colorsToApply,
+              useCustomColors: currentMode === 'custom'
+            });
           }
         }
 
@@ -411,8 +410,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const currentSettings = await settingsService.getSettings();
-        setSettings(currentSettings);
+        const currentSettings = settingsService.getSettings();
         setFormData(currentSettings);
       } catch (error) {
         console.error('Failed to load settings:', error);
@@ -587,7 +585,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-medium mb-4">Prompts Management</h3>
-                <PromptsContent />
+                <PromptsContent onPromptSelect={() => {}} />
               </div>
             </div>
           )}
@@ -1034,14 +1032,29 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>Theme</Label>
-                    <ThemeSelector />
+                    <ThemeSelector
+                      selectedThemeId={selectedThemePreset}
+                      onThemeSelect={(theme) => {
+                        setSelectedThemePreset(theme.id);
+                        setHasChanges(true);
+
+                        // Apply theme change immediately
+                        if (typeof window !== 'undefined' && window.electronAPI) {
+                          console.log('Applying theme preset change immediately:', theme.colors);
+                          window.electronAPI.notifyThemeChange({
+                            customColors: theme.colors,
+                            useCustomColors: false
+                          });
+                        }
+                      }}
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label>Color Mode</Label>
                     <Select
                       value={colorMode}
-                      onValueChange={(value) => {
+                      onValueChange={(value: 'preset' | 'custom') => {
                         setColorMode(value);
                         setHasChanges(true);
 
@@ -1055,7 +1068,10 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                             }
                           }
                           console.log('Applying theme change immediately:', colorsToApply);
-                          window.electronAPI.notifyThemeChange(colorsToApply);
+                          window.electronAPI.notifyThemeChange({
+                            customColors: colorsToApply,
+                            useCustomColors: value === 'custom'
+                          });
                         }
                       }}
                     >
@@ -1075,7 +1091,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                         <div className="space-y-2">
                           <Label>Background</Label>
                           <ColorPicker
-                            color={customColors.background}
+                            value={customColors.background}
                             onChange={(color) => {
                               const newColors = { ...customColors, background: color };
                               setCustomColors(newColors);
@@ -1084,7 +1100,10 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
                                 console.log('Applying background color change immediately:', newColors);
-                                window.electronAPI.notifyThemeChange(newColors);
+                                window.electronAPI.notifyThemeChange({
+                                  customColors: newColors,
+                                  useCustomColors: true
+                                });
                               }
                             }}
                           />
@@ -1092,7 +1111,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                         <div className="space-y-2">
                           <Label>Foreground</Label>
                           <ColorPicker
-                            color={customColors.foreground}
+                            value={customColors.foreground}
                             onChange={(color) => {
                               const newColors = { ...customColors, foreground: color };
                               setCustomColors(newColors);
@@ -1101,7 +1120,10 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
                                 console.log('Applying foreground color change immediately:', newColors);
-                                window.electronAPI.notifyThemeChange(newColors);
+                                window.electronAPI.notifyThemeChange({
+                                  customColors: newColors,
+                                  useCustomColors: true
+                                });
                               }
                             }}
                           />
@@ -1109,7 +1131,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                         <div className="space-y-2">
                           <Label>Primary</Label>
                           <ColorPicker
-                            color={customColors.primary}
+                            value={customColors.primary}
                             onChange={(color) => {
                               const newColors = { ...customColors, primary: color };
                               setCustomColors(newColors);
@@ -1118,7 +1140,10 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
                                 console.log('Applying primary color change immediately:', newColors);
-                                window.electronAPI.notifyThemeChange(newColors);
+                                window.electronAPI.notifyThemeChange({
+                                  customColors: newColors,
+                                  useCustomColors: true
+                                });
                               }
                             }}
                           />
@@ -1126,7 +1151,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                         <div className="space-y-2">
                           <Label>Secondary</Label>
                           <ColorPicker
-                            color={customColors.secondary}
+                            value={customColors.secondary}
                             onChange={(color) => {
                               const newColors = { ...customColors, secondary: color };
                               setCustomColors(newColors);
@@ -1135,7 +1160,10 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
                                 console.log('Applying secondary color change immediately:', newColors);
-                                window.electronAPI.notifyThemeChange(newColors);
+                                window.electronAPI.notifyThemeChange({
+                                  customColors: newColors,
+                                  useCustomColors: true
+                                });
                               }
                             }}
                           />

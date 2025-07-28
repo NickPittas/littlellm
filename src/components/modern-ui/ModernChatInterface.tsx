@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { LeftSidebar } from './LeftSidebar';
 import { TopHeader } from './TopHeader';
 import { MainChatArea } from './MainChatArea';
@@ -9,6 +9,7 @@ import { RightPanel } from './RightPanel';
 import { SettingsModal } from './SettingsModal';
 import { ChatHistoryPanel } from './ChatHistoryPanel';
 import { FloatingProviderSelector } from './FloatingProviderSelector';
+import { AttachmentPreview } from '../AttachmentPreview';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
@@ -33,6 +34,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   const [selectedModel, setSelectedModel] = useState('gemma3:gpu');
   const [selectedProvider, setSelectedProvider] = useState('ollama');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [activePanel, setActivePanel] = useState('');
@@ -77,8 +79,16 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   const [mcpEnabled, setMcpEnabled] = useState(false);
   const [knowledgeBaseEnabled, setKnowledgeBaseEnabled] = useState(false);
 
+  // Handle settings updates
+  const updateSettings = useCallback((newSettings: Partial<ChatSettings>) => {
+    const updatedSettings = { ...settings, ...newSettings };
+    setSettings(updatedSettings);
+    settingsService.updateChatSettingsInMemory(updatedSettings);
+    settingsService.saveSettingsToDisk();
+  }, [settings]);
+
   // Load models for a specific provider
-  const loadModelsForProvider = async (providerId: string) => {
+  const loadModelsForProvider = useCallback(async (providerId: string) => {
     try {
       console.log('Loading models for provider:', providerId);
       setAvailableModels([]); // Clear current models while loading
@@ -150,13 +160,13 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         setMessages(prev => [...prev, errorMessage]);
       }
     }
-  };
+  }, [messages.length, selectedModel, updateSettings]);
 
   // Load settings on mount
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const savedSettings = await settingsService.getChatSettings();
+        const savedSettings = settingsService.getChatSettings();
         setSettings(savedSettings);
         setSelectedModel(savedSettings.model || 'gemma3:gpu');
         setSelectedProvider(savedSettings.provider || 'ollama');
@@ -172,7 +182,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
     loadSettings();
     loadPremadePrompts();
-  }, []); // Remove the dependency to prevent infinite loop
+  }, [loadModelsForProvider]); // Include the dependency
 
   // Handle sidebar item clicks
   const handleSidebarItemClick = (itemId: string) => {
@@ -212,8 +222,11 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
 
   // Handle message sending - cloned from VoilaInterface
-  const handleSendMessage = async (message: string, attachedFiles: File[] = []) => {
+  const handleSendMessage = async (message: string, providedFiles?: File[]) => {
     if (!message.trim()) return;
+
+    // Use provided files or current attached files
+    const filesToSend = providedFiles || attachedFiles;
 
     // Ensure we have a valid model selected
     if (!selectedModel) {
@@ -240,6 +253,10 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
+
+    // Clear input and attached files after sending
+    setInputValue('');
+    setAttachedFiles([]);
 
     // Sync user message to chat window (but don't auto-open it since we're using the modern interface)
     if (typeof window !== 'undefined' && window.electronAPI) {
@@ -284,7 +301,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
       const response = await chatService.sendMessage(
         messageContent,
-        attachedFiles,
+        filesToSend,
         currentSettings,
         conversationHistory,
         (chunk: string) => {
@@ -402,79 +419,130 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     }
   };
 
-  // Handle file upload
+  // Handle file upload - simplified to match original behavior
   const handleFileUpload = async (files: FileList) => {
-    console.log('Files uploaded:', files);
+    console.log('Files uploaded:', Array.from(files).map(f => f.name));
 
+    // Add files to attached files list - parsing will be handled by chatService
+    const newFiles = Array.from(files);
+    setAttachedFiles(prev => [...prev, ...newFiles]);
+  };
+
+  // Handle removing attached files
+  const handleRemoveFile = (index: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Handle model change with persistence
+  const handleModelChange = async (newModel: string) => {
+    setSelectedModel(newModel);
+    console.log('Model changed to:', newModel);
+
+    // Save to settings
     try {
-      // Validate file types and sizes
-      const maxFileSize = 10 * 1024 * 1024; // 10MB
-      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'text/plain', 'application/pdf'];
-
-      for (const file of Array.from(files)) {
-        if (file.size > maxFileSize) {
-          throw new Error(`File "${file.name}" is too large. Maximum size is 10MB.`);
-        }
-
-        if (!allowedTypes.includes(file.type)) {
-          throw new Error(`File type "${file.type}" is not supported. Please use images, text files, or PDFs.`);
-        }
-      }
-
-      // Process files (implement actual upload logic here)
-      console.log('Files validated successfully');
-
-    } catch (error) {
-      console.error('File upload error:', error);
-
-      // Add error message to chat
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        content: `📁 **File Upload Error**: ${error instanceof Error ? error.message : 'Failed to upload files. Please try again.'}`,
-        role: 'assistant',
-        timestamp: new Date()
+      const updatedSettings = {
+        ...settings,
+        model: newModel
       };
 
-      setMessages(prev => [...prev, errorMessage]);
+      await settingsService.updateSettings({ chat: updatedSettings });
+      setSettings(updatedSettings);
+      console.log('Model saved to settings:', newModel);
+    } catch (error) {
+      console.error('Failed to save model to settings:', error);
     }
   };
 
-  // Handle screenshot
-  const handleScreenshot = async () => {
+
+  // Test function for screenshot (can be called from console)
+  (window as unknown as { testScreenshot: () => Promise<{ success: boolean; dataURL?: string; error?: string }> }).testScreenshot = async () => {
+    console.log('🧪 Testing screenshot functionality...');
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
         const result = await window.electronAPI.takeScreenshot();
+        console.log('🧪 Test result:', result);
+        return result;
+      } else {
+        console.log('🧪 electronAPI not available');
+        return { success: false, error: 'electronAPI not available' };
+      }
+    } catch (error) {
+      console.error('🧪 Test failed:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  };
+
+  // Handle screenshot - enhanced with better feedback
+  const handleScreenshot = async () => {
+    try {
+      console.log('📸 Screenshot button clicked');
+
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        console.log('📸 Calling electronAPI.takeScreenshot...');
+        const result = await window.electronAPI.takeScreenshot();
+        console.log('📸 Screenshot result:', { success: result.success, hasDataURL: !!result.dataURL, error: result.error });
+
         if (typeof result === 'object' && result.success && result.dataURL) {
-          console.log('Screenshot taken successfully');
-          // Handle screenshot data
+          console.log('📸 Converting screenshot to file...');
+          const response = await fetch(result.dataURL);
+          const blob = await response.blob();
+          const file = new File([blob], `screenshot-${Date.now()}.png`, { type: 'image/png' });
+
+          console.log(`📸 Screenshot file created: ${file.name} (${Math.round(file.size / 1024)}KB)`);
+
+          // Auto-attach screenshot to chat
+          setAttachedFiles(prev => [...prev, file]);
+          console.log('✅ Screenshot captured and attached to chat');
+
+          // Show a brief success indicator
+          const successMsg = document.createElement('div');
+          successMsg.textContent = '📸 Screenshot captured!';
+          successMsg.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #10b981;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            z-index: 10000;
+            font-size: 14px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          `;
+          document.body.appendChild(successMsg);
+          setTimeout(() => document.body.removeChild(successMsg), 2000);
+
         } else {
-          throw new Error('Screenshot capture failed');
+          throw new Error(result.error || 'Screenshot capture failed');
         }
       } else {
         throw new Error('Screenshot functionality is not available in this environment');
       }
     } catch (error) {
-      console.error('Failed to take screenshot:', error);
+      console.error('❌ Failed to take screenshot:', error);
 
-      // Add error message to chat
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        content: `📸 **Screenshot Error**: ${error instanceof Error ? error.message : 'Failed to take screenshot. Please try again.'}`,
-        role: 'assistant',
-        timestamp: new Date()
-      };
-
-      setMessages(prev => [...prev, errorMessage]);
+      // Show error notification
+      const errorMsg = document.createElement('div');
+      errorMsg.textContent = `❌ Screenshot failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      errorMsg.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #ef4444;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        z-index: 10000;
+        font-size: 14px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        max-width: 300px;
+      `;
+      document.body.appendChild(errorMsg);
+      setTimeout(() => document.body.removeChild(errorMsg), 4000);
     }
   };
 
-  // Handle settings updates
-  const updateSettings = (newSettings: Partial<ChatSettings>) => {
-    const updatedSettings = { ...settings, ...newSettings };
-    setSettings(updatedSettings);
-    settingsService.updateChatSettingsInMemory(updatedSettings);
-    settingsService.saveSettingsToDisk();
-  };
+
 
   // Handle toggle states
   const handleToggleTools = (enabled: boolean) => {
@@ -551,77 +619,58 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
         if (!promptsContent) {
           console.error('🎯 Failed to read prompts file from any path');
-          // Fallback to hardcoded prompts
-          const fallbackPrompts = [
-            { title: 'AI Doctor', content: 'I want you to act as an AI assisted doctor. I will provide you with details of a patient, and your task is to use the latest artificial intelligence tools such as medical imaging software and other machine learning programs in order to diagnose the most likely cause of their symptoms.' },
-            { title: 'Writing Tutor', content: 'I want you to act as an AI writing tutor. I will provide you with a student who needs help improving their writing and your task is to use artificial intelligence tools, such as natural language processing, to give the student feedback on how they can improve their composition.' },
-            { title: 'Academician', content: 'I want you to act as an academician. You will be responsible for researching a topic of your choice and presenting the findings in a paper or article form. Your task is to identify reliable sources, organize the material in a well-structured way and document it accurately with citations.' },
-            { title: 'Accountant', content: 'I want you to act as an accountant and come up with creative ways to manage finances. You\'ll need to consider budgeting, investment strategies and risk management when creating a financial plan for your client.' },
-            { title: 'Advertiser', content: 'I want you to act as an advertiser. You will create a campaign to promote a product or service of your choice. You will choose a target audience, develop key messages and slogans, select the media channels for promotion, and decide on any additional activities needed to reach your goals.' },
-            { title: 'Travel Guide', content: 'I want you to act as a travel guide. I will write you my location and you will suggest a place to visit near my location. In some cases, I will also give you the type of places I will visit.' },
-            { title: 'Tech Writer', content: 'I want you to act as a tech writer. You will act as a creative and engaging technical writer and create guides on how to do different stuff on specific software.' },
-            { title: 'UX/UI Developer', content: 'I want you to act as a UX/UI developer. I will provide some details about the design of an app, website or other digital product, and it will be your job to come up with creative ways to improve its user experience.' },
-            { title: 'Storyteller', content: 'I want you to act as a storyteller. You will come up with entertaining stories that are engaging, imaginative and captivating for the audience.' },
-            { title: 'Stand-up Comedian', content: 'I want you to act as a stand-up comedian. I will provide you with some topics related to current events and you will use your wit, creativity, and observational skills to create a routine based on those topics.' }
-          ];
-
-          setPremadePrompts(fallbackPrompts);
-          console.log('🎯 Using fallback prompts:', fallbackPrompts.length);
+          setPremadePrompts([]);
           return;
         }
 
-        // Parse prompts from the content
-        console.log('🎯 Parsing prompts from content...');
+        // Parse prompts from the structured content (title: "..." prompt: "...")
+        console.log('🎯 Parsing prompts from structured content...');
         const lines = promptsContent.split('\n');
         const prompts: Array<{title: string, content: string}> = [];
 
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (!trimmedLine) continue;
+        let currentTitle = '';
+        let currentPrompt = '';
 
-          if (trimmedLine.startsWith('I want you to act as')) {
-            // Extract role from "I want you to act as a/an [role]"
-            const match = trimmedLine.match(/I want you to act as (?:a |an )?([^.]+)\./);
-            if (match) {
-              const role = match[1].trim();
-              const title = role.charAt(0).toUpperCase() + role.slice(1);
-              prompts.push({
-                title,
-                content: trimmedLine
-              });
-              console.log(`🎯 Found prompt: ${title}`);
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i]?.trim();
+
+          // Skip empty lines
+          if (!line) continue;
+
+          // Check for title line (with or without quotes)
+          if (line.startsWith('title')) {
+            // Extract title - handle both "title: Title" and "title: "Title""
+            let titleMatch = line.match(/title:?\s*"(.+)"/); // With quotes
+            if (!titleMatch) {
+              titleMatch = line.match(/title:?\s*(.+)/); // Without quotes
             }
-          } else if (trimmedLine.startsWith('You are')) {
-            // Extract role from "You are [role]"
-            const match = trimmedLine.match(/You are (?:a |an )?([^.]+)\./);
-            if (match) {
-              const role = match[1].trim();
-              const title = role.charAt(0).toUpperCase() + role.slice(1);
-              prompts.push({
-                title,
-                content: trimmedLine
-              });
-              console.log(`🎯 Found prompt: ${title}`);
+            if (titleMatch) {
+              currentTitle = titleMatch[1].trim();
             }
-          } else if (trimmedLine.startsWith('Your task')) {
-            // Extract task type
-            const title = `Task Specialist ${prompts.filter(p => p.title.startsWith('Task Specialist')).length + 1}`;
-            prompts.push({
-              title,
-              content: trimmedLine
-            });
-            console.log(`🎯 Found prompt: ${title}`);
-          } else if (trimmedLine.startsWith('Imagine you are')) {
-            // Extract role from "Imagine you are [role]"
-            const match = trimmedLine.match(/Imagine you are (?:a |an )?([^.]+)\./);
-            if (match) {
-              const role = match[1].trim();
-              const title = role.charAt(0).toUpperCase() + role.slice(1);
-              prompts.push({
-                title,
-                content: trimmedLine
-              });
-              console.log(`🎯 Found prompt: ${title}`);
+          }
+
+          // Check for prompt line (with or without quotes)
+          else if (line.startsWith('prompt:')) {
+            // Extract prompt - handle both formats
+            let promptMatch = line.match(/prompt:\s*"(.+)"/); // With quotes
+            if (!promptMatch) {
+              promptMatch = line.match(/prompt:\s*(.+)/); // Without quotes
+            }
+            if (promptMatch) {
+              currentPrompt = promptMatch[1].trim();
+
+              // If we have both title and prompt, add to prompts array
+              if (currentTitle && currentPrompt) {
+                prompts.push({
+                  title: currentTitle,
+                  content: currentPrompt
+                });
+                console.log(`🎯 Found prompt: ${currentTitle}`);
+
+                // Reset for next prompt
+                currentTitle = '';
+                currentPrompt = '';
+              }
             }
           }
         }
@@ -633,49 +682,82 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       }
     } catch (error) {
       console.error('🎯 Failed to load premade prompts:', error);
-
-      // Fallback to hardcoded prompts on error
-      const fallbackPrompts = [
-        { title: 'AI Doctor', content: 'I want you to act as an AI assisted doctor. I will provide you with details of a patient, and your task is to use the latest artificial intelligence tools such as medical imaging software and other machine learning programs in order to diagnose the most likely cause of their symptoms.' },
-        { title: 'Writing Tutor', content: 'I want you to act as an AI writing tutor. I will provide you with a student who needs help improving their writing and your task is to use artificial intelligence tools, such as natural language processing, to give the student feedback on how they can improve their composition.' },
-        { title: 'Travel Guide', content: 'I want you to act as a travel guide. I will write you my location and you will suggest a place to visit near my location. In some cases, I will also give you the type of places I will visit.' },
-        { title: 'Tech Writer', content: 'I want you to act as a tech writer. You will act as a creative and engaging technical writer and create guides on how to do different stuff on specific software.' },
-        { title: 'UX/UI Developer', content: 'I want you to act as a UX/UI developer. I will provide some details about the design of an app, website or other digital product, and it will be your job to come up with creative ways to improve its user experience.' }
-      ];
-
-      setPremadePrompts(fallbackPrompts);
-      console.log('🎯 Using fallback prompts due to error:', fallbackPrompts.length);
+      setPremadePrompts([]);
     }
   };
 
   // Handle model instructions editing
   const handleEditModelInstructions = () => {
-    setCustomSystemPrompt(settings.systemPrompt || '');
+    setCustomSystemPrompt('');
     setModelInstructionsOpen(true);
   };
 
-  // Save model instructions
-  const handleSaveModelInstructions = async () => {
+  // Apply custom prompt as system prompt (enhances existing system prompt)
+  const handleApplyModelInstructions = async () => {
+    if (customSystemPrompt.trim()) {
+      try {
+        // Combine with existing system prompt if any
+        const existingSystemPrompt = settings.systemPrompt || '';
+        const combinedSystemPrompt = existingSystemPrompt
+          ? `${existingSystemPrompt}\n\n## Additional Instructions\n${customSystemPrompt.trim()}`
+          : customSystemPrompt.trim();
+
+        const updatedSettings = {
+          ...settings,
+          systemPrompt: combinedSystemPrompt
+        };
+
+        await settingsService.updateSettings({ chat: updatedSettings });
+        setSettings(updatedSettings);
+        setModelInstructionsOpen(false);
+        setCustomSystemPrompt('');
+
+        console.log('Custom prompt applied as system prompt:', combinedSystemPrompt.substring(0, 100) + '...');
+      } catch (error) {
+        console.error('Failed to apply custom prompt:', error);
+      }
+    }
+  };
+
+  // Clear system prompt
+  const handleClearSystemPrompt = async () => {
     try {
       const updatedSettings = {
         ...settings,
-        systemPrompt: customSystemPrompt
+        systemPrompt: ''
       };
 
       await settingsService.updateSettings({ chat: updatedSettings });
       setSettings(updatedSettings);
-      setModelInstructionsOpen(false);
 
-      console.log('Model instructions saved successfully');
+      console.log('System prompt cleared');
     } catch (error) {
-      console.error('Failed to save model instructions:', error);
+      console.error('Failed to clear system prompt:', error);
     }
   };
 
-  // Handle quick prompt selection
-  const handleQuickPromptSelect = (prompt: {title: string, content: string}) => {
-    setInputValue(prompt.content);
-    setQuickPromptsOpen(false);
+  // Handle quick prompt selection (apply as system prompt)
+  const handleQuickPromptSelect = async (prompt: {title: string, content: string}) => {
+    try {
+      // Combine with existing system prompt if any
+      const existingSystemPrompt = settings.systemPrompt || '';
+      const combinedSystemPrompt = existingSystemPrompt
+        ? `${existingSystemPrompt}\n\n## ${prompt.title} Mode\n${prompt.content}`
+        : prompt.content;
+
+      const updatedSettings = {
+        ...settings,
+        systemPrompt: combinedSystemPrompt
+      };
+
+      await settingsService.updateSettings({ chat: updatedSettings });
+      setSettings(updatedSettings);
+      setQuickPromptsOpen(false);
+
+      console.log(`Quick prompt "${prompt.title}" applied as system prompt:`, combinedSystemPrompt.substring(0, 100) + '...');
+    } catch (error) {
+      console.error('Failed to apply quick prompt:', error);
+    }
   };
 
 
@@ -707,8 +789,23 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     // Clear messages
     setMessages([]);
 
-    // Clear input
+    // Clear input and attached files
     setInputValue('');
+    setAttachedFiles([]);
+
+    // Reset system prompt to empty for new chat
+    try {
+      const updatedSettings = {
+        ...settings,
+        systemPrompt: ''
+      };
+
+      await settingsService.updateSettings({ chat: updatedSettings });
+      setSettings(updatedSettings);
+      console.log('System prompt reset for new chat');
+    } catch (error) {
+      console.error('Failed to reset system prompt:', error);
+    }
 
     // Clear the current conversation ID
     conversationHistoryService.setCurrentConversationId(null);
@@ -808,6 +905,16 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           className="flex-1"
         />
 
+        {/* Attachment Preview */}
+        {attachedFiles.length > 0 && (
+          <div className="px-4 pb-2">
+            <AttachmentPreview
+              files={attachedFiles}
+              onRemoveFile={handleRemoveFile}
+            />
+          </div>
+        )}
+
         {/* Bottom Input */}
         <BottomInputArea
           value={inputValue}
@@ -816,7 +923,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           onFileUpload={handleFileUpload}
           onScreenshot={handleScreenshot}
           selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
+          onModelChange={handleModelChange}
           availableModels={availableModels}
           selectedProvider={selectedProvider}
           isLoading={isLoading}
@@ -878,33 +985,45 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       <Dialog open={modelInstructionsOpen} onOpenChange={setModelInstructionsOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Edit Model Instructions</DialogTitle>
+            <DialogTitle>Create Custom Prompt</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="system-prompt">System Prompt</Label>
+              <Label htmlFor="system-prompt">Custom Prompt</Label>
               <Textarea
                 id="system-prompt"
                 value={customSystemPrompt}
                 onChange={(e) => setCustomSystemPrompt(e.target.value)}
-                placeholder="Enter custom instructions for the AI model..."
+                placeholder="Enter your custom prompt here..."
                 rows={8}
                 className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
               />
               <p className="text-sm text-muted-foreground">
-                This prompt will be sent with every conversation to set the AI behavior and personality.
+                This prompt will be applied as a system prompt to enhance the AI&apos;s behavior. It will be combined with existing system prompts and tool instructions.
               </p>
             </div>
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-between">
               <Button
                 variant="outline"
-                onClick={() => setModelInstructionsOpen(false)}
+                onClick={handleClearSystemPrompt}
+                className="text-red-400 hover:text-red-300"
               >
-                Cancel
+                Clear System Prompt
               </Button>
-              <Button onClick={handleSaveModelInstructions}>
-                Save Instructions
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setModelInstructionsOpen(false);
+                    setCustomSystemPrompt('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleApplyModelInstructions}>
+                  Apply Prompt
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>
@@ -918,7 +1037,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Select a pre-made prompt to quickly set up the AI for specific tasks.
+              Select a pre-made prompt to enhance the AI&apos;s behavior as a system prompt. These will be combined with existing system prompts and tool instructions.
             </p>
             <div className="max-h-96 overflow-y-auto space-y-2">
               {premadePrompts.map((prompt, index) => (
@@ -939,7 +1058,14 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
                 </div>
               )}
             </div>
-            <div className="flex justify-end">
+            <div className="flex justify-between">
+              <Button
+                variant="outline"
+                onClick={handleClearSystemPrompt}
+                className="text-red-400 hover:text-red-300"
+              >
+                Clear System Prompt
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => setQuickPromptsOpen(false)}

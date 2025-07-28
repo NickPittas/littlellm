@@ -1,13 +1,32 @@
 import { llmService, type LLMSettings } from './llmService';
 import { sessionService } from './sessionService';
 import { settingsService } from './settingsService';
-import { documentParserService } from './DocumentParserService';
 import { debugLogger } from './debugLogger';
 
-// Conditionally import secureApiKeyService only in browser environment
-let secureApiKeyService: any = null;
+// Conditionally import services only in browser environment
+let secureApiKeyService: {
+  getApiKey: (provider: string) => string | null;
+  getApiKeyData: (provider: string) => { apiKey: string } | null;
+  forceReloadApiKeys: () => Promise<void>;
+} | null = null;
+let documentParserService: {
+  parseDocument: (file: File) => Promise<{ text: string; metadata?: { format?: string; success?: boolean; error?: string; sheets?: string[]; eventCount?: number; title?: string; [key: string]: unknown } }>;
+  getStats: () => { totalAttempts: number; successfulParses: number; failedParses: number; fallbacksUsed: number; averageProcessingTime: number; errorsByType: Record<string, number> };
+  resetStats: () => void;
+} | null = null;
+
 if (typeof window !== 'undefined') {
-  secureApiKeyService = require('./secureApiKeyService').secureApiKeyService;
+  import('./secureApiKeyService').then(module => {
+    secureApiKeyService = module.secureApiKeyService;
+  }).catch(() => {
+    console.warn('secureApiKeyService not available');
+  });
+
+  import('./DocumentParserService').then(module => {
+    documentParserService = module.documentParserService;
+  }).catch(error => {
+    console.warn('DocumentParserService not available in browser environment:', error);
+  });
 }
 
 // Type for content array items used in vision API
@@ -127,12 +146,48 @@ export const chatService = {
         reader.readAsText(file);
       });
     } else if (file.type === 'application/pdf') {
-      // Skip PDF text extraction - let providers handle PDFs directly
-      console.log('Skipping PDF text extraction, letting provider handle directly:', file.name);
-      return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: PDF will be processed by the AI provider directly.`;
+      // Parse PDF using Electron main process (same working method as knowledge base)
+      try {
+        console.log('📄 Parsing PDF file using Electron main process:', file.name);
+
+        // Check if we're in Electron environment with API access
+        if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.parsePdfFile) {
+          const fileBuffer = await file.arrayBuffer();
+          const result = await window.electronAPI.parsePdfFile(fileBuffer, file.name);
+
+          console.log('📄 PDF parsing result:', { success: result.success, textLength: result.text?.length, error: result.error });
+
+          if (result.success && result.text) {
+            console.log(`📄 PDF content preview: "${result.text.substring(0, 200)}"`);
+
+            // Check if this is actually the fallback error message
+            if (result.text.includes('PDF parsing module could not be loaded') ||
+                result.text.includes('PDF text extraction is not available')) {
+              console.error('📄 PDF parsing failed - received fallback message');
+              return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n❌ Parsing Status: Failed\nError: PDF parsing module not available\n\nThe PDF file was uploaded but text extraction failed. You can:\n• Describe the content you'd like me to analyze\n• Copy and paste text from the PDF\n• Convert the PDF to a text file and upload that instead`;
+            }
+
+            // Return the actual parsed text content
+            return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n✅ Parsing Status: Success\nPages: ${result.metadata?.pages || 1}\n\nContent:\n${result.text}`;
+          } else {
+            console.error('📄 PDF parsing failed:', result.error);
+            return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n❌ Parsing Status: Failed\nError: ${result.error || 'Unknown error'}\n\nThe PDF file was uploaded but text extraction failed. You can:\n• Describe the content you'd like me to analyze\n• Copy and paste text from the PDF\n• Convert the PDF to a text file and upload that instead`;
+          }
+        } else {
+          // Fallback if electronAPI is not available
+          console.log('📄 ElectronAPI not available, using fallback for PDF:', file.name);
+          return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: PDF parsing not available in this environment.\n\nPlease describe what you'd like me to analyze about this PDF.`;
+        }
+      } catch (error) {
+        console.error('📄 PDF parsing error:', error);
+        return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n❌ Parsing Status: Error\nError: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease describe what you'd like me to analyze about this PDF.`;
+      }
     } else if (supportedFormats.includes(fileExtension)) {
       // Use DocumentParserService for supported document formats
       try {
+        if (!documentParserService) {
+          throw new Error('DocumentParserService not available in this environment');
+        }
         console.log(`📄 Using DocumentParserService to parse: ${file.name}`);
         const parsedDocument = await documentParserService.parseDocument(file);
 
@@ -177,12 +232,17 @@ export const chatService = {
 
   // Get document parsing statistics
   getDocumentParsingStats() {
+    if (!documentParserService) {
+      return { totalAttempts: 0, successfulParses: 0, failedParses: 0, fallbacksUsed: 0, averageProcessingTime: 0, errorsByType: {} };
+    }
     return documentParserService.getStats();
   },
 
   // Reset document parsing statistics
   resetDocumentParsingStats() {
-    documentParserService.resetStats();
+    if (documentParserService) {
+      documentParserService.resetStats();
+    }
   },
 
   async sendMessage(
@@ -199,7 +259,7 @@ export const chatService = {
       message: message.substring(0, 100) + '...',
       provider: settings.provider,
       model: settings.model,
-      hasApiKey: !!settings.providers[settings.provider]?.apiKey,
+      hasApiKey: !!secureApiKeyService?.getApiKey(settings.provider),
       filesCount: files?.length || 0
     });
 
@@ -209,7 +269,7 @@ export const chatService = {
         message: message.substring(0, 100) + '...',
         provider: settings.provider,
         model: settings.model,
-        hasApiKey: !!settings.providers[settings.provider]?.apiKey,
+        hasApiKey: !!secureApiKeyService?.getApiKey(settings.provider),
         timestamp: new Date().toISOString()
       };
     }
@@ -354,20 +414,20 @@ export const chatService = {
               console.error('❌ Mistral file processing failed:', error);
               // Fallback to generic processing
               console.log('🔄 Falling back to generic processing');
-              messageContent = await this.processFilesGeneric(files, message, provider);
+              messageContent = await this.processFilesGeneric(files, augmentedMessage, provider);
             }
           } else {
             // Fallback to generic processing
             console.log('🔄 No Mistral provider or processFiles method, using generic processing');
-            messageContent = await this.processFilesGeneric(files, message, provider);
+            messageContent = await this.processFilesGeneric(files, augmentedMessage, provider);
           }
-        } else if (provider === 'openai' || provider === 'anthropic' || provider === 'gemini' || provider === 'deepseek' || provider === 'openrouter' || provider === 'replicate' || provider === 'requesty') {
-          messageContent = await this.processFilesGeneric(files, message, provider);
+        } else if (provider === 'openai' || provider === 'anthropic' || provider === 'gemini' || provider === 'deepseek' || provider === 'openrouter' || provider === 'replicate' || provider === 'requesty' || provider === 'n8n') {
+          messageContent = await this.processFilesGeneric(files, augmentedMessage, provider);
         } else if (provider === 'ollama') {
           // Ollama uses a different format with separate images array
           console.log('Using Ollama format');
 
-          let textContent = message || 'Please analyze the attached content.';
+          let textContent = augmentedMessage || 'Please analyze the attached content.';
           const images: string[] = [];
 
           for (const file of files) {
@@ -394,39 +454,11 @@ export const chatService = {
             images: images
           };
           console.log('Final Ollama message format:', { textLength: textContent.length, imageCount: images.length });
-        } else if (provider === 'n8n') {
-          // n8n webhook format
-          console.log('Using n8n webhook format');
-
-          let textContent = message || 'Please analyze the attached content.';
-          const images: string[] = [];
-
-          for (const file of files) {
-            if (file.type.startsWith('image/')) {
-              // Convert image to base64 data URL for n8n
-              console.log('Converting image for n8n:', file.name);
-              const base64 = await this.fileToBase64(file);
-              images.push(base64); // Keep full data URL for n8n
-              console.log('Added image to n8n format, base64 length:', base64.length);
-            } else {
-              // For all other files, extract text content
-              const extractedText = await this.extractTextFromFile(file);
-              textContent += `\n\n[File: ${file.name}]\n${extractedText}`;
-              console.log('Added text content, total length:', textContent.length);
-            }
-          }
-
-          // n8n expects a message format with images array (similar to Ollama but with full data URLs)
-          messageContent = {
-            text: textContent,
-            images: images
-          };
-          console.log('Final n8n message format:', { textLength: textContent.length, imageCount: images.length });
         } else {
           // For all other providers, use simple text format
           console.log('Using simple text format for provider:', provider);
 
-          let combinedText = message || 'Please analyze the attached content.';
+          let combinedText = augmentedMessage || 'Please analyze the attached content.';
 
           for (const file of files) {
             if (file.type.startsWith('image/')) {
@@ -470,7 +502,7 @@ export const chatService = {
         provider: settings.provider,
         model: settings.model,
         apiKey: apiKey,
-        baseUrl: apiKeyData?.baseUrl || providerSettings.baseUrl,
+        baseUrl: providerSettings.baseUrl,
         temperature: settings.temperature,
         maxTokens: settings.maxTokens,
         systemPrompt: settings.systemPrompt,
@@ -651,12 +683,12 @@ export const chatService = {
     const query = toolCall.arguments.query as string || 'web search';
 
     // Pattern 1: Look for structured search results with URLs
-    const urlPattern = /(?:https?:\/\/[^\s\)]+)/g;
+    const urlPattern = /(?:https?:\/\/[^\s)]+)/g;
     const urls = content.match(urlPattern) || [];
 
     // Pattern 2: Look for numbered search results
     const numberedResultPattern = /(\d+)\.\s*\*\*([^*]+)\*\*[^\n]*\n[^\n]*🔗\s*(https?:\/\/[^\s\n]+)/g;
-    let match;
+    let match: RegExpExecArray | null;
     while ((match = numberedResultPattern.exec(content)) !== null) {
       sources.push({
         type: 'web',
@@ -669,11 +701,11 @@ export const chatService = {
     // Pattern 3: Look for title and URL pairs
     const titleUrlPattern = /\*\*([^*]+)\*\*[^\n]*\n[^\n]*(?:🔗|URL:)\s*(https?:\/\/[^\s\n]+)/g;
     while ((match = titleUrlPattern.exec(content)) !== null) {
-      if (!sources.find(s => s.url === match[2])) { // Avoid duplicates
+      if (!sources.find(s => s.url === match![2])) { // Avoid duplicates
         sources.push({
           type: 'web',
-          title: match[1].trim(),
-          url: match[2],
+          title: match![1].trim(),
+          url: match![2],
           snippet: `Search result for: ${query}`
         });
       }
@@ -800,7 +832,7 @@ export const chatService = {
         provider: settings.provider,
         model: settings.model,
         apiKey: apiKey,
-        baseUrl: apiKeyData?.baseUrl || providerSettings?.baseUrl,
+        baseUrl: providerSettings?.baseUrl,
         temperature: settings.temperature,
         maxTokens: 100, // Use fewer tokens for testing
         systemPrompt: settings.systemPrompt,

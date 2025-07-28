@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMCPConnectionStatus: () => ipcRenderer.invoke('get-mcp-connection-status'),
   getMCPDetailedStatus: () => ipcRenderer.invoke('get-mcp-detailed-status'),
   getConnectedMCPServerIds: () => ipcRenderer.invoke('get-connected-mcp-server-ids'),
+  debugMCPTools: () => ipcRenderer.invoke('debug-mcp-tools'),
 
 
   // macOS MCP server troubleshooting
@@ -100,6 +101,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // File reading API
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
+
+  // PDF parsing for chat attachments
+  parsePdfFile: (fileBuffer: ArrayBuffer, fileName: string) => ipcRenderer.invoke('parse-pdf-file', fileBuffer, fileName),
 
   // Directory selection API
   selectDirectory: () => ipcRenderer.invoke('select-directory'),

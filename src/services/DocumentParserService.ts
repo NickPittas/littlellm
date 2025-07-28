@@ -119,6 +119,10 @@ export class DocumentParserService {
           result = await this.parsePowerPoint(file);
           break;
 
+        case '.pdf':
+          result = await this.parsePdf(file);
+          break;
+
         case '.txt':
           result = await this.parseTextFile(file);
           break;
@@ -501,6 +505,55 @@ export class DocumentParserService {
     console.log('📊 PowerPoint parsing not available, creating fallback document...');
     return await this.createFallbackDocument(file, 'PowerPoint parsing is not currently supported in browser environment. Please convert to PDF or extract text manually.');
   }
+
+  /**
+   * Parse PDF files (.pdf)
+   */
+  private async parsePdf(file: File): Promise<ParsedDocument> {
+    try {
+      console.log('📄 Parsing PDF file using Electron main process:', file.name);
+
+      // Check if we're in a browser environment with Electron API access
+      if (typeof window !== 'undefined' && (window as unknown as { electronAPI?: { parsePdfFile?: (buffer: ArrayBuffer, name: string) => Promise<{ success: boolean; text?: string; metadata?: { pages?: number; [key: string]: unknown }; error?: string }> } }).electronAPI?.parsePdfFile) {
+        const fileBuffer = await file.arrayBuffer();
+        const result = await (window as unknown as { electronAPI: { parsePdfFile: (buffer: ArrayBuffer, name: string) => Promise<{ success: boolean; text?: string; metadata?: { pages?: number; [key: string]: unknown }; error?: string }> } }).electronAPI.parsePdfFile(fileBuffer, file.name);
+
+        console.log('📄 PDF parsing result from Electron:', { success: result.success, textLength: result.text?.length });
+
+        if (result.success && result.text) {
+          // Check if this is actually the fallback error message
+          if (result.text.includes('PDF parsing module could not be loaded') ||
+              result.text.includes('PDF text extraction is not available')) {
+            console.error('📄 PDF parsing failed - received fallback message');
+            return await this.createFallbackDocument(file, 'PDF parsing module not available in Electron environment');
+          }
+
+          return {
+            text: result.text,
+            metadata: {
+              format: 'PDF',
+              title: file.name,
+              pages: result.metadata?.pages || 1,
+              success: true,
+              processingTime: Date.now() - Date.now() // Will be overridden by caller
+            }
+          };
+        } else {
+          console.error('📄 PDF parsing failed:', result.error);
+          return await this.createFallbackDocument(file, `PDF parsing failed: ${result.error || 'Unknown error'}`);
+        }
+      } else {
+        // Fallback if electronAPI is not available
+        console.log('📄 ElectronAPI not available for PDF parsing');
+        return await this.createFallbackDocument(file, 'PDF parsing not available in this environment. Please use the Electron app for PDF support.');
+      }
+    } catch (error) {
+      console.error('📄 PDF parsing error:', error);
+      return await this.createFallbackDocument(file, `PDF parsing error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+
 
 
 

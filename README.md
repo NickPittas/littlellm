@@ -1,4 +1,4 @@
-# LittleLLM v2.1.0 🤖💬
+# LittleLLM v3.1.0 🤖💬
 
 A powerful, cross-platform desktop AI chat application that provides seamless access to multiple AI providers with advanced features like MCP (Model Context Protocol) integration, tool calling, memory context, and enhanced vision support.
 
@@ -26,8 +26,10 @@ A powerful, cross-platform desktop AI chat application that provides seamless ac
 ### 🖼️ **Vision Support**
 - Send images directly to vision-capable models
 - Automatic image optimization (resize + compression)
+- **Enhanced Screenshot Capture**: Full-resolution screenshots with one click
 - Supports screenshots, photos, and documents
 - OpenRouter vision API integration
+- macOS screen recording permission handling
 
 ### ⚡ **Quick Access**
 - Global keyboard shortcut (Ctrl+Shift+L)

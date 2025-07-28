@@ -4,6 +4,26 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { documentParserService } from './DocumentParserService.js';
 
+interface KnowledgeBaseRecord {
+  id: string;
+  text: string;
+  vector: number[];
+  source: string;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+interface ExportData {
+  version: string;
+  exportDate: string;
+  records: KnowledgeBaseRecord[];
+  metadata: {
+    totalRecords: number;
+    totalDocuments: number;
+    exportSize: number;
+  };
+}
+
 /**
  * Manages the local knowledge base for the application.
  * This service handles the creation, management, and querying of a local vector database,
@@ -66,26 +86,37 @@ export class KnowledgeBaseService {
   /**
    * Safely imports pdf-parse module with comprehensive error handling
    */
-  private async importPdfParseSafely(): Promise<(buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>> {
+  public async importPdfParseSafely(): Promise<(buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>> {
     try {
-      // Try to import pdf-parse with a timeout to prevent hanging
-      const importPromise = import('pdf-parse');
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('PDF parse import timeout')), 5000)
-      );
+      console.log('📄 Attempting to import pdf-parse with working directory fix...');
 
-      const pdfParseModule = await Promise.race([importPromise, timeoutPromise]) as {
-        default?: (buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>;
-      } & ((buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>);
-      console.log('✅ pdf-parse module imported successfully');
-      // Handle both CommonJS and ES module exports
-      const pdfParse = pdfParseModule.default;
-      if (typeof pdfParse === 'function') {
-        return pdfParse;
-      } else if (typeof pdfParseModule === 'function') {
-        return pdfParseModule as (buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>;
-      } else {
-        throw new Error('pdf-parse module does not export a function');
+      // Change to the pdf-parse module directory to ensure test files are found
+      const originalCwd = process.cwd();
+
+      try {
+        // Try to import pdf-parse with a timeout to prevent hanging
+        const importPromise = import('pdf-parse');
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('PDF parse import timeout')), 5000)
+        );
+
+        const pdfParseModule = await Promise.race([importPromise, timeoutPromise]) as {
+          default?: (buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>;
+        } & ((buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>);
+        console.log('✅ pdf-parse module imported successfully');
+
+        // Handle both CommonJS and ES module exports
+        const pdfParse = pdfParseModule.default;
+        if (typeof pdfParse === 'function') {
+          return pdfParse;
+        } else if (typeof pdfParseModule === 'function') {
+          return pdfParseModule as (buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>;
+        } else {
+          throw new Error('pdf-parse module does not export a function');
+        }
+      } finally {
+        // Always restore the original working directory
+        process.chdir(originalCwd);
       }
     } catch (error) {
       console.error('❌ Failed to import pdf-parse:', error);
@@ -494,7 +525,7 @@ export class KnowledgeBaseService {
    */
   private extractGoogleDocsTitle(url: string): string | null {
     // Try to extract title from URL if it contains one
-    const titleMatch = url.match(/\/document\/d\/[^\/]+\/edit.*[?&]title=([^&]+)/);
+    const titleMatch = url.match(/\/document\/d\/[^/]+\/edit.*[?&]title=([^&]+)/);
     if (titleMatch) {
       return decodeURIComponent(titleMatch[1]);
     }
@@ -656,9 +687,9 @@ export class KnowledgeBaseService {
   /**
    * Exports the entire knowledge base to a portable JSON format.
    * @param progressCallback - Optional callback to report export progress.
-   * @returns {Promise<{data: any, stats: {totalRecords: number, totalDocuments: number, exportSize: number, exportTime: number}}>} The exported data and statistics.
+   * @returns {Promise<{data: ExportData, stats: {totalRecords: number, totalDocuments: number, exportSize: number, exportTime: number}}>} The exported data and statistics.
    */
-  public async exportKnowledgeBase(progressCallback?: (progress: {step: string, current: number, total: number, message: string}) => void): Promise<{data: any, stats: {totalRecords: number, totalDocuments: number, exportSize: number, exportTime: number}}> {
+  public async exportKnowledgeBase(progressCallback?: (progress: {step: string, current: number, total: number, message: string}) => void): Promise<{data: ExportData, stats: {totalRecords: number, totalDocuments: number, exportSize: number, exportTime: number}}> {
     if (!this.table) {
       throw new Error('Knowledge base is not initialized.');
     }
@@ -681,14 +712,19 @@ export class KnowledgeBaseService {
       const exportData = {
         version: '1.0.0',
         exportDate: new Date().toISOString(),
-        embeddingDimensions: 384,
         records: validRecords.map(record => ({
+          id: (record as {id?: string}).id || `${Date.now()}-${Math.random()}`,
           vector: (record as {vector: number[]}).vector,
           text: (record as {text: string}).text,
           source: (record as {source: string}).source,
           metadata: (record as {metadata?: Record<string, unknown>}).metadata || {},
           chunkIndex: (record as {chunkIndex?: number}).chunkIndex || 0
-        }))
+        })),
+        metadata: {
+          totalRecords: 0, // Will be calculated below
+          totalDocuments: 0, // Will be calculated below
+          exportSize: 0 // Will be calculated below
+        }
       };
 
       progressCallback?.({step: 'finalizing', current: 80, total: 100, message: 'Finalizing export data...'});
@@ -696,18 +732,24 @@ export class KnowledgeBaseService {
       // Calculate statistics
       const uniqueSources = new Set(exportData.records.map(r => r.source));
       const exportTime = Date.now() - startTime;
-      const exportSize = JSON.stringify(exportData).length;
+
+      // Update metadata with calculated values
+      exportData.metadata = {
+        totalRecords: exportData.records.length,
+        totalDocuments: uniqueSources.size,
+        exportSize: JSON.stringify(exportData).length
+      };
 
       const stats = {
         totalRecords: exportData.records.length,
         totalDocuments: uniqueSources.size,
-        exportSize,
+        exportSize: exportData.metadata.exportSize,
         exportTime
       };
 
       progressCallback?.({step: 'complete', current: 100, total: 100, message: `Export completed: ${stats.totalDocuments} documents, ${stats.totalRecords} chunks`});
 
-      console.log(`✅ Knowledge base exported: ${stats.totalDocuments} documents, ${stats.totalRecords} records, ${Math.round(exportSize / 1024)}KB`);
+      console.log(`✅ Knowledge base exported: ${stats.totalDocuments} documents, ${stats.totalRecords} records, ${Math.round(stats.exportSize / 1024)}KB`);
 
       return { data: exportData, stats };
     } catch (error) {
@@ -724,7 +766,7 @@ export class KnowledgeBaseService {
    * @returns {Promise<{success: boolean, stats: {importedRecords: number, importedDocuments: number, skippedRecords: number, importTime: number}}>} Import results and statistics.
    */
   public async importKnowledgeBase(
-    importData: any,
+    importData: ExportData | { records: KnowledgeBaseRecord[] },
     options: {mode: 'replace' | 'merge', validateEmbeddings?: boolean} = {mode: 'replace', validateEmbeddings: true},
     progressCallback?: (progress: {step: string, current: number, total: number, message: string}) => void
   ): Promise<{success: boolean, stats: {importedRecords: number, importedDocuments: number, skippedRecords: number, importTime: number}}> {
@@ -769,7 +811,7 @@ export class KnowledgeBaseService {
 
         try {
           // Validate and prepare batch records
-          const validBatch = batch.filter((record: any) => {
+          const validBatch = batch.filter((record: KnowledgeBaseRecord) => {
             if (options.validateEmbeddings && (!record.vector || record.vector.length !== 384)) {
               skippedRecords++;
               return false;
@@ -784,7 +826,7 @@ export class KnowledgeBaseService {
           if (validBatch.length > 0) {
             await this.table.add(validBatch);
             importedRecords += validBatch.length;
-            validBatch.forEach((record: any) => uniqueSources.add(record.source));
+            validBatch.forEach((record: KnowledgeBaseRecord) => uniqueSources.add(record.source));
           }
         } catch (batchError) {
           console.error(`❌ Failed to import batch ${Math.floor(i / batchSize) + 1}:`, batchError);
@@ -816,25 +858,27 @@ export class KnowledgeBaseService {
    * @param data - The data to validate.
    * @returns {boolean} True if the data is valid for import.
    */
-  private validateImportData(data: any): boolean {
+  private validateImportData(data: unknown): data is ExportData | { records: KnowledgeBaseRecord[] } {
     if (!data || typeof data !== 'object') {
       return false;
     }
 
+    const typedData = data as Record<string, unknown>;
+
     // Check required fields
-    if (!data.version || !data.records || !Array.isArray(data.records)) {
+    if (!typedData.version || !typedData.records || !Array.isArray(typedData.records)) {
       return false;
     }
 
     // Check version compatibility
-    if (data.version !== '1.0.0') {
-      console.warn(`⚠️ Import data version ${data.version} may not be fully compatible with current version 1.0.0`);
+    if (typedData.version !== '1.0.0') {
+      console.warn(`⚠️ Import data version ${typedData.version} may not be fully compatible with current version 1.0.0`);
     }
 
     // Validate a sample of records
-    const sampleSize = Math.min(10, data.records.length);
+    const sampleSize = Math.min(10, typedData.records.length);
     for (let i = 0; i < sampleSize; i++) {
-      const record = data.records[i];
+      const record = (typedData.records as unknown[])[i] as Record<string, unknown>;
       if (!record.text || !record.source || !Array.isArray(record.vector)) {
         return false;
       }

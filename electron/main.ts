@@ -27,6 +27,7 @@ import { spawn } from 'child_process';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -1804,10 +1805,9 @@ async function createWindow() {
 
   // Prepare window options with size for modern interface
   const windowOptions: BrowserWindowConstructorOptions = {
-    width: Math.max(bounds.width, 1000), // Minimum width for sidebar + main content
-    height: Math.max(bounds.height, 600), // Minimum height for header + chat + input
-    minWidth: 1000, // Minimum for modern interface layout
-    minHeight: 600, // Minimum for modern interface layout
+    width: bounds.width, // Use saved width without minimum constraint
+    height: bounds.height, // Use saved height without minimum constraint
+    // No minimum size constraints - allow full resizing
     maxWidth: 1600,
     maxHeight: 1200,
     show: !appSettings.ui?.startMinimized,
@@ -1970,26 +1970,7 @@ async function createWindow() {
     }
   };
 
-  // Enforce minimum size constraints on manual resize
-  mainWindow.on('will-resize', (event, newBounds) => {
-    const minWidth = 380;
-    const minHeight = 120;
-
-    if (newBounds.width < minWidth || newBounds.height < minHeight) {
-      // Preventing resize below minimum
-      event.preventDefault();
-
-      // Set to minimum size if user tries to go below
-      const constrainedWidth = Math.max(newBounds.width, minWidth);
-      const constrainedHeight = Math.max(newBounds.height, minHeight);
-
-      setTimeout(() => {
-        if (mainWindow) {
-          mainWindow.setSize(constrainedWidth, constrainedHeight);
-        }
-      }, 0);
-    }
-  });
+  // Allow unrestricted manual resize - no minimum size constraints
 
   mainWindow.on('resize', saveWindowBounds);
   mainWindow.on('move', saveWindowBounds);
@@ -2397,9 +2378,6 @@ if (!gotTheLock) {
 app.whenReady().then(async () => {
   await createWindow();
 
-  // Create console window for debugging
-  createConsoleWindow();
-
   createTray();
   registerGlobalShortcuts();
 
@@ -2616,7 +2594,7 @@ function setupIPC() {
             const apiKeys = JSON.parse(decryptedBuffer);
             console.log('🔐 Successfully decrypted API keys for providers:', Object.keys(apiKeys));
             return apiKeys;
-          } catch (decryptError) {
+          } catch {
             console.error('❌ Failed to decrypt API keys - file may be corrupted');
             return {};
           }
@@ -3259,14 +3237,8 @@ function setupIPC() {
 
   ipcMain.handle('resize-window', (_, width: number, height: number) => {
     if (mainWindow) {
-      // Enforce minimum constraints to prevent UI cropping
-      const minWidth = 380;
-      const minHeight = 120;
-      const constrainedWidth = Math.max(width, minWidth);
-      const constrainedHeight = Math.max(height, minHeight);
-
-      // Resize request constrained
-      mainWindow.setSize(constrainedWidth, constrainedHeight);
+      // Allow unrestricted resizing - no minimum constraints
+      mainWindow.setSize(width, height);
     }
   });
 
@@ -3326,29 +3298,60 @@ function setupIPC() {
 
   ipcMain.handle('take-screenshot', async () => {
     try {
-      // desktopCapturer is already imported at the top
+      console.log('📸 Starting screenshot capture...');
 
-      // Get all available sources (screens)
+      // Check for macOS screen recording permissions
+      if (process.platform === 'darwin') {
+        try {
+          // Test if we can access screen sources (this will trigger permission prompt if needed)
+          const testSources = await desktopCapturer.getSources({
+            types: ['screen'],
+            thumbnailSize: { width: 100, height: 100 }
+          });
+
+          if (testSources.length === 0) {
+            throw new Error('Screen recording permission denied. Please grant screen recording permission in System Preferences > Security & Privacy > Privacy > Screen Recording');
+          }
+        } catch (permError) {
+          console.error('❌ macOS screen recording permission error:', permError);
+          return {
+            success: false,
+            error: 'Screen recording permission required. Please grant permission in System Preferences > Security & Privacy > Privacy > Screen Recording and restart the app.'
+          };
+        }
+      }
+
+      // Get the primary display dimensions for full resolution capture
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width, height } = primaryDisplay.bounds;
+
+      console.log(`📸 Primary display size: ${width}x${height}`);
+
+      // Get all available sources (screens) with full resolution
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
-        thumbnailSize: { width: 1920, height: 1080 }
+        thumbnailSize: { width: Math.min(width, 3840), height: Math.min(height, 2160) } // Cap at 4K to avoid memory issues
       });
 
+      console.log(`📸 Found ${sources.length} screen sources`);
+
       if (sources.length > 0) {
-        // Use the primary screen
+        // Use the primary screen (first source is usually the primary)
         const primarySource = sources[0];
         const screenshot = primarySource.thumbnail;
 
         // Convert to base64 data URL
         const dataURL = screenshot.toDataURL();
 
-        console.log('Screenshot captured successfully');
+        console.log(`📸 Screenshot captured successfully - Size: ${screenshot.getSize().width}x${screenshot.getSize().height}`);
+        console.log(`📸 Data URL length: ${dataURL.length} characters`);
+
         return { success: true, dataURL };
       } else {
         throw new Error('No screen sources available');
       }
     } catch (error) {
-      console.error('Failed to take screenshot:', error);
+      console.error('❌ Failed to take screenshot:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
@@ -3362,18 +3365,28 @@ function setupIPC() {
   // IPC handler for adding a document to the knowledge base
   ipcMain.handle('knowledge-base:add-document', async (_, filePath) => {
     try {
+      console.log(`📚 Starting to add document to knowledge base: ${filePath}`);
       const knowledgeBaseService = KnowledgeBaseService.getInstance();
 
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
+        console.log('📚 Knowledge base not initialized, initializing...');
         const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
         await knowledgeBaseService.initialize(dbPath);
+        console.log('📚 Knowledge base initialized successfully');
       }
 
+      console.log('📚 Adding document to knowledge base...');
       await knowledgeBaseService.addDocument(filePath);
+      console.log('📚 Document added successfully');
       return { success: true };
     } catch (error) {
-      console.error('Failed to add document to knowledge base:', error);
+      console.error('❌ Failed to add document to knowledge base:', error);
+      console.error('❌ Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : undefined
+      });
       return { success: false, error: (error as Error).message };
     }
   });
@@ -3612,14 +3625,22 @@ function setupIPC() {
 
   // IPC handler for opening a file dialog
   ipcMain.handle('dialog:open-file', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [{ name: 'PDFs', extensions: ['pdf'] }]
-    });
-    if (!canceled) {
-      return filePaths[0];
+    try {
+      console.log('📁 Opening file dialog for single PDF...');
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'PDFs', extensions: ['pdf'] }]
+      });
+      if (!canceled && filePaths && filePaths.length > 0) {
+        console.log('📁 File selected:', filePaths[0]);
+        return filePaths[0];
+      }
+      console.log('📁 File dialog cancelled or no file selected');
+      return null;
+    } catch (error) {
+      console.error('❌ Error opening file dialog:', error);
+      return null;
     }
-    return null;
   });
 
   // IPC handler for opening a file dialog for knowledgebase documents
@@ -3697,6 +3718,182 @@ function setupIPC() {
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  });
+
+  // PDF parsing handler for chat attachments
+  ipcMain.handle('parse-pdf-file', async (_, fileBuffer: ArrayBuffer, fileName: string) => {
+    const logFile = path.join(app.getPath('userData'), 'pdf-parsing-debug.log');
+
+    const writeLog = async (message: string) => {
+      const timestamp = new Date().toISOString();
+      const logLine = `[${timestamp}] ${message}\n`;
+      try {
+        await fsPromises.appendFile(logFile, logLine);
+      } catch (err) {
+        console.error('Failed to write to PDF debug log:', err);
+      }
+    };
+
+    try {
+      await writeLog(`📄 Parsing PDF file for chat: ${fileName}, buffer size: ${fileBuffer.byteLength} bytes`);
+      console.log(`📄 Parsing PDF file for chat: ${fileName}, buffer size: ${fileBuffer.byteLength} bytes`);
+
+      // First try direct pdf-parse import in Electron main process
+      await writeLog(`📄 Attempting direct pdf-parse import in Electron main process...`);
+      console.log(`📄 Attempting direct pdf-parse import in Electron main process...`);
+
+      try {
+        // Try direct import first
+        let pdfParse: ((buffer: Buffer) => Promise<{ text: string; numpages?: number; info?: unknown }>) | undefined;
+
+        try {
+          console.log(`📄 Using dynamic import with working directory fix...`);
+
+          // Change to the pdf-parse module directory to ensure test files are found
+          const originalCwd = process.cwd();
+          const require = createRequire(import.meta.url);
+          const pdfParseModulePath = path.dirname(require.resolve('pdf-parse/package.json'));
+          process.chdir(pdfParseModulePath);
+
+          try {
+            // Use dynamic import directly since we're in ES module environment
+            const pdfParseModule = await import('pdf-parse');
+            console.log(`📄 Dynamic import result:`, Object.keys(pdfParseModule || {}));
+
+            pdfParse = (pdfParseModule.default || pdfParseModule) as ((buffer: Buffer) => Promise<{ text: string; numpages?: number; info?: unknown }>);
+            console.log(`📄 Dynamic import successful, type: ${typeof pdfParse}`);
+
+            if (typeof pdfParse !== 'function') {
+              throw new Error(`pdf-parse is not a function, got: ${typeof pdfParse}`);
+            }
+          } finally {
+            // Always restore the original working directory
+            process.chdir(originalCwd);
+          }
+
+        } catch (importError) {
+          console.log(`📄 Dynamic import failed: ${importError.message}`);
+          console.log(`📄 Error details:`, {
+            message: importError.message,
+            stack: importError.stack,
+            code: importError.code
+          });
+          throw importError;
+        }
+
+        if (typeof pdfParse === 'function') {
+          console.log(`📄 Using direct pdf-parse import...`);
+          const buffer = Buffer.from(fileBuffer);
+          const pdfData = await pdfParse(buffer);
+
+          console.log(`📄 Direct PDF parsing successful: ${fileName}`);
+          console.log(`📄 Result: text length: ${pdfData.text.length}, pages: ${pdfData.numpages}`);
+          console.log(`📄 Text preview: "${pdfData.text.substring(0, 100)}..."`);
+
+          return {
+            success: true,
+            text: pdfData.text,
+            metadata: {
+              format: 'PDF',
+              title: fileName,
+              pages: pdfData.numpages,
+              info: pdfData.info
+            }
+          };
+        } else {
+          throw new Error(`pdf-parse is not a function, got: ${typeof pdfParse}`);
+        }
+
+      } catch (directImportError) {
+        console.log(`📄 Direct import failed: ${directImportError}, falling back to KnowledgeBaseService method...`);
+
+        // Fallback to KnowledgeBaseService method
+        // Use the WORKING knowledge base method: save to temp file and parse from file path
+        const tempDir = path.join(app.getPath('temp'), 'littlellm-pdf-parsing');
+        await fsPromises.mkdir(tempDir, { recursive: true });
+
+        const tempFilePath = path.join(tempDir, `temp-${Date.now()}-${fileName}`);
+        console.log(`📄 Saving PDF to temp file: ${tempFilePath}`);
+
+        // Write the buffer to a temporary file
+        const buffer = Buffer.from(fileBuffer);
+        await fsPromises.writeFile(tempFilePath, buffer);
+        console.log(`📄 Temp file written successfully, size: ${buffer.length} bytes`);
+
+      try {
+        // Use the EXACT same method that works for knowledge base
+        const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+        // Initialize if needed
+        if (!knowledgeBaseService.isInitialized()) {
+          const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+          await knowledgeBaseService.initialize(dbPath);
+        }
+
+        console.log(`📄 Using working knowledge base PDF parsing method...`);
+        console.log(`📄 Attempting to import pdf-parse via KnowledgeBaseService...`);
+
+        // Call the working PDF parsing method directly
+        const pdfParse = await (knowledgeBaseService as { importPdfParseSafely: () => Promise<((buffer: Buffer) => Promise<{ text: string; numpages?: number; info?: unknown }>)> }).importPdfParseSafely();
+        console.log(`📄 PDF parser function obtained, type: ${typeof pdfParse}`);
+
+        const fileBuffer = await fsPromises.readFile(tempFilePath);
+        console.log(`📄 File read from temp path, buffer size: ${fileBuffer.length} bytes`);
+
+        console.log(`📄 Calling PDF parser function...`);
+        const pdfData = await pdfParse(fileBuffer);
+        console.log(`📄 PDF parser returned data, checking result...`);
+
+        console.log(`📄 PDF parsing completed: ${fileName}`);
+        console.log(`📄 Result: text length: ${pdfData.text.length}, pages: ${pdfData.numpages}`);
+        console.log(`📄 Text preview: "${pdfData.text.substring(0, 100)}..."`);
+
+        // Check if this is the fallback message indicating PDF parsing failed
+        if (pdfData.text && (pdfData.text.includes('PDF parsing module could not be loaded') ||
+                            pdfData.text.includes('PDF text extraction is not available'))) {
+          console.error(`📄 PDF parsing failed - fallback message detected for ${fileName}`);
+          return {
+            success: false,
+            error: 'PDF parsing module could not be loaded in Electron main process',
+            text: `[PDF Document: ${fileName}]\nNote: PDF text extraction is not available. The PDF parsing module could not be loaded in the Electron environment.`
+          };
+        }
+
+        console.log(`📄 PDF parsing successful for ${fileName}`);
+        return {
+          success: true,
+          text: pdfData.text,
+          metadata: {
+            format: 'PDF',
+            title: fileName,
+            pages: pdfData.numpages,
+            info: pdfData.info
+          }
+        };
+
+        } finally {
+          // Clean up temp file
+          try {
+            await fsPromises.unlink(tempFilePath);
+            console.log(`📄 Cleaned up temp file: ${tempFilePath}`);
+          } catch (cleanupError) {
+            console.warn(`📄 Failed to clean up temp file: ${tempFilePath}`, cleanupError);
+          }
+        }
+      }
+
+    } catch (error) {
+      console.error(`📄 Failed to parse PDF ${fileName}:`, error);
+      console.error(`📄 Error details:`, {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        text: `[PDF Document: ${fileName}]\nNote: PDF text extraction failed - ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
   });
@@ -3856,7 +4053,7 @@ const originalConsole = {
   debug: console.debug
 };
 
-function sendToConsoleWindow(level: string, ...args: any[]) {
+function sendToConsoleWindow(level: string, ...args: unknown[]) {
   if (consoleWindow && !consoleWindow.isDestroyed()) {
     const message = args.map(arg =>
       typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
@@ -3867,27 +4064,27 @@ function sendToConsoleWindow(level: string, ...args: any[]) {
 }
 
 // Override console methods to send to console window
-console.log = (...args: any[]) => {
+console.log = (...args: unknown[]) => {
   originalConsole.log(...args);
   sendToConsoleWindow('info', ...args);
 };
 
-console.error = (...args: any[]) => {
+console.error = (...args: unknown[]) => {
   originalConsole.error(...args);
   sendToConsoleWindow('error', ...args);
 };
 
-console.warn = (...args: any[]) => {
+console.warn = (...args: unknown[]) => {
   originalConsole.warn(...args);
   sendToConsoleWindow('warn', ...args);
 };
 
-console.info = (...args: any[]) => {
+console.info = (...args: unknown[]) => {
   originalConsole.info(...args);
   sendToConsoleWindow('info', ...args);
 };
 
-console.debug = (...args: any[]) => {
+console.debug = (...args: unknown[]) => {
   originalConsole.debug(...args);
   sendToConsoleWindow('debug', ...args);
 };

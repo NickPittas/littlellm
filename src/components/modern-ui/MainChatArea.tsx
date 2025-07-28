@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Edit3, Zap } from 'lucide-react';
 import { Button } from '../ui/button';
 import { MessageWithThinking } from '../MessageWithThinking';
@@ -25,11 +25,51 @@ export function MainChatArea({
   onEditModelInstructions,
   onQuickPrompts
 }: MainChatAreaProps) {
-  
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
   const handleEditModelInstructions = () => {
     console.log('Edit Model Instructions clicked');
     onEditModelInstructions?.();
   };
+
+  // Auto-scroll to bottom when messages change (during streaming)
+  useEffect(() => {
+    if (!scrollContainerRef.current) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const wasAtBottom = scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
+
+    // Always scroll to bottom if user was already at bottom or if it's a new message
+    if (wasAtBottom || messages.length > 0) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 10); // Small delay to ensure DOM is updated
+    }
+  }, [messages]);
+
+  // Also scroll when message content changes (for streaming updates)
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage && lastMessage.role === 'assistant') {
+        // Scroll during streaming updates
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 10);
+      }
+    }
+  }, [messages]);
+
+  // Scroll to bottom when loading state changes (when response starts/ends)
+  useEffect(() => {
+    if (isLoading) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 10);
+    }
+  }, [isLoading]);
 
   // Show welcome state when no messages
   const showWelcomeState = messages.length === 0;
@@ -67,7 +107,7 @@ export function MainChatArea({
                 className="text-gray-400 hover:text-white transition-colors h-auto p-2"
               >
                 <Edit3 className="w-4 h-4 mr-2" />
-                <span className="text-sm">Edit Model Instructions</span>
+                <span className="text-sm">Custom Prompt</span>
               </Button>
 
               <Button
@@ -91,7 +131,10 @@ export function MainChatArea({
         // Chat Messages Area
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Messages Container */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 overflow-y-auto p-4 space-y-4 chat-messages"
+          >
             {messages.map((message, index) => (
               <div
                 key={message.id || index}
@@ -156,6 +199,9 @@ export function MainChatArea({
                 </div>
               </div>
             )}
+
+            {/* Scroll anchor */}
+            <div ref={messagesEndRef} />
           </div>
         </div>
       )}

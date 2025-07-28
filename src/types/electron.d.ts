@@ -99,15 +99,17 @@ export interface ElectronAPI {
   // File operations
   selectFiles: (options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }>; properties?: string[] }) => Promise<string[]>;
   readFile: (filePath: string) => Promise<{ success: boolean; content?: string; name?: string; type?: string; error?: string }>;
+  parsePdfFile: (fileBuffer: ArrayBuffer, fileName: string) => Promise<{ success: boolean; text?: string; metadata?: { pages?: number; [key: string]: unknown }; error?: string }>;
   selectDirectory: () => Promise<string | null>;
+  debugMCPTools: () => Promise<{ tools: Array<{ name: string; description: string; category: string; inputSchema: Record<string, unknown> }> }>;
 
   // Event listeners
   onSettingsChanged: (callback: (settings: unknown) => void) => void;
   onPromptReceived: (callback: (prompt: string) => void) => void;
   onPromptSelected?: (callback: (promptText: string) => void) => void;
   onThemeChanged: (callback: (themeId: string) => void) => void;
-  onThemeChange: (callback: (themeData: { customColors: unknown; useCustomColors: boolean }) => void) => any;
-  removeThemeChangeListener?: (wrappedCallback: any) => void;
+  onThemeChange: (callback: (themeData: { customColors: unknown; useCustomColors: boolean }) => void) => () => void;
+  removeThemeChangeListener?: (wrappedCallback: () => void) => void;
   onMessagesUpdate?: (callback: (messages: unknown[]) => void) => void;
   onKnowledgeBaseSearchUpdate?: (callback: (data: {isSearching: boolean, query?: string}) => void) => void;
   onRequestCurrentMessages: (callback: () => void) => void;
