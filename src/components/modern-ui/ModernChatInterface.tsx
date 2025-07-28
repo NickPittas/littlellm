@@ -31,10 +31,12 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [selectedModel, setSelectedModel] = useState('gemma3:gpu');
   const [selectedProvider, setSelectedProvider] = useState('ollama');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
 
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
   const [activePanel, setActivePanel] = useState('');
@@ -120,15 +122,32 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
       setAvailableModels(models);
 
-      // If current model is not available in new provider, select first available
-      if (models.length > 0 && !models.includes(selectedModel)) {
-        setSelectedModel(models[0]);
-        // Update settings with new model
-        updateSettings({ model: models[0] });
-      } else if (models.length > 0 && !selectedModel) {
-        // If no model is selected at all, select the first one
-        setSelectedModel(models[0]);
-        updateSettings({ model: models[0] });
+      // Try to restore the last selected model for this provider
+      let modelToSelect = '';
+
+      // First, check if there's a saved last selected model for this provider
+      try {
+        const apiKeyData = secureApiKeyService?.getApiKeyData(providerId);
+        const lastSelectedModel = apiKeyData?.lastSelectedModel;
+
+        if (lastSelectedModel && models.includes(lastSelectedModel)) {
+          modelToSelect = lastSelectedModel;
+          console.log(`✅ Restored last selected model for ${providerId}:`, lastSelectedModel);
+        }
+      } catch (error) {
+        console.warn(`Failed to get last selected model for ${providerId}:`, error);
+      }
+
+      // If no valid last selected model, use first available
+      if (!modelToSelect && models.length > 0) {
+        modelToSelect = models[0];
+        console.log(`🔄 Using first available model for ${providerId}:`, modelToSelect);
+      }
+
+      // Update the selected model if we found one
+      if (modelToSelect) {
+        setSelectedModel(modelToSelect);
+        updateSettings({ model: modelToSelect });
       }
     } catch (error) {
       console.error('Failed to load models for provider:', providerId, error);
@@ -170,13 +189,29 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       try {
         const savedSettings = settingsService.getChatSettings();
         setSettings(savedSettings);
-        setSelectedModel(savedSettings.model || 'gemma3:gpu');
-        setSelectedProvider(savedSettings.provider || 'ollama');
+
+        const provider = savedSettings.provider || 'ollama';
+        setSelectedProvider(provider);
         setToolsEnabled(savedSettings.toolCallingEnabled || false);
         setKnowledgeBaseEnabled(savedSettings.ragEnabled || false);
 
-        // Load models for the selected provider
-        await loadModelsForProvider(savedSettings.provider || 'ollama');
+        // Try to get the last selected model for this provider
+        let modelToUse = savedSettings.model || 'gemma3:gpu';
+        try {
+          const apiKeyData = secureApiKeyService?.getApiKeyData(provider);
+          const lastSelectedModel = apiKeyData?.lastSelectedModel;
+          if (lastSelectedModel) {
+            modelToUse = lastSelectedModel;
+            console.log(`✅ Restored last selected model for ${provider} on startup:`, lastSelectedModel);
+          }
+        } catch (error) {
+          console.warn(`Failed to get last selected model for ${provider} on startup:`, error);
+        }
+
+        setSelectedModel(modelToUse);
+
+        // Load models for the selected provider (this will validate and potentially update the model)
+        await loadModelsForProvider(provider);
       } catch (error) {
         console.error('Failed to load settings:', error);
       }
@@ -269,6 +304,10 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     setIsLoading(true); // Start thinking indicator
     console.log('🧠 Started thinking indicator - user message sent');
 
+    // Create abort controller for this request
+    const controller = new AbortController();
+    setAbortController(controller);
+
     // Track when we started processing for timeout detection
     const processingStartTime = Date.now();
 
@@ -313,11 +352,12 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
             return;
           }
 
-          // Stop thinking indicator when streaming starts (first chunk received)
+          // Log when streaming starts (first chunk received) and update states properly
           if (assistantContent === '' && chunk.trim().length > 0) {
             const processingDuration = Date.now() - processingStartTime;
-            console.log(`🤖 Model started streaming after ${processingDuration}ms, stopping thinking indicators`);
-            setIsLoading(false);
+            console.log(`🤖 Model started streaming after ${processingDuration}ms, switching to streaming mode`);
+            setIsLoading(false); // Stop loading indicator (thinking animation)
+            setIsStreaming(true); // Start streaming mode (keep stop button active)
           }
 
           // Handle streaming response
@@ -330,7 +370,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
             )
           );
         },
-        undefined, // signal
+        controller.signal, // signal
         conversationHistoryService.getCurrentConversationId() || undefined,
         (isSearching: boolean, query?: string) => {
           // Handle knowledge base search indicator
@@ -360,12 +400,14 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         );
       }
 
-      // Stop thinking indicator when final response is complete
-      if (isLoading) {
-        const totalProcessingTime = Date.now() - processingStartTime;
-        console.log(`✅ Final response complete after ${totalProcessingTime}ms, stopping thinking indicator`);
-        setIsLoading(false);
-      }
+      // Stop all indicators when final response is complete
+      const totalProcessingTime = Date.now() - processingStartTime;
+      console.log(`✅ Final response complete after ${totalProcessingTime}ms, stopping all indicators`);
+      setIsLoading(false);
+      setIsStreaming(false);
+
+      // Clean up abort controller
+      setAbortController(null);
 
       // Save conversation to history
       const currentConversationId = conversationHistoryService.getCurrentConversationId();
@@ -380,6 +422,14 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
     } catch (error) {
       console.error('Failed to send message:', error);
+
+      // Check if this was an abort (user stopped generation)
+      if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'))) {
+        console.log('🛑 Request was aborted by user');
+        setIsLoading(false);
+        setAbortController(null);
+        return; // Don't show error message for user-initiated aborts
+      }
 
       // Create user-friendly error message based on error type
       let errorContent = 'Sorry, I encountered an error while processing your message. Please try again.';
@@ -418,6 +468,34 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
       setMessages(prev => [...prev, errorMessage]);
       setIsLoading(false);
+      setIsStreaming(false);
+
+      // Clean up abort controller
+      setAbortController(null);
+    }
+  };
+
+  // Handle stopping message generation
+  const handleStopGeneration = () => {
+    if (abortController && (isLoading || isStreaming)) {
+      console.log('🛑 User requested to stop generation');
+      abortController.abort();
+      setIsLoading(false);
+      setIsStreaming(false);
+      setAbortController(null);
+
+      // Add a message indicating the generation was stopped
+      setMessages(prev => {
+        const lastMessage = prev[prev.length - 1];
+        if (lastMessage && lastMessage.role === 'assistant') {
+          return prev.map((msg, index) =>
+            index === prev.length - 1
+              ? { ...msg, content: msg.content + '\n\n*[Generation stopped by user]*' }
+              : msg
+          );
+        }
+        return prev;
+      });
     }
   };
 
@@ -440,7 +518,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     setSelectedModel(newModel);
     console.log('Model changed to:', newModel);
 
-    // Save to settings
+    // Save to general settings
     try {
       const updatedSettings = {
         ...settings,
@@ -449,15 +527,38 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
       await settingsService.updateSettings({ chat: updatedSettings });
       setSettings(updatedSettings);
-      console.log('Model saved to settings:', newModel);
+      console.log('Model saved to general settings:', newModel);
     } catch (error) {
-      console.error('Failed to save model to settings:', error);
+      console.error('Failed to save model to general settings:', error);
+    }
+
+    // Also save as last selected model for current provider
+    try {
+      if (selectedProvider) {
+        const currentApiKeyData = secureApiKeyService?.getApiKeyData(selectedProvider);
+        if (currentApiKeyData) {
+          await secureApiKeyService.setApiKeyData(selectedProvider, {
+            ...currentApiKeyData,
+            lastSelectedModel: newModel
+          });
+        } else {
+          await secureApiKeyService.setApiKeyData(selectedProvider, {
+            apiKey: '',
+            baseUrl: '',
+            lastSelectedModel: newModel
+          });
+        }
+        console.log(`✅ Saved last selected model for ${selectedProvider}:`, newModel);
+      }
+    } catch (error) {
+      console.error('Failed to save last selected model for provider:', error);
     }
   };
 
 
   // Test function for screenshot (can be called from console)
-  (window as unknown as { testScreenshot: () => Promise<{ success: boolean; dataURL?: string; error?: string }> }).testScreenshot = async () => {
+  if (typeof window !== 'undefined') {
+    (window as unknown as { testScreenshot: () => Promise<{ success: boolean; dataURL?: string; error?: string }> }).testScreenshot = async () => {
     console.log('🧪 Testing screenshot functionality...');
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
@@ -473,6 +574,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   };
+  }
 
   // Handle screenshot - enhanced with better feedback
   const handleScreenshot = async () => {
@@ -569,7 +671,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     setSelectedProvider(providerId);
     updateSettings({ provider: providerId });
 
-    // Load models for the selected provider
+    // Load models for the selected provider (this will restore the last selected model)
     await loadModelsForProvider(providerId);
   };
 
@@ -922,13 +1024,14 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           value={inputValue}
           onChange={setInputValue}
           onSend={handleSendMessage}
+          onStop={handleStopGeneration}
           onFileUpload={handleFileUpload}
           onScreenshot={handleScreenshot}
           selectedModel={selectedModel}
           onModelChange={handleModelChange}
           availableModels={availableModels}
           selectedProvider={selectedProvider}
-          isLoading={isLoading}
+          isLoading={isLoading || isStreaming}
           toolsEnabled={toolsEnabled}
           onToggleTools={handleToggleTools}
           mcpEnabled={mcpEnabled}

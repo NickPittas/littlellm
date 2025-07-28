@@ -126,7 +126,17 @@ export class GeminiProvider extends BaseProvider {
     }
 
     // Get MCP tools for Gemini
+    console.log(`🔧 GeminiProvider: Calling getMCPToolsForProvider for gemini`);
+    console.log(`🔧 GeminiProvider: getMCPToolsForProvider method exists:`, typeof this.getMCPToolsForProvider === 'function');
+
     const rawMcpTools = await this.getMCPToolsForProvider('gemini', settings);
+    console.log(`🔧 GeminiProvider: Received ${rawMcpTools.length} raw tools from getMCPToolsForProvider`);
+    console.log(`🔧 GeminiProvider: Raw tools:`, rawMcpTools.map((t: any) => ({
+      name: t.function?.name || t.name,
+      type: t.type,
+      serverId: t.serverId,
+      isInternal: t.serverId === 'internal-commands'
+    })));
 
     // Format tools for Gemini (clean schemas)
     const formattedTools = rawMcpTools.length > 0 ? this.formatTools(rawMcpTools as ToolObject[]) : [];
@@ -351,11 +361,8 @@ export class GeminiProvider extends BaseProvider {
   }
 
   // Private helper methods
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  private async getMCPToolsForProvider(_providerId: string, _settings: LLMSettings): Promise<unknown[]> {
-    // This will be injected by the main service
-    return [];
-  }
+  // This method is injected by the ProviderAdapter from the LLMService
+  private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private async executeMCPTool(_toolName: string, _args: Record<string, unknown>): Promise<string> {

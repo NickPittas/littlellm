@@ -17,6 +17,8 @@ import { initializationManager } from './initializationManager';
 import { serviceRegistry, SERVICE_NAMES, DebugLoggerInterface } from './serviceRegistry';
 
 class InternalCommandService {
+  static readonly SERVICE_NAME = 'InternalCommandService';
+
   private availableTools: InternalCommandTool[] = [];
   private isElectron: boolean = false;
   private initialized: boolean = false;
@@ -51,17 +53,20 @@ class InternalCommandService {
     if (this.isElectron) {
       // Send configuration to Electron main process
       const settings = settingsService.getSettings();
+      console.log(`🔧 InternalCommandService: Sending config to main process:`, settings.internalCommands);
       await this.sendConfigToMainProcess(settings.internalCommands);
 
       // Get available tools from main process
+      console.log(`🔧 InternalCommandService: Getting tools from main process...`);
       this.availableTools = await this.getToolsFromMainProcess();
+      console.log(`🔧 InternalCommandService: Received ${this.availableTools.length} tools from main process`);
     } else {
       // In browser mode, use static tool definitions
+      console.log(`🔧 InternalCommandService: Browser mode - using static tools`);
       this.defineStaticTools();
     }
 
     this.initialized = true;
-    debugLogger.debug('Internal Command Service initialized');
   }
 
   /**
@@ -83,13 +88,18 @@ class InternalCommandService {
   private async getToolsFromMainProcess(): Promise<InternalCommandTool[]> {
     if (this.isElectron && window.electronAPI) {
       try {
+        console.log(`🔧 InternalCommandService: Calling electronAPI.getInternalCommandsTools()`);
         const response = await window.electronAPI.getInternalCommandsTools();
-        return (response as InternalCommandTool[]) || [];
+        console.log(`🔧 InternalCommandService: Raw response from main process:`, response);
+        const tools = (response as InternalCommandTool[]) || [];
+        console.log(`🔧 InternalCommandService: Parsed ${tools.length} tools from main process`);
+        return tools;
       } catch (error) {
         console.error('Failed to get tools from main process:', error);
         return [];
       }
     }
+    console.log(`🔧 InternalCommandService: Not in Electron or no electronAPI available`);
     return [];
   }
 
@@ -367,14 +377,13 @@ class InternalCommandService {
     const settings = settingsService.getSettings();
     const commandSettings = settings.internalCommands;
 
-    // Use debug logger instead of console.log to respect debug settings
-    const { debugLogger } = require('./debugLogger');
-    debugLogger.debug(`InternalCommandService.getAvailableTools() called`);
-    debugLogger.debug(`Settings:`, commandSettings);
-    debugLogger.debug(`Available tools before filtering:`, this.availableTools.length);
+    console.log(`🔧 InternalCommandService.getAvailableTools() called`);
+    console.log(`🔧 Settings enabled: ${commandSettings.enabled}`);
+    console.log(`🔧 Available tools count: ${this.availableTools.length}`);
+    console.log(`🔧 Enabled commands:`, commandSettings.enabledCommands);
 
     if (!commandSettings.enabled) {
-      debugLogger.debug(`Internal commands disabled, returning empty array`);
+      console.log(`🔧 Internal commands disabled, returning empty array`);
       return [];
     }
 
@@ -385,11 +394,14 @@ class InternalCommandService {
         (tool.category === 'textEditing' && commandSettings.enabledCommands.textEditing) ||
         (tool.category === 'system' && commandSettings.enabledCommands.system);
 
-      debugLogger.debug(`Tool ${tool.name} (${tool.category}): ${isEnabled ? 'ENABLED' : 'DISABLED'}`);
       return isEnabled;
     });
 
-    debugLogger.debug(`Filtered tools:`, filteredTools.map(t => t.name));
+    console.log(`🔧 Filtered tools count: ${filteredTools.length}`);
+    if (filteredTools.length > 0) {
+      console.log(`🔧 Sample filtered tools:`, filteredTools.slice(0, 3).map(t => ({ name: t.name, category: t.category })));
+    }
+
     return filteredTools;
   }
 

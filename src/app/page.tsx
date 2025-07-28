@@ -13,12 +13,13 @@ export default function Home() {
   const [useModernUI, setUseModernUI] = useState(false);
 
   useEffect(() => {
-    console.log('Home component mounted');
     // Check if this is an overlay window or modern UI
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      setIsOverlay(urlParams.has('overlay'));
-      setUseModernUI(urlParams.has('modern'));
+      const overlay = urlParams.has('overlay');
+      const modern = urlParams.has('modern');
+      setIsOverlay(overlay);
+      setUseModernUI(modern);
     }
   }, []);
 
@@ -31,6 +32,16 @@ export default function Home() {
   }
 
   if (useModernUI) {
+    return (
+      <div className="h-screen w-screen bg-gray-950 overflow-hidden modern-chat-interface">
+        <ModernChatInterface />
+      </div>
+    );
+  }
+
+  // During development, default to modern UI to prevent VoilaInterface conflicts
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  if (isDevelopment) {
     return (
       <div className="h-screen w-screen bg-gray-950 overflow-hidden modern-chat-interface">
         <ModernChatInterface />

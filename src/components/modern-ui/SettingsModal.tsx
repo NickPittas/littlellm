@@ -14,7 +14,9 @@ import KnowledgeBaseSettings from '../KnowledgeBaseSettings';
 import { mcpService, type MCPServer } from '../../services/mcpService';
 import { PromptsContent } from '../PromptsContent';
 import { ApiKeySettings } from '../ApiKeySettings';
-import { Plus, Trash2, Server, FileText, Palette, RotateCcw, X, Key, Keyboard, MessageSquare, Terminal, Brain, Database, Settings, Edit } from 'lucide-react';
+import { getTTSService, type TTSVoice } from '../../services/textToSpeechService';
+import type { TextToSpeechSettings } from '../../types/settings';
+import { Plus, Trash2, Server, FileText, Palette, RotateCcw, X, Key, Keyboard, MessageSquare, Terminal, Brain, Database, Settings, Edit, Volume2 } from 'lucide-react';
 import { ColorPicker } from '../ui/color-picker';
 import { ThemeSelector } from '../ui/theme-selector';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -37,6 +39,7 @@ const sidebarItems: SidebarItem[] = [
   { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard className="w-4 h-4" /> },
   { id: 'prompts', label: 'Prompts', icon: <FileText className="w-4 h-4" /> },
   { id: 'chat', label: 'Chat', icon: <MessageSquare className="w-4 h-4" /> },
+  { id: 'text-to-speech', label: 'Text to Speech', icon: <Volume2 className="w-4 h-4" /> },
   { id: 'mcp', label: 'MCP', icon: <Server className="w-4 h-4" /> },
   { id: 'internal-commands', label: 'Commands', icon: <Terminal className="w-4 h-4" /> },
   { id: 'memory', label: 'Memory', icon: <Brain className="w-4 h-4" /> },
@@ -95,6 +98,17 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
     category: string;
     inputSchema: Record<string, unknown>;
   }>>([]);
+
+  // TTS state
+  const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
+  const [ttsSettings, setTtsSettings] = useState<TextToSpeechSettings>({
+    enabled: false,
+    voice: '',
+    rate: 1.0,
+    pitch: 1.0,
+    volume: 0.8,
+    autoPlay: false,
+  });
   const [newDirectory, setNewDirectory] = useState('');
   const [newBlockedCommand, setNewBlockedCommand] = useState('');
 
@@ -531,13 +545,31 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
     }
   }, [isOpen]);
 
-  // Load available tools
+  // Load available internal command tools only
   useEffect(() => {
     const loadAvailableTools = async () => {
       try {
         if (typeof window !== 'undefined' && window.electronAPI) {
-          const tools = await window.electronAPI.debugMCPTools();
-          setAvailableTools(tools.tools || []);
+          console.log('🔧 SettingsModal: Loading internal command tools...');
+          console.log('🔧 SettingsModal: electronAPI available:', !!window.electronAPI);
+          console.log('🔧 SettingsModal: getInternalCommandsTools method exists:', typeof window.electronAPI.getInternalCommandsTools);
+
+          // First, ensure configuration is sent to Electron main process
+          const currentSettings = settingsService.getSettings();
+          console.log('🔧 SettingsModal: Sending config to Electron:', currentSettings.internalCommands);
+          await window.electronAPI.setInternalCommandsConfig(currentSettings.internalCommands);
+
+          // Now load the tools
+          const internalTools = await window.electronAPI.getInternalCommandsTools();
+          console.log(`🔧 SettingsModal: Received ${(internalTools as any[])?.length || 0} internal command tools:`, internalTools);
+          setAvailableTools((internalTools as Array<{
+            name: string;
+            description: string;
+            category: string;
+            inputSchema: Record<string, unknown>;
+          }>) || []);
+        } else {
+          console.log('🔧 SettingsModal: No electronAPI available');
         }
       } catch (error) {
         console.error('Failed to load available tools:', error);
@@ -548,6 +580,85 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       loadAvailableTools();
     }
   }, [isOpen]);
+
+  // Initialize TTS and load voices
+  useEffect(() => {
+    if (isOpen && formData?.ui) {
+      // Ensure TTS settings exist with defaults
+      const defaultTtsSettings = {
+        enabled: false,
+        voice: '',
+        rate: 1.0,
+        pitch: 1.0,
+        volume: 0.8,
+        autoPlay: false,
+      };
+
+      const ttsSettings = formData.ui.textToSpeech || defaultTtsSettings;
+      setTtsSettings(ttsSettings);
+
+      // If TTS settings don't exist in formData, add them
+      if (!formData.ui.textToSpeech) {
+        updateFormData({
+          ui: {
+            ...formData.ui,
+            textToSpeech: defaultTtsSettings
+          }
+        });
+      }
+
+      // Initialize TTS service and load voices
+      try {
+        const ttsService = getTTSService(ttsSettings);
+        const allVoices = ttsService.getAvailableVoices();
+        const highQualityVoices = ttsService.getHighQualityVoices();
+        const sortedVoices = ttsService.getAllVoicesWithQualityInfo();
+
+        // Show all voices sorted by quality (don't filter too strictly)
+        const voicesToShow = sortedVoices.length > 0 ? sortedVoices : allVoices;
+
+        console.log('🔊 SettingsModal: Total voices:', allVoices.length);
+        console.log('🔊 SettingsModal: High-quality voices:', highQualityVoices.length);
+        console.log('🔊 SettingsModal: Showing voices (sorted):', voicesToShow.length);
+        console.log('🔊 SettingsModal: Voice details:', voicesToShow.map(v => ({
+          name: v.name,
+          lang: v.lang,
+          localService: v.localService
+        })));
+
+        setAvailableVoices(voicesToShow);
+
+        // Set up voice change listener
+        ttsService.onVoicesChanged(() => {
+          const allUpdatedVoices = ttsService.getAvailableVoices();
+          const highQualityUpdatedVoices = ttsService.getHighQualityVoices();
+          const sortedUpdatedVoices = ttsService.getAllVoicesWithQualityInfo();
+          const updatedVoicesToShow = sortedUpdatedVoices.length > 0 ? sortedUpdatedVoices : allUpdatedVoices;
+
+          console.log('🔊 SettingsModal: Voices updated - Total:', allUpdatedVoices.length, 'High-quality:', highQualityUpdatedVoices.length);
+          console.log('🔊 SettingsModal: Updated voice details:', updatedVoicesToShow.slice(0, 5).map(v => v.name));
+          setAvailableVoices(updatedVoicesToShow);
+
+          // If no voice is selected and voices are available, select the first high-quality one
+          if (!ttsSettings.voice && updatedVoicesToShow.length > 0) {
+            const newTtsSettings = {
+              ...ttsSettings,
+              voice: updatedVoicesToShow[0].name
+            };
+            setTtsSettings(newTtsSettings);
+            updateFormData({
+              ui: {
+                ...formData.ui,
+                textToSpeech: newTtsSettings
+              }
+            });
+          }
+        });
+      } catch (error) {
+        console.error('Failed to initialize TTS service:', error);
+      }
+    }
+  }, [isOpen, formData?.ui]);
 
   if (!isOpen) return null;
 
@@ -774,6 +885,270 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                             Allow the AI to use external tools and functions
                           </p>
                         </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Text to Speech Tab */}
+          {activeTab === 'text-to-speech' && formData?.ui?.textToSpeech && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-medium mb-4">Text to Speech</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <ToggleSwitch
+                      enabled={ttsSettings.enabled}
+                      onToggle={(enabled: boolean) => {
+                        const newTtsSettings = { ...ttsSettings, enabled };
+                        setTtsSettings(newTtsSettings);
+                        updateFormData({
+                          ui: {
+                            ...formData.ui,
+                            textToSpeech: newTtsSettings
+                          }
+                        });
+                      }}
+                    />
+                    <div>
+                      <Label>Enable Text to Speech</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Enable voice synthesis for AI responses
+                      </p>
+                    </div>
+                  </div>
+
+                  {ttsSettings.enabled && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="voice-select">Voice</Label>
+                        <Select
+                          value={ttsSettings.voice}
+                          onValueChange={(value) => {
+                            const newTtsSettings = { ...ttsSettings, voice: value };
+                            setTtsSettings(newTtsSettings);
+                            updateFormData({
+                              ui: {
+                                ...formData.ui,
+                                textToSpeech: newTtsSettings
+                              }
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors">
+                            <SelectValue placeholder="Select a voice" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableVoices.map((voice) => (
+                              <SelectItem key={voice.name} value={voice.name}>
+                                <div className="flex flex-col">
+                                  <span className="font-medium">
+                                    {voice.name}
+                                    {voice.name.toLowerCase().includes('google') && ' 🎯'}
+                                    {voice.name.toLowerCase().includes('neural') && ' ⚡'}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {voice.lang} • {voice.localService ? 'Local' : 'Remote/Cloud'}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-muted-foreground">
+                            Choose a voice for speech synthesis. 🎯 = Google voices, ⚡ = Neural voices. Remote/Cloud voices typically offer the best quality.
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              try {
+                                console.log('🔊 Manual voice refresh triggered');
+                                const ttsService = getTTSService(ttsSettings);
+
+                                // Force voice reload
+                                if (typeof window !== 'undefined' && window.speechSynthesis) {
+                                  // Cancel any ongoing speech
+                                  window.speechSynthesis.cancel();
+
+                                  // Trigger voice loading
+                                  const voices = window.speechSynthesis.getVoices();
+                                  console.log('🔊 Manual refresh: Found', voices.length, 'voices');
+
+                                  // Update available voices
+                                  const sortedVoices = ttsService.getAllVoicesWithQualityInfo();
+                                  setAvailableVoices(sortedVoices);
+
+                                  console.log('🔊 Manual refresh: Updated to', sortedVoices.length, 'voices');
+                                }
+                              } catch (error) {
+                                console.error('🔊 Failed to refresh voices:', error);
+                              }
+                            }}
+                            className="text-xs"
+                          >
+                            Refresh Voices
+                          </Button>
+                        </div>
+
+                        {/* Voice count and help */}
+                        <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <span>Available voices: {availableVoices.length}</span>
+                            <span>
+                              {availableVoices.filter(v => !v.localService).length} remote voices
+                            </span>
+                          </div>
+
+                          {availableVoices.filter(v => v.name.toLowerCase().includes('google')).length === 0 && (
+                            <div className="mb-3 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded">
+                              <p className="font-medium text-yellow-400 mb-1">🚨 No Google Voices Found</p>
+                              <p className="text-yellow-300">
+                                Google voices (including Whisper-quality voices) are only available in Chrome browser, not in Electron apps.
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="space-y-2">
+                            <p className="font-medium">💡 To get Google voices:</p>
+                            <ul className="space-y-1 ml-4">
+                              <li>• <strong>Chrome Browser:</strong> Open this app in Chrome for Google cloud voices</li>
+                              <li>• <strong>Windows Store:</strong> Download "Voice Recorder" app which installs premium voices</li>
+                              <li>• <strong>Windows Settings:</strong> Settings → Time & Language → Speech → Manage voices</li>
+                              <li>• <strong>Speech Platform:</strong> Download Microsoft Speech Platform Runtime + voices</li>
+                            </ul>
+
+                            <p className="mt-2 text-xs opacity-75">
+                              <strong>Note:</strong> Electron apps are limited to locally installed voices. For the best voice selection,
+                              consider running this app in Chrome browser where Google's cloud voices are available.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="speech-rate">Rate: {ttsSettings.rate.toFixed(1)}</Label>
+                          <input
+                            id="speech-rate"
+                            type="range"
+                            min="0.1"
+                            max="3.0"
+                            step="0.1"
+                            value={ttsSettings.rate}
+                            className="w-full"
+                            onChange={(e) => {
+                              const newTtsSettings = { ...ttsSettings, rate: parseFloat(e.target.value) };
+                              setTtsSettings(newTtsSettings);
+                              updateFormData({
+                                ui: {
+                                  ...formData.ui,
+                                  textToSpeech: newTtsSettings
+                                }
+                              });
+                            }}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Speech speed (0.1 = very slow, 3.0 = very fast)
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="speech-pitch">Pitch: {ttsSettings.pitch.toFixed(1)}</Label>
+                          <input
+                            id="speech-pitch"
+                            type="range"
+                            min="0"
+                            max="2"
+                            step="0.1"
+                            value={ttsSettings.pitch}
+                            className="w-full"
+                            onChange={(e) => {
+                              const newTtsSettings = { ...ttsSettings, pitch: parseFloat(e.target.value) };
+                              setTtsSettings(newTtsSettings);
+                              updateFormData({
+                                ui: {
+                                  ...formData.ui,
+                                  textToSpeech: newTtsSettings
+                                }
+                              });
+                            }}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Voice pitch (0 = low, 2 = high)
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="speech-volume">Volume: {Math.round(ttsSettings.volume * 100)}%</Label>
+                        <input
+                          id="speech-volume"
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.1"
+                          value={ttsSettings.volume}
+                          className="w-full"
+                          onChange={(e) => {
+                            const newTtsSettings = { ...ttsSettings, volume: parseFloat(e.target.value) };
+                            setTtsSettings(newTtsSettings);
+                            updateFormData({
+                              ui: {
+                                ...formData.ui,
+                                textToSpeech: newTtsSettings
+                              }
+                            });
+                          }}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Speech volume level
+                        </p>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <ToggleSwitch
+                          enabled={ttsSettings.autoPlay}
+                          onToggle={(enabled: boolean) => {
+                            const newTtsSettings = { ...ttsSettings, autoPlay: enabled };
+                            setTtsSettings(newTtsSettings);
+                            updateFormData({
+                              ui: {
+                                ...formData.ui,
+                                textToSpeech: newTtsSettings
+                              }
+                            });
+                          }}
+                        />
+                        <div>
+                          <Label>Auto-play AI Responses</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Automatically speak AI responses when they arrive
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Test Voice Button */}
+                      <div className="pt-4 border-t border-border">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            try {
+                              const ttsService = getTTSService(ttsSettings);
+                              ttsService.speak("Hello! This is a test of the text to speech functionality. How does it sound?");
+                            } catch (error) {
+                              console.error('Failed to test TTS:', error);
+                            }
+                          }}
+                          className="w-full"
+                        >
+                          <Volume2 className="w-4 h-4 mr-2" />
+                          Test Voice
+                        </Button>
                       </div>
                     </>
                   )}
@@ -1118,9 +1493,9 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                         </div>
                       </div>
 
-                      {/* Available Tools Section */}
+                      {/* Available Internal Command Tools Section */}
                       <div className="space-y-2">
-                        <Label>Available MCP Tools</Label>
+                        <Label>Available Internal Command Tools</Label>
                         <div className="max-h-48 overflow-y-auto space-y-2 border border-border rounded p-2">
                           {availableTools.length > 0 ? (
                             availableTools.map((tool) => (
@@ -1144,7 +1519,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                             ))
                           ) : (
                             <div className="text-center py-4 text-muted-foreground text-sm">
-                              No MCP tools detected. Make sure MCP servers are running.
+                              No internal command tools detected. Make sure internal commands are enabled and configured.
                             </div>
                           )}
                         </div>

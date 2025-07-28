@@ -9,7 +9,9 @@ import {
   ChevronDown,
   ArrowUp,
   Plus,
-  Search
+  Search,
+  Send,
+  Square
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -20,6 +22,7 @@ interface BottomInputAreaProps {
   value?: string;
   onChange?: (value: string) => void;
   onSend?: (message: string) => void;
+  onStop?: () => void;
   onFileUpload?: (files: FileList) => void;
   onScreenshot?: () => void;
   selectedModel?: string;
@@ -41,6 +44,7 @@ export function BottomInputArea({
   value = '',
   onChange,
   onSend,
+  onStop,
   onFileUpload,
   onScreenshot,
   selectedModel = 'gemma3:gpu',
@@ -66,10 +70,10 @@ export function BottomInputArea({
 
   // Sync local input value with prop value (for prompt selection)
   useEffect(() => {
-    if (value !== undefined) {
+    if (value !== undefined && value !== inputValue) {
       setInputValue(value);
     }
-  }, [value]);
+  }, [value, inputValue]);
 
   // Simple fuzzy search function
   const fuzzySearch = (query: string, text: string): number => {
@@ -108,12 +112,10 @@ export function BottomInputArea({
     .sort((a, b) => b.score - a.score)
     .map(item => item.model);
 
-  // Focus search input when dropdown opens
+  // Focus search input when dropdown opens - simplified
   useEffect(() => {
     if (showModelDropdown && modelSearchRef.current) {
-      setTimeout(() => {
-        modelSearchRef.current?.focus();
-      }, 100);
+      modelSearchRef.current.focus();
     }
   }, [showModelDropdown]);
 
@@ -122,6 +124,11 @@ export function BottomInputArea({
     const newValue = e.target.value;
     setInputValue(newValue);
     onChange?.(newValue);
+
+    // Auto-resize textarea
+    const textarea = e.target;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   };
 
   // Handle send message
@@ -130,6 +137,13 @@ export function BottomInputArea({
       onSend?.(inputValue.trim());
       setInputValue('');
       onChange?.('');
+    }
+  };
+
+  // Handle stop generation
+  const handleStop = () => {
+    if (isLoading) {
+      onStop?.();
     }
   };
 
@@ -162,13 +176,9 @@ export function BottomInputArea({
     input.click();
   };
 
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
-    }
-  }, [inputValue]);
+  // Auto-resize textarea - moved to input handler to avoid useEffect issues
+
+  // Focus management removed - was causing input issues
 
   return (
     <div
@@ -178,7 +188,7 @@ export function BottomInputArea({
       )}
     >
       {/* Input Area */}
-      <div className="flex items-end gap-3 p-4">
+      <div className="flex items-center gap-3 p-4">
         <div className="flex-1 relative">
           <textarea
             ref={textareaRef}
@@ -210,19 +220,22 @@ export function BottomInputArea({
         </Button>
 
         <Button
-          onClick={handleSend}
-          disabled={!inputValue.trim() || isLoading}
+          onClick={isLoading ? handleStop : handleSend}
+          disabled={!isLoading && !inputValue.trim()}
           className={cn(
             "h-12 w-12 rounded-lg flex-shrink-0 transition-all duration-200",
-            inputValue.trim() && !isLoading
+            isLoading
+              ? "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/25"
+              : inputValue.trim()
               ? "bg-blue-600 hover:bg-blue-700 text-white"
               : "bg-gray-700 text-gray-400 cursor-not-allowed"
           )}
+          title={isLoading ? "Stop Generation" : "Send Message"}
         >
           {isLoading ? (
-            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+            <Square className="w-4 h-4 fill-current" />
           ) : (
-            <ArrowUp className="w-5 h-5" />
+            <Send className="w-4 h-4" />
           )}
         </Button>
       </div>

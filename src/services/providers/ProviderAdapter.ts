@@ -174,9 +174,14 @@ export class ProviderAdapter {
 
   // Private method to inject dependencies into provider instances
   private async injectDependencies(providerInstance: ILLMProvider) {
+    console.log(`🔧 ProviderAdapter: Injecting dependencies into ${providerInstance.id}`);
+
     // Inject the MCP tools getter - always inject if available
     if (this.mcpToolsGetter) {
       (providerInstance as unknown as {getMCPToolsForProvider: unknown}).getMCPToolsForProvider = this.mcpToolsGetter;
+      console.log(`✅ ProviderAdapter: Injected getMCPToolsForProvider into ${providerInstance.id}`);
+    } else {
+      console.warn(`⚠️ ProviderAdapter: No mcpToolsGetter available for ${providerInstance.id}`);
     }
 
     // Inject the tool executor - always inject if available

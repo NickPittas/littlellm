@@ -7,12 +7,16 @@ import {
   Minus,
   Square,
   X,
-  Server
+  Server,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { ProviderLogo } from '../ui/provider-logo';
 import { ProviderFactory } from '../../services/providers/ProviderFactory';
 import { cn } from '@/lib/utils';
+import { settingsService } from '../../services/settingsService';
+import { useState, useEffect } from 'react';
 
 interface TopHeaderProps {
   className?: string;
@@ -74,6 +78,63 @@ export function TopHeader({
     onClose?.();
   };
 
+  // TTS state
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+
+  // Load TTS settings
+  useEffect(() => {
+    const loadTtsSettings = () => {
+      const settings = settingsService.getSettings();
+      const enabled = settings.ui?.textToSpeech?.enabled || false;
+      console.log('🔊 TopHeader: Loading TTS settings, enabled:', enabled);
+      setTtsEnabled(enabled);
+    };
+
+    loadTtsSettings();
+
+    // Listen for settings changes
+    const handleSettingsChange = () => {
+      console.log('🔊 TopHeader: Settings changed, reloading TTS settings...');
+      loadTtsSettings();
+    };
+
+    window.addEventListener('settingsSaved', handleSettingsChange);
+
+    return () => {
+      window.removeEventListener('settingsSaved', handleSettingsChange);
+    };
+  }, []);
+
+  const handleTtsToggle = async () => {
+    try {
+      const settings = settingsService.getSettings();
+      const newTtsEnabled = !ttsEnabled;
+
+      const updatedSettings = {
+        ...settings,
+        ui: {
+          ...settings.ui,
+          textToSpeech: {
+            ...settings.ui?.textToSpeech,
+            enabled: newTtsEnabled,
+            voice: settings.ui?.textToSpeech?.voice || '',
+            rate: settings.ui?.textToSpeech?.rate || 1.0,
+            pitch: settings.ui?.textToSpeech?.pitch || 1.0,
+            volume: settings.ui?.textToSpeech?.volume || 0.8,
+            autoPlay: settings.ui?.textToSpeech?.autoPlay || false,
+          }
+        }
+      };
+
+      await settingsService.updateSettings(updatedSettings);
+      setTtsEnabled(newTtsEnabled);
+
+      console.log('🔊 TTS toggled:', newTtsEnabled);
+    } catch (error) {
+      console.error('Failed to toggle TTS:', error);
+    }
+  };
+
   const handleProviderClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     onProviderClick?.(event.currentTarget);
   };
@@ -112,6 +173,28 @@ export function TopHeader({
               <Server className="w-3 h-3" />
               <span className="text-xs">Select Provider</span>
             </div>
+          )}
+        </Button>
+      </div>
+
+      {/* Center - TTS Toggle */}
+      <div className="flex items-center" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleTtsToggle}
+          className={cn(
+            "h-6 w-6 p-0 transition-colors",
+            ttsEnabled
+              ? "text-blue-400 hover:text-blue-300 hover:bg-blue-600/20"
+              : "text-gray-400 hover:text-white hover:bg-gray-800/50"
+          )}
+          title={ttsEnabled ? "Disable Text to Speech" : "Enable Text to Speech"}
+        >
+          {ttsEnabled ? (
+            <Volume2 className="w-3 h-3" />
+          ) : (
+            <VolumeX className="w-3 h-3" />
           )}
         </Button>
       </div>

@@ -117,6 +117,14 @@ const DEFAULT_SETTINGS: AppSettings = {
       destructive: '#f44747',
       destructiveForeground: '#ffffff',
       systemText: '#e0e0ff',
+    },
+    textToSpeech: {
+      enabled: false,
+      voice: '', // Will be set to first available voice
+      rate: 1.0,
+      pitch: 1.0,
+      volume: 0.8,
+      autoPlay: false,
     }
   },
   shortcuts: {

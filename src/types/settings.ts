@@ -91,6 +91,15 @@ export interface ColorSettings {
   systemText: string; // System UI text color (labels, buttons, etc.)
 }
 
+export interface TextToSpeechSettings {
+  enabled: boolean;
+  voice: string;
+  rate: number; // 0.1 to 10
+  pitch: number; // 0 to 2
+  volume: number; // 0 to 1
+  autoPlay: boolean; // Auto-play AI responses
+}
+
 export interface UISettings {
   theme: 'light' | 'dark' | 'system';
   alwaysOnTop: boolean;
@@ -108,6 +117,7 @@ export interface UISettings {
   useCustomColors?: boolean;
   selectedThemePreset?: string; // ID of selected theme preset
   colorMode?: 'preset' | 'custom'; // Whether using preset or custom colors
+  textToSpeech?: TextToSpeechSettings;
 }
 
 export interface InternalCommandSettings {

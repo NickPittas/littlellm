@@ -31,6 +31,7 @@ import { mcpService } from './mcpService';
 import { getMemoryMCPTools, executeMemoryTool, isMemoryTool } from './memoryMCPTools';
 import { memoryContextService, MemoryContext } from './memoryContextService';
 import { internalCommandService } from './internalCommandService';
+import { settingsService } from './settingsService';
 import { ProviderAdapter } from './providers/ProviderAdapter';
 import { debugLogger } from './debugLogger';
 import {
@@ -221,6 +222,8 @@ class LLMService {
   }
 
   private setupProviderAdapter() {
+    console.log(`🔧 LLMService: Setting up ProviderAdapter with dependency injection`);
+
     // Inject dependencies into the provider adapter
     this.providerAdapter.setMCPToolsGetter(this.getMCPToolsForProvider.bind(this));
     this.providerAdapter.setToolExecutor(this.executeMCPTool.bind(this));
@@ -232,6 +235,8 @@ class LLMService {
     this.providerAdapter.setToolResultsSummarizer(this.summarizeToolResultsForModel.bind(this));
     this.providerAdapter.setToolResultsAggregator(this.aggregateToolResults.bind(this));
     this.providerAdapter.setToolResultFormatter(this.formatToolResult.bind(this));
+
+    console.log(`✅ LLMService: ProviderAdapter setup complete with all dependencies injected`);
   }
 
   getProviders(): LLMProvider[] {
@@ -371,10 +376,28 @@ class LLMService {
       const memoryTools = getMemoryMCPTools();
       console.log(`🧠 Memory tools available (${memoryTools.length} tools):`, memoryTools.map(t => t.function.name));
 
-      // Get internal command tools if enabled
+      // Get internal command tools if enabled (ensure service is initialized first)
+      console.log(`🔧 Ensuring settings are fully loaded before checking internal commands...`);
+      await settingsService.waitForInitialization();
+      console.log(`🔧 Settings initialization complete, now initializing internal command service...`);
+      await internalCommandService.initialize();
+
+      // Debug settings loading
+      const currentSettings = settingsService.getSettings();
+      console.log(`🔧 Current settings for internal commands:`, {
+        enabled: currentSettings.internalCommands?.enabled,
+        enabledCommands: currentSettings.internalCommands?.enabledCommands,
+        hasInternalCommands: !!currentSettings.internalCommands,
+        settingsInitialized: settingsService.isInitialized()
+      });
+
       const isInternalEnabled = internalCommandService.isEnabled();
+      console.log(`🔧 Internal commands enabled: ${isInternalEnabled}`);
+      if (!isInternalEnabled) {
+        console.log(`💡 To enable internal commands: Go to Settings > Internal Commands > Enable Internal Commands`);
+      }
       const internalTools = isInternalEnabled ? internalCommandService.getAvailableTools() : [];
-      // Removed debug spam - tools are loaded silently
+      console.log(`🔧 Internal command tools available (${internalTools.length} tools):`, internalTools.map(t => t.name));
 
       // Convert all tools to a unified format that providers can handle
       const unifiedTools: Array<{type: string, function: {name: string, description: string, parameters: unknown}, serverId?: string}> = [];

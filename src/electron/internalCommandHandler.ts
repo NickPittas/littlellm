@@ -51,13 +51,20 @@ class ElectronInternalCommandHandler {
    * Public methods for main process integration
    */
   public async setConfig(config: InternalCommandConfig): Promise<boolean> {
+    console.log(`🔧 ElectronInternalCommandHandler.setConfig() called with enabled: ${config.enabled}`);
     this.config = config;
-    // Removed debug spam - config updated silently
+    console.log(`🔧 Config updated - enabled: ${this.config?.enabled}, has enabledCommands: ${!!this.config?.enabledCommands}`);
     return true;
   }
 
   public async getTools(): Promise<Array<{name: string; description: string; category: string; inputSchema: unknown}>> {
-    return this.getAvailableTools();
+    const tools = this.getAvailableTools();
+    console.log(`🔧 InternalCommandHandler.getTools() called - returning ${tools.length} tools`);
+    console.log(`🔧 Config enabled: ${this.config?.enabled}, has config: ${!!this.config}`);
+    if (tools.length > 0) {
+      console.log(`🔧 Sample tools:`, tools.slice(0, 3).map(t => ({ name: t.name, category: t.category })));
+    }
+    return tools;
   }
 
   public async execute(toolName: string, args: unknown): Promise<CommandResult> {
@@ -837,7 +844,11 @@ class ElectronInternalCommandHandler {
    * Get available tools based on configuration
    */
   private getAvailableTools(): Array<{name: string; description: string; category: string; inputSchema: unknown}> {
+    console.log(`🔧 ElectronInternalCommandHandler.getAvailableTools() called`);
+    console.log(`🔧 Config exists: ${!!this.config}, enabled: ${this.config?.enabled}`);
+
     if (!this.config?.enabled) {
+      console.log(`🔧 Internal commands disabled or no config, returning empty array`);
       return [];
     }
 
@@ -866,9 +877,14 @@ class ElectronInternalCommandHandler {
 
     // Add system commands if enabled
     if (this.config.enabledCommands.system) {
-      tools.push(
-        ...this.getSystemCommandDefinitions()
-      );
+      const systemTools = this.getSystemCommandDefinitions();
+      console.log(`🔧 Adding ${systemTools.length} system tools`);
+      tools.push(...systemTools);
+    }
+
+    console.log(`🔧 Total tools generated: ${tools.length}`);
+    if (tools.length > 0) {
+      console.log(`🔧 Sample tools:`, tools.slice(0, 3).map(t => ({ name: t.name, category: t.category })));
     }
 
     return tools;

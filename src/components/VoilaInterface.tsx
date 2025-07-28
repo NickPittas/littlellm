@@ -241,6 +241,15 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
   // Auto-focus chat input on app startup and window activation (but not on every click)
   useEffect(() => {
+    // Check if modern UI is active - if so, don't interfere with focus
+    const urlParams = new URLSearchParams(window.location.search);
+    const isModernUI = urlParams.has('modern');
+
+    if (isModernUI) {
+      console.log('🚫 VoilaInterface: Modern UI detected, skipping focus management to avoid conflicts');
+      return; // Don't set up any focus listeners when modern UI is active
+    }
+
     const focusInput = () => {
       if (textareaRef.current) {
         // Small delay to ensure the component is fully rendered
@@ -322,6 +331,15 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
   // Global keyboard shortcuts
   useEffect(() => {
+    // Check if modern UI is active - if so, don't interfere with keyboard shortcuts
+    const urlParams = new URLSearchParams(window.location.search);
+    const isModernUI = urlParams.has('modern');
+
+    if (isModernUI) {
+      console.log('🚫 VoilaInterface: Modern UI detected, skipping global keyboard shortcuts to avoid conflicts');
+      return; // Don't set up keyboard listeners when modern UI is active
+    }
+
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       // Check for action menu shortcut first
       if (isActionMenuShortcut(e)) {

@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Brain, Copy, Check, Wrench } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { ChevronDown, ChevronRight, Brain, Copy, Check, Wrench, Volume2, VolumeX } from 'lucide-react';
 import { Button } from './ui/button';
 import { parseTextWithContent } from '../lib/contentParser';
 import { SourceAttribution } from './SourceAttribution';
 import type { Source } from '../services/chatService';
 import { debugLogger } from '../services/debugLogger';
+import { getTTSService } from '../services/textToSpeechService';
+import { settingsService } from '../services/settingsService';
 
 interface MessageWithThinkingProps {
   content: string;
@@ -41,6 +43,8 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
   const [showToolExecution, setShowToolExecution] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const autoPlayTriggeredRef = useRef(false);
 
   // Debug tool calls - now handled in useEffect to prevent spam
 
@@ -251,6 +255,91 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
   const parsed = useMemo(() => parseMessage(content), [content]);
   const hasThinking = parsed.thinking.length > 0;
   const hasToolExecution = parsed.toolExecution.length > 0;
+
+  // TTS function for speaking the message
+  const handleSpeak = useCallback(async () => {
+    try {
+      const settings = settingsService.getSettings();
+      const ttsSettings = settings.ui?.textToSpeech;
+
+      if (!ttsSettings?.enabled) {
+        console.log('🔊 TTS is disabled in settings');
+        return;
+      }
+
+      if (isSpeaking) {
+        // Stop current speech
+        const ttsService = getTTSService(ttsSettings);
+        ttsService.stop();
+        setIsSpeaking(false);
+        console.log('🔊 TTS stopped');
+      } else {
+        // Start speaking
+        const ttsService = getTTSService(ttsSettings);
+
+        // Use the parsed response text for cleaner speech
+        const textToSpeak = parsed.response || content;
+
+        if (!textToSpeak || textToSpeak.trim().length === 0) {
+          console.log('🔊 No text to speak');
+          return;
+        }
+
+        console.log('🔊 Starting TTS for text:', textToSpeak.substring(0, 100) + '...');
+        setIsSpeaking(true);
+        ttsService.speak(textToSpeak);
+
+        // Monitor speech status
+        const checkSpeechStatus = () => {
+          if (!ttsService.isSpeaking()) {
+            setIsSpeaking(false);
+            console.log('🔊 TTS finished');
+          } else {
+            setTimeout(checkSpeechStatus, 100);
+          }
+        };
+        setTimeout(checkSpeechStatus, 100);
+      }
+    } catch (error) {
+      console.error('🔊 Failed to speak text:', error);
+      setIsSpeaking(false);
+    }
+  }, [content, parsed.response, isSpeaking]);
+
+  // Auto-play TTS for new AI messages if enabled
+  useEffect(() => {
+    // Reset auto-play trigger when content changes (new message)
+    autoPlayTriggeredRef.current = false;
+  }, [content]);
+
+  useEffect(() => {
+    const settings = settingsService.getSettings();
+    const ttsSettings = settings.ui?.textToSpeech;
+
+    // Only auto-play if:
+    // 1. TTS is enabled
+    // 2. Auto-play is enabled
+    // 3. There's content to speak
+    // 4. We haven't already triggered auto-play for this message
+    // 5. This appears to be an AI response (has parsed response content)
+    if (ttsSettings?.enabled &&
+        ttsSettings?.autoPlay &&
+        content &&
+        !autoPlayTriggeredRef.current &&
+        parsed.response &&
+        parsed.response.trim().length > 0) {
+
+      console.log('🔊 Auto-play TTS triggered for new AI message');
+      autoPlayTriggeredRef.current = true;
+
+      // Small delay to ensure the message is fully rendered
+      const timer = setTimeout(() => {
+        handleSpeak();
+      }, 1000); // Increased delay to ensure message is complete
+
+      return () => clearTimeout(timer);
+    }
+  }, [content, parsed.response, handleSpeak]);
 
   // Extract tool calls from content if not provided via props - MEMOIZED to prevent infinite loops
   const extractedToolCalls = useMemo(() => {
@@ -637,20 +726,40 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
         </div>
       )}
 
-      {/* Copy Button - positioned in top right */}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={handleCopy}
-        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
-      >
-        {copied ? (
-          <Check className="h-3 w-3 text-green-500" />
-        ) : (
-          <Copy className="h-3 w-3" />
-        )}
-      </Button>
+      {/* Action Buttons - positioned in top right */}
+      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+        {/* TTS Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleSpeak}
+          className="h-6 w-6 p-0"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          title={isSpeaking ? "Stop speaking" : "Speak text"}
+        >
+          {isSpeaking ? (
+            <VolumeX className="h-3 w-3 text-blue-500" />
+          ) : (
+            <Volume2 className="h-3 w-3" />
+          )}
+        </Button>
+
+        {/* Copy Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleCopy}
+          className="h-6 w-6 p-0"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+          title="Copy message"
+        >
+          {copied ? (
+            <Check className="h-3 w-3 text-green-500" />
+          ) : (
+            <Copy className="h-3 w-3" />
+          )}
+        </Button>
+      </div>
 
       {/* Main Response */}
       {parsed.response && (

@@ -3927,8 +3927,11 @@ function setupIPC() {
   });
 
   ipcMain.handle('internal-commands:get-tools', async () => {
+    console.log('🔧 IPC: internal-commands:get-tools called');
     try {
-      return await electronInternalCommandHandler.getTools();
+      const tools = await electronInternalCommandHandler.getTools();
+      console.log(`🔧 IPC: Returning ${tools.length} tools to renderer`);
+      return tools;
     } catch (error) {
       console.error('Failed to get internal commands tools:', error);
       return [];

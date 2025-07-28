@@ -61,8 +61,16 @@ export class AnthropicProvider extends BaseProvider {
       }
 
       // Get raw tools from the centralized service
+      console.log(`🔧 AnthropicProvider: Calling _getMCPToolsForProvider for anthropic`);
+      console.log(`🔧 AnthropicProvider: _getMCPToolsForProvider method exists:`, typeof this._getMCPToolsForProvider === 'function');
+
       const rawTools = await this._getMCPToolsForProvider!('anthropic', settings);
-      console.log(`📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{ function?: { name?: string } }>).map(t => t.function?.name));
+      console.log(`🔧 AnthropicProvider: Received ${rawTools.length} raw tools from _getMCPToolsForProvider`);
+      console.log(`📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{ function?: { name?: string }, serverId?: string }>).map(t => ({
+        name: t.function?.name,
+        serverId: t.serverId,
+        isInternal: t.serverId === 'internal-commands'
+      })));
 
       // Format tools specifically for Anthropic
       const formattedTools = this.formatToolsForAnthropic(rawTools as Array<{ type?: string; function?: { name?: string; description?: string; parameters?: unknown } }>);
