@@ -35,11 +35,25 @@ export class N8NProvider extends BaseProvider {
     conversationId?: string
   ): Promise<LLMResponse> {
     // N8N workflow integration
+    console.log(`🔍 N8N sendMessage called with:`, {
+      settingsBaseUrl: settings.baseUrl,
+      providerBaseUrl: provider.baseUrl,
+      messageType: typeof message
+    });
+
     const baseUrl = settings.baseUrl || provider.baseUrl;
-    
+
     if (!baseUrl) {
-      throw new Error('N8N webhook URL is required');
+      console.error('🚨 N8N webhook URL is missing:', {
+        settingsBaseUrl: settings.baseUrl,
+        providerBaseUrl: provider.baseUrl,
+        hasSettings: !!settings,
+        hasProvider: !!provider
+      });
+      throw new Error('N8N webhook URL is required. Please configure the webhook URL in Settings → API Keys → N8N Base URL.');
     }
+
+    console.log(`🔍 N8N: Using webhook URL: ${baseUrl}`);
 
     // Prepare the payload for the N8N workflow
     const payload = {

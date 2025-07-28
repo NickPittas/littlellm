@@ -482,6 +482,9 @@ export const chatService = {
       const apiKeyData = secureApiKeyService?.getApiKeyData(settings.provider);
       const apiKey = apiKeyData?.apiKey || '';
 
+      // Merge baseUrl from both sources (secure storage takes precedence)
+      const baseUrl = apiKeyData?.baseUrl || providerSettings.baseUrl || '';
+
       // Debug provider settings
       console.log('🔍 ChatService provider settings debug:', {
         provider: settings.provider,
@@ -489,7 +492,10 @@ export const chatService = {
         hasApiKey: !!apiKey,
         apiKeyLength: apiKey?.length || 0,
         apiKeyStart: apiKey?.substring(0, 10) || 'undefined',
-        fromSecureStorage: !!apiKeyData
+        fromSecureStorage: !!apiKeyData,
+        baseUrlFromSecure: apiKeyData?.baseUrl || 'none',
+        baseUrlFromSettings: providerSettings.baseUrl || 'none',
+        finalBaseUrl: baseUrl
       });
 
       // Check if API key is required and missing
@@ -502,12 +508,19 @@ export const chatService = {
         provider: settings.provider,
         model: settings.model,
         apiKey: apiKey,
-        baseUrl: providerSettings.baseUrl,
+        baseUrl: baseUrl,
         temperature: settings.temperature,
         maxTokens: settings.maxTokens,
         systemPrompt: settings.systemPrompt,
         toolCallingEnabled: settings.toolCallingEnabled,
       };
+
+      console.log('🔍 ChatService: Final LLMSettings for', settings.provider, ':', {
+        model: settings.model,
+        hasApiKey: !!apiKey,
+        baseUrl: baseUrl,
+        toolCallingEnabled: settings.toolCallingEnabled
+      });
 
       // Get conversation history length setting
       const appSettings = settingsService.getSettings();

@@ -379,6 +379,7 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
                     placeholder={
                       provider.id === 'lmstudio' ? 'http://localhost:1234/v1' :
                       provider.id === 'ollama' ? 'http://localhost:11434' :
+                      provider.id === 'n8n' ? 'https://your-n8n-instance.com/webhook/your-webhook-id' :
                       'Base URL...'
                     }
                     className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
