@@ -14,7 +14,7 @@ import KnowledgeBaseSettings from '../KnowledgeBaseSettings';
 import { mcpService, type MCPServer } from '../../services/mcpService';
 import { PromptsContent } from '../PromptsContent';
 import { ApiKeySettings } from '../ApiKeySettings';
-import { Plus, Trash2, Server, FileText, Palette, RotateCcw, X, Key, Keyboard, MessageSquare, Terminal, Brain, Database, Settings } from 'lucide-react';
+import { Plus, Trash2, Server, FileText, Palette, RotateCcw, X, Key, Keyboard, MessageSquare, Terminal, Brain, Database, Settings, Edit } from 'lucide-react';
 import { ColorPicker } from '../ui/color-picker';
 import { ThemeSelector } from '../ui/theme-selector';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -174,12 +174,17 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
   const handleToggleMcpServer = async (serverId: string, enabled: boolean) => {
     try {
+      console.log('🔧 Toggling MCP server:', serverId, 'to enabled:', enabled);
       const success = await mcpService.updateServer(serverId, { enabled });
+      console.log('🔧 MCP server toggle result:', success);
       if (success) {
+        console.log('🔧 Reloading MCP servers after toggle...');
         await loadMcpServers();
+      } else {
+        console.error('🔧 Failed to toggle MCP server - updateServer returned false');
       }
     } catch (error) {
-      console.error('Failed to toggle MCP server:', error);
+      console.error('🔧 Failed to toggle MCP server:', error);
     }
   };
 
@@ -933,8 +938,31 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                         <div className="flex items-center gap-2">
                           <ToggleSwitch
                             enabled={server.enabled}
-                            onToggle={(enabled) => handleToggleMcpServer(server.name, enabled)}
+                            onToggle={(enabled) => {
+                              console.log('🔧 MCP Server toggle clicked:', server.name, 'enabled:', enabled);
+                              handleToggleMcpServer(server.name, enabled);
+                            }}
                           />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              console.log('🔧 Edit MCP server:', server.name);
+                              setEditingMcpServer(server);
+                              setNewMcpServer({
+                                name: server.name,
+                                command: server.command,
+                                args: server.args || [],
+                                description: server.description || '',
+                                enabled: server.enabled,
+                                env: server.env || {}
+                              });
+                              setShowAddMcpServer(true);
+                            }}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1470,19 +1498,20 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       {/* MCP JSON Editor Dialog */}
       {showMcpJsonEditor && (
         <Dialog open={showMcpJsonEditor} onOpenChange={setShowMcpJsonEditor}>
-          <DialogContent className="max-w-4xl max-h-[80vh]">
-            <DialogHeader>
+          <DialogContent className="max-w-6xl w-[90vw] max-h-[90vh] h-[80vh] flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Edit MCP Configuration</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <Textarea
-                value={mcpJsonContent}
-                onChange={(e) => setMcpJsonContent(e.target.value)}
-                rows={20}
-                className="font-mono text-sm"
-                placeholder="MCP configuration JSON..."
-              />
-              <div className="flex justify-end gap-2">
+            <div className="flex-1 flex flex-col space-y-4 min-h-0">
+              <div className="flex-1 min-h-0">
+                <Textarea
+                  value={mcpJsonContent}
+                  onChange={(e) => setMcpJsonContent(e.target.value)}
+                  className="font-mono text-sm h-full resize-none overflow-auto"
+                  placeholder="MCP configuration JSON..."
+                />
+              </div>
+              <div className="flex justify-end gap-2 flex-shrink-0">
                 <Button
                   variant="outline"
                   onClick={() => setShowMcpJsonEditor(false)}

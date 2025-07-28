@@ -410,6 +410,23 @@ export class OllamaProvider extends BaseProvider {
         url: response.url,
         requestModel: settings.model
       });
+
+      // Handle model not found error specifically
+      if (response.status === 404 && error.includes('not found')) {
+        try {
+          // Try to get available models to suggest alternatives
+          const availableModels = await this.fetchModels('', baseUrl);
+          const modelSuggestions = availableModels.length > 0
+            ? `\n\nAvailable models: ${availableModels.slice(0, 5).join(', ')}${availableModels.length > 5 ? '...' : ''}`
+            : '\n\nNo models found. Please install models using: ollama pull <model-name>';
+
+          throw new Error(`Model "${settings.model}" not found in Ollama.${modelSuggestions}\n\nTo install this model, run: ollama pull ${settings.model}`);
+        } catch (fetchError) {
+          // If we can't fetch models, just show the basic error
+          throw new Error(`Model "${settings.model}" not found in Ollama. Please install it using: ollama pull ${settings.model}`);
+        }
+      }
+
       throw new Error(`Ollama API error: ${error}`);
     }
 
