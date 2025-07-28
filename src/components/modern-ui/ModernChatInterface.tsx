@@ -81,11 +81,13 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
   // Handle settings updates
   const updateSettings = useCallback((newSettings: Partial<ChatSettings>) => {
-    const updatedSettings = { ...settings, ...newSettings };
-    setSettings(updatedSettings);
-    settingsService.updateChatSettingsInMemory(updatedSettings);
-    settingsService.saveSettingsToDisk();
-  }, [settings]);
+    setSettings(prevSettings => {
+      const updatedSettings = { ...prevSettings, ...newSettings };
+      settingsService.updateChatSettingsInMemory(updatedSettings);
+      settingsService.saveSettingsToDisk();
+      return updatedSettings;
+    });
+  }, []); // Remove settings dependency to prevent infinite loop
 
   // Load models for a specific provider
   const loadModelsForProvider = useCallback(async (providerId: string) => {
