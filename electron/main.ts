@@ -1799,16 +1799,17 @@ function saveMCPServers(mcpData: MCPData) {
 
 async function createWindow() {
   const appSettings = loadAppSettings();
-  const bounds = appSettings.ui?.windowBounds || { width: 570, height: 80 }; // Very minimal height for content
+  // Modern interface needs larger dimensions to accommodate sidebar, header, and chat area
+  const bounds = appSettings.ui?.windowBounds || { width: 1200, height: 800 };
 
-  // Prepare window options with size
+  // Prepare window options with size for modern interface
   const windowOptions: BrowserWindowConstructorOptions = {
-    width: Math.max(bounds.width, 380), // Ensure minimum width for all UI elements
-    height: Math.max(bounds.height, 100), // Minimum height for input + toolbar
-    minWidth: 380, // Calculated minimum: input area (300px) + padding + buttons (80px)
-    minHeight: 100, // Calculated minimum: single-line input (32px) + toolbar (40px) + padding (28px)
-    maxWidth: 1400,
-    maxHeight: 1000,
+    width: Math.max(bounds.width, 1000), // Minimum width for sidebar + main content
+    height: Math.max(bounds.height, 600), // Minimum height for header + chat + input
+    minWidth: 1000, // Minimum for modern interface layout
+    minHeight: 600, // Minimum for modern interface layout
+    maxWidth: 1600,
+    maxHeight: 1200,
     show: !appSettings.ui?.startMinimized,
     alwaysOnTop: appSettings.ui?.alwaysOnTop !== false, // Default to true if not set
     frame: false, // Remove traditional frame completely for Windows
@@ -1845,11 +1846,11 @@ async function createWindow() {
   if (isProduction) {
     // Start local HTTP server for static files
     staticServerPort = await createStaticServer();
-    startUrl = `http://localhost:${staticServerPort}`;
+    startUrl = `http://localhost:${staticServerPort}?modern=true`;
   } else {
     // Detect the Next.js port automatically
     const detectedPort = await detectNextJSPort();
-    startUrl = `http://localhost:${detectedPort}`;
+    startUrl = `http://localhost:${detectedPort}?modern=true`;
   }
 
   console.log('isProduction:', isProduction);
@@ -3668,6 +3669,53 @@ function setupIPC() {
     } catch (error) {
       console.error('Error in select-files handler:', error);
       return [];
+    }
+  });
+
+  // Simple file reading handler
+  ipcMain.handle('read-file', async (_, filePath: string) => {
+    try {
+      console.log(`📖 Reading file: ${filePath}`);
+
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        throw new Error(`File not found: ${filePath}`);
+      }
+
+      // Read file content
+      const content = await fsPromises.readFile(filePath, 'utf8');
+      console.log(`📖 Successfully read file: ${filePath}, length: ${content.length}`);
+
+      return {
+        success: true,
+        content,
+        name: path.basename(filePath),
+        type: 'text'
+      };
+    } catch (error) {
+      console.error(`📖 Failed to read file ${filePath}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  });
+
+  // Directory selection handler
+  ipcMain.handle('select-directory', async () => {
+    try {
+      const { canceled, filePaths } = await dialog.showOpenDialog({
+        properties: ['openDirectory']
+      });
+
+      if (canceled || !filePaths || filePaths.length === 0) {
+        return null;
+      }
+
+      return filePaths[0];
+    } catch (error) {
+      console.error('Error in select-directory handler:', error);
+      return null;
     }
   });
 

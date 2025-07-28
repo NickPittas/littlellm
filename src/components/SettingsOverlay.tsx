@@ -19,7 +19,11 @@ import { ColorPicker } from './ui/color-picker';
 import { ThemeSelector } from './ui/theme-selector';
 import { useTheme } from '../contexts/ThemeContext';
 
-export function SettingsOverlay() {
+interface SettingsOverlayProps {
+  onClose?: () => void;
+}
+
+export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
   const [activeTab, setActiveTab] = useState('api-keys');
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [formData, setFormData] = useState<AppSettings | null>(null);
@@ -75,7 +79,9 @@ export function SettingsOverlay() {
   const [newBlockedCommand, setNewBlockedCommand] = useState('');
 
   const handleClose = () => {
-    if (typeof window !== 'undefined' && window.electronAPI) {
+    if (onClose) {
+      onClose();
+    } else if (typeof window !== 'undefined' && window.electronAPI) {
       window.electronAPI.closeSettingsOverlay();
     }
   };
