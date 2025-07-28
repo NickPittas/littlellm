@@ -939,8 +939,8 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                           <ToggleSwitch
                             enabled={server.enabled}
                             onToggle={(enabled) => {
-                              console.log('🔧 MCP Server toggle clicked:', server.name, 'enabled:', enabled);
-                              handleToggleMcpServer(server.name, enabled);
+                              console.log('🔧 MCP Server toggle clicked:', server.name, 'id:', server.id, 'enabled:', enabled);
+                              handleToggleMcpServer(server.id, enabled);
                             }}
                           />
                           <Button
@@ -966,7 +966,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleDeleteMcpServer(server.name)}
+                            onClick={() => handleDeleteMcpServer(server.id)}
                             className="text-destructive hover:text-destructive"
                           >
                             <Trash2 className="h-4 w-4" />

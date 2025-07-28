@@ -3,6 +3,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Button } from './ui/button';
 import type { ProviderApiKeyData } from '../services/secureApiKeyService';
+import { settingsService } from '../services/settingsService';
 
 // Function to get secure API key service when needed
 function getSecureApiKeyService() {
@@ -139,19 +140,34 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
       const service = getSecureApiKeyService();
       console.log('🔍 Service initialized:', service.isInitialized());
 
+      // Also get settings to merge baseUrl from regular settings
+      const currentSettings = settingsService.getSettings();
+      console.log('🔍 Current settings providers:', currentSettings?.chat?.providers);
+
       PROVIDERS.forEach(provider => {
         try {
           const data = service.getApiKeyData(provider.id);
+          const settingsBaseUrl = currentSettings?.chat?.providers?.[provider.id]?.baseUrl || '';
+
           if (data) {
-            loadedKeys[provider.id] = data;
+            // Merge secure storage data with settings baseUrl if secure storage doesn't have it
+            loadedKeys[provider.id] = {
+              ...data,
+              baseUrl: data.baseUrl || settingsBaseUrl
+            };
             console.log(`🔍 Loaded API key for ${provider.id}:`, {
               hasApiKey: !!data.apiKey,
               keyLength: data.apiKey?.length || 0,
-              hasBaseUrl: !!data.baseUrl
+              hasBaseUrl: !!(data.baseUrl || settingsBaseUrl),
+              baseUrlSource: data.baseUrl ? 'secure' : settingsBaseUrl ? 'settings' : 'none'
             });
           } else {
-            loadedKeys[provider.id] = { apiKey: '', baseUrl: '', lastSelectedModel: '' };
-            console.log(`🔍 No API key data for ${provider.id}, using empty`);
+            loadedKeys[provider.id] = {
+              apiKey: '',
+              baseUrl: settingsBaseUrl,
+              lastSelectedModel: ''
+            };
+            console.log(`🔍 No API key data for ${provider.id}, using baseUrl from settings:`, settingsBaseUrl);
           }
         } catch (error) {
           console.error(`🔐 ApiKeySettings: Error loading API key for ${provider.id}:`, error);
@@ -159,7 +175,8 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
           if (error instanceof Error && error.message.includes('not initialized')) {
             console.warn('🔐 ApiKeySettings: Service not initialized, will retry when ready');
           }
-          loadedKeys[provider.id] = { apiKey: '', baseUrl: '', lastSelectedModel: '' };
+          const settingsBaseUrl = currentSettings?.chat?.providers?.[provider.id]?.baseUrl || '';
+          loadedKeys[provider.id] = { apiKey: '', baseUrl: settingsBaseUrl, lastSelectedModel: '' };
         }
       });
     } catch (error) {
@@ -265,6 +282,32 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
             lastSelectedModel: data.lastSelectedModel
           });
           console.log(`✅ Saved API key for ${providerId}`);
+
+          // Also save baseUrl to regular settings for providers that use it
+          if (data.baseUrl?.trim() && (providerId === 'ollama' || providerId === 'lmstudio' || providerId === 'n8n')) {
+            try {
+              const currentSettings = settingsService.getSettings();
+              if (currentSettings?.chat?.providers) {
+                const updatedSettings = {
+                  ...currentSettings,
+                  chat: {
+                    ...currentSettings.chat,
+                    providers: {
+                      ...currentSettings.chat.providers,
+                      [providerId]: {
+                        ...currentSettings.chat.providers[providerId],
+                        baseUrl: data.baseUrl.trim()
+                      }
+                    }
+                  }
+                };
+                await settingsService.updateSettings(updatedSettings);
+                console.log(`✅ Saved baseUrl to settings for ${providerId}: ${data.baseUrl.trim()}`);
+              }
+            } catch (settingsError) {
+              console.error(`❌ Failed to save baseUrl to settings for ${providerId}:`, settingsError);
+            }
+          }
         } catch (error) {
           console.error(`❌ Failed to save API key for ${providerId}:`, error);
           // Don't throw error - continue saving other keys (ALWAYS SAVE mode)
@@ -333,7 +376,11 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
                     id={`${provider.id}-url`}
                     type="url"
                     value={apiKeys[provider.id]?.baseUrl || ''}
-                    placeholder={provider.id === 'lmstudio' ? 'http://localhost:1234/v1' : 'Base URL...'}
+                    placeholder={
+                      provider.id === 'lmstudio' ? 'http://localhost:1234/v1' :
+                      provider.id === 'ollama' ? 'http://localhost:11434' :
+                      'Base URL...'
+                    }
                     className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                     onChange={(e) => updateApiKey(provider.id, 'baseUrl', e.target.value)}
                   />
