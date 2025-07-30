@@ -280,15 +280,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
                       )
                     ) : (
                       <UserMessage
-                        content={
-                          typeof message.content === 'string'
-                            ? message.content
-                            : Array.isArray(message.content)
-                              ? message.content.map((item, idx) =>
-                                  item.type === 'text' ? item.text : `[Image ${idx + 1}]`
-                                ).join(' ')
-                              : String(message.content)
-                        }
+                        content={message.content}
                       />
                     )}
                   </CardContent>

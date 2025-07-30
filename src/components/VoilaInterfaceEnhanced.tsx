@@ -9,6 +9,9 @@ import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag';
 import { BottomToolbar } from './BottomToolbarNew';
 import { useHistoryOverlay } from './HistoryOverlay';
 import { KnowledgeBaseIndicator } from './KnowledgeBaseIndicator';
+import { MessageContent } from './MessageContent';
+import { ContentItem } from '../types/chat';
+import { chatService } from '../services/chatService';
 
 // Magic UI Components
 import { MagicContainer, MagicCard } from './magicui/magic-card';
@@ -132,9 +135,42 @@ export function VoilaInterfaceEnhanced({ onClose }: VoilaInterfaceProps) {
   const handleSendMessage = useCallback(async () => {
     if (!input.trim() && attachedFiles.length === 0) return;
 
+    // Create content array that includes both text and files
+    const contentArray: Array<ContentItem> = [];
+
+    // Add text content if present
+    if (input.trim()) {
+      contentArray.push({
+        type: 'text',
+        text: input.trim()
+      });
+    }
+
+    // Add file content
+    for (const file of attachedFiles) {
+      if (file.type.startsWith('image/')) {
+        // Convert image to base64 for display in chat
+        const base64 = await chatService.fileToBase64(file);
+        contentArray.push({
+          type: 'image_url',
+          image_url: {
+            url: base64
+          }
+        });
+      } else {
+        // For non-image files, add a file reference
+        contentArray.push({
+          type: 'text',
+          text: `\n\n[File attached: ${file.name}]`
+        });
+      }
+    }
+
     const newMessage: Message = {
       id: Date.now().toString(),
-      content: input,
+      content: contentArray.length === 1 && contentArray[0].type === 'text'
+        ? contentArray[0].text || input.trim()
+        : contentArray,
       role: 'user',
       timestamp: new Date()
     };
@@ -408,16 +444,7 @@ export function VoilaInterfaceEnhanced({ onClose }: VoilaInterfaceProps) {
                   <div className={`${message.role === 'user' ? 'text-blue-400' : 'text-green-400'} font-semibold mb-1`}>
                     {message.role === 'user' ? 'You' : 'AI'}
                   </div>
-                  <div>
-                    {typeof message.content === 'string'
-                      ? message.content
-                      : Array.isArray(message.content)
-                        ? message.content.map((item, idx) =>
-                            item.type === 'text' ? item.text : `[Content ${idx + 1}]`
-                          ).join(' ')
-                        : String(message.content)
-                    }
-                  </div>
+                  <MessageContent content={message.content} />
                 </MagicCard>
               </BlurFade>
             ))}

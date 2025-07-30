@@ -10,12 +10,13 @@ const URL_REGEX = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()
 const DOMAIN_REGEX = /(^|[\s([{])((?:www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.(?:[a-zA-Z]{2,6}|localhost)(?::\d+)?(?:[-a-zA-Z0-9()@:%_+.~#?&//=]*)?)/g;
 const CODE_BLOCK_REGEX = /```(\w+)?\n?([\s\S]*?)```/g;
 const INLINE_CODE_REGEX = /`([^`\n]+)`/g;
+const IMAGE_URL_REGEX = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?[^)\s]*)?/gi;
 
 /**
  * Interface for parsed content segments
  */
 interface ContentSegment {
-  type: 'text' | 'link' | 'code-block' | 'inline-code';
+  type: 'text' | 'link' | 'code-block' | 'inline-code' | 'image';
   content: string;
   url?: string;
   language?: string;
@@ -75,17 +76,38 @@ function parseContentSegments(text: string): ContentSegment[] {
     }
   }
 
-  // Find all HTTP/HTTPS URLs
-  URL_REGEX.lastIndex = 0;
-  while ((match = URL_REGEX.exec(text)) !== null) {
+  // Find all image URLs first (higher priority than regular links)
+  IMAGE_URL_REGEX.lastIndex = 0;
+  while ((match = IMAGE_URL_REGEX.exec(text)) !== null) {
     // Skip if this URL is inside a code block or inline code
     const isInsideCode = segments.some(segment =>
       (segment.type === 'code-block' || segment.type === 'inline-code') &&
       match!.index >= segment.index &&
       match!.index < segment.index + segment.length
     );
-    
+
     if (!isInsideCode) {
+      segments.push({
+        type: 'image',
+        content: match[0],
+        url: match[0],
+        index: match.index,
+        length: match[0].length
+      });
+    }
+  }
+
+  // Find all HTTP/HTTPS URLs (excluding images already found)
+  URL_REGEX.lastIndex = 0;
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    // Skip if this URL is inside a code block, inline code, or already covered by an image
+    const isInsideCodeOrImage = segments.some(segment =>
+      ((segment.type === 'code-block' || segment.type === 'inline-code' || segment.type === 'image') &&
+       match!.index >= segment.index &&
+       match!.index < segment.index + segment.length)
+    );
+
+    if (!isInsideCodeOrImage) {
       segments.push({
         type: 'link',
         content: match[0],
@@ -176,6 +198,40 @@ function renderContentSegments(text: string, segments: ContentSegment[]): JSX.El
         );
         break;
       
+      case 'image':
+        elements.push(
+          <div key={`image-${index}`} className="my-2">
+            <img
+              src={segment.url!}
+              alt="Image"
+              className="max-w-full h-auto rounded-lg border border-border cursor-pointer hover:opacity-80 transition-opacity"
+              style={{
+                maxHeight: '400px',
+                objectFit: 'contain',
+                WebkitAppRegion: 'no-drag'
+              } as React.CSSProperties & { WebkitAppRegion?: string }}
+              onClick={() => {
+                // Open image in new window/tab
+                if (typeof window !== 'undefined' && window.electronAPI) {
+                  window.electronAPI.openExternal(segment.url!);
+                } else {
+                  window.open(segment.url!, '_blank');
+                }
+              }}
+              onError={(e) => {
+                // Fallback to link if image fails to load
+                const target = e.target as HTMLImageElement;
+                const parent = target.parentElement;
+                if (parent) {
+                  parent.innerHTML = `<a href="#" class="text-blue-500 hover:text-blue-700 underline cursor-pointer" onclick="event.preventDefault(); ${typeof window !== 'undefined' && window.electronAPI ? 'window.electronAPI.openExternal' : 'window.open'}('${segment.url}', '_blank')" title="Open ${segment.url} in browser">${segment.content}</a>`;
+                }
+              }}
+              title={`Click to open ${segment.url} in browser`}
+            />
+          </div>
+        );
+        break;
+
       case 'link':
         elements.push(
           <a

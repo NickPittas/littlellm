@@ -3,10 +3,11 @@
 import React, { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Button } from './ui/button';
-import { parseTextWithContent } from '../lib/contentParser';
+import { MessageContent } from './MessageContent';
+import { ContentItem } from '../types/chat';
 
 interface UserMessageProps {
-  content: string;
+  content: string | ContentItem[];
   className?: string;
 }
 
@@ -16,15 +17,28 @@ export function UserMessage({ content, className = '' }: UserMessageProps) {
   // Copy function for the message content
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(content);
+      // Convert content to string for copying
+      const textContent = typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+          ? content.map(item => item.type === 'text' ? item.text : `[${item.type}]`).join(' ')
+          : String(content);
+
+      await navigator.clipboard.writeText(textContent);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
       console.error('Failed to copy text:', error);
       // Fallback for older browsers
       try {
+        const textContent = typeof content === 'string'
+          ? content
+          : Array.isArray(content)
+            ? content.map(item => item.type === 'text' ? item.text : `[${item.type}]`).join(' ')
+            : String(content);
+
         const textArea = document.createElement('textarea');
-        textArea.value = content;
+        textArea.value = textContent;
         document.body.appendChild(textArea);
         textArea.select();
         document.execCommand('copy');
@@ -55,18 +69,18 @@ export function UserMessage({ content, className = '' }: UserMessageProps) {
       </Button>
 
       {/* Message Content */}
-      {parseTextWithContent(
-        content,
-        "whitespace-pre-wrap select-text break-words text-sm",
-        {
+      <MessageContent
+        content={content}
+        className="whitespace-pre-wrap select-text break-words text-sm"
+        style={{
           WebkitAppRegion: 'no-drag',
           userSelect: 'text',
           WebkitUserSelect: 'text',
           wordWrap: 'break-word',
           overflowWrap: 'break-word',
           maxWidth: '100%'
-        } as React.CSSProperties & { WebkitAppRegion?: string }
-      )}
+        } as React.CSSProperties & { WebkitAppRegion?: string }}
+      />
     </div>
   );
 }

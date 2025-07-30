@@ -22,6 +22,7 @@ import { KnowledgeBaseIndicator } from './KnowledgeBaseIndicator';
 // Settings handled by separate overlay window
 
 import { chatService, type ChatSettings, type Message } from '../services/chatService';
+import { ContentItem } from '../types/chat';
 import { settingsService } from '../services/settingsService';
 import { conversationHistoryService } from '../services/conversationHistoryService';
 import { sessionService } from '../services/sessionService';
@@ -590,11 +591,44 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
 
     const messageContent = input.trim();
 
+    // Create content array that includes both text and files
+    const contentArray: Array<ContentItem> = [];
+
+    // Add text content if present
+    if (messageContent) {
+      contentArray.push({
+        type: 'text',
+        text: messageContent
+      });
+    }
+
+    // Add file content
+    for (const file of attachedFiles) {
+      if (file.type.startsWith('image/')) {
+        // Convert image to base64 for display in chat
+        const base64 = await chatService.fileToBase64(file);
+        contentArray.push({
+          type: 'image_url',
+          image_url: {
+            url: base64
+          }
+        });
+      } else {
+        // For non-image files, add a file reference
+        contentArray.push({
+          type: 'text',
+          text: `\n\n[File attached: ${file.name}]`
+        });
+      }
+    }
+
     // Add user message to messages array
     const userMessage = {
       id: Date.now().toString(),
       role: 'user' as const,
-      content: messageContent,
+      content: contentArray.length === 1 && contentArray[0].type === 'text'
+        ? contentArray[0].text || messageContent
+        : contentArray,
       timestamp: new Date()
     };
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { X, File, Image, FileText, FileSpreadsheet, Presentation, Calendar, Code, Zap, FileSearch } from 'lucide-react';
 import { PROVIDER_CAPABILITIES } from '../services/providers/constants';
+import { ImageViewer } from './ImageViewer';
 
 interface AttachmentPreviewProps {
   files: File[];
@@ -13,6 +14,7 @@ interface AttachmentPreviewProps {
 
 export function AttachmentPreview({ files, onRemoveFile, currentProvider = 'openai' }: AttachmentPreviewProps) {
   const [previews, setPreviews] = useState<{ [key: number]: string }>({});
+  const [imageViewerSrc, setImageViewerSrc] = useState<string | null>(null);
 
   useEffect(() => {
     // Generate previews for image files
@@ -129,7 +131,9 @@ export function AttachmentPreview({ files, onRemoveFile, currentProvider = 'open
                 <img
                   src={previews[index]}
                   alt={file.name}
-                  className="w-10 h-10 object-cover rounded border"
+                  className="w-10 h-10 object-cover rounded border cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={() => setImageViewerSrc(previews[index])}
+                  title="Click to view full size"
                 />
               ) : (
                 <div className="w-10 h-10 bg-muted rounded border flex items-center justify-center">
@@ -156,6 +160,16 @@ export function AttachmentPreview({ files, onRemoveFile, currentProvider = 'open
           </div>
         ))}
       </div>
+
+      {/* Image Viewer Modal */}
+      {imageViewerSrc && (
+        <ImageViewer
+          src={imageViewerSrc}
+          alt="Attachment Preview"
+          isOpen={!!imageViewerSrc}
+          onClose={() => setImageViewerSrc(null)}
+        />
+      )}
     </div>
   );
 }

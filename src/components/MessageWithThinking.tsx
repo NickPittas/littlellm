@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { ChevronDown, ChevronRight, Brain, Copy, Check, Wrench, Volume2, VolumeX } from 'lucide-react';
 import { Button } from './ui/button';
 import { parseTextWithContent } from '../lib/contentParser';
+import { MessageContent } from './MessageContent';
 import { SourceAttribution } from './SourceAttribution';
 import type { Source } from '../services/chatService';
 import { debugLogger } from '../services/debugLogger';

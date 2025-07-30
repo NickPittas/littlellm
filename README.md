@@ -1,19 +1,21 @@
-# LittleLLM v3.1.0 🤖💬
+# LittleLLM v3.5.0 🤖💬
 
-A powerful, cross-platform desktop AI chat application that provides seamless access to multiple AI providers with advanced features like MCP (Model Context Protocol) integration, tool calling, memory context, and enhanced vision support.
+A powerful, enterprise-grade desktop AI chat application that provides seamless access to multiple AI providers with advanced features including MCP (Model Context Protocol) integration, intelligent tool calling, knowledge base management, memory systems, modern UI architecture, and comprehensive file processing capabilities.
 
-**Now available on Windows, macOS (Intel + Apple Silicon), and Linux!**
+**Now available on Windows, macOS (Intel + Apple Silicon), and Linux with full TypeScript compliance and zero compilation errors!**
 
 ![LittleLLM Screenshot](assets/icon.png)
 
 ## ✨ Features
 
-### 🚀 **Multi-Provider Support**
+### 🚀 **Multi-Provider AI Support**
 - **OpenAI**: GPT-4o, GPT-4-turbo, GPT-3.5-turbo, O1-preview, O1-mini ✅
 - **Anthropic**: Claude 4 Sonnet/Opus, Claude 3.5 Sonnet, Claude 3 Opus/Sonnet/Haiku ✅
 - **Google Gemini**: Gemini 2.5 Flash/Pro, Gemini 1.5 Pro/Flash ✅
 - **Mistral AI**: Mistral Large, Medium, Small, Codestral ✅
 - **DeepSeek**: DeepSeek Chat, DeepSeek Coder ✅
+- **DeepInfra**: High-performance inference platform ✅
+- **Groq**: Ultra-fast inference with LPU technology ✅
 - **LM Studio**: Local server for any GGUF model (free) ✅
 - **Ollama**: Local models support with enhanced vision capabilities ✅
 - **OpenRouter**: 150+ models from multiple providers ✅
@@ -21,7 +23,7 @@ A powerful, cross-platform desktop AI chat application that provides seamless ac
 - **Replicate**: Cloud-hosted models ✅
 - **n8n**: Custom workflow integration with multipart form data support ✅
 
-> **All 11 providers fully implemented with streaming support, vision capabilities, and tool calling integration**
+> **All 13 providers fully implemented with streaming support, vision capabilities, and tool calling integration**
 
 ### 🖼️ **Vision Support**
 - Send images directly to vision-capable models
@@ -40,39 +42,59 @@ A powerful, cross-platform desktop AI chat application that provides seamless ac
 - Auto-resize chat input (1-10 lines)
 - ESC key to close window
 
-### 🛠️ **Advanced Features**
+### 🎨 **Modern UI Architecture**
+- **Magic UI Components**: 150+ animated components with Framer Motion ✨
+- **Sidebar Navigation**: Intuitive left sidebar with quick access to all features ✨
+- **Floating Panels**: Draggable settings, prompts, and history overlays ✨
+- **Real-time Animations**: Smooth transitions and visual feedback throughout ✨
+- **Responsive Design**: Auto-resizing windows and adaptive layouts ✨
+- **Theme System**: 20+ themes with live preview and instant switching ✨
+- **Visual Indicators**: Real-time status for tools, knowledge base, and MCP servers ✨
+- **Unified Interface**: Single, cohesive modern interface replacing legacy components ✨
 
-- **Custom Agent Creation System**: Create specialized AI agents with specific tool access and prompts ✨
+### 🧠 **Knowledge Base & Memory System**
+- **Vector Database**: LanceDB-powered knowledge base with semantic search ✨
+- **Document Processing**: Intelligent parsing of PDFs, Office docs, text files ✨
+- **Batch Upload**: Process multiple documents with real-time progress tracking ✨
+- **Smart Chunking**: Automatic text segmentation with overlap for context preservation ✨
+- **RAG Integration**: Retrieval-Augmented Generation with relevance scoring ✨
+- **Memory Context**: Persistent conversation memory with automatic retrieval ✨
+- **Export/Import**: Full knowledge base backup and restore capabilities ✨
+- **Search Analytics**: Performance monitoring and success rate tracking ✨
+
+### 🛠️ **Advanced Tool Ecosystem**
 - **MCP (Model Context Protocol) Integration**: Full support for MCP servers and tools ✨
+- **Internal Commands**: Secure command execution with directory-scoped permissions ✨
 - **Tool Calling**: User-controlled tool execution with native provider support ✨
-- **Memory Context**: Intelligent conversation memory with automatic context retrieval ✨
-- **Secure API Key Storage**: Encrypted storage with per-provider model memory ✨
-- **Real-time Settings**: Debug logging and settings changes apply immediately ✨
-- **Error-Free Experience**: Comprehensive error handling with actionable messages ✨
-- **Model Persistence**: Each provider remembers your last selected model across restarts
-- **Thinking Sections**: Collapsible display of model reasoning for `<think>` tags
-- **Clipboard Integration**: Prompts automatically include clipboard content via `{content}` placeholder
-- **Copy Functionality**: One-click copy for entire messages + text selection for partial copying
-- **Stop/Cancel**: Interrupt hanging requests
-- **Provider-specific settings**: Separate API keys per provider
-- **Temperature control**: Adjust model creativity
-- **Token limits**: Prevent runaway generation
-- **System prompts**: Customize AI behavior
-- **Dark mode**: Multiple themes available
-- **Token Tracking**: Real-time tokens/second and total usage display ✨
-- **Enhanced Response Parsing**: Automatic cleanup of structured responses ✨
+- **Web Search**: Integrated web search capabilities with source attribution ✨
+- **File Operations**: Read, write, and manipulate files with safety restrictions ✨
+- **Process Management**: Terminal command execution with timeout controls ✨
+- **System Monitoring**: CPU usage, memory stats, and process information ✨
+- **Custom Agents**: Specialized AI agents with tool-specific configurations ✨
 
-### 📁 **Comprehensive File Support**
-- **Images**: PNG, JPG, GIF, WebP with automatic optimization
+### 🔒 **Enterprise-Grade Security**
+- **Encrypted API Storage**: Electron safeStorage for all API keys ✨
+- **Secure Command Execution**: Directory-scoped permissions and rate limiting ✨
+- **Local Data Storage**: All data stored locally with no telemetry ✨
+- **Permission Management**: Granular control over tool and command access ✨
+- **Error Handling**: Comprehensive error management with actionable messages ✨
+- **Debug Logging**: Configurable logging with privacy protection ✨
+- **Settings Persistence**: Race condition-free configuration management ✨
+- **Memory Safety**: Automatic cleanup and resource management ✨
+
+### 📁 **Comprehensive File Processing**
+- **Images**: PNG, JPG, GIF, WebP with automatic optimization and vision model support
 - **Office Documents**: Word (DOCX/DOC), Excel (XLSX/XLS/ODS), PowerPoint (PPTX/PPT)
-- **Text Formats**: TXT, MD, RTF, CSV, JSON, HTML, XML
-- **Calendar Files**: ICS (iCalendar) with event extraction
-- **PDFs**: Native provider support with fallback parsing
-- **Intelligent Processing**: Automatic format detection and provider-specific optimization
-- **Error Handling**: Comprehensive fallback mechanisms with detailed error reporting
-- **Performance Monitoring**: Real-time parsing statistics and success rates
-- **Clipboard**: Paste images and text
-- **Drag & drop**: Easy file attachment with visual processing indicators
+- **Text Formats**: TXT, MD, RTF, CSV, JSON, HTML, XML with intelligent parsing
+- **Calendar Files**: ICS (iCalendar) with event extraction and scheduling
+- **PDFs**: Native provider support with OCR fallback and table extraction
+- **Knowledge Base Integration**: Automatic document indexing and vector embedding
+- **Batch Processing**: Upload multiple files with real-time progress tracking
+- **Smart Chunking**: Intelligent text segmentation with context preservation
+- **Error Recovery**: Comprehensive fallback mechanisms with detailed reporting
+- **Performance Analytics**: Real-time parsing statistics and success rates
+- **Clipboard Support**: Paste images and text with automatic format detection
+- **Drag & Drop**: Visual file attachment with processing indicators
 
 ### 🤖 **Custom Agent Creation System**
 - **Specialized Agents**: Create AI agents tailored for specific tasks and workflows
@@ -100,30 +122,30 @@ A powerful, cross-platform desktop AI chat application that provides seamless ac
 
 #### Windows
 **Installer (Recommended)**
-1. Download `LittleLLM-Setup-2.1.0.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
+1. Download `LittleLLM-Setup-3.5.0.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
 2. Run the installer (may need "Run as administrator")
 3. Follow installation wizard
 4. Launch from Desktop shortcut or Start Menu
 
 **Portable Version**
-1. Download `LittleLLM-Portable-2.1.0.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
+1. Download `LittleLLM-Portable-3.5.0.exe` from [Releases](https://github.com/NickPittas/littlellm/releases)
 2. Place anywhere (Desktop, USB drive, etc.)
 3. Double-click to run - no installation needed
 
 #### macOS
 1. Download the appropriate DMG for your Mac:
-   - Intel Macs: `LittleLLM-2.1.0-x64.dmg`
-   - Apple Silicon: `LittleLLM-2.1.0-arm64.dmg`
-   - Universal: `LittleLLM-2.1.0-universal.dmg`
+   - Intel Macs: `LittleLLM-3.5.0-x64.dmg`
+   - Apple Silicon: `LittleLLM-3.5.0-arm64.dmg`
+   - Universal: `LittleLLM-3.5.0-universal.dmg`
 2. Open DMG and drag LittleLLM to Applications folder
 3. Right-click and select "Open" on first launch (Gatekeeper)
 
 #### Linux
-1. Download `LittleLLM-2.1.0.AppImage` from [Releases](https://github.com/NickPittas/littlellm/releases)
-2. Make executable: `chmod +x LittleLLM-2.1.0.AppImage`
-3. Run: `./LittleLLM-2.1.0.AppImage`
+1. Download `LittleLLM-3.5.0.AppImage` from [Releases](https://github.com/NickPittas/littlellm/releases)
+2. Make executable: `chmod +x LittleLLM-3.5.0.AppImage`
+3. Run: `./LittleLLM-3.5.0.AppImage`
 
-> **✅ Cross-platform builds include all 11 AI providers with MCP integration, tool calling, and enhanced vision support**
+> **✅ Cross-platform builds include modern UI, knowledge base, 13 AI providers, MCP integration, tool calling, and enhanced vision support**
 
 📖 **Installation Guides**: [Windows](INSTALLATION.md) | [macOS](INSTALLATION_MAC.md)
 
@@ -142,27 +164,33 @@ A powerful, cross-platform desktop AI chat application that provides seamless ac
    - **Ollama**: No API key needed (local models)
 
 ### Start Chatting
-1. Press **Ctrl+Shift+L** to open the chat window
-2. Select a provider and model from the bottom dropdowns
-3. Type your message and press Enter
-4. Attach images by clicking the paperclip icon or pasting from clipboard
-5. Use **Ctrl+Shift+Space** to access quick actions and prompts
-6. Toggle tool calling with the 🔧 button next to attachments
-7. Manage MCP servers with the 🖥️ dropdown
-8. Copy text from clipboard, then select prompts with `{content}` for automatic insertion
+1. Press **Ctrl+Shift+L** to open the modern chat interface
+2. Select a provider and model from the bottom input area
+3. Type your message and press Enter or click the send button
+4. Attach files by clicking the paperclip icon or drag & drop
+5. Take screenshots with the camera icon for instant image capture
+6. Use the sidebar to access settings, agents, prompts, and chat history
+7. Toggle tools, knowledge base, and MCP servers with the bottom toolbar buttons
+8. Upload documents to the knowledge base for RAG-enhanced conversations
+9. Create custom agents for specialized tasks and workflows
+10. Copy text from clipboard, then select prompts with `{content}` for automatic insertion
 
 ## 📋 Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Shift+L` | Open/Show LittleLLM |
-| `Ctrl+Shift+Space` | Open Action Menu |
+| `Ctrl+Shift+L` | Open/Show LittleLLM Modern Interface |
+| `Ctrl+Shift+Space` | Open Action Menu (Prompts) |
 | `Ctrl+Shift+V` | Process Clipboard |
 | `Esc` | Close window |
 | `Enter` | Send message |
 | `Shift+Enter` | New line in chat input |
 | `Ctrl+V` | Paste (including images) |
 | `Ctrl+R` | Reset chat conversation |
+| `Ctrl+N` | Start new chat |
+| `Ctrl+H` | Toggle chat history panel |
+| `Ctrl+S` | Open settings |
+| `Ctrl+T` | Toggle tools |
 
 ## 🎨 Themes
 
@@ -284,52 +312,61 @@ npm run dist:linux          # Linux (AppImage)
 - **AppImage**: Download, make executable (`chmod +x`), and run
 - **Dependencies**: Most modern Linux distributions should work out of the box
 
-## 🆕 What's New in v2.1.0
+## 🆕 What's New in v3.5.0
 
-### 🔒 **Enterprise-Grade Security & Reliability** ✨
-- **Secure API Key Storage**: All API keys now encrypted with Electron's safeStorage
-- **Per-Provider Model Memory**: Each provider remembers your last selected model
-- **Real-time Settings Integration**: Debug logging and settings changes apply immediately
-- **Comprehensive Error Handling**: Clear, actionable error messages instead of silent failures
-- **Race Condition Elimination**: Robust initialization system prevents timing issues
+### 🎨 **Modern UI Revolution** ✨
+- **Complete UI Overhaul**: New modern interface with Magic UI components and Framer Motion animations
+- **Sidebar Navigation**: Intuitive left sidebar with quick access to all features
+- **Real-time Animations**: Smooth transitions and visual feedback throughout the application
+- **Unified Interface**: Single cohesive modern interface replacing all legacy components
+- **Enhanced User Experience**: Improved layouts, better visual hierarchy, and intuitive controls
 
-### 🛠️ **System Architecture Improvements**
-- **Service Registry**: Dependency injection system eliminates circular dependencies
-- **Initialization Manager**: Centralized service initialization prevents duplicate loading
-- **Error-Free Model Fetching**: Providers throw proper errors instead of using fallback models
-- **Settings Persistence**: Race condition-free settings saving and loading
-- **Console Spam Elimination**: Clean, professional console output
+### 🧠 **Knowledge Base & RAG System** ✨
+- **Vector Database Integration**: LanceDB-powered knowledge base with semantic search
+- **Intelligent Document Processing**: Advanced parsing for PDFs, Office docs, and text files
+- **Batch Upload System**: Process multiple documents with real-time progress tracking
+- **RAG Integration**: Retrieval-Augmented Generation with relevance scoring and source attribution
+- **Smart Chunking**: Automatic text segmentation with overlap for context preservation
 
-### 🎯 **User Experience Enhancements**
-- **Always-Functional Save Button**: Settings save button works reliably in all scenarios
-- **Immediate Model Loading**: Real models fetched instantly after API key entry
-- **Visual Feedback**: Success/error messages for all operations
-- **Persistent Preferences**: Model selections and settings remembered across sessions
-- **Professional Error Messages**: Clear guidance on how to fix issues
+### 🛠️ **Advanced Tool Ecosystem** ✨
+- **Internal Commands**: Secure command execution with directory-scoped permissions
+- **Web Search Integration**: Built-in web search capabilities with source attribution
+- **File Operations**: Read, write, and manipulate files with comprehensive safety restrictions
+- **Process Management**: Terminal command execution with timeout controls and monitoring
+- **System Monitoring**: CPU usage, memory stats, and detailed process information
 
-### 🔧 **Technical Excellence**
-- **No Silent Failures**: All errors are properly reported and handled
-- **Proper Initialization**: Services initialize once and work reliably
-- **Memory Efficiency**: Eliminated initialization loops and redundant processing
-- **Clean Architecture**: Removed circular dependencies and improved code organization
-- **Production Ready**: Enterprise-grade reliability and error handling
+### 🤖 **Custom Agent System** ✨
+- **Agent Creation**: Build specialized AI agents with custom tool configurations
+- **Template Library**: Pre-built templates for various use cases and workflows
+- **Runtime Integration**: Select and switch agents directly from the chat interface
+- **Tool Selection**: Granular control over which tools and MCP servers each agent can access
+- **Import/Export**: Share agents via JSON files with dependency validation
 
-### 🎯 **Continued Excellence**
-All existing features from v2.0.1 remain fully functional:
-- **Cross-Platform Support**: Windows, macOS (Intel + Apple Silicon), and Linux
-- **MCP Integration**: Model Context Protocol with tool calling
-- **11 AI Providers**: OpenAI, Anthropic, Gemini, Mistral, and more
-- **Vision Support**: Image processing across all platforms
-- **Memory Context**: Intelligent conversation memory
-- **Advanced UI**: Multi-window architecture with theming
+### 🔒 **Enterprise Security & Reliability** ✨
+- **Zero TypeScript Errors**: Complete codebase compliance with full type safety
+- **Enhanced Error Handling**: Comprehensive error management with actionable messages
+- **Secure Storage**: Encrypted API key storage with Electron's safeStorage
+- **Permission Management**: Granular control over tool and command access
+- **Debug Logging**: Configurable logging system with privacy protection
+
+### 📊 **Performance & Quality** ✨
+- **Memory Management**: Intelligent conversation memory with automatic context retrieval
+- **Real-time Monitoring**: Performance analytics and success rate tracking
+- **Batch Processing**: Efficient handling of multiple files and operations
+- **Resource Optimization**: Automatic cleanup and memory management
+- **Error Recovery**: Comprehensive fallback mechanisms with detailed reporting
 
 ## 🏗️ **Tech Stack**
-- **Frontend**: Next.js 14, React 18, TypeScript
-- **Desktop**: Electron 37.1.0
-- **Styling**: Tailwind CSS, Radix UI components
+- **Frontend**: Next.js 14, React 18, TypeScript (Zero compilation errors)
+- **Desktop**: Electron 37.1.0 with secure IPC communication
+- **UI Framework**: Magic UI components with Framer Motion animations
+- **Styling**: Tailwind CSS with custom design system
+- **Database**: LanceDB for vector storage and semantic search
 - **Build**: Electron Builder for cross-platform distribution
 - **MCP Integration**: @modelcontextprotocol/sdk v1.15.1
 - **Testing**: Vitest with comprehensive test coverage
+- **Memory**: JSON-based memory system with intelligent retrieval
+- **Security**: Electron safeStorage for encrypted API key management
 
 ## 📄 License
 
@@ -344,20 +381,20 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**LittleLLM v2.1.0** - Your cross-platform AI companion with enterprise-grade security, reliability, and advanced features 🚀
+**LittleLLM v3.5.0** - Your modern, enterprise-grade AI companion with advanced knowledge base, tool ecosystem, and beautiful UI 🚀
 
 ## 📦 **Production Builds**
 
-### Windows
-- **Installer**: `LittleLLM-Setup-2.1.0.exe` with proper installation and shortcuts
-- **Portable**: `LittleLLM-Portable-2.1.0.exe` for USB/standalone use
+### Windows Builds
+- **Installer**: `LittleLLM-Setup-3.5.0.exe` with proper installation and shortcuts
+- **Portable**: `LittleLLM-Portable-3.5.0.exe` for USB/standalone use
 
-### macOS
-- **Intel Macs**: `LittleLLM-2.1.0-x64.dmg`
-- **Apple Silicon**: `LittleLLM-2.1.0-arm64.dmg`
-- **Universal**: `LittleLLM-2.1.0-universal.dmg` (works on both)
+### macOS Builds
+- **Intel Macs**: `LittleLLM-3.5.0-x64.dmg`
+- **Apple Silicon**: `LittleLLM-3.5.0-arm64.dmg`
+- **Universal**: `LittleLLM-3.5.0-universal.dmg` (works on both)
 
-### Linux
-- **AppImage**: `LittleLLM-2.1.0.AppImage` for universal compatibility
+### Linux Builds
+- **AppImage**: `LittleLLM-3.5.0.AppImage` for universal compatibility
 
-> **✅ All platforms**: No CORS issues, full feature parity, MCP integration included
+> **✅ All platforms**: Modern UI, knowledge base, 13 AI providers, MCP integration, tool calling, and zero TypeScript errors
