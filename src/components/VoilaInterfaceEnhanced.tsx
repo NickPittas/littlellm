@@ -11,7 +11,6 @@ import { useHistoryOverlay } from './HistoryOverlay';
 import { KnowledgeBaseIndicator } from './KnowledgeBaseIndicator';
 import { MessageContent } from './MessageContent';
 import { ContentItem } from '../types/chat';
-import { chatService } from '../services/chatService';
 
 // Magic UI Components
 import { MagicContainer, MagicCard } from './magicui/magic-card';
