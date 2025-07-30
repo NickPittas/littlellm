@@ -1304,6 +1304,17 @@ function getIconPath(): string {
 
 // Function to detect available Next.js port
 async function detectNextJSPort(): Promise<number> {
+  // First check if port was provided via environment variable
+  const envPort = process.env.NEXTJS_PORT;
+  if (envPort) {
+    const port = parseInt(envPort, 10);
+    if (!isNaN(port) && port > 0 && port < 65536) {
+      console.log(`🔍 Using Next.js port from environment: ${port}`);
+      return port;
+    }
+  }
+
+  console.log('🔍 Detecting Next.js port automatically...');
   const portsToTry = [3000, 3001, 3002, 3003, 3004, 3005];
 
   for (const port of portsToTry) {
@@ -1326,6 +1337,7 @@ async function detectNextJSPort(): Promise<number> {
       });
 
       if (response) {
+        console.log(`✅ Detected Next.js server on port ${port}`);
         return port;
       }
     } catch {
@@ -1334,6 +1346,7 @@ async function detectNextJSPort(): Promise<number> {
   }
 
   // Default to 3000 if no server found (standard Next.js port)
+  console.log('⚠️ No Next.js server detected, defaulting to port 3000');
   return 3000;
 }
 
@@ -1653,6 +1666,7 @@ function loadAppSettings() {
           gemini: { lastSelectedModel: '' },
           mistral: { lastSelectedModel: '' },
           deepseek: { lastSelectedModel: '' },
+          deepinfra: { lastSelectedModel: '' },
           lmstudio: { baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
           ollama: { baseUrl: '', lastSelectedModel: '' },
           openrouter: { lastSelectedModel: '' },
@@ -1682,6 +1696,7 @@ function loadAppSettings() {
         gemini: { lastSelectedModel: '' },
         mistral: { lastSelectedModel: '' },
         deepseek: { lastSelectedModel: '' },
+        deepinfra: { lastSelectedModel: '' },
         lmstudio: { baseUrl: 'http://localhost:1234/v1', lastSelectedModel: '' },
         ollama: { baseUrl: '', lastSelectedModel: '' },
         openrouter: { lastSelectedModel: '' },

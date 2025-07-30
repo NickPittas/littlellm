@@ -289,35 +289,36 @@ export function MemoryManagement({ className }: MemoryManagementProps) {
     <div className={className}>
       <Tabs defaultValue="browse" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="browse">Browse Memories</TabsTrigger>
-          <TabsTrigger value="stats">Statistics</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="browse" className="text-xs">Browse Memories</TabsTrigger>
+          <TabsTrigger value="stats" className="text-xs">Statistics</TabsTrigger>
+          <TabsTrigger value="settings" className="text-xs">Settings</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="browse" className="space-y-4">
+        <TabsContent value="browse" className="space-y-2">
           {/* Search and Filter Controls */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Brain className="h-5 w-5" />
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Brain className="h-4 w-4" />
                 Memory Browser
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-xs">
                 Search and manage your stored memories
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
+            <CardContent className="space-y-2">
+              <div className="flex gap-1">
                 <div className="flex-1">
                   <Input
                     placeholder="Search memories..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                    className="h-7 text-xs"
                   />
                 </div>
                 <Select value={selectedType} onValueChange={(value) => setSelectedType(value as MemoryType | 'all')}>
-                  <SelectTrigger className="w-48">
+                  <SelectTrigger className="w-32 h-7 text-xs">
                     <SelectValue placeholder="Filter by type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -332,11 +333,11 @@ export function MemoryManagement({ className }: MemoryManagementProps) {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button onClick={handleSearch} disabled={loading}>
-                  <Search className="h-4 w-4" />
+                <Button onClick={handleSearch} disabled={loading} size="sm" className="h-7 w-7 p-0">
+                  <Search className="h-3 w-3" />
                 </Button>
-                <Button onClick={() => setShowAddMemory(true)}>
-                  <Plus className="h-4 w-4" />
+                <Button onClick={() => setShowAddMemory(true)} size="sm" className="h-7 w-7 p-0">
+                  <Plus className="h-3 w-3" />
                 </Button>
               </div>
             </CardContent>

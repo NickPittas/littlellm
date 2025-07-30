@@ -146,6 +146,15 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
     logo: '/assets/providers/deepseek.png'
   },
   {
+    id: 'deepinfra',
+    name: 'Deepinfra',
+    baseUrl: 'https://api.deepinfra.com/v1/openai',
+    requiresApiKey: true,
+    models: [],
+    logo: '/assets/providers/deepinfra.png',
+    logoLight: '/assets/providers/deepinfra-light.png'
+  },
+  {
     id: 'lmstudio',
     name: 'LM Studio',
     baseUrl: 'http://localhost:1234/v1',

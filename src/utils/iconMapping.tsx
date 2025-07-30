@@ -73,6 +73,7 @@ import {
   Globe,
   Layers,
   Repeat,
+  Server,
   Wind
 } from 'lucide-react';
 
@@ -218,6 +219,7 @@ export const providerIcons: Record<string, React.ComponentType<React.SVGProps<SV
   gemini: Sparkles,   // Sparkles for Google Gemini
   mistral: Wind,      // Wind for Mistral AI
   deepseek: Search,   // Search for DeepSeek
+  deepinfra: Server,  // Server for Deepinfra (cloud infrastructure)
   lmstudio: Monitor,  // Monitor for LM Studio (local server)
   ollama: Terminal,   // Terminal for local Ollama
   openrouter: Globe,  // Globe for OpenRouter (routing)

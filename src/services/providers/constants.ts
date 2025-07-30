@@ -47,6 +47,15 @@ export const DEFAULT_PROVIDERS: LLMProvider[] = [
     logo: '/assets/providers/deepseek.png'
   },
   {
+    id: 'deepinfra',
+    name: 'Deepinfra',
+    baseUrl: 'https://api.deepinfra.com/v1/openai',
+    requiresApiKey: true,
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/deepinfra.png',
+    logoLight: '/assets/providers/deepinfra-light.png'
+  },
+  {
     id: 'lmstudio',
     name: 'LM Studio',
     baseUrl: 'http://localhost:1234/v1',
@@ -149,6 +158,16 @@ export const PROVIDER_CAPABILITIES = {
     toolFormat: 'openai' as const,
     nativeDocumentSupport: [], // No native document support
     documentParsingRequired: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf', 'txt', 'md']
+  },
+  deepinfra: {
+    supportsVision: true,
+    supportsTools: true,
+    supportsStreaming: true,
+    supportsSystemMessages: true,
+    maxToolNameLength: 64,
+    toolFormat: 'openai' as const,
+    nativeDocumentSupport: ['txt', 'md'], // Basic text support
+    documentParsingRequired: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf']
   },
   lmstudio: {
     supportsVision: true,

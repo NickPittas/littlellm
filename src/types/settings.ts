@@ -24,6 +24,7 @@ export interface ProvidersConfig {
   gemini: ProviderSettings;
   mistral: ProviderSettings;
   deepseek: ProviderSettings;
+  deepinfra: ProviderSettings;
   groq: ProviderSettings;
   lmstudio: ProviderSettings;
   ollama: ProviderSettings;
@@ -39,6 +40,7 @@ export interface LegacyProvidersConfig {
   gemini: LegacyProviderSettings;
   mistral: LegacyProviderSettings;
   deepseek: LegacyProviderSettings;
+  deepinfra: LegacyProviderSettings;
   groq: LegacyProviderSettings;
   lmstudio: LegacyProviderSettings;
   ollama: LegacyProviderSettings;
@@ -118,6 +120,7 @@ export interface UISettings {
   selectedThemePreset?: string; // ID of selected theme preset
   colorMode?: 'preset' | 'custom'; // Whether using preset or custom colors
   textToSpeech?: TextToSpeechSettings;
+  uiScale?: number; // UI scale factor from 0.75 to 1.5, default 1.0
 }
 
 export interface InternalCommandSettings {

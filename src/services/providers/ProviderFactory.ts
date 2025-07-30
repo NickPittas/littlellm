@@ -7,6 +7,7 @@ import { AnthropicProvider } from './AnthropicProvider';
 import { GeminiProvider } from './GeminiProvider';
 import { MistralProvider } from './MistralProvider';
 import { DeepSeekProvider } from './DeepSeekProvider';
+import { DeepinfraProvider } from './DeepinfraProvider';
 import { LMStudioProvider } from './LMStudioProvider';
 import { OllamaProvider } from './OllamaProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
@@ -32,6 +33,7 @@ export class ProviderFactory {
     this.registerProvider(new GeminiProvider());
     this.registerProvider(new MistralProvider());
     this.registerProvider(new DeepSeekProvider());
+    this.registerProvider(new DeepinfraProvider());
     this.registerProvider(new LMStudioProvider());
     this.registerProvider(new OllamaProvider());
     this.registerProvider(new OpenRouterProvider());

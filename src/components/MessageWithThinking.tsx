@@ -406,32 +406,33 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
             variant="ghost"
             size="sm"
             onClick={() => setShowThinking(!showThinking)}
-            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground p-1 h-auto"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground p-0.5 h-auto"
           >
             {showThinking ? (
-              <ChevronDown className="h-3 w-3" />
+              <ChevronDown style={{ width: '16px', height: '16px' }} />
             ) : (
-              <ChevronRight className="h-3 w-3" />
+              <ChevronRight style={{ width: '16px', height: '16px' }} />
             )}
-            <Brain className="h-3 w-3" />
+            <Brain style={{ width: '16px', height: '16px' }} />
             <span>Model Thinking ({parsed.thinking.length} section{parsed.thinking.length !== 1 ? 's' : ''})</span>
           </Button>
           
           {showThinking && (
-            <div className="mt-2 space-y-2">
+            <div className="mt-1 space-y-1">
               {parsed.thinking.map((thinkingText, index) => (
                 <div
                   key={index}
-                  className="bg-muted rounded-2xl p-3 text-sm"
+                  className="bg-muted rounded-2xl p-2 text-xs"
                   style={{ border: 'none' }}
                 >
-                  <div className="flex items-center gap-2 mb-2 text-xs text-muted-foreground">
-                    <Brain className="h-3 w-3" />
+                  <div className="flex items-center gap-1 mb-1 text-xs text-muted-foreground">
+                    <Brain style={{ width: '16px', height: '16px' }} />
                     <span>Thinking {parsed.thinking.length > 1 ? `${index + 1}` : ''}</span>
                   </div>
-                  <div
-                    className="whitespace-pre-wrap text-foreground select-text break-words text-sm"
-                    style={{
+                  {parseTextWithContent(
+                    thinkingText,
+                    "whitespace-pre-wrap text-foreground select-text break-words text-sm",
+                    {
                       WebkitAppRegion: 'no-drag',
                       userSelect: 'text',
                       WebkitUserSelect: 'text',
@@ -439,10 +440,8 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                       wordWrap: 'break-word',
                       overflowWrap: 'break-word',
                       maxWidth: '100%'
-                    } as React.CSSProperties & { WebkitAppRegion?: string }}
-                  >
-                    {parseTextWithContent(thinkingText)}
-                  </div>
+                    } as React.CSSProperties & { WebkitAppRegion?: string }
+                  )}
                 </div>
               ))}
             </div>
@@ -572,13 +571,14 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                                 </span>
                               )}
                             </div>
-                            <div
-                              className={`text-xs whitespace-pre-wrap select-text rounded p-2 break-words ${
+                            {parseTextWithContent(
+                              tool.result || '(no result)',
+                              `text-xs whitespace-pre-wrap select-text rounded p-2 break-words ${
                                 tool.status === 'success'
                                   ? 'text-muted-foreground bg-background/50'
                                   : 'text-red-300 bg-red-500/10'
-                              }`}
-                              style={{
+                              }`,
+                              {
                                 WebkitAppRegion: 'no-drag',
                                 userSelect: 'text',
                                 WebkitUserSelect: 'text',
@@ -586,10 +586,8 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                                 wordWrap: 'break-word',
                                 overflowWrap: 'break-word',
                                 maxWidth: '100%'
-                              } as React.CSSProperties & { WebkitAppRegion?: string }}
-                            >
-                              {parseTextWithContent(tool.result || '(no result)')}
-                            </div>
+                              } as React.CSSProperties & { WebkitAppRegion?: string }
+                            )}
                             {tool.status === 'failed' && (
                               <div className="mt-2 text-xs text-red-400/80">
                                 💡 This error has been reported. You can try again or contact support if the issue persists.
@@ -612,7 +610,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                           maxWidth: '100%'
                         } as React.CSSProperties & { WebkitAppRegion?: string }}
                       >
-                        {parseTextWithContent(toolText)}
+                        {toolText}
                       </div>
                     )}
                   </div>
@@ -762,20 +760,17 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
       </div>
 
       {/* Main Response */}
-      {parsed.response && (
-        <div
-          className="whitespace-pre-wrap select-text break-words text-sm"
-          style={{
-            WebkitAppRegion: 'no-drag',
-            userSelect: 'text',
-            WebkitUserSelect: 'text',
-            wordWrap: 'break-word',
-            overflowWrap: 'break-word',
-            maxWidth: '100%'
-          } as React.CSSProperties & { WebkitAppRegion?: string }}
-        >
-          {parseTextWithContent(parsed.response)}
-        </div>
+      {parsed.response && parseTextWithContent(
+        parsed.response,
+        "whitespace-pre-wrap select-text break-words text-sm",
+        {
+          WebkitAppRegion: 'no-drag',
+          userSelect: 'text',
+          WebkitUserSelect: 'text',
+          wordWrap: 'break-word',
+          overflowWrap: 'break-word',
+          maxWidth: '100%'
+        } as React.CSSProperties & { WebkitAppRegion?: string }
       )}
 
       {/* Token Usage and Performance Info */}

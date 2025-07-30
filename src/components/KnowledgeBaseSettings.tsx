@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ProgressLogPanel } from './ProgressLogPanel';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
 
 interface UploadProgress {
   fileName: string;
@@ -442,34 +445,37 @@ const KnowledgeBaseSettings = () => {
   };
 
   return (
-    <div className="p-4">
-      <h2 className="text-lg font-bold mb-4">Knowledge Base Management</h2>
-      
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium mb-2">Knowledge Base Management</h2>
+
       {/* Add Document Section */}
-      <div className="mb-6">
-        <h3 className="text-md font-semibold mb-3">Add Documents</h3>
+      <div className="space-y-2">
+        <h3 className="text-xs font-medium mb-1">Add Documents</h3>
 
         {/* Single Document Upload */}
-        <div className="flex items-center space-x-4 mb-4">
-          <button
+        <div className="flex items-center space-x-2 mb-2">
+          <Button
             onClick={handleAddDocument}
             disabled={isLoading || isUrlImporting}
-            className="bg-blue-500 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded"
+            size="sm"
+            className="h-7 text-xs"
           >
             {isLoading ? 'Processing...' : 'Add Single PDF'}
-          </button>
+          </Button>
 
-          <button
+          <Button
             onClick={handleAddDocumentsBatch}
             disabled={isLoading || isUrlImporting}
-            className="bg-green-500 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
           >
             {isLoading ? 'Processing...' : 'Add Multiple Documents'}
-          </button>
+          </Button>
         </div>
 
         {/* Supported file types info */}
-        <div className="mb-4 p-3 bg-muted rounded text-sm">
+        <div className="mb-2 p-2 bg-muted rounded text-xs">
           <p className="font-medium mb-1 text-foreground">Supported file types:</p>
           <p className="text-muted-foreground">
             • PDF documents (.pdf)<br/>

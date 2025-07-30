@@ -158,19 +158,19 @@ export function TopHeader({
           variant="ghost"
           size="sm"
           onClick={handleProviderClick}
-          className="h-6 px-2 text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors"
+          className="h-5 px-1.5 text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors"
           title="Select Provider"
         >
           {selectedProviderData ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <div className="w-3 h-3">
                 <ProviderLogo provider={selectedProviderData} size={12} />
               </div>
               <span className="text-xs">{selectedProviderData.name}</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <Server className="w-3 h-3" />
+            <div className="flex items-center gap-1">
+              <Server style={{ width: '12px', height: '12px' }} />
               <span className="text-xs">Select Provider</span>
             </div>
           )}

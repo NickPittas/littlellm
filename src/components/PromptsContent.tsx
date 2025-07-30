@@ -164,12 +164,12 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Category Filter */}
-      <div className="flex items-center gap-4">
-        <Label>Category:</Label>
+      <div className="flex items-center gap-2">
+        <Label className="text-xs">Category:</Label>
         <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-32 h-7 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -181,31 +181,33 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
             ))}
           </SelectContent>
         </Select>
-        
-        <div className="flex gap-2 ml-auto">
+
+        <div className="flex gap-1 ml-auto">
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowAddPrompt(true)}
-            className="bg-primary/20 border-primary/50 text-primary hover:bg-primary/30 hover:border-primary/70"
+            className="h-7 text-xs bg-primary/20 border-primary/50 text-primary hover:bg-primary/30 hover:border-primary/70"
           >
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="h-3 w-3 mr-1" />
             Add Custom Prompt
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={handleExportPrompts}
+            className="h-7 text-xs"
           >
-            <Download className="h-4 w-4 mr-2" />
+            <Download className="h-3 w-3 mr-1" />
             Export
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={handleImportPrompts}
+            className="h-7 text-xs"
           >
-            <Upload className="h-4 w-4 mr-2" />
+            <Upload className="h-3 w-3 mr-1" />
             Import
           </Button>
         </div>
@@ -213,8 +215,8 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
 
       {/* Add/Edit Prompt Form */}
       {showAddPrompt && (
-        <div className="border rounded-lg p-4 space-y-4 bg-muted/50">
-          <h3 className="font-semibold">
+        <div className="border rounded-lg p-2 space-y-2 bg-muted/50">
+          <h3 className="text-xs font-semibold">
             {editingPrompt
               ? (promptsService.isCustomPrompt(editingPrompt.id)
                   ? 'Edit Custom Prompt'
@@ -222,45 +224,45 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
               : 'Add New Custom Prompt'
             }
           </h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name" className="text-xs">Name</Label>
               <Input
                 id="name"
                 value={newPrompt.name}
                 onChange={(e) => setNewPrompt(prev => ({ ...prev, name: e.target.value }))}
                 placeholder="Prompt name"
-                className="bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
+                className="h-7 text-xs bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
               />
             </div>
             <div>
-              <Label htmlFor="icon">Icon</Label>
+              <Label htmlFor="icon" className="text-xs">Icon</Label>
               <Input
                 id="icon"
                 value={newPrompt.icon}
                 onChange={(e) => setNewPrompt(prev => ({ ...prev, icon: e.target.value }))}
                 placeholder="📝"
-                className="bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
+                className="h-7 text-xs bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
               />
             </div>
           </div>
           <div>
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description" className="text-xs">Description</Label>
             <Input
               id="description"
               value={newPrompt.description}
               onChange={(e) => setNewPrompt(prev => ({ ...prev, description: e.target.value }))}
               placeholder="Brief description"
-              className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
+              className="h-7 text-xs bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all"
             />
           </div>
           <div>
-            <Label htmlFor="category">Category</Label>
+            <Label htmlFor="category" className="text-xs">Category</Label>
             <Select
               value={newPrompt.category}
               onValueChange={(value) => setNewPrompt(prev => ({ ...prev, category: value }))}
             >
-              <SelectTrigger className="bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all">
+              <SelectTrigger className="h-7 text-xs bg-slate-900 border-2 border-slate-600 focus:bg-slate-800 hover:bg-slate-850 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 transition-all">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -273,28 +275,32 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
             </Select>
           </div>
           <div>
-            <Label htmlFor="prompt">Prompt Template</Label>
+            <Label htmlFor="prompt" className="text-xs">Prompt Template</Label>
             <Textarea
               id="prompt"
               value={newPrompt.prompt}
               onChange={(e) => setNewPrompt(prev => ({ ...prev, prompt: e.target.value }))}
               placeholder="Your prompt template. Use {content} where the clipboard content should be inserted."
-              rows={4}
-              className="bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
+              rows={3}
+              className="text-xs bg-muted border-2 border-border focus:bg-card hover:bg-muted/80 focus:border-ring focus:ring-2 focus:ring-ring/20 transition-all"
             />
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-1">
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 setShowAddPrompt(false);
                 setEditingPrompt(null);
               }}
+              className="h-7 text-xs"
             >
               Cancel
             </Button>
             <Button
               onClick={editingPrompt ? handleUpdatePrompt : handleAddPrompt}
+              size="sm"
+              className="h-7 text-xs"
             >
               {editingPrompt
                 ? (promptsService.isCustomPrompt(editingPrompt.id)
@@ -308,19 +314,19 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
       )}
 
       {/* Prompts List */}
-      <div className="space-y-2 max-h-96 overflow-y-auto">
+      <div className="space-y-1 max-h-96 overflow-y-auto">
         {filteredPrompts.map((prompt) => (
           <div
             key={prompt.id}
-            className="group flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 cursor-pointer"
+            className="group flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 cursor-pointer"
             style={{ border: '1px solid hsl(var(--border))' }}
             onClick={() => handlePromptSelect(prompt)}
           >
-            <div className="flex items-center gap-3 flex-1">
-              <span className="text-lg">{prompt.icon}</span>
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-sm">{prompt.icon}</span>
               <div className="flex-1">
-                <div className="font-medium text-foreground">{prompt.name}</div>
-                <div className="text-sm text-muted-foreground">{prompt.description}</div>
+                <div className="text-xs font-medium text-foreground">{prompt.name}</div>
+                <div className="text-xs text-muted-foreground">{prompt.description}</div>
               </div>
             </div>
             {/* Always show edit button for ALL prompts, delete only for custom prompts */}
@@ -332,10 +338,10 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
                   e.stopPropagation();
                   handleEditPrompt(prompt);
                 }}
-                className="text-primary hover:text-primary/80 hover:bg-primary/10 border border-primary/30 opacity-80 hover:opacity-100"
+                className="h-6 w-6 p-0 text-primary hover:text-primary/80 hover:bg-primary/10 border border-primary/30 opacity-80 hover:opacity-100"
                 title="Edit prompt"
               >
-                <Edit className="h-4 w-4" />
+                <Edit className="h-3 w-3" />
               </Button>
 
               {/* Only show delete button for custom prompts */}
@@ -347,16 +353,16 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
                     e.stopPropagation();
                     handleDeletePrompt(prompt.id);
                   }}
-                  className="text-destructive hover:text-destructive/80 hover:bg-destructive/10 border border-destructive/30 opacity-80 hover:opacity-100"
+                  className="h-6 w-6 p-0 text-destructive hover:text-destructive/80 hover:bg-destructive/10 border border-destructive/30 opacity-80 hover:opacity-100"
                   title="Delete prompt"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3 w-3" />
                 </Button>
               )}
 
               {/* Show indicator for custom prompts */}
               {promptsService.isCustomPrompt(prompt.id) && (
-                <div className="text-xs text-primary bg-primary/10 px-2 py-1 rounded border border-primary/30 ml-1">
+                <div className="text-xs text-primary bg-primary/10 px-1 py-0.5 rounded border border-primary/30 ml-1">
                   CUSTOM
                 </div>
               )}
@@ -366,7 +372,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
       </div>
 
       {isReadingClipboard && (
-        <div className="text-center text-sm text-muted-foreground">
+        <div className="text-center text-xs text-muted-foreground">
           Reading clipboard...
         </div>
       )}

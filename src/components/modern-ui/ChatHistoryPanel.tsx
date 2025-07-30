@@ -113,31 +113,31 @@ export function ChatHistoryPanel({
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-700/50 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <MessageSquare className="w-5 h-5 text-blue-400" />
-          <h2 className="text-lg font-semibold text-white">Chat History</h2>
+      <div className="flex items-center justify-between p-2 border-b border-gray-700/50 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <MessageSquare style={{ width: '16px', height: '16px' }} className="text-blue-400" />
+          <h2 className="text-sm font-semibold text-white">Chat History</h2>
         </div>
         <Button
           variant="ghost"
           size="sm"
           onClick={onClose}
-          className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50"
+          className="h-6 w-6 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50"
           title="Close History"
         >
-          <X className="w-4 h-4" />
+          <X style={{ width: '16px', height: '16px' }} />
         </Button>
       </div>
 
       {/* Search */}
-      <div className="p-4 border-b border-gray-700/50">
+      <div className="p-2 border-b border-gray-700/50">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2" style={{ width: '16px', height: '16px' }} />
           <Input
             placeholder="Search conversations..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-gray-800/50 border-gray-700/50 text-white placeholder-gray-400"
+            className="pl-8 h-7 text-xs bg-gray-800/50 border-gray-700/50 text-white placeholder-gray-400"
           />
         </div>
       </div>
@@ -145,49 +145,49 @@ export function ChatHistoryPanel({
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="flex items-center justify-center p-8">
-            <div className="text-gray-400">Loading chat history...</div>
+          <div className="flex items-center justify-center p-4">
+            <div className="text-gray-400 text-xs">Loading chat history...</div>
           </div>
         ) : filteredHistory.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center">
-            <MessageSquare className="w-12 h-12 text-gray-600 mb-4" />
-            <div className="text-gray-400 mb-2">
+          <div className="flex flex-col items-center justify-center p-4 text-center">
+            <MessageSquare style={{ width: '16px', height: '16px' }} className="text-gray-600 mb-1" />
+            <div className="text-gray-400 mb-1 text-xs">
               {searchQuery ? 'No matching conversations' : 'No chat history yet'}
             </div>
-            <div className="text-sm text-gray-500">
+            <div className="text-xs text-gray-500">
               {searchQuery ? 'Try a different search term' : 'Start a conversation to see it here'}
             </div>
           </div>
         ) : (
-          <div className="p-2">
+          <div className="p-1">
             {filteredHistory.map((chat) => (
               <div
                 key={chat.id}
                 onClick={() => handleChatSelect(chat.id)}
-                className="p-3 rounded-lg cursor-pointer transition-colors hover:bg-gray-800/50 mb-2"
+                className="p-2 rounded-lg cursor-pointer transition-colors hover:bg-gray-800/50 mb-1"
               >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-white font-medium text-sm truncate flex-1 mr-2">
+                <div className="flex items-start justify-between mb-1">
+                  <h3 className="text-white font-medium text-xs truncate flex-1 mr-1">
                     {chat.title}
                   </h3>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <div className="flex items-center gap-1 text-xs text-gray-400">
-                      <Clock className="w-3 h-3" />
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <div className="flex items-center gap-0.5 text-xs text-gray-400">
+                      <Clock style={{ width: '12px', height: '12px' }} />
                       {formatTimestamp(chat.updatedAt)}
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={(e) => handleDeleteChat(chat.id, e)}
-                      className="h-6 w-6 p-0 text-gray-400 hover:text-red-400 hover:bg-red-500/10"
+                      className="h-5 w-5 p-0 text-gray-400 hover:text-red-400 hover:bg-red-500/10"
                       title="Delete conversation"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 style={{ width: '12px', height: '12px' }} />
                     </Button>
                   </div>
                 </div>
 
-                <p className="text-gray-400 text-xs mb-2 line-clamp-2">
+                <p className="text-gray-400 text-xs mb-1 line-clamp-2">
                   {chat.messages.length > 0 ? chat.messages[chat.messages.length - 1].content.substring(0, 100) + '...' : 'No messages'}
                 </p>
 
@@ -204,7 +204,7 @@ export function ChatHistoryPanel({
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-gray-700/50 flex-shrink-0">
+      <div className="p-2 border-t border-gray-700/50 flex-shrink-0">
         <Button
           variant="outline"
           size="sm"

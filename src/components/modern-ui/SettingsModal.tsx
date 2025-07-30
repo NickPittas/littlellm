@@ -35,15 +35,15 @@ interface SidebarItem {
 }
 
 const sidebarItems: SidebarItem[] = [
-  { id: 'api-keys', label: 'API Keys', icon: <Key className="w-4 h-4" /> },
-  { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard className="w-4 h-4" /> },
-  { id: 'prompts', label: 'Prompts', icon: <FileText className="w-4 h-4" /> },
-  { id: 'chat', label: 'Chat', icon: <MessageSquare className="w-4 h-4" /> },
-  { id: 'text-to-speech', label: 'Text to Speech', icon: <Volume2 className="w-4 h-4" /> },
-  { id: 'mcp', label: 'MCP', icon: <Server className="w-4 h-4" /> },
-  { id: 'internal-commands', label: 'Commands', icon: <Terminal className="w-4 h-4" /> },
-  { id: 'memory', label: 'Memory', icon: <Brain className="w-4 h-4" /> },
-  { id: 'knowledge-base', label: 'Knowledge Base', icon: <Database className="w-4 h-4" /> },
+  { id: 'api-keys', label: 'API Keys', icon: <Key style={{ width: '16px', height: '16px' }} /> },
+  { id: 'shortcuts', label: 'Shortcuts', icon: <Keyboard style={{ width: '16px', height: '16px' }} /> },
+  { id: 'prompts', label: 'Prompts', icon: <FileText style={{ width: '16px', height: '16px' }} /> },
+  { id: 'chat', label: 'Chat', icon: <MessageSquare style={{ width: '16px', height: '16px' }} /> },
+  { id: 'text-to-speech', label: 'Text to Speech', icon: <Volume2 style={{ width: '16px', height: '16px' }} /> },
+  { id: 'mcp', label: 'MCP', icon: <Server style={{ width: '16px', height: '16px' }} /> },
+  { id: 'internal-commands', label: 'Commands', icon: <Terminal style={{ width: '16px', height: '16px' }} /> },
+  { id: 'memory', label: 'Memory', icon: <Brain style={{ width: '16px', height: '16px' }} /> },
+  { id: 'knowledge-base', label: 'Knowledge Base', icon: <Database style={{ width: '16px', height: '16px' }} /> },
   { id: 'appearance', label: 'Appearance', icon: <Palette className="w-4 h-4" /> },
   { id: 'general', label: 'General', icon: <Settings className="w-4 h-4" /> },
 ];
@@ -98,6 +98,8 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
     category: string;
     inputSchema: Record<string, unknown>;
   }>>([]);
+
+
 
   // TTS state
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
@@ -172,6 +174,41 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       }
     } catch (error) {
       console.error('Failed to add MCP server:', error);
+    }
+  };
+
+  const handleUpdateMcpServer = async () => {
+    if (!editingMcpServer) return;
+
+    try {
+      console.log('🔧 Updating MCP server:', editingMcpServer.id, newMcpServer);
+      const success = await mcpService.updateServer(editingMcpServer.id, {
+        name: newMcpServer.name,
+        command: newMcpServer.command,
+        args: newMcpServer.args,
+        description: newMcpServer.description,
+        enabled: newMcpServer.enabled,
+        env: newMcpServer.env
+      });
+
+      if (success) {
+        console.log('🔧 MCP server updated successfully');
+        setEditingMcpServer(null);
+        setNewMcpServer({
+          name: '',
+          command: '',
+          args: [],
+          description: '',
+          enabled: true,
+          env: {}
+        });
+        setShowAddMcpServer(false);
+        await loadMcpServers();
+      } else {
+        console.error('🔧 Failed to update MCP server - updateServer returned false');
+      }
+    } catch (error) {
+      console.error('🔧 Failed to update MCP server:', error);
     }
   };
 
@@ -533,6 +570,8 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       try {
         const currentSettings = settingsService.getSettings();
         setFormData(currentSettings);
+
+
       } catch (error) {
         console.error('Failed to load settings:', error);
       }
@@ -668,26 +707,26 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       <div className="w-64 bg-muted/30 border-r border-border flex flex-col flex-shrink-0">
         {/* Header */}
         <div className="p-4 border-b border-border flex items-center justify-between flex-shrink-0">
-          <h2 className="text-lg font-semibold">Settings</h2>
+          <h2 className="text-sm font-semibold">Settings</h2>
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
             className="h-8 w-8 p-0 hover:bg-muted"
           >
-            <X className="h-4 w-4" />
+            <X style={{ width: '16px', height: '16px' }} />
           </Button>
         </div>
 
         {/* Navigation */}
-        <div className="flex-1 overflow-y-auto p-2">
-          <div className="space-y-1">
+        <div className="flex-1 overflow-y-auto p-1">
+          <div className="space-y-0.5">
             {sidebarItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors text-left",
+                  "w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md transition-colors text-left",
                   activeTab === item.id
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -701,12 +740,12 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
         </div>
 
         {/* Save/Cancel Buttons */}
-        <div className="p-4 border-t border-border space-y-2 flex-shrink-0">
+        <div className="p-2 border-t border-border space-y-1 flex-shrink-0">
           {saveError && (
-            <div className="text-sm text-destructive mb-2">{saveError}</div>
+            <div className="text-xs text-destructive mb-1">{saveError}</div>
           )}
           {saveSuccess && (
-            <div className="text-sm text-green-600 mb-2">Settings saved successfully!</div>
+            <div className="text-xs text-green-600 mb-1">Settings saved successfully!</div>
           )}
           <Button
             onClick={() => {
@@ -714,14 +753,14 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
               handleSave();
             }}
             disabled={isLoading || !hasChanges}
-            className="w-full"
+            className="w-full h-7 text-xs"
           >
             {isLoading ? 'Saving...' : 'Save Settings'}
           </Button>
           <Button
             variant="outline"
             onClick={onClose}
-            className="w-full"
+            className="w-full h-7 text-xs"
           >
             Cancel
           </Button>
@@ -731,7 +770,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-2">
           {/* API Keys Tab */}
           {activeTab === 'api-keys' && (
             <ApiKeySettings
@@ -744,53 +783,53 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
           {/* Shortcuts Tab */}
           {activeTab === 'shortcuts' && formData?.shortcuts && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div>
-                <h3 className="text-lg font-medium mb-4">Keyboard Shortcuts</h3>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="toggle-window">Toggle Window</Label>
+                <h3 className="text-sm font-medium mb-2">Keyboard Shortcuts</h3>
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="toggle-window" className="text-xs">Toggle Window</Label>
                     <Input
                       id="toggle-window"
                       value={formData.shortcuts.toggleWindow}
                       placeholder="CommandOrControl+Shift+L"
-                      className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                      className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                       onChange={(e) => updateFormData({
                         shortcuts: { ...formData.shortcuts, toggleWindow: e.target.value }
                       })}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="process-clipboard">Process Clipboard</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="process-clipboard" className="text-xs">Process Clipboard</Label>
                     <Input
                       id="process-clipboard"
                       value={formData.shortcuts.processClipboard}
                       placeholder="CommandOrControl+Shift+V"
-                      className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                      className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                       onChange={(e) => updateFormData({
                         shortcuts: { ...formData.shortcuts, processClipboard: e.target.value }
                       })}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="action-menu">Action Menu</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="action-menu" className="text-xs">Action Menu</Label>
                     <Input
                       id="action-menu"
                       value={formData.shortcuts.actionMenu}
                       placeholder="CommandOrControl+Shift+Space"
-                      className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                      className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                       onChange={(e) => updateFormData({
                         shortcuts: { ...formData.shortcuts, actionMenu: e.target.value }
                       })}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="open-shortcuts">Open Shortcuts</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="open-shortcuts" className="text-xs">Open Shortcuts</Label>
                     <Input
                       id="open-shortcuts"
                       value={formData.shortcuts.openShortcuts}
                       placeholder="CommandOrControl+Shift+K"
-                      className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                      className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                       onChange={(e) => updateFormData({
                         shortcuts: { ...formData.shortcuts, openShortcuts: e.target.value }
                       })}
@@ -803,9 +842,9 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
           {/* Prompts Tab */}
           {activeTab === 'prompts' && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div>
-                <h3 className="text-lg font-medium mb-4">Prompts Management</h3>
+                <h3 className="text-sm font-medium mb-2">Prompts Management</h3>
                 <PromptsContent onPromptSelect={() => {}} />
               </div>
             </div>
@@ -813,31 +852,31 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
           {/* Chat Tab */}
           {activeTab === 'chat' && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div>
-                <h3 className="text-lg font-medium mb-4">Chat Configuration</h3>
-                <div className="space-y-4">
+                <h3 className="text-sm font-medium mb-2">Chat Configuration</h3>
+                <div className="space-y-2">
                   {formData?.chat && (
                     <>
-                      <div className="space-y-2">
-                        <Label htmlFor="system-prompt">Default System Prompt</Label>
+                      <div className="space-y-1">
+                        <Label htmlFor="system-prompt" className="text-xs">Default System Prompt</Label>
                         <Textarea
                           id="system-prompt"
                           value={formData.chat.systemPrompt || ''}
                           placeholder="Enter your default system prompt that will be used for all conversations..."
-                          rows={6}
-                          className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                          rows={3}
+                          className="text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                           onChange={(e) => updateFormData({
                             chat: { ...formData.chat, systemPrompt: e.target.value }
                           })}
                         />
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           This prompt will be sent with every conversation to set the AI behavior and personality.
                         </p>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="temperature">Temperature</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label htmlFor="temperature" className="text-xs">Temperature</Label>
                           <Input
                             id="temperature"
                             type="number"
@@ -845,7 +884,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                             max="2"
                             step="0.1"
                             value={formData.chat.temperature}
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                             onChange={(e) => updateFormData({
                               chat: { ...formData.chat, temperature: parseFloat(e.target.value) || 0 }
                             })}
@@ -854,15 +893,15 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                             Controls randomness (0.0 = focused, 2.0 = creative)
                           </p>
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="max-tokens">Max Tokens</Label>
+                        <div className="space-y-1">
+                          <Label htmlFor="max-tokens" className="text-xs">Max Tokens</Label>
                           <Input
                             id="max-tokens"
                             type="number"
                             min="1"
                             max="32768"
                             value={formData.chat.maxTokens}
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                             onChange={(e) => updateFormData({
                               chat: { ...formData.chat, maxTokens: parseInt(e.target.value) || 8192 }
                             })}
@@ -874,14 +913,15 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                       </div>
                       <div className="flex items-center space-x-2">
                         <ToggleSwitch
+                          size="sm"
                           enabled={formData.chat.toolCallingEnabled}
                           onToggle={(enabled: boolean) => updateFormData({
                             chat: { ...formData.chat, toolCallingEnabled: enabled }
                           })}
                         />
                         <div>
-                          <Label>Enable Tool Calling</Label>
-                          <p className="text-sm text-muted-foreground">
+                          <Label className="text-xs">Enable Tool Calling</Label>
+                          <p className="text-xs text-muted-foreground">
                             Allow the AI to use external tools and functions
                           </p>
                         </div>
@@ -895,12 +935,13 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
           {/* Text to Speech Tab */}
           {activeTab === 'text-to-speech' && formData?.ui?.textToSpeech && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div>
-                <h3 className="text-lg font-medium mb-4">Text to Speech</h3>
-                <div className="space-y-4">
+                <h3 className="text-sm font-medium mb-2">Text to Speech</h3>
+                <div className="space-y-2">
                   <div className="flex items-center space-x-2">
                     <ToggleSwitch
+                      size="sm"
                       enabled={ttsSettings.enabled}
                       onToggle={(enabled: boolean) => {
                         const newTtsSettings = { ...ttsSettings, enabled };
@@ -914,8 +955,8 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                       }}
                     />
                     <div>
-                      <Label>Enable Text to Speech</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <Label className="text-xs">Enable Text to Speech</Label>
+                      <p className="text-xs text-muted-foreground">
                         Enable voice synthesis for AI responses
                       </p>
                     </div>
@@ -1112,6 +1153,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
                       <div className="flex items-center space-x-2">
                         <ToggleSwitch
+                          size="sm"
                           enabled={ttsSettings.autoPlay}
                           onToggle={(enabled: boolean) => {
                             const newTtsSettings = { ...ttsSettings, autoPlay: enabled };
@@ -1125,8 +1167,8 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                           }}
                         />
                         <div>
-                          <Label>Auto-play AI Responses</Label>
-                          <p className="text-sm text-muted-foreground">
+                          <Label className="text-xs">Auto-play AI Responses</Label>
+                          <p className="text-xs text-muted-foreground">
                             Automatically speak AI responses when they arrive
                           </p>
                         </div>
@@ -1159,17 +1201,17 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
           {/* MCP Tab */}
           {activeTab === 'mcp' && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div>
-                <h3 className="text-lg font-medium mb-4">MCP Servers</h3>
-                <div className="space-y-4">
-                  <p className="text-muted-foreground">
+                <h3 className="text-sm font-medium mb-2">MCP Servers</h3>
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
                     Configure Model Context Protocol (MCP) servers for enhanced functionality.
                   </p>
 
                   {/* Add Server Button */}
                   <div className="flex justify-between items-center">
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-xs text-muted-foreground">
                       {mcpServers.length} server{mcpServers.length !== 1 ? 's' : ''} configured
                     </div>
                     <div className="flex gap-2">
@@ -1194,65 +1236,65 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                     </div>
                   </div>
 
-                  {/* Add/Edit Server Form */}
-                  {showAddMcpServer && (
-                    <div className="border border-border rounded-lg p-4 space-y-4 bg-background">
-                      <h4 className="font-medium">{editingMcpServer ? 'Edit' : 'Add'} MCP Server</h4>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="mcp-name">Server Name</Label>
+                  {/* Add New Server Form */}
+                  {showAddMcpServer && !editingMcpServer && (
+                    <div className="border border-border rounded-lg p-2 space-y-2 bg-background">
+                      <h4 className="text-xs font-medium">Add New MCP Server</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label htmlFor="mcp-name" className="text-xs">Server Name</Label>
                           <Input
                             id="mcp-name"
                             value={newMcpServer.name}
                             placeholder="My MCP Server"
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                             onChange={(e) => setNewMcpServer(prev => ({ ...prev, name: e.target.value }))}
                           />
                         </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="mcp-command">Command</Label>
+                        <div className="space-y-1">
+                          <Label htmlFor="mcp-command" className="text-xs">Command</Label>
                           <Input
                             id="mcp-command"
                             value={newMcpServer.command}
                             placeholder="node server.js"
-                            className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                            className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                             onChange={(e) => setNewMcpServer(prev => ({ ...prev, command: e.target.value }))}
                           />
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="mcp-description">Description (Optional)</Label>
+                      <div className="space-y-1">
+                        <Label htmlFor="mcp-description" className="text-xs">Description (Optional)</Label>
                         <Input
                           id="mcp-description"
                           value={newMcpServer.description}
                           placeholder="Description of what this server does"
-                          className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                          className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                           onChange={(e) => setNewMcpServer(prev => ({ ...prev, description: e.target.value }))}
                         />
                       </div>
 
                       {/* Arguments Section */}
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         <div className="flex items-center justify-between">
-                          <Label>Arguments</Label>
+                          <Label className="text-xs">Arguments</Label>
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
                             onClick={addArgument}
-                            className="flex items-center gap-1"
+                            className="h-6 text-xs flex items-center gap-1"
                           >
                             <Plus className="h-3 w-3" />
                             Add Argument
                           </Button>
                         </div>
                         {newMcpServer.args.map((arg, index) => (
-                          <div key={index} className="flex gap-2">
+                          <div key={index} className="flex gap-1">
                             <Input
                               value={arg}
                               placeholder={`Argument ${index + 1}`}
-                              className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                              className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                               onChange={(e) => updateArgument(index, e.target.value)}
                             />
                             <Button
@@ -1260,20 +1302,21 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               variant="ghost"
                               size="sm"
                               onClick={() => removeArgument(index)}
-                              className="text-destructive hover:text-destructive"
+                              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-3 w-3" />
                             </Button>
                           </div>
                         ))}
                         {newMcpServer.args.length === 0 && (
-                          <p className="text-sm text-muted-foreground">No arguments configured</p>
+                          <p className="text-xs text-muted-foreground">No arguments configured</p>
                         )}
                       </div>
 
-                      <div className="flex justify-end gap-2">
+                      <div className="flex justify-end gap-1">
                         <Button
                           variant="outline"
+                          size="sm"
                           onClick={() => {
                             setShowAddMcpServer(false);
                             setEditingMcpServer(null);
@@ -1286,11 +1329,16 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               env: {}
                             });
                           }}
+                          className="h-7 text-xs"
                         >
                           Cancel
                         </Button>
-                        <Button onClick={handleAddMcpServer}>
-                          {editingMcpServer ? 'Update' : 'Add'} Server
+                        <Button
+                          onClick={handleAddMcpServer}
+                          size="sm"
+                          className="h-7 text-xs"
+                        >
+                          Add Server
                         </Button>
                       </div>
                     </div>
@@ -1299,54 +1347,172 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                   {/* Server List */}
                   <div className="space-y-2">
                     {mcpServers.map((server) => (
-                      <div key={server.name} className="flex items-center justify-between p-3 border border-border rounded-lg bg-background">
-                        <div className="flex items-center gap-3">
-                          <Server className="h-4 w-4 text-muted-foreground" />
-                          <div>
-                            <div className="font-medium">{server.name}</div>
-                            <div className="text-sm text-muted-foreground">{server.command}</div>
-                            {server.description && (
-                              <div className="text-xs text-muted-foreground">{server.description}</div>
-                            )}
+                      <div key={server.name}>
+                        <div className="flex items-center justify-between p-2 border border-border rounded-lg bg-background">
+                          <div className="flex items-center gap-2">
+                            <Server className="h-3 w-3 text-muted-foreground" />
+                            <div>
+                              <div className="text-xs font-medium">{server.name}</div>
+                              <div className="text-xs text-muted-foreground">{server.command}</div>
+                              {server.description && (
+                                <div className="text-xs text-muted-foreground">{server.description}</div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <ToggleSwitch
+                              size="sm"
+                              enabled={server.enabled}
+                              onToggle={(enabled) => {
+                                console.log('🔧 MCP Server toggle clicked:', server.name, 'id:', server.id, 'enabled:', enabled);
+                                handleToggleMcpServer(server.id, enabled);
+                              }}
+                            />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                console.log('🔧 Edit MCP server:', server.name);
+                                if (editingMcpServer?.id === server.id) {
+                                  // If already editing this server, close the form
+                                  setEditingMcpServer(null);
+                                  setShowAddMcpServer(false);
+                                } else {
+                                  // Edit this server
+                                  setEditingMcpServer(server);
+                                  setNewMcpServer({
+                                    name: server.name,
+                                    command: server.command,
+                                    args: server.args || [],
+                                    description: server.description || '',
+                                    enabled: server.enabled,
+                                    env: server.env || {}
+                                  });
+                                  setShowAddMcpServer(true);
+                                }
+                              }}
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteMcpServer(server.id)}
+                              className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <ToggleSwitch
-                            enabled={server.enabled}
-                            onToggle={(enabled) => {
-                              console.log('🔧 MCP Server toggle clicked:', server.name, 'id:', server.id, 'enabled:', enabled);
-                              handleToggleMcpServer(server.id, enabled);
-                            }}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              console.log('🔧 Edit MCP server:', server.name);
-                              setEditingMcpServer(server);
-                              setNewMcpServer({
-                                name: server.name,
-                                command: server.command,
-                                args: server.args || [],
-                                description: server.description || '',
-                                enabled: server.enabled,
-                                env: server.env || {}
-                              });
-                              setShowAddMcpServer(true);
-                            }}
-                            className="text-muted-foreground hover:text-foreground"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteMcpServer(server.id)}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+
+                        {/* Inline Edit Form - appears right below the server being edited */}
+                        {editingMcpServer?.id === server.id && showAddMcpServer && (
+                          <div className="mt-1 border border-border rounded-lg p-2 space-y-2 bg-muted/30">
+                            <h4 className="text-xs font-medium">Edit MCP Server</h4>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label htmlFor="mcp-name" className="text-xs">Server Name</Label>
+                                <Input
+                                  id="mcp-name"
+                                  value={newMcpServer.name}
+                                  placeholder="My MCP Server"
+                                  className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                                  onChange={(e) => setNewMcpServer(prev => ({ ...prev, name: e.target.value }))}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label htmlFor="mcp-command" className="text-xs">Command</Label>
+                                <Input
+                                  id="mcp-command"
+                                  value={newMcpServer.command}
+                                  placeholder="node server.js"
+                                  className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                                  onChange={(e) => setNewMcpServer(prev => ({ ...prev, command: e.target.value }))}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="space-y-1">
+                              <Label htmlFor="mcp-description" className="text-xs">Description (Optional)</Label>
+                              <Input
+                                id="mcp-description"
+                                value={newMcpServer.description}
+                                placeholder="Description of what this server does"
+                                className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                                onChange={(e) => setNewMcpServer(prev => ({ ...prev, description: e.target.value }))}
+                              />
+                            </div>
+
+                            {/* Arguments Section */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs">Arguments</Label>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={addArgument}
+                                  className="h-6 text-xs flex items-center gap-1"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                  Add Argument
+                                </Button>
+                              </div>
+                              {newMcpServer.args.map((arg, index) => (
+                                <div key={index} className="flex gap-1">
+                                  <Input
+                                    value={arg}
+                                    placeholder={`Argument ${index + 1}`}
+                                    className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                                    onChange={(e) => updateArgument(index, e.target.value)}
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removeArgument(index)}
+                                    className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ))}
+                              {newMcpServer.args.length === 0 && (
+                                <p className="text-xs text-muted-foreground">No arguments configured</p>
+                              )}
+                            </div>
+
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setShowAddMcpServer(false);
+                                  setEditingMcpServer(null);
+                                  setNewMcpServer({
+                                    name: '',
+                                    command: '',
+                                    args: [],
+                                    description: '',
+                                    enabled: true,
+                                    env: {}
+                                  });
+                                }}
+                                className="h-7 text-xs"
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                onClick={handleUpdateMcpServer}
+                                size="sm"
+                                className="h-7 text-xs"
+                              >
+                                Update Server
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                     {mcpServers.length === 0 && (
@@ -1362,12 +1528,13 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
           {/* Internal Commands Tab */}
           {activeTab === 'internal-commands' && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div>
-                <h3 className="text-lg font-medium mb-4">Internal Commands</h3>
-                <div className="space-y-4">
+                <h3 className="text-sm font-medium mb-2">Internal Commands</h3>
+                <div className="space-y-2">
                   <div className="flex items-center space-x-2">
                     <ToggleSwitch
+                      size="sm"
                       enabled={internalCommandsEnabled}
                       onToggle={(enabled) => {
                         setInternalCommandsEnabled(enabled);
@@ -1391,8 +1558,8 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                       }}
                     />
                     <div>
-                      <Label>Enable Internal Commands</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <Label className="text-xs">Enable Internal Commands</Label>
+                      <p className="text-xs text-muted-foreground">
                         Allow the AI to execute system commands and file operations
                       </p>
                     </div>
@@ -1400,29 +1567,30 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
                   {internalCommandsEnabled && (
                     <>
-                      <div className="space-y-2">
-                        <Label>Command Categories</Label>
-                        <div className="space-y-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Command Categories</Label>
+                        <div className="space-y-1">
                           {Object.entries(enabledCommandCategories).map(([category, enabled]) => (
                             <div key={category} className="flex items-center space-x-2">
                               <ToggleSwitch
+                                size="sm"
                                 enabled={enabled}
                                 onToggle={(enabled) => handleCommandCategoryToggle(category, enabled)}
                               />
-                              <Label className="capitalize">{category.replace(/([A-Z])/g, ' $1').trim()}</Label>
+                              <Label className="text-xs capitalize">{category.replace(/([A-Z])/g, ' $1').trim()}</Label>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label>Allowed Directories</Label>
-                        <div className="flex gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Allowed Directories</Label>
+                        <div className="flex gap-1">
                           <Input
                             value={newDirectory}
                             onChange={(e) => setNewDirectory(e.target.value)}
                             placeholder="Enter directory path"
-                            className="flex-1"
+                            className="h-7 text-xs flex-1"
                           />
                           <Button
                             onClick={async () => {
@@ -1439,73 +1607,49 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                             }}
                             size="sm"
                             variant="outline"
+                            className="h-7 text-xs"
                           >
                             Browse
                           </Button>
-                          <Button onClick={handleAddDirectory} size="sm">
-                            <Plus className="h-4 w-4" />
+                          <Button
+                            onClick={handleAddDirectory}
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                          >
+                            <Plus className="h-3 w-3" />
                           </Button>
                         </div>
                         <div className="space-y-1">
                           {allowedDirectories.map((dir) => (
-                            <div key={dir} className="flex items-center justify-between p-2 bg-muted rounded">
-                              <span className="text-sm">{dir}</span>
+                            <div key={dir} className="flex items-center justify-between p-1 bg-muted rounded">
+                              <span className="text-xs">{dir}</span>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleRemoveDirectory(dir)}
-                                className="text-destructive"
+                                className="h-6 w-6 p-0 text-destructive"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-3 w-3" />
                               </Button>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label>Blocked Commands</Label>
-                        <div className="flex gap-2">
-                          <Input
-                            value={newBlockedCommand}
-                            onChange={(e) => setNewBlockedCommand(e.target.value)}
-                            placeholder="Enter command to block (e.g., rm, del)"
-                            className="flex-1"
-                          />
-                          <Button onClick={handleAddBlockedCommand} size="sm">
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <div className="space-y-1">
-                          {blockedCommands.map((cmd) => (
-                            <div key={cmd} className="flex items-center justify-between p-2 bg-muted rounded">
-                              <span className="text-sm">{cmd}</span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleRemoveBlockedCommand(cmd)}
-                                className="text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Available Internal Command Tools Section */}
-                      <div className="space-y-2">
-                        <Label>Available Internal Command Tools</Label>
-                        <div className="max-h-48 overflow-y-auto space-y-2 border border-border rounded p-2">
+                      {/* Available Internal Command Tools Section - positioned after directories */}
+                      <div className="space-y-1">
+                        <Label className="text-xs">Available Internal Command Tools</Label>
+                        <div className="max-h-64 overflow-y-auto space-y-1 border border-border rounded p-2 bg-muted/20">
                           {availableTools.length > 0 ? (
                             availableTools.map((tool) => (
                               <div key={tool.name} className="flex items-center justify-between p-2 bg-background rounded">
                                 <div>
-                                  <div className="font-medium text-sm">{tool.name}</div>
+                                  <div className="text-xs font-medium">{tool.name}</div>
                                   <div className="text-xs text-muted-foreground">{tool.description}</div>
                                   <div className="text-xs text-muted-foreground">Category: {tool.category}</div>
                                 </div>
                                 <ToggleSwitch
+                                  size="sm"
                                   enabled={enabledTools[tool.name] !== false}
                                   onToggle={(enabled) => {
                                     setEnabledTools(prev => ({
@@ -1518,12 +1662,48 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               </div>
                             ))
                           ) : (
-                            <div className="text-center py-4 text-muted-foreground text-sm">
+                            <div className="text-center py-3 text-muted-foreground text-xs">
                               No internal command tools detected. Make sure internal commands are enabled and configured.
                             </div>
                           )}
                         </div>
                       </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs">Blocked Commands</Label>
+                        <div className="flex gap-1">
+                          <Input
+                            value={newBlockedCommand}
+                            onChange={(e) => setNewBlockedCommand(e.target.value)}
+                            placeholder="Enter command to block (e.g., rm, del)"
+                            className="h-7 text-xs flex-1"
+                          />
+                          <Button
+                            onClick={handleAddBlockedCommand}
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <div className="space-y-1">
+                          {blockedCommands.map((cmd) => (
+                            <div key={cmd} className="flex items-center justify-between p-1 bg-muted rounded">
+                              <span className="text-xs">{cmd}</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveBlockedCommand(cmd)}
+                                className="h-6 w-6 p-0 text-destructive"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+
                     </>
                   )}
                 </div>
@@ -1533,9 +1713,9 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
           {/* Memory Tab */}
           {activeTab === 'memory' && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div>
-                <h3 className="text-lg font-medium mb-4">Memory Management</h3>
+                <h3 className="text-sm font-medium mb-2">Memory Management</h3>
                 <MemoryManagement />
               </div>
             </div>
@@ -1543,9 +1723,9 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
           {/* Knowledge Base Tab */}
           {activeTab === 'knowledge-base' && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div>
-                <h3 className="text-lg font-medium mb-4">Knowledge Base</h3>
+                <h3 className="text-sm font-medium mb-2">Knowledge Base</h3>
                 <KnowledgeBaseSettings />
               </div>
             </div>
@@ -1553,12 +1733,12 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
           {/* Appearance Tab */}
           {activeTab === 'appearance' && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div>
-                <h3 className="text-lg font-medium mb-4">Appearance</h3>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Theme</Label>
+                <h3 className="text-sm font-medium mb-2">Appearance</h3>
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Theme</Label>
                     <ThemeSelector
                       selectedThemeId={selectedThemePreset}
                       onThemeSelect={(theme) => {
@@ -1587,6 +1767,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                       }}
                     />
                   </div>
+
 
                   <div className="space-y-2">
                     <Label>Color Mode</Label>
@@ -1782,20 +1963,21 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
           {/* General Tab */}
           {activeTab === 'general' && formData?.general && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               <div>
-                <h3 className="text-lg font-medium mb-4">General Settings</h3>
-                <div className="space-y-4">
+                <h3 className="text-sm font-medium mb-2">General Settings</h3>
+                <div className="space-y-2">
                   <div className="flex items-center space-x-2">
                     <ToggleSwitch
+                      size="sm"
                       enabled={formData.general.autoStartWithSystem}
                       onToggle={(enabled) => updateFormData({
                         general: { ...formData.general, autoStartWithSystem: enabled }
                       })}
                     />
                     <div>
-                      <Label>Auto-start with system</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <Label className="text-xs">Auto-start with system</Label>
+                      <p className="text-xs text-muted-foreground">
                         Launch LittleLLM automatically when your computer starts
                       </p>
                     </div>
@@ -1803,14 +1985,15 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
                   <div className="flex items-center space-x-2">
                     <ToggleSwitch
+                      size="sm"
                       enabled={formData.general.showNotifications}
                       onToggle={(enabled) => updateFormData({
                         general: { ...formData.general, showNotifications: enabled }
                       })}
                     />
                     <div>
-                      <Label>Show notifications</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <Label className="text-xs">Show notifications</Label>
+                      <p className="text-xs text-muted-foreground">
                         Display system notifications for important events
                       </p>
                     </div>
@@ -1818,47 +2001,49 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
                   <div className="flex items-center space-x-2">
                     <ToggleSwitch
+                      size="sm"
                       enabled={formData.general.saveConversationHistory}
                       onToggle={(enabled) => updateFormData({
                         general: { ...formData.general, saveConversationHistory: enabled }
                       })}
                     />
                     <div>
-                      <Label>Save conversation history</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <Label className="text-xs">Save conversation history</Label>
+                      <p className="text-xs text-muted-foreground">
                         Keep a record of your conversations for future reference
                       </p>
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="history-length">Conversation history length</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="history-length" className="text-xs">Conversation history length</Label>
                     <Input
                       id="history-length"
                       type="number"
                       min="1"
                       max="100"
                       value={formData.general.conversationHistoryLength}
-                      className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                      className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                       onChange={(e) => updateFormData({
                         general: { ...formData.general, conversationHistoryLength: parseInt(e.target.value) || 10 }
                       })}
                     />
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       Number of recent conversations to keep in history
                     </p>
                   </div>
 
                   <div className="flex items-center space-x-2">
                     <ToggleSwitch
+                      size="sm"
                       enabled={formData.general.debugLogging}
                       onToggle={(enabled) => updateFormData({
                         general: { ...formData.general, debugLogging: enabled }
                       })}
                     />
                     <div>
-                      <Label>Debug logging</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <Label className="text-xs">Debug logging</Label>
+                      <p className="text-xs text-muted-foreground">
                         Enable detailed logging for troubleshooting
                       </p>
                     </div>

@@ -1,4 +1,6 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { CodeBlock, InlineCode } from '../components/CodeBlock';
 
 /**
@@ -248,11 +250,112 @@ export function ParsedContent({ children, className, style }: ParsedContentProps
  * @param style - Optional inline styles for the container
  * @returns JSX element with parsed content
  */
+/**
+ * Enhanced markdown parser using react-markdown
+ * @param text - The input text to parse as markdown
+ * @returns JSX elements with parsed markdown content
+ */
+export function parseMarkdownContent(text: string): React.ReactNode {
+  if (!text) return null;
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        // Custom code block component
+        code({ node, inline, className, children, ...props }: any) {
+          const match = /language-(\w+)/.exec(className || '');
+          const language = match ? match[1] : undefined;
+
+          if (inline) {
+            return <InlineCode code={String(children).replace(/\n$/, '')} />;
+          } else {
+            return (
+              <CodeBlock
+                code={String(children).replace(/\n$/, '')}
+                language={language}
+              />
+            );
+          }
+        },
+        // Custom link component
+        a({ href, children, ...props }: any) {
+          return (
+            <button
+              onClick={() => href && handleLinkClick(href)}
+              className="text-blue-400 hover:text-blue-300 underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
+            >
+              {children}
+            </button>
+          );
+        },
+        // Style headers
+        h1: ({ children }: any) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
+        h2: ({ children }: any) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
+        h3: ({ children }: any) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
+        h4: ({ children }: any) => <h4 className="text-base font-bold mb-2 mt-3">{children}</h4>,
+        h5: ({ children }: any) => <h5 className="text-sm font-bold mb-1 mt-2">{children}</h5>,
+        h6: ({ children }: any) => <h6 className="text-xs font-bold mb-1 mt-2">{children}</h6>,
+        // Style paragraphs
+        p: ({ children }: any) => <p className="mb-3 leading-relaxed">{children}</p>,
+        // Style lists
+        ul: ({ children }: any) => <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>,
+        ol: ({ children }: any) => <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>,
+        li: ({ children }: any) => <li className="ml-4">{children}</li>,
+        // Style blockquotes
+        blockquote: ({ children }: any) => (
+          <blockquote className="border-l-4 border-gray-500 pl-4 italic my-4 text-gray-300">
+            {children}
+          </blockquote>
+        ),
+        // Style tables
+        table: ({ children }: any) => (
+          <div className="overflow-x-auto my-4">
+            <table className="min-w-full border-collapse border border-gray-600">
+              {children}
+            </table>
+          </div>
+        ),
+        th: ({ children }: any) => (
+          <th className="border border-gray-600 px-3 py-2 bg-gray-700 font-semibold text-left">
+            {children}
+          </th>
+        ),
+        td: ({ children }: any) => (
+          <td className="border border-gray-600 px-3 py-2">
+            {children}
+          </td>
+        ),
+        // Style horizontal rules
+        hr: () => <hr className="my-6 border-gray-600" />,
+        // Style strong and emphasis
+        strong: ({ children }: any) => <strong className="font-bold">{children}</strong>,
+        em: ({ children }: any) => <em className="italic">{children}</em>,
+      }}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+}
+
 export function parseTextWithContent(
-  text: string, 
-  className?: string, 
+  text: string,
+  className?: string,
   style?: React.CSSProperties
 ): JSX.Element {
+  // Check if the text contains markdown elements
+  const hasMarkdown = /^#{1,6}\s|^\*\s|^\d+\.\s|^\>\s|^\|.*\||```|`[^`]+`|\*\*.*\*\*|\*.*\*|_.*_|\[.*\]\(.*\)/m.test(text);
+
+  if (hasMarkdown) {
+    return (
+      <div className={className} style={style}>
+        {parseMarkdownContent(text)}
+      </div>
+    );
+  }
+
+  // Fallback to the original parser for simple text
   return (
     <ParsedContent className={className} style={style}>
       {text}

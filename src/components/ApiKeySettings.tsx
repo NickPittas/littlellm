@@ -33,6 +33,7 @@ const PROVIDERS = [
   { id: 'gemini', name: 'Google Gemini', placeholder: 'API Key...' },
   { id: 'mistral', name: 'Mistral AI', placeholder: 'API Key...' },
   { id: 'deepseek', name: 'DeepSeek', placeholder: 'sk-...' },
+  { id: 'deepinfra', name: 'Deepinfra', placeholder: 'API Key...' },
   { id: 'groq', name: 'Groq', placeholder: 'API Key...' },
   { id: 'openrouter', name: 'OpenRouter', placeholder: 'sk-or-...' },
   { id: 'requesty', name: 'Requesty', placeholder: 'API Key...' },
@@ -344,34 +345,34 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <div>
-        <h3 className="text-lg font-medium mb-4">API Configuration</h3>
-        <p className="text-sm text-muted-foreground mb-6">
+        <h3 className="text-sm font-medium mb-2">API Configuration</h3>
+        <p className="text-xs text-muted-foreground mb-3">
           API keys are encrypted and stored securely. They are never transmitted in plain text.
         </p>
-        
-        <div className="space-y-4">
+
+        <div className="space-y-2">
           {PROVIDERS.map(provider => (
-            <div key={provider.id} className="space-y-2">
-              <Label htmlFor={`${provider.id}-key`}>{provider.name} API Key</Label>
+            <div key={provider.id} className="space-y-1">
+              <Label htmlFor={`${provider.id}-key`} className="text-xs">{provider.name} API Key</Label>
               <Input
                 id={`${provider.id}-key`}
                 type="password"
                 value={apiKeys[provider.id]?.apiKey || ''}
                 placeholder={provider.placeholder}
-                className={`bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors ${
+                className={`h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors ${
                   validationErrors[provider.id] ? 'border-destructive' : ''
                 }`}
                 onChange={(e) => updateApiKey(provider.id, 'apiKey', e.target.value)}
               />
               {validationErrors[provider.id] && (
-                <p className="text-sm text-destructive">{validationErrors[provider.id]}</p>
+                <p className="text-xs text-destructive">{validationErrors[provider.id]}</p>
               )}
               
               {provider.hasBaseUrl && (
-                <div className="mt-2">
-                  <Label htmlFor={`${provider.id}-url`}>{provider.name} Base URL</Label>
+                <div className="mt-1">
+                  <Label htmlFor={`${provider.id}-url`} className="text-xs">{provider.name} Base URL</Label>
                   <Input
                     id={`${provider.id}-url`}
                     type="url"
@@ -382,7 +383,7 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
                       provider.id === 'n8n' ? 'https://your-n8n-instance.com/webhook/your-webhook-id' :
                       'Base URL...'
                     }
-                    className="bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                    className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
                     onChange={(e) => updateApiKey(provider.id, 'baseUrl', e.target.value)}
                   />
                 </div>
@@ -396,12 +397,12 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
 
 
         {hasChanges && (
-          <div className="flex gap-2 mt-6 pt-4 border-t">
+          <div className="flex gap-1 mt-3 pt-2 border-t">
             <Button
               variant="outline"
               onClick={handleCancel}
               disabled={isLoading}
-              className="flex-1"
+              className="h-7 text-xs flex-1"
             >
               Cancel Changes
             </Button>

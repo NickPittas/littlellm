@@ -99,7 +99,7 @@ export function FloatingProviderSelector({
       <div
         ref={selectorRef}
         className={cn(
-          "fixed z-50 w-80 bg-gray-900/95 border border-gray-700/50 rounded-lg shadow-2xl backdrop-blur-sm",
+          "fixed z-50 w-64 bg-gray-900/95 border border-gray-700/50 rounded-lg shadow-2xl backdrop-blur-sm",
           className
         )}
         style={{
@@ -108,42 +108,42 @@ export function FloatingProviderSelector({
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-700/50">
-          <h3 className="text-lg font-semibold text-white">Select Provider</h3>
+        <div className="flex items-center justify-between p-2 border-b border-gray-700/50">
+          <h3 className="text-sm font-semibold text-white">Select Provider</h3>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors"
           >
-            <X className="w-4 h-4" />
+            <X style={{ width: '16px', height: '16px' }} />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-4 space-y-6 max-h-96 overflow-y-auto">
+        <div className="p-2 space-y-3 max-h-80 overflow-y-auto">
           {/* Local Providers */}
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Monitor className="w-4 h-4 text-blue-400" />
-              <span className="text-sm font-medium text-blue-400">Local Providers</span>
+            <div className="flex items-center gap-1 mb-2">
+              <Monitor style={{ width: '16px', height: '16px' }} className="text-blue-400" />
+              <span className="text-xs font-medium text-blue-400">Local Providers</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {localProviders.map((provider) => (
                 <button
                   key={provider.id}
                   onClick={() => handleProviderClick(provider)}
                   className={cn(
-                    "w-full flex items-center gap-3 p-3 rounded-lg border transition-colors",
+                    "w-full flex items-center gap-2 p-2 rounded-lg border transition-colors",
                     selectedProvider === provider.id
                       ? "bg-blue-600/20 border-blue-500/50 text-white"
                       : "bg-gray-800/50 border-gray-700/50 text-gray-300 hover:bg-gray-700/50"
                   )}
                 >
-                  <div className="w-5 h-5 flex-shrink-0">
-                    <ProviderLogo provider={provider} size={20} />
+                  <div className="w-4 h-4 flex-shrink-0">
+                    <ProviderLogo provider={provider} size={16} />
                   </div>
-                  <span className="font-medium">{provider.name}</span>
+                  <span className="text-xs font-medium">{provider.name}</span>
                   {selectedProvider === provider.id && (
-                    <div className="w-2 h-2 bg-blue-500 rounded-full ml-auto" />
+                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full ml-auto" />
                   )}
                 </button>
               ))}
@@ -152,28 +152,28 @@ export function FloatingProviderSelector({
 
           {/* Remote Providers */}
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Server className="w-4 h-4 text-green-400" />
-              <span className="text-sm font-medium text-green-400">Remote Providers</span>
+            <div className="flex items-center gap-1 mb-2">
+              <Server style={{ width: '16px', height: '16px' }} className="text-green-400" />
+              <span className="text-xs font-medium text-green-400">Remote Providers</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {remoteProviders.map((provider) => (
                 <button
                   key={provider.id}
                   onClick={() => handleProviderClick(provider)}
                   className={cn(
-                    "w-full flex items-center gap-3 p-3 rounded-lg border transition-colors",
+                    "w-full flex items-center gap-2 p-2 rounded-lg border transition-colors",
                     selectedProvider === provider.id
                       ? "bg-blue-600/20 border-blue-500/50 text-white"
                       : "bg-gray-800/50 border-gray-700/50 text-gray-300 hover:bg-gray-700/50"
                   )}
                 >
-                  <div className="w-5 h-5 flex-shrink-0">
-                    <ProviderLogo provider={provider} size={20} />
+                  <div className="w-4 h-4 flex-shrink-0">
+                    <ProviderLogo provider={provider} size={16} />
                   </div>
-                  <span className="font-medium">{provider.name}</span>
+                  <span className="text-xs font-medium">{provider.name}</span>
                   {selectedProvider === provider.id && (
-                    <div className="w-2 h-2 bg-blue-500 rounded-full ml-auto" />
+                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full ml-auto" />
                   )}
                 </button>
               ))}

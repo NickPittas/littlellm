@@ -44,30 +44,29 @@ export function UserMessage({ content, className = '' }: UserMessageProps) {
         variant="ghost"
         size="sm"
         onClick={handleCopy}
-        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0"
+        className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 p-0"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
         {copied ? (
-          <Check className="h-3 w-3 text-green-500" />
+          <Check style={{ width: '16px', height: '16px' }} className="text-green-500" />
         ) : (
-          <Copy className="h-3 w-3" />
+          <Copy style={{ width: '16px', height: '16px' }} />
         )}
       </Button>
 
       {/* Message Content */}
-      <div
-        className="whitespace-pre-wrap select-text break-words text-sm"
-        style={{
+      {parseTextWithContent(
+        content,
+        "whitespace-pre-wrap select-text break-words text-sm",
+        {
           WebkitAppRegion: 'no-drag',
           userSelect: 'text',
           WebkitUserSelect: 'text',
           wordWrap: 'break-word',
           overflowWrap: 'break-word',
           maxWidth: '100%'
-        } as React.CSSProperties & { WebkitAppRegion?: string }}
-      >
-        {parseTextWithContent(content)}
-      </div>
+        } as React.CSSProperties & { WebkitAppRegion?: string }
+      )}
     </div>
   );
 }

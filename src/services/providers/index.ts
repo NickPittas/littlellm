@@ -17,6 +17,7 @@ export { AnthropicProvider } from './AnthropicProvider';
 export { GeminiProvider } from './GeminiProvider';
 export { MistralProvider } from './MistralProvider';
 export { DeepSeekProvider } from './DeepSeekProvider';
+export { DeepinfraProvider } from './DeepinfraProvider';
 export { LMStudioProvider } from './LMStudioProvider';
 export { OllamaProvider } from './OllamaProvider';
 export { OpenRouterProvider } from './OpenRouterProvider';

@@ -10,6 +10,8 @@ import { SettingsModal } from './SettingsModal';
 import { ChatHistoryPanel } from './ChatHistoryPanel';
 import { FloatingProviderSelector } from './FloatingProviderSelector';
 import { AttachmentPreview } from '../AttachmentPreview';
+import { AgentManagement } from './AgentManagement';
+import { agentService } from '../../services/agentService';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
@@ -44,6 +46,9 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
   const [providerSelectorOpen, setProviderSelectorOpen] = useState(false);
   const [providerAnchorElement, setProviderAnchorElement] = useState<HTMLElement | null>(null);
+  const [agentManagementOpen, setAgentManagementOpen] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<any>(null);
+  const [availableAgents, setAvailableAgents] = useState<any[]>([]);
 
   // Model instructions and quick prompts state
   const [modelInstructionsOpen, setModelInstructionsOpen] = useState(false);
@@ -66,6 +71,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       gemini: { lastSelectedModel: '' },
       mistral: { lastSelectedModel: '' },
       deepseek: { lastSelectedModel: '' },
+      deepinfra: { lastSelectedModel: '' },
       groq: { lastSelectedModel: '' },
       lmstudio: { baseUrl: '', lastSelectedModel: '' },
       ollama: { baseUrl: '', lastSelectedModel: '' },
@@ -221,12 +227,31 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     loadPremadePrompts();
   }, []); // Empty dependency array to prevent infinite loop
 
+  // Load available agents on mount
+  useEffect(() => {
+    const loadAgents = async () => {
+      try {
+        const agents = await agentService.getAgents();
+        setAvailableAgents(agents);
+        console.log(`✅ Loaded ${agents.length} available agents`);
+      } catch (error) {
+        console.error('Failed to load agents:', error);
+        setAvailableAgents([]);
+      }
+    };
+
+    loadAgents();
+  }, []);
+
   // Handle sidebar item clicks
   const handleSidebarItemClick = (itemId: string) => {
     console.log('Sidebar item clicked:', itemId);
 
     // Handle different sidebar actions
     switch (itemId) {
+      case 'agents':
+        setAgentManagementOpen(true);
+        break;
       case 'settings':
         setSettingsModalOpen(true);
         break;
@@ -681,6 +706,80 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     setProviderSelectorOpen(true);
   };
 
+  // Handle agent selection from management interface
+  const handleAgentSelect = async (agent: any) => {
+    try {
+      console.log('🤖 Agent selected from management:', agent.name);
+
+      // Set the selected agent
+      setSelectedAgent(agent);
+
+      // Update settings with agent configuration
+      setSettings(prev => ({
+        ...prev,
+        provider: agent.defaultProvider,
+        model: agent.defaultModel,
+        systemPrompt: agent.systemPrompt,
+        temperature: agent.temperature || 0.7,
+        maxTokens: agent.maxTokens || 4000,
+        toolCallingEnabled: agent.toolCallingEnabled
+      }));
+
+      // Set selected provider and model
+      setSelectedProvider(agent.defaultProvider);
+      setSelectedModel(agent.defaultModel);
+
+      // Load models for the provider
+      await loadModelsForProvider(agent.defaultProvider);
+
+      // Start a new chat with the agent configuration
+      handleStartNewChat();
+
+      console.log('✅ Agent configuration applied successfully');
+    } catch (error) {
+      console.error('❌ Failed to apply agent configuration:', error);
+    }
+  };
+
+  // Handle agent change from dropdown
+  const handleAgentChange = async (agent: any) => {
+    try {
+      console.log('🤖 Agent changed from dropdown:', agent?.name || 'No Agent');
+
+      setSelectedAgent(agent);
+
+      if (agent) {
+        // Apply agent configuration
+        setSettings(prev => ({
+          ...prev,
+          provider: agent.defaultProvider,
+          model: agent.defaultModel,
+          systemPrompt: agent.systemPrompt,
+          temperature: agent.temperature || 0.7,
+          maxTokens: agent.maxTokens || 4000,
+          toolCallingEnabled: agent.toolCallingEnabled
+        }));
+
+        setSelectedProvider(agent.defaultProvider);
+        setSelectedModel(agent.defaultModel);
+        await loadModelsForProvider(agent.defaultProvider);
+      } else {
+        // Clear agent configuration - use default settings
+        setSettings(prev => ({
+          ...prev,
+          systemPrompt: '',
+          temperature: 0.7,
+          maxTokens: 4000,
+          toolCallingEnabled: true
+        }));
+      }
+
+      console.log('✅ Agent change applied successfully');
+    } catch (error) {
+      console.error('❌ Failed to apply agent change:', error);
+    }
+  };
+
   // Load premade prompts from file
   const loadPremadePrompts = async () => {
     try {
@@ -1039,6 +1138,9 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           knowledgeBaseEnabled={knowledgeBaseEnabled}
           onToggleKnowledgeBase={handleToggleKnowledgeBase}
           onStartNewChat={handleStartNewChat}
+          selectedAgent={selectedAgent}
+          onAgentChange={handleAgentChange}
+          availableAgents={availableAgents}
           className="flex-shrink-0"
         />
       </div>
@@ -1076,6 +1178,25 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         onClose={() => setHistoryPanelOpen(false)}
         onSelectChat={handleChatSelect}
       />
+
+      {/* Agent Management Modal */}
+      {agentManagementOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop with blur */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setAgentManagementOpen(false)}
+          />
+
+          {/* Agent Management Modal */}
+          <div className="relative w-[95vw] h-[95vh] max-w-7xl max-h-[900px] bg-background border border-border rounded-2xl shadow-2xl overflow-hidden">
+            <AgentManagement
+              onAgentSelect={handleAgentSelect}
+              onClose={() => setAgentManagementOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Floating Provider Selector */}
       <FloatingProviderSelector

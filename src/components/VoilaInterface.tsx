@@ -153,6 +153,7 @@ export function VoilaInterface({ onClose }: VoilaInterfaceProps) {
       gemini: { apiKey: '', lastSelectedModel: '' },
       mistral: { apiKey: '', lastSelectedModel: '' },
       deepseek: { apiKey: '', lastSelectedModel: '' },
+      deepinfra: { apiKey: '', lastSelectedModel: '' },
       groq: { apiKey: '', lastSelectedModel: '' },
       lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
       ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },

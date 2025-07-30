@@ -1,0 +1,112 @@
+/* Syntax Highlighting CSS - Completely isolated from app theme */
+.syntax-highlighter-isolated {
+  /* Reset everything and isolate from theme */
+  all: unset !important;
+  display: block !important;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace !important;
+  font-size: 14px !important;
+  line-height: 1.4 !important;
+  color: #d4d4d4 !important;
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 12px !important;
+  overflow-x: auto !important;
+  white-space: pre !important;
+}
+
+/* Override ALL possible theme selectors with maximum specificity */
+.syntax-highlighter-isolated * {
+  color: inherit !important;
+  background: transparent !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+
+.syntax-highlighter-isolated pre {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+  white-space: pre !important;
+  overflow: visible !important;
+}
+
+.syntax-highlighter-isolated code {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}
+
+/* Syntax highlighting token colors with maximum specificity */
+.syntax-highlighter-isolated .token.comment,
+.syntax-highlighter-isolated .token.prolog,
+.syntax-highlighter-isolated .token.doctype,
+.syntax-highlighter-isolated .token.cdata {
+  color: #6a9955 !important;
+}
+
+.syntax-highlighter-isolated .token.punctuation {
+  color: #d4d4d4 !important;
+}
+
+.syntax-highlighter-isolated .token.property,
+.syntax-highlighter-isolated .token.tag,
+.syntax-highlighter-isolated .token.boolean,
+.syntax-highlighter-isolated .token.number,
+.syntax-highlighter-isolated .token.constant,
+.syntax-highlighter-isolated .token.symbol,
+.syntax-highlighter-isolated .token.deleted {
+  color: #b5cea8 !important;
+}
+
+.syntax-highlighter-isolated .token.selector,
+.syntax-highlighter-isolated .token.attr-name,
+.syntax-highlighter-isolated .token.string,
+.syntax-highlighter-isolated .token.char,
+.syntax-highlighter-isolated .token.builtin,
+.syntax-highlighter-isolated .token.inserted {
+  color: #ce9178 !important;
+}
+
+.syntax-highlighter-isolated .token.operator,
+.syntax-highlighter-isolated .token.entity,
+.syntax-highlighter-isolated .token.url,
+.syntax-highlighter-isolated .language-css .token.string,
+.syntax-highlighter-isolated .style .token.string {
+  color: #d4d4d4 !important;
+}
+
+.syntax-highlighter-isolated .token.atrule,
+.syntax-highlighter-isolated .token.attr-value,
+.syntax-highlighter-isolated .token.keyword {
+  color: #569cd6 !important;
+}
+
+.syntax-highlighter-isolated .token.function,
+.syntax-highlighter-isolated .token.class-name {
+  color: #dcdcaa !important;
+}
+
+.syntax-highlighter-isolated .token.regex,
+.syntax-highlighter-isolated .token.important,
+.syntax-highlighter-isolated .token.variable {
+  color: #d16969 !important;
+}
+
+/* Override any possible global styles that might interfere */
+.syntax-highlighter-isolated [class*="token"] {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  text-decoration: none !important;
+  font-weight: normal !important;
+  font-style: normal !important;
+}

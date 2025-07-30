@@ -69,34 +69,34 @@ export function InlineProviderDropdown({
       {/* Dropdown trigger */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800/50 border border-gray-700/50 hover:bg-gray-700/50 transition-colors min-w-[200px]"
+        className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-800/50 border border-gray-700/50 hover:bg-gray-700/50 transition-colors min-w-[160px]"
       >
         {selectedProviderData ? (
           <>
             <div className="w-4 h-4 flex-shrink-0">
               <ProviderLogo provider={selectedProviderData} size={16} />
             </div>
-            <span className="text-sm text-white truncate">{selectedProviderData.name}</span>
+            <span className="text-xs text-white truncate">{selectedProviderData.name}</span>
           </>
         ) : (
           <>
             <div className="w-4 h-4 flex-shrink-0 bg-gray-600 rounded" />
-            <span className="text-sm text-gray-400 truncate">
+            <span className="text-xs text-gray-400 truncate">
               Select {type} provider...
             </span>
           </>
         )}
         <ChevronDown className={cn(
-          "w-4 h-4 text-gray-400 transition-transform ml-auto",
+          "text-gray-400 transition-transform ml-auto",
           isOpen && "rotate-180"
-        )} />
+        )} style={{ width: '16px', height: '16px' }} />
       </button>
 
       {/* Dropdown menu */}
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-gray-900 border border-gray-700/50 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 mt-1 bg-gray-900 border border-gray-700/50 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
           {providers.length === 0 ? (
-            <div className="p-3 text-sm text-gray-400 text-center">
+            <div className="p-2 text-xs text-gray-400 text-center">
               No {type} providers available
             </div>
           ) : (
@@ -105,16 +105,16 @@ export function InlineProviderDropdown({
                 key={provider.id}
                 onClick={() => handleProviderSelect(provider)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-800/50 transition-colors",
+                  "w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-gray-800/50 transition-colors",
                   selectedProvider === provider.id && "bg-gray-800/50"
                 )}
               >
                 <div className="w-4 h-4 flex-shrink-0">
                   <ProviderLogo provider={provider} size={16} />
                 </div>
-                <span className="text-sm text-white truncate">{provider.name}</span>
+                <span className="text-xs text-white truncate">{provider.name}</span>
                 {selectedProvider === provider.id && (
-                  <div className="w-2 h-2 bg-blue-500 rounded-full ml-auto" />
+                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full ml-auto" />
                 )}
               </button>
             ))

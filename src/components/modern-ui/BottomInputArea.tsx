@@ -7,9 +7,7 @@ import {
   Database,
   Wrench,
   ChevronDown,
-  ArrowUp,
   Plus,
-  Search,
   Send,
   Square
 } from 'lucide-react';
@@ -37,6 +35,9 @@ interface BottomInputAreaProps {
   knowledgeBaseEnabled?: boolean;
   onToggleKnowledgeBase?: (enabled: boolean) => void;
   onStartNewChat?: () => void;
+  selectedAgent?: any;
+  onAgentChange?: (agent: any) => void;
+  availableAgents?: any[];
 }
 
 export function BottomInputArea({
@@ -58,22 +59,38 @@ export function BottomInputArea({
   onToggleMCP,
   knowledgeBaseEnabled = false,
   onToggleKnowledgeBase,
-  onStartNewChat
+  onStartNewChat,
+  selectedAgent,
+  onAgentChange,
+  availableAgents = []
 }: BottomInputAreaProps) {
   
   const [inputValue, setInputValue] = useState(value);
   const [isFocused, setIsFocused] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [showAgentDropdown, setShowAgentDropdown] = useState(false);
   const [modelSearchQuery, setModelSearchQuery] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelSearchRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync local input value with prop value (for prompt selection)
   useEffect(() => {
     if (value !== undefined && value !== inputValue) {
       setInputValue(value);
+      // Reset textarea height when value changes externally
+      if (textareaRef.current) {
+        textareaRef.current.style.height = '30px';
+      }
     }
   }, [value, inputValue]);
+
+  // Reset textarea height when input is cleared
+  useEffect(() => {
+    if (!inputValue && textareaRef.current) {
+      textareaRef.current.style.height = '30px';
+    }
+  }, [inputValue]);
 
   // Simple fuzzy search function
   const fuzzySearch = (query: string, text: string): number => {
@@ -112,6 +129,30 @@ export function BottomInputArea({
     .sort((a, b) => b.score - a.score)
     .map(item => item.model);
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      onFileUpload?.(files);
+    }
+  };
+
+  // Add global "/" key listener to focus textarea
+  useEffect(() => {
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      // Only focus if no input/textarea is currently focused and the key is "/"
+      if (event.key === '/' &&
+          document.activeElement?.tagName !== 'INPUT' &&
+          document.activeElement?.tagName !== 'TEXTAREA' &&
+          !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        textareaRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
+
   // Focus search input when dropdown opens - simplified
   useEffect(() => {
     if (showModelDropdown && modelSearchRef.current) {
@@ -128,7 +169,15 @@ export function BottomInputArea({
     // Auto-resize textarea
     const textarea = e.target;
     textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+    const scrollHeight = textarea.scrollHeight;
+    const minHeight = 30; // 1.25 rows
+    const maxHeight = 120; // 5 rows
+
+    if (scrollHeight <= maxHeight) {
+      textarea.style.height = Math.max(minHeight, scrollHeight) + 'px';
+    } else {
+      textarea.style.height = maxHeight + 'px';
+    }
   };
 
   // Handle send message
@@ -187,8 +236,64 @@ export function BottomInputArea({
         className
       )}
     >
-      {/* Input Area */}
-      <div className="flex items-center gap-3 p-4">
+      {/* Top Row - Model Dropdown Only */}
+      <div className="flex items-center px-2 py-0.5 border-b border-gray-800/30">
+        <div className="relative">
+          {showModelDropdown && (
+            <div className="absolute bottom-full left-0 mb-1 w-80 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50 max-h-64 overflow-hidden">
+              <div className="p-1 border-b border-gray-700">
+                <Input
+                  placeholder="Search models..."
+                  value={modelSearchQuery}
+                  onChange={(e) => setModelSearchQuery(e.target.value)}
+                  className="h-6 text-xs bg-gray-700 border-gray-600"
+                  autoFocus
+                />
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                {filteredModels.map((model) => (
+                  <div
+                    key={model}
+                    className={cn(
+                      "px-2 py-1 text-xs cursor-pointer transition-colors",
+                      model === selectedModel
+                        ? "bg-blue-600 text-white"
+                        : "text-gray-300 hover:bg-gray-700"
+                    )}
+                    onClick={() => {
+                      onModelChange?.(model);
+                      setShowModelDropdown(false);
+                      setModelSearchQuery('');
+                    }}
+                  >
+                    {model}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 px-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors"
+            onClick={() => {
+              setShowModelDropdown(!showModelDropdown);
+              if (!showModelDropdown) {
+                setModelSearchQuery(''); // Clear search when opening
+              }
+            }}
+            title={`Current Model: ${selectedModel}`}
+          >
+            <span className="text-xs mr-1">{selectedModel}</span>
+            <ChevronDown className="w-2.5 h-2.5" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Main Row - Text Input with Agent and Action Buttons */}
+      <div className="flex items-center gap-1 p-2">
+        {/* Text Input */}
         <div className="flex-1 relative">
           <textarea
             ref={textareaRef}
@@ -199,197 +304,169 @@ export function BottomInputArea({
             onBlur={() => setIsFocused(false)}
             placeholder="Press / to focus here and start typing..."
             className={cn(
-              "w-full resize-none rounded-lg border border-gray-700 bg-gray-800/50 px-4 py-3 text-white placeholder-gray-400",
-              "focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50",
-              "transition-all duration-200 min-h-[48px] max-h-[120px]"
+              "w-full resize-none rounded-md border border-gray-700 bg-gray-800/50 px-2 py-1 text-sm text-white placeholder-gray-400",
+              "focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50",
+              "transition-all duration-200"
             )}
+            style={{
+              minHeight: '30px', // 1.25 rows (24px line height + 6px padding)
+              maxHeight: '120px', // 5 rows (24px * 5 + padding)
+              lineHeight: '24px'
+            }}
             rows={1}
             disabled={isLoading}
           />
         </div>
 
-        <Button
-          onClick={() => onStartNewChat?.()}
-          className={cn(
-            "h-12 w-12 rounded-lg flex-shrink-0 transition-all duration-200",
-            "bg-green-600 hover:bg-green-700 text-white"
-          )}
-          title="Start New Chat"
-        >
-          <Plus className="w-5 h-5" />
-        </Button>
-
-        <Button
-          onClick={isLoading ? handleStop : handleSend}
-          disabled={!isLoading && !inputValue.trim()}
-          className={cn(
-            "h-12 w-12 rounded-lg flex-shrink-0 transition-all duration-200",
-            isLoading
-              ? "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/25"
-              : inputValue.trim()
-              ? "bg-blue-600 hover:bg-blue-700 text-white"
-              : "bg-gray-700 text-gray-400 cursor-not-allowed"
-          )}
-          title={isLoading ? "Stop Generation" : "Send Message"}
-        >
-          {isLoading ? (
-            <Square className="w-4 h-4 fill-current" />
-          ) : (
-            <Send className="w-4 h-4" />
-          )}
-        </Button>
-      </div>
-
-      {/* Controls Row - Below textarea */}
-      <div className="flex items-center justify-between px-4 py-2 border-t border-gray-800/30">
-        {/* Left side - Model selector and toggle buttons */}
-        <div className="flex items-center gap-4">
-          {/* Model selector */}
-          <div className="flex flex-col items-start">
-            <span className="text-xs text-gray-500 mb-1">Provider: {selectedProvider}</span>
-            <div className="relative">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 px-3 text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors"
-                onClick={() => {
-                  setShowModelDropdown(!showModelDropdown);
-                  if (!showModelDropdown) {
-                    setModelSearchQuery(''); // Clear search when opening
-                  }
-                }}
-                title={`Current Model: ${selectedModel}`}
-              >
-                <span className="text-sm mr-2">{selectedModel}</span>
-                <ChevronDown className="w-3 h-3" />
-              </Button>
-
-              {/* Model Dropdown */}
-              {showModelDropdown && (
-                <div className="absolute bottom-full left-0 mb-2 w-80 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50">
-                  <div className="p-3 border-b border-gray-700">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-gray-400">Available Models ({selectedProvider})</span>
-                      <span className="text-xs text-gray-500">{filteredModels.length} of {availableModels.length}</span>
-                    </div>
-
-                    {/* Search Input */}
-                    <div className="relative">
-                      <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400" />
-                      <Input
-                        ref={modelSearchRef}
-                        value={modelSearchQuery}
-                        onChange={(e) => setModelSearchQuery(e.target.value)}
-                        placeholder="Search models..."
-                        className="pl-7 h-7 text-xs bg-gray-700 border-gray-600 focus:border-blue-500 text-white placeholder-gray-400"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Escape') {
-                            setShowModelDropdown(false);
-                            setModelSearchQuery('');
-                          } else if (e.key === 'Enter' && filteredModels.length > 0) {
-                            onModelChange?.(filteredModels[0]);
-                            setShowModelDropdown(false);
-                            setModelSearchQuery('');
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="max-h-48 overflow-y-auto">
-                    {filteredModels.length > 0 ? (
-                      filteredModels.map((model) => (
-                        <button
-                          key={model}
-                          className={cn(
-                            "w-full text-left px-3 py-2 text-sm hover:bg-gray-700 transition-colors",
-                            model === selectedModel ? "bg-blue-600/20 text-blue-400" : "text-gray-300"
-                          )}
-                          onClick={() => {
-                            onModelChange?.(model);
-                            setShowModelDropdown(false);
-                            setModelSearchQuery('');
-                          }}
-                        >
-                          {model}
-                        </button>
-                      ))
-                    ) : modelSearchQuery ? (
-                      <div className="px-3 py-2 text-sm text-gray-500">
-                        No models match &quot;{modelSearchQuery}&quot;
-                      </div>
-                    ) : availableModels.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-gray-500">
-                        No models available. Select a provider first.
-                      </div>
-                    ) : null}
-                  </div>
+        {/* Agent Button - Right of text input */}
+        <div className="relative">
+          {showAgentDropdown && (
+            <div className="absolute bottom-full right-0 mb-1 w-64 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
+              <div className="p-1">
+                <div
+                  className="px-2 py-1 text-xs text-gray-300 hover:bg-gray-700 rounded cursor-pointer"
+                  onClick={() => {
+                    onAgentChange?.(null);
+                    setShowAgentDropdown(false);
+                  }}
+                >
+                  No Agent
                 </div>
-              )}
+                {availableAgents.map((agent) => (
+                  <div
+                    key={agent.id}
+                    className="px-2 py-1 text-xs text-gray-300 hover:bg-gray-700 rounded cursor-pointer flex items-center gap-1"
+                    onClick={() => {
+                      onAgentChange?.(agent);
+                      setShowAgentDropdown(false);
+                    }}
+                  >
+                    <span>{agent.icon || '🤖'}</span>
+                    <span>{agent.name}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Toggle buttons */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant={(toolsEnabled && mcpEnabled) ? "default" : "ghost"}
-              size="sm"
-              onClick={() => {
-                const newState = !(toolsEnabled && mcpEnabled);
-                onToggleTools?.(newState);
-                onToggleMCP?.(newState);
-              }}
-              className={cn(
-                "h-8 w-8 p-0 transition-colors",
-                (toolsEnabled && mcpEnabled)
-                  ? "bg-blue-600 text-white hover:bg-blue-700"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800/50"
-              )}
-              title={(toolsEnabled && mcpEnabled) ? "Disable Tool Calling" : "Enable Tool Calling"}
-            >
-              <Wrench className="w-4 h-4" />
-            </Button>
-
-            <Button
-              variant={knowledgeBaseEnabled ? "default" : "ghost"}
-              size="sm"
-              onClick={() => onToggleKnowledgeBase?.(!knowledgeBaseEnabled)}
-              className={cn(
-                "h-8 w-8 p-0 transition-colors",
-                knowledgeBaseEnabled
-                  ? "bg-purple-600 text-white hover:bg-purple-700"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800/50"
-              )}
-              title={knowledgeBaseEnabled ? "Disable Knowledge Base" : "Enable Knowledge Base"}
-            >
-              <Database className="w-4 h-4" />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors"
+            onClick={() => setShowAgentDropdown(!showAgentDropdown)}
+            title={selectedAgent ? `Current Agent: ${selectedAgent.name}` : 'No Agent Selected'}
+          >
+            <span className="text-xs mr-1">
+              {selectedAgent ? `${selectedAgent.icon || '🤖'} ${selectedAgent.name}` : 'No Agent'}
+            </span>
+            <ChevronDown className="w-2.5 h-2.5" />
+          </Button>
         </div>
 
-        {/* Right side - Action buttons */}
-        <div className="flex items-center gap-2">
+        {/* Right side - All action buttons */}
+        <div className="flex items-center gap-0.5">
+          {/* Tool Calling Toggle */}
+          <Button
+            variant={(toolsEnabled && mcpEnabled) ? "default" : "ghost"}
+            size="sm"
+            onClick={() => {
+              const newState = !(toolsEnabled && mcpEnabled);
+              onToggleTools?.(newState);
+              onToggleMCP?.(newState);
+            }}
+            className={cn(
+              "h-7 w-7 p-0 transition-colors",
+              (toolsEnabled && mcpEnabled)
+                ? "bg-blue-600 text-white hover:bg-blue-700"
+                : "text-gray-400 hover:text-white hover:bg-gray-800/50"
+            )}
+            title={(toolsEnabled && mcpEnabled) ? "Disable Tool Calling" : "Enable Tool Calling"}
+          >
+            <Wrench style={{ width: '16px', height: '16px', color: 'inherit', minWidth: '16px', minHeight: '16px' }} />
+          </Button>
+
+          {/* Knowledge Base Toggle */}
+          <Button
+            variant={knowledgeBaseEnabled ? "default" : "ghost"}
+            size="sm"
+            onClick={() => onToggleKnowledgeBase?.(!knowledgeBaseEnabled)}
+            className={cn(
+              "h-7 w-7 p-0 transition-colors",
+              knowledgeBaseEnabled
+                ? "bg-purple-600 text-white hover:bg-purple-700"
+                : "text-gray-400 hover:text-white hover:bg-gray-800/50"
+            )}
+            title={knowledgeBaseEnabled ? "Disable Knowledge Base" : "Enable Knowledge Base"}
+          >
+            <Database style={{ width: '16px', height: '16px', color: 'inherit', minWidth: '16px', minHeight: '16px' }} />
+          </Button>
+
+          {/* Screenshot Button */}
           <Button
             variant="ghost"
             size="sm"
             onClick={onScreenshot}
-            className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors"
+            className="h-7 w-7 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors"
             title="Take Screenshot"
           >
-            <Camera className="w-4 h-4" />
+            <Camera style={{ width: '16px', height: '16px', color: 'inherit', minWidth: '16px', minHeight: '16px' }} />
           </Button>
 
+          {/* File Upload Button */}
           <Button
             variant="ghost"
             size="sm"
             onClick={handleFileUpload}
-            className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors"
+            className="h-7 w-7 p-0 text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors"
             title="Add Attachment"
           >
-            <Paperclip className="w-4 h-4" />
+            <Paperclip style={{ width: '16px', height: '16px', color: 'inherit', minWidth: '16px', minHeight: '16px' }} />
+          </Button>
+
+          {/* New Chat Button */}
+          <Button
+            onClick={() => onStartNewChat?.()}
+            className={cn(
+              "h-7 w-7 rounded-md flex-shrink-0 transition-all duration-200",
+              "bg-green-600 hover:bg-green-700 text-white"
+            )}
+            title="Start New Chat"
+          >
+            <Plus style={{ width: '16px', height: '16px', color: 'white', minWidth: '16px', minHeight: '16px' }} />
+          </Button>
+
+          {/* Send/Stop Button */}
+          <Button
+            onClick={isLoading ? handleStop : handleSend}
+            disabled={!isLoading && !inputValue.trim()}
+            className={cn(
+              "h-7 w-7 rounded-md flex-shrink-0 transition-all duration-200",
+              isLoading
+                ? "bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/25"
+                : inputValue.trim()
+                ? "bg-blue-600 hover:bg-blue-700 text-white"
+                : "bg-gray-700 text-gray-400 cursor-not-allowed"
+            )}
+            title={isLoading ? "Stop Generation" : "Send Message"}
+          >
+            {isLoading ? (
+              <Square style={{ width: '16px', height: '16px', color: 'white', minWidth: '16px', minHeight: '16px' }} />
+            ) : (
+              <Send style={{ width: '16px', height: '16px', color: 'white', minWidth: '16px', minHeight: '16px' }} />
+            )}
           </Button>
         </div>
       </div>
+
+      {/* File input for uploads */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".txt,.md,.pdf,.doc,.docx,.csv,.json,.xml,.html,.js,.ts,.py,.java,.cpp,.c,.h,.css,.scss,.less,.yaml,.yml,.toml,.ini,.cfg,.conf,.log,.sql,.sh,.bat,.ps1,.rb,.php,.go,.rs,.swift,.kt,.scala,.clj,.hs,.elm,.ex,.exs,.erl,.pl,.r,.m,.mm,.f,.f90,.f95,.pas,.ada,.cob,.cobol,.asm,.s,.vb,.vbs,.ps,.psm1,.psd1,.lua,.tcl,.awk,.sed,.vim,.emacs,.org,.tex,.bib,.rtf,.odt,.ods,.odp,.pages,.numbers,.key,.epub,.mobi,.azw,.azw3,.fb2,.lit,.pdb,.prc,.oxps,.xps,.cbr,.cbz,.cb7,.cbt,.cba"
+        onChange={handleFileChange}
+        className="hidden"
+      />
     </div>
   );
 }

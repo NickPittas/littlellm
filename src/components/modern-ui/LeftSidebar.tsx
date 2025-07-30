@@ -6,7 +6,8 @@ import {
   FileText,
   Settings,
   History,
-  Terminal
+  Terminal,
+  Bot
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { cn } from '@/lib/utils';
@@ -33,6 +34,12 @@ export function LeftSidebar({
 
   const sidebarItems: SidebarItem[] = [
     {
+      id: 'agents',
+      label: 'CUSTOM AGENTS',
+      icon: Bot,
+      onClick: () => handleItemClick('agents')
+    },
+    {
       id: 'mcp-servers',
       label: 'MCP SERVERS',
       icon: Server,
@@ -56,7 +63,6 @@ export function LeftSidebar({
       icon: Terminal,
       onClick: () => handleItemClick('console')
     },
-
     {
       id: 'settings',
       label: 'SETTINGS',
@@ -73,7 +79,7 @@ export function LeftSidebar({
   return (
     <div
       className={cn(
-        "flex flex-col w-16 h-full bg-gray-900/50 border-r border-gray-800/50",
+        "flex flex-col w-12 h-full bg-gray-900/50 border-r border-gray-800/50",
         className
       )}
     >
@@ -81,7 +87,7 @@ export function LeftSidebar({
       <div className="flex-1"></div>
 
       {/* Navigation Items - At bottom */}
-      <div className="p-2 space-y-2">
+      <div className="p-1 space-y-1">
         {sidebarItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeItem === item.id;
@@ -91,7 +97,7 @@ export function LeftSidebar({
               key={item.id}
               variant="ghost"
               className={cn(
-                "w-12 h-12 p-0",
+                "w-10 h-10 p-0",
                 "hover:bg-gray-800/50 transition-colors duration-200",
                 isActive && "bg-gray-800/70 text-white",
                 !isActive && "text-gray-400 hover:text-white"
@@ -99,7 +105,7 @@ export function LeftSidebar({
               onClick={item.onClick}
               title={item.label}
             >
-              <Icon className="w-5 h-5" />
+              <Icon style={{ width: '16px', height: '16px', color: 'inherit', minWidth: '16px', minHeight: '16px' }} />
             </Button>
           );
         })}

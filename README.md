@@ -42,6 +42,7 @@ A powerful, cross-platform desktop AI chat application that provides seamless ac
 
 ### 🛠️ **Advanced Features**
 
+- **Custom Agent Creation System**: Create specialized AI agents with specific tool access and prompts ✨
 - **MCP (Model Context Protocol) Integration**: Full support for MCP servers and tools ✨
 - **Tool Calling**: User-controlled tool execution with native provider support ✨
 - **Memory Context**: Intelligent conversation memory with automatic context retrieval ✨
@@ -72,6 +73,26 @@ A powerful, cross-platform desktop AI chat application that provides seamless ac
 - **Performance Monitoring**: Real-time parsing statistics and success rates
 - **Clipboard**: Paste images and text
 - **Drag & drop**: Easy file attachment with visual processing indicators
+
+### 🤖 **Custom Agent Creation System**
+- **Specialized Agents**: Create AI agents tailored for specific tasks and workflows
+- **Template Library**: Pre-built templates for Document Analysis, Web Research, Code Assistance, and more
+- **AI-Generated Prompts**: Use LLMs to automatically generate specialized system prompts
+- **Tool Selection**: Choose specific tools and MCP servers for each agent
+- **Provider Configuration**: Set default LLM provider and model per agent
+- **Import/Export**: Share agents via JSON files with dependency validation
+- **Runtime Integration**: Select agents from chat interface with automatic configuration
+- **Agent Management**: Visual interface for creating, editing, and organizing agents
+
+#### Built-in Agent Templates
+- **📄 Document Analyst**: Specialized for document analysis and summarization
+- **🌐 Web Researcher**: Expert at web browsing and information gathering
+- **💻 Code Assistant**: Focused on software development and code review
+- **📊 Data Analyst**: Expert at data analysis and visualization
+- **✍️ Creative Writer**: Specialized in creative writing and content creation
+- **📈 Business Analyst**: Expert at business analysis and market research
+- **📝 Technical Writer**: Focused on technical documentation creation
+- **🎧 Customer Support**: Specialized in customer service and support
 
 ## 🚀 Quick Start
 

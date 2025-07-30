@@ -3,6 +3,10 @@
 import React, { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Button } from './ui/button';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
+import './CodeBlock.css';
+
 
 interface CodeBlockProps {
   code: string;
@@ -10,8 +14,66 @@ interface CodeBlockProps {
   className?: string;
 }
 
+// Map common language aliases to their proper syntax highlighter names
+const languageMap: Record<string, string> = {
+  'js': 'javascript',
+  'jsx': 'javascript',
+  'ts': 'typescript',
+  'tsx': 'typescript',
+  'py': 'python',
+  'rb': 'ruby',
+  'sh': 'bash',
+  'shell': 'bash',
+  'yml': 'yaml',
+  'md': 'markdown',
+  'htm': 'html',
+  'xml': 'markup',
+  'svg': 'markup',
+  'vue': 'markup',
+  'php': 'php',
+  'c': 'c',
+  'cpp': 'cpp',
+  'c++': 'cpp',
+  'cs': 'csharp',
+  'java': 'java',
+  'kt': 'kotlin',
+  'swift': 'swift',
+  'go': 'go',
+  'rs': 'rust',
+  'sql': 'sql',
+  'json': 'json',
+  'jsonc': 'json',
+  'toml': 'toml',
+  'ini': 'ini',
+  'cfg': 'ini',
+  'conf': 'ini',
+  'dockerfile': 'docker',
+  'makefile': 'makefile',
+  'r': 'r',
+  'scala': 'scala',
+  'clj': 'clojure',
+  'cljs': 'clojure',
+  'elm': 'elm',
+  'haskell': 'haskell',
+  'hs': 'haskell',
+  'lua': 'lua',
+  'perl': 'perl',
+  'pl': 'perl',
+  'powershell': 'powershell',
+  'ps1': 'powershell',
+  'diff': 'diff',
+  'patch': 'diff',
+};
+
+function normalizeLanguage(lang?: string): string {
+  if (!lang) return 'text';
+  const normalized = lang.toLowerCase().trim();
+  return languageMap[normalized] || normalized;
+}
+
 export function CodeBlock({ code, language, className = '' }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
+  const normalizedLanguage = normalizeLanguage(language);
 
   const handleCopy = async () => {
     try {
@@ -61,18 +123,51 @@ export function CodeBlock({ code, language, className = '' }: CodeBlockProps) {
 
       {/* Code content */}
       <div
-        className="bg-muted/30 p-3 rounded-b-lg overflow-x-auto"
+        className="bg-muted/30 rounded-b-lg overflow-x-auto"
         style={{
           WebkitAppRegion: 'no-drag',
           userSelect: 'text',
           WebkitUserSelect: 'text',
         } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
-        <pre className="text-sm font-mono whitespace-pre-wrap break-words m-0">
-          <code className={`language-${language || 'text'}`}>
+        <div
+          className="syntax-highlighter-isolated"
+          style={{
+            WebkitAppRegion: 'no-drag',
+            userSelect: 'text',
+            WebkitUserSelect: 'text',
+          } as React.CSSProperties & { WebkitAppRegion?: string }}
+        >
+          <SyntaxHighlighter
+            language={normalizedLanguage}
+            style={{}} // Empty style object - we use CSS instead
+            customStyle={{
+              margin: 0,
+              padding: 0,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+            }}
+            codeTagProps={{
+              style: {
+                margin: 0,
+                padding: 0,
+                background: 'transparent',
+              }
+            }}
+            PreTag={({ children, ...props }) => (
+              <pre {...props} style={{
+                margin: 0,
+                padding: 0,
+                background: 'transparent',
+              }}>
+                {children}
+              </pre>
+            )}
+          >
             {code}
-          </code>
-        </pre>
+          </SyntaxHighlighter>
+        </div>
       </div>
     </div>
   );

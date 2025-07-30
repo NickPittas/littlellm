@@ -133,7 +133,7 @@ export function MainChatArea({
           {/* Messages Container */}
           <div
             ref={scrollContainerRef}
-            className="flex-1 overflow-y-auto p-4 space-y-4 chat-messages"
+            className="flex-1 overflow-y-auto p-2 space-y-2 chat-messages"
           >
             {messages.map((message, index) => (
               <div

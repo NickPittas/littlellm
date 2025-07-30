@@ -813,5 +813,37 @@
     background: var(--muted);
   }
 
+  /* Global compact spacing and consistent icon sizes */
+  .compact-ui {
+    /* Reduce all spacing by default */
+    --spacing-xs: 0.125rem; /* 2px */
+    --spacing-sm: 0.25rem;  /* 4px */
+    --spacing-md: 0.5rem;   /* 8px */
+    --spacing-lg: 0.75rem;  /* 12px */
+    --spacing-xl: 1rem;     /* 16px */
+
+    /* Standard icon size */
+    --icon-size: 16px;
+  }
+
+  /* Apply compact spacing to common UI elements */
+  .compact-ui .space-y-4 > * + * {
+    margin-top: var(--spacing-md) !important;
+  }
+
+  .compact-ui .space-y-2 > * + * {
+    margin-top: var(--spacing-sm) !important;
+  }
+
+  .compact-ui .space-y-1 > * + * {
+    margin-top: var(--spacing-xs) !important;
+  }
+
+  /* Ensure all Lucide icons are consistently sized */
+  .lucide, [data-lucide], svg[class*="lucide"] {
+    width: var(--icon-size, 16px) !important;
+    height: var(--icon-size, 16px) !important;
+  }
+
 
 }
