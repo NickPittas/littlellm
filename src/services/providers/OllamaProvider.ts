@@ -10,7 +10,7 @@ import {
   ToolObject,
   ProviderCapabilities
 } from './types';
-import { FALLBACK_MODELS } from './constants';
+
 import { OLLAMA_SYSTEM_PROMPT, generateOllamaToolPrompt } from './prompts/ollama';
 
 export class OllamaProvider extends BaseProvider {

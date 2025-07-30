@@ -91,6 +91,7 @@ export interface ColorSettings {
   destructive: string;
   destructiveForeground: string;
   systemText: string; // System UI text color (labels, buttons, etc.)
+  [key: string]: string; // Index signature to make it compatible with Record<string, string>
 }
 
 export interface TextToSpeechSettings {

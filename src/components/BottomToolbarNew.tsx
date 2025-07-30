@@ -177,9 +177,10 @@ export function BottomToolbar({
       }
     };
 
-    window.addEventListener('settingsSaved', handleSettingsSaved as EventListener);
+    const eventListener = (event: Event) => handleSettingsSaved(event as CustomEvent);
+    window.addEventListener('settingsSaved', eventListener);
     return () => {
-      window.removeEventListener('settingsSaved', handleSettingsSaved as EventListener);
+      window.removeEventListener('settingsSaved', eventListener);
     };
   }, [settings.provider, fetchModelsForProvider]);
 

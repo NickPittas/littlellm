@@ -3687,7 +3687,7 @@ function setupIPC() {
         properties: (options.properties as Electron.OpenDialogOptions['properties']) || ['openFile']
       };
 
-      if (options.multiple) {
+      if (options.multiple && dialogOptions.properties) {
         dialogOptions.properties.push('multiSelections');
       }
 
@@ -3789,11 +3789,12 @@ function setupIPC() {
           }
 
         } catch (importError) {
-          console.log(`📄 Dynamic import failed: ${importError.message}`);
+          const error = importError as Error & { code?: string };
+          console.log(`📄 Dynamic import failed: ${error.message}`);
           console.log(`📄 Error details:`, {
-            message: importError.message,
-            stack: importError.stack,
-            code: importError.code
+            message: error.message,
+            stack: error.stack,
+            code: error.code
           });
           throw importError;
         }
@@ -4119,7 +4120,8 @@ console.debug = (...args: unknown[]) => {
       // Get current CSS variables from main window for consistent theming
       let cssVariables = '';
       try {
-        cssVariables = await mainWindow.webContents.executeJavaScript(`
+        if (mainWindow) {
+          cssVariables = await mainWindow.webContents.executeJavaScript(`
           (() => {
             const root = document.documentElement;
             const style = getComputedStyle(root);
@@ -4136,6 +4138,7 @@ console.debug = (...args: unknown[]) => {
             }).filter(Boolean).join('\\n                ');
           })()
         `);
+        }
         // Retrieved CSS variables for history window
       } catch (error) {
         console.error('Failed to get CSS variables for history window:', error);

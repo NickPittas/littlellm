@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { ProviderLogo } from '../ui/provider-logo';
-import { ProviderFactory } from '../../services/providers/ProviderFactory';
+import { DEFAULT_PROVIDERS } from '../../services/providers/constants';
 import type { LLMProvider } from '../../services/llmService';
 import { cn } from '@/lib/utils';
 
@@ -27,7 +27,7 @@ export function InlineProviderDropdown({
   // Load providers on mount
   useEffect(() => {
     const loadProviders = () => {
-      const allProviders = ProviderFactory.getAllProviders();
+      const allProviders = DEFAULT_PROVIDERS;
       
       if (type === 'local') {
         const localProviders = allProviders.filter(p => 

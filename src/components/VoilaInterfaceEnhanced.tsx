@@ -48,29 +48,40 @@ export function VoilaInterfaceEnhanced({ onClose }: VoilaInterfaceProps) {
   const [settings, setSettings] = useState<ChatSettings>({
     provider: 'openai',
     model: 'gpt-4',
-    apiKey: '',
     temperature: 0.7,
     maxTokens: 2000,
     systemPrompt: '',
     toolCallingEnabled: false,
     ragEnabled: false,
+    providers: {
+      openai: { lastSelectedModel: '' },
+      anthropic: { lastSelectedModel: '' },
+      gemini: { lastSelectedModel: '' },
+      mistral: { lastSelectedModel: '' },
+      deepseek: { lastSelectedModel: '' },
+      deepinfra: { lastSelectedModel: '' },
+      groq: { lastSelectedModel: '' },
+      lmstudio: { baseUrl: '', lastSelectedModel: '' },
+      ollama: { baseUrl: '', lastSelectedModel: '' },
+      openrouter: { lastSelectedModel: '' },
+      requesty: { lastSelectedModel: '' },
+      replicate: { lastSelectedModel: '' },
+      n8n: { baseUrl: '', lastSelectedModel: '' },
+    },
   });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Enhanced window drag functionality
-  const { isDragging } = useEnhancedWindowDrag({
-    dragHandleSelector: '.voila-interface-container',
-    excludeSelectors: ['[data-interactive="true"]', 'button', 'input', 'textarea', 'select'],
-  });
+  const { isDragging } = useEnhancedWindowDrag();
 
   // Auto-resize functionality (keeping existing logic)
   const autoResizeWindow = useCallback(() => {
     if (typeof window !== 'undefined' && window.electronAPI && !userResizedWindow) {
-      setTimeout(() => {
-        window.electronAPI.autoResizeWindow();
-      }, 10);
+      // Note: autoResizeWindow method doesn't exist in electronAPI
+      // This would need to be implemented if auto-resize is needed
+      console.log('Auto-resize requested but not implemented');
     }
   }, [userResizedWindow]);
 
@@ -125,13 +136,7 @@ export function VoilaInterfaceEnhanced({ onClose }: VoilaInterfaceProps) {
       id: Date.now().toString(),
       content: input,
       role: 'user',
-      timestamp: new Date(),
-      attachments: attachedFiles.map(file => ({
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        data: file
-      }))
+      timestamp: new Date()
     };
 
     setMessages(prev => [...prev, newMessage]);
@@ -163,11 +168,12 @@ export function VoilaInterfaceEnhanced({ onClose }: VoilaInterfaceProps) {
   }, [input, attachedFiles, autoResizeWindow]);
 
   // Handle settings change
-  const handleSettingsChange = useCallback((newSettings: ChatSettings) => {
+  const handleSettingsChange = useCallback((partialSettings: Partial<ChatSettings>) => {
+    const newSettings = { ...settings, ...partialSettings };
     setSettings(newSettings);
     settingsService.updateChatSettingsInMemory(newSettings);
     settingsService.saveSettingsToDisk();
-  }, []);
+  }, [settings]);
 
   // Placeholder handlers
   const openHistory = useCallback(() => {
@@ -186,7 +192,6 @@ export function VoilaInterfaceEnhanced({ onClose }: VoilaInterfaceProps) {
 
   return (
     <MagicContainer
-      ref={containerRef}
       className={`voila-interface-container min-h-0 w-full flex flex-col ${isDragging ? 'cursor-grabbing' : ''}`}
       style={{
         userSelect: isDragging ? 'none' : 'auto',
@@ -403,7 +408,16 @@ export function VoilaInterfaceEnhanced({ onClose }: VoilaInterfaceProps) {
                   <div className={`${message.role === 'user' ? 'text-blue-400' : 'text-green-400'} font-semibold mb-1`}>
                     {message.role === 'user' ? 'You' : 'AI'}
                   </div>
-                  <div>{message.content}</div>
+                  <div>
+                    {typeof message.content === 'string'
+                      ? message.content
+                      : Array.isArray(message.content)
+                        ? message.content.map((item, idx) =>
+                            item.type === 'text' ? item.text : `[Content ${idx + 1}]`
+                          ).join(' ')
+                        : String(message.content)
+                    }
+                  </div>
                 </MagicCard>
               </BlurFade>
             ))}

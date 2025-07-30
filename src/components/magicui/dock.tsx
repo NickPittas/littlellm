@@ -37,11 +37,21 @@ export function Dock({
     });
   };
 
+  const {
+    onDrag,
+    onDragStart,
+    onDragEnd,
+    onAnimationStart,
+    onAnimationEnd,
+    onAnimationIteration,
+    ...motionProps
+  } = props;
+
   return (
     <motion.div
       onMouseMove={(e) => mouseX.set(e.pageX)}
       onMouseLeave={() => mouseX.set(Infinity)}
-      {...props}
+      {...motionProps}
       className={cn(
         "mx-auto flex h-16 items-end gap-4 rounded-2xl border bg-gray-50 px-4 pb-3 dark:bg-gray-900",
         {

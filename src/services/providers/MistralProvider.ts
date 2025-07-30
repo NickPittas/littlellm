@@ -11,7 +11,7 @@ import {
   ProviderCapabilities,
   APIResponseData
 } from './types';
-import { FALLBACK_MODELS } from './constants';
+
 import { MISTRAL_SYSTEM_PROMPT } from './prompts/mistral';
 import { MistralFileService } from '../mistralFileService';
 

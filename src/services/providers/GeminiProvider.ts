@@ -10,7 +10,7 @@ import {
   ToolObject,
   ProviderCapabilities
 } from './types';
-import { FALLBACK_MODELS } from './constants';
+
 import { GEMINI_SYSTEM_PROMPT } from './prompts/gemini';
 import { debugLogger } from '../debugLogger';
 
@@ -740,7 +740,6 @@ export class GeminiProvider extends BaseProvider {
                       // Add tool result to conversation history for follow-up
                       conversationHistory.push({
                         role: 'function',
-                        name: part.functionCall.name,
                         content: JSON.stringify(toolResult)
                       });
 

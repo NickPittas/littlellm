@@ -11,7 +11,7 @@ import {
   ProviderCapabilities,
   APIResponseData
 } from './types';
-import { FALLBACK_MODELS } from './constants';
+
 import { REQUESTY_SYSTEM_PROMPT } from './prompts/requesty';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
 

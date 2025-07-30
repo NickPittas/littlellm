@@ -11,7 +11,7 @@ import {
   ProviderCapabilities,
   APIResponseData
 } from './types';
-import { FALLBACK_MODELS } from './constants';
+
 import { OPENROUTER_SYSTEM_PROMPT, generateOpenRouterToolPrompt } from './prompts/openrouter';
 // import { RAGService } from '../RAGService'; // Moved to Electron main process, accessed via IPC
 

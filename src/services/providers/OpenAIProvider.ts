@@ -11,7 +11,7 @@ import {
   ToolObject,
   ProviderCapabilities
 } from './types';
-import { FALLBACK_MODELS } from './constants';
+
 import { OPENAI_SYSTEM_PROMPT, generateOpenAIToolPrompt } from './prompts/openai';
 import { OpenAIFileService, OpenAIFileUpload } from '../OpenAIFileService';
 // import { RAGService } from '../RAGService'; // Moved to Electron main process, accessed via IPC

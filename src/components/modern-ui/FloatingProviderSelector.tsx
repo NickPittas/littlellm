@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Server, Monitor, X } from 'lucide-react';
 import { ProviderLogo } from '../ui/provider-logo';
-import { ProviderFactory } from '../../services/providers/ProviderFactory';
+import { DEFAULT_PROVIDERS } from '../../services/providers/constants';
 import type { LLMProvider } from '../../services/llmService';
 import { cn } from '@/lib/utils';
 
@@ -31,15 +31,15 @@ export function FloatingProviderSelector({
 
   // Load providers on mount
   useEffect(() => {
-    const allProviders = ProviderFactory.getAllProviders();
-    
-    const local = allProviders.filter(p => 
+    const allProviders = DEFAULT_PROVIDERS;
+
+    const local = allProviders.filter(p =>
       p.id === 'ollama' || p.id === 'lmstudio'
     );
-    const remote = allProviders.filter(p => 
+    const remote = allProviders.filter(p =>
       p.id !== 'ollama' && p.id !== 'lmstudio'
     );
-    
+
     setLocalProviders(local);
     setRemoteProviders(remote);
   }, []);

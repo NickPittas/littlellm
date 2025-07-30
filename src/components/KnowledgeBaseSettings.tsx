@@ -256,7 +256,7 @@ const KnowledgeBaseSettings = () => {
           if (result.results) {
             const successCount = result.results.filter(r => r.success).length;
             const errorCount = result.results.length - successCount;
-            const totalChunks = result.results.reduce((sum, r) => sum + (r.chunkCount || 0), 0);
+            const totalChunks = result.results.reduce((sum, r) => sum + ((r as any).chunkCount || 0), 0);
 
             addProgressEntry('info', operationId, `Final statistics: ${successCount} successful, ${errorCount} failed, ${totalChunks} total chunks generated`, undefined, {
               successCount,

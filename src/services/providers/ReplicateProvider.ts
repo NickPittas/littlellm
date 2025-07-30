@@ -10,7 +10,7 @@ import {
   ToolObject,
   ProviderCapabilities
 } from './types';
-import { FALLBACK_MODELS } from './constants';
+
 import { REPLICATE_SYSTEM_PROMPT, generateReplicateToolPrompt } from './prompts/replicate';
 
 export class ReplicateProvider extends BaseProvider {

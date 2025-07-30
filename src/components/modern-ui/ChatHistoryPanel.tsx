@@ -50,8 +50,10 @@ export function ChatHistoryPanel({
 
   const filteredHistory = chatHistory.filter(chat => {
     const lastMessage = chat.messages.length > 0 ? chat.messages[chat.messages.length - 1].content : '';
+    const messageText = typeof lastMessage === 'string' ? lastMessage :
+      Array.isArray(lastMessage) ? lastMessage.map(item => item.type === 'text' ? item.text : '').join(' ') : '';
     return chat.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           lastMessage.toLowerCase().includes(searchQuery.toLowerCase());
+           messageText.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
   const formatTimestamp = (timestamp: Date) => {
@@ -188,7 +190,12 @@ export function ChatHistoryPanel({
                 </div>
 
                 <p className="text-gray-400 text-xs mb-1 line-clamp-2">
-                  {chat.messages.length > 0 ? chat.messages[chat.messages.length - 1].content.substring(0, 100) + '...' : 'No messages'}
+                  {chat.messages.length > 0 ? (() => {
+                    const content = chat.messages[chat.messages.length - 1].content;
+                    const text = typeof content === 'string' ? content :
+                      Array.isArray(content) ? content.map(item => item.type === 'text' ? item.text : '').join(' ') : '';
+                    return text.substring(0, 100) + '...';
+                  })() : 'No messages'}
                 </p>
 
                 <div className="flex items-center justify-between">

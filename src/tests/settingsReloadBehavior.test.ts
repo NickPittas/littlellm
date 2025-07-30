@@ -91,18 +91,19 @@ describe('Settings Reload Behavior', () => {
           systemPrompt: '',
           toolCallingEnabled: true,
           providers: {
-            openai: { apiKey: '', lastSelectedModel: '' },
-            anthropic: { apiKey: '', lastSelectedModel: '' },
-            gemini: { apiKey: '', lastSelectedModel: '' },
-            mistral: { apiKey: '', lastSelectedModel: '' },
-            deepseek: { apiKey: '', lastSelectedModel: '' },
-            lmstudio: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-            ollama: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
-            openrouter: { apiKey: '', lastSelectedModel: '' },
-            requesty: { apiKey: '', lastSelectedModel: '' },
-            groq: { apiKey: '', lastSelectedModel: '' },
-            replicate: { apiKey: '', lastSelectedModel: '' },
-            n8n: { apiKey: '', baseUrl: '', lastSelectedModel: '' },
+            openai: { lastSelectedModel: '' },
+            anthropic: { lastSelectedModel: '' },
+            gemini: { lastSelectedModel: '' },
+            mistral: { lastSelectedModel: '' },
+            deepseek: { lastSelectedModel: '' },
+            deepinfra: { lastSelectedModel: '' },
+            lmstudio: { baseUrl: '', lastSelectedModel: '' },
+            ollama: { baseUrl: '', lastSelectedModel: '' },
+            openrouter: { lastSelectedModel: '' },
+            requesty: { lastSelectedModel: '' },
+            groq: { lastSelectedModel: '' },
+            replicate: { lastSelectedModel: '' },
+            n8n: { baseUrl: '', lastSelectedModel: '' },
           }
         },
         ui: {
@@ -127,7 +128,28 @@ describe('Settings Reload Behavior', () => {
           autoStartWithSystem: false,
           showNotifications: true,
           saveConversationHistory: true,
-          conversationHistoryLength: 10
+          conversationHistoryLength: 10,
+          debugLogging: false
+        },
+        mcpServers: [],
+        internalCommands: {
+          enabled: false,
+          allowedDirectories: [],
+          blockedCommands: [],
+          fileReadLineLimit: 1000,
+          fileWriteLineLimit: 1000,
+          defaultShell: 'powershell',
+          enabledCommands: {
+            terminal: false,
+            filesystem: false,
+            textEditing: false,
+            system: false
+          },
+          terminalSettings: {
+            defaultTimeout: 30000,
+            maxProcesses: 5,
+            allowInteractiveShells: false
+          }
         }
       });
 

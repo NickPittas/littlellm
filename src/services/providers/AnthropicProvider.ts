@@ -10,7 +10,7 @@ import {
   ToolObject,
   ProviderCapabilities
 } from './types';
-import { FALLBACK_MODELS } from './constants';
+
 import { ToolNameUtils } from './utils';
 import { ANTHROPIC_SYSTEM_PROMPT } from './prompts/anthropic';
 import { debugLogger } from '../debugLogger';

@@ -105,7 +105,7 @@ export function LeftSidebar({
               onClick={item.onClick}
               title={item.label}
             >
-              <Icon style={{ width: '16px', height: '16px', color: 'inherit', minWidth: '16px', minHeight: '16px' }} />
+              <Icon className="w-4 h-4" />
             </Button>
           );
         })}

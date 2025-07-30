@@ -11,7 +11,7 @@ import {
   ProviderCapabilities,
   APIResponseData
 } from './types';
-import { FALLBACK_MODELS } from './constants';
+
 import { LMSTUDIO_SYSTEM_PROMPT, generateLMStudioToolPrompt } from './prompts/lmstudio';
 
 export class LMStudioProvider extends BaseProvider {

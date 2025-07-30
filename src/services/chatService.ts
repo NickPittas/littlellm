@@ -6,7 +6,7 @@ import { debugLogger } from './debugLogger';
 // Conditionally import services only in browser environment
 let secureApiKeyService: {
   getApiKey: (provider: string) => string | null;
-  getApiKeyData: (provider: string) => { apiKey: string } | null;
+  getApiKeyData: (provider: string) => { apiKey: string; baseUrl?: string; lastSelectedModel?: string } | null;
   forceReloadApiKeys: () => Promise<void>;
 } | null = null;
 let documentParserService: {

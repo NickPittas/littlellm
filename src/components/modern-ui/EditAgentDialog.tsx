@@ -6,7 +6,8 @@ import {
   Save,
   CheckCircle,
   Loader2,
-  Sparkles
+  Sparkles,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';

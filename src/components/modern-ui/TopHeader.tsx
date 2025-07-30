@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { ProviderLogo } from '../ui/provider-logo';
-import { ProviderFactory } from '../../services/providers/ProviderFactory';
+import { DEFAULT_PROVIDERS } from '../../services/providers/constants';
 import { cn } from '@/lib/utils';
 import { settingsService } from '../../services/settingsService';
 import { useState, useEffect } from 'react';
@@ -140,7 +140,7 @@ export function TopHeader({
   };
 
   // Get selected provider data
-  const allProviders = ProviderFactory.getAllProviders();
+  const allProviders = DEFAULT_PROVIDERS;
   const selectedProviderData = allProviders.find(p => p.id === selectedProvider);
 
   return (

@@ -10,7 +10,7 @@ import {
   ToolObject,
   ProviderCapabilities
 } from './types';
-import { FALLBACK_MODELS } from './constants';
+
 import { N8N_SYSTEM_PROMPT, generateN8NToolPrompt } from './prompts/n8n';
 
 export class N8NProvider extends BaseProvider {

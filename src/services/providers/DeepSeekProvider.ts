@@ -11,7 +11,7 @@ import {
   ProviderCapabilities,
   APIResponseData
 } from './types';
-import { FALLBACK_MODELS } from './constants';
+
 import { DEEPSEEK_SYSTEM_PROMPT } from './prompts/deepseek';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
 
