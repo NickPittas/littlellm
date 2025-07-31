@@ -2405,9 +2405,22 @@ app.whenReady().then(async () => {
   await knowledgeBaseService.initialize(dbPath);
   console.log('Knowledge Base Service initialized.');
 
-  // Initialize the Internal Command Handler
+  // Initialize the Internal Command Handler with current settings
   // This sets up IPC handlers for internal commands
   console.log('🔧 Internal Command Handler initialized');
+
+  // Load and set the internal commands configuration from saved settings
+  try {
+    const currentSettings = loadAppSettings();
+    if (currentSettings.internalCommands) {
+      console.log('🔧 Setting initial internal commands config from saved settings:', currentSettings.internalCommands);
+      await electronInternalCommandHandler.setConfig(currentSettings.internalCommands);
+    } else {
+      console.log('🔧 No internal commands config found in settings, using defaults');
+    }
+  } catch (error) {
+    console.error('❌ Failed to initialize internal commands config:', error);
+  }
 
   // Auto-connect enabled MCP servers immediately
   try {

@@ -196,14 +196,29 @@ class ElectronInternalCommandHandler {
     // Check if path is within any allowed directory
     const isAllowed = allowedDirs.some(allowedDir => {
       const absoluteAllowedDir = path.resolve(allowedDir);
-      const isWithinDir = absolutePath.startsWith(absoluteAllowedDir);
-      console.log(`🔧 validateFilePath: Checking against "${absoluteAllowedDir}" -> ${isWithinDir}`);
+
+      // Normalize paths for Windows compatibility (case-insensitive, consistent separators)
+      const normalizedPath = absolutePath.toLowerCase().replace(/\\/g, '/');
+      const normalizedAllowedDir = absoluteAllowedDir.toLowerCase().replace(/\\/g, '/');
+
+      // Check if paths are exactly equal (for accessing the directory itself)
+      if (normalizedPath === normalizedAllowedDir) {
+        console.log(`🔧 validateFilePath: Exact match "${absolutePath}" === "${absoluteAllowedDir}" -> true`);
+        return true;
+      }
+
+      // Check if path is within the allowed directory (subdirectory access)
+      const allowedDirWithSlash = normalizedAllowedDir.endsWith('/') ? normalizedAllowedDir : normalizedAllowedDir + '/';
+      const isWithinDir = normalizedPath.startsWith(allowedDirWithSlash);
+
+      console.log(`🔧 validateFilePath: Checking "${normalizedPath}" against "${allowedDirWithSlash}" -> ${isWithinDir}`);
       return isWithinDir;
     });
 
     if (!isAllowed) {
       console.error(`🚨 validateFilePath: Access denied for path "${filePath}" (resolved: "${absolutePath}")`);
       console.error(`🚨 validateFilePath: Allowed directories:`, allowedDirs.map(dir => path.resolve(dir)));
+
       throw new Error(`Access denied: Path '${filePath}' is not within allowed directories`);
     }
 
