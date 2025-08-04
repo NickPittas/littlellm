@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { parseTextWithContent } from '../lib/contentParser';
-import { ContentItem } from '../types/chat';
+import { ContentItem } from '../services/providers/types';
 import { ImageViewer } from './ImageViewer';
 
 interface MessageContentProps {
@@ -56,9 +56,9 @@ export function MessageContent({ content, className, style }: MessageContentProp
                 </div>
               );
             
-            case 'image_url':
-              const imageUrl = typeof item.image_url === 'string' 
-                ? item.image_url 
+            case 'image_url': {
+              const imageUrl = typeof item.image_url === 'string'
+                ? item.image_url
                 : item.image_url?.url;
               
               if (!imageUrl) return null;
@@ -115,14 +115,16 @@ export function MessageContent({ content, className, style }: MessageContentProp
                   />
                 </div>
               );
-            
-            default:
+            }
+
+            default: {
               // Handle other content types as text
               return (
                 <div key={`content-${index}`} className="inline">
                   {JSON.stringify(item)}
                 </div>
               );
+            }
           }
         })}
         </div>
