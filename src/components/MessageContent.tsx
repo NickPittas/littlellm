@@ -19,9 +19,15 @@ export function MessageContent({ content, className, style }: MessageContentProp
   const [imageViewerSrc, setImageViewerSrc] = useState<string | null>(null);
   // Handle string content (simple text)
   if (typeof content === 'string') {
+    // Clean up excessive line breaks and normalize spacing
+    const cleanContent = content
+      .replace(/\n{3,}/g, '\n\n') // Replace 3+ consecutive newlines with 2
+      .replace(/^\s+|\s+$/g, '') // Trim leading/trailing whitespace
+      .replace(/[ \t]+/g, ' '); // Replace multiple spaces/tabs with single space
+
     return (
       <>
-        {parseTextWithContent(content, className, style)}
+        {parseTextWithContent(cleanContent, className, style)}
 
         {/* Image Viewer Modal */}
         {imageViewerSrc && (

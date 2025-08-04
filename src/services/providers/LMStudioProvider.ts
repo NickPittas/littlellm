@@ -26,6 +26,113 @@ export class LMStudioProvider extends BaseProvider {
     toolFormat: 'text' // Text-based tool descriptions in system prompt
   };
 
+  /**
+   * Determines if tools should be included based on query content
+   * Includes tools for various types of tasks, not just external/current data
+   */
+  private shouldIncludeTools(message: MessageContent, conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>): boolean {
+    // Extract text content from message
+    let queryText = '';
+    if (typeof message === 'string') {
+      queryText = message.toLowerCase();
+    } else if (Array.isArray(message)) {
+      queryText = message
+        .filter(item => item.type === 'text')
+        .map(item => item.text)
+        .join(' ')
+        .toLowerCase();
+    }
+
+    // Also check recent conversation history for context
+    const recentMessages = conversationHistory.slice(-3); // Last 3 messages
+    const conversationContext = recentMessages
+      .map(msg => typeof msg.content === 'string' ? msg.content : '')
+      .join(' ')
+      .toLowerCase();
+
+    const fullContext = `${queryText} ${conversationContext}`;
+
+    // Comprehensive tool indicators for various categories
+    const toolIndicators = [
+      // External/Current data (web search, news, weather)
+      'current', 'latest', 'recent', 'today', 'now', 'weather', 'news', 'search for',
+      'find information', 'look up', 'research', 'browse', 'stock price', 'market',
+
+      // File operations
+      'read file', 'write file', 'save file', 'open file', 'create file', 'delete file',
+      'file content', 'file system', 'directory', 'folder', 'path', 'upload', 'download',
+
+      // Memory operations
+      'remember', 'store', 'recall', 'save this', 'note this', 'keep track', 'memory',
+      'remind me', 'save for later', 'store information',
+
+      // Terminal/System commands
+      'run command', 'execute', 'terminal', 'command line', 'shell', 'process',
+      'install', 'start server', 'kill process', 'system info',
+
+      // Text editing operations
+      'edit text', 'modify', 'replace text', 'find and replace', 'format text',
+      'code formatting', 'syntax highlighting',
+
+      // Screenshots and media
+      'screenshot', 'capture screen', 'take picture', 'image', 'visual',
+
+      // Data analysis and calculations
+      'calculate', 'analyze', 'process data', 'statistics', 'chart', 'graph',
+
+      // API and external integrations
+      'api call', 'webhook', 'integration', 'connect to', 'fetch data'
+    ];
+
+    // Action verbs that often require tools
+    const actionVerbs = [
+      'create', 'make', 'build', 'generate', 'write', 'save', 'store', 'fetch',
+      'get', 'retrieve', 'find', 'search', 'analyze', 'process', 'execute',
+      'run', 'start', 'stop', 'install', 'configure', 'setup', 'connect'
+    ];
+
+    // Check for tool indicators
+    const hasToolIndicators = toolIndicators.some(indicator =>
+      fullContext.includes(indicator)
+    );
+
+    // Check for action verbs with objects (suggesting tool usage)
+    const hasActionVerbs = actionVerbs.some(verb =>
+      fullContext.includes(verb)
+    );
+
+    // Questions that might need tools
+    const hasQuestionWords = /\b(what|when|where|who|how|why)\b/.test(fullContext);
+    const hasTimeReference = /\b(today|yesterday|tomorrow|this|last|next|current|latest|recent|now)\b/.test(fullContext);
+
+    // Specific patterns that suggest tool usage
+    const hasFilePatterns = /\b(\.txt|\.json|\.csv|\.pdf|\.doc|\.md|file|folder|directory)\b/.test(fullContext);
+    const hasCommandPatterns = /\b(npm|git|python|node|docker|curl|wget)\b/.test(fullContext);
+    const hasDataPatterns = /\b(data|database|api|json|xml|csv|export|import)\b/.test(fullContext);
+
+    // Combine all indicators - be more inclusive for tool usage
+    const shouldInclude = hasToolIndicators ||
+                         hasActionVerbs ||
+                         hasFilePatterns ||
+                         hasCommandPatterns ||
+                         hasDataPatterns ||
+                         (hasQuestionWords && hasTimeReference);
+
+    console.log(`🔍 Comprehensive tool usage analysis:`, {
+      queryText: queryText.substring(0, 100),
+      hasToolIndicators,
+      hasActionVerbs,
+      hasFilePatterns,
+      hasCommandPatterns,
+      hasDataPatterns,
+      hasQuestionWords,
+      hasTimeReference,
+      decision: shouldInclude
+    });
+
+    return shouldInclude;
+  }
+
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
@@ -39,8 +146,18 @@ export class LMStudioProvider extends BaseProvider {
     const baseUrl = settings.baseUrl || provider.baseUrl;
     const messages = [];
 
-    // Get tools for text-based descriptions (LM Studio doesn't support structured tools)
-    const mcpTools = await this.getMCPToolsForProvider('lmstudio', settings);
+    // Determine if tools are needed based on query content
+    const needsTools = this.shouldIncludeTools(message, conversationHistory);
+    console.log(`🤔 LM Studio: Query analysis - Tools needed: ${needsTools}`);
+
+    // Get tools only if needed (smart tool usage)
+    let mcpTools: unknown[] = [];
+    if (needsTools) {
+      mcpTools = await this.getMCPToolsForProvider('lmstudio', settings);
+      console.log(`🔧 LM Studio: Including ${mcpTools.length} tools for this query`);
+    } else {
+      console.log(`🚫 LM Studio: Skipping tools for this query - no external data needed`);
+    }
 
     // Use behavioral system prompt + tool descriptions (text-based approach)
     // Check for meaningful system prompt, not just empty string or generic default
@@ -50,7 +167,7 @@ export class LMStudioProvider extends BaseProvider {
 
     let systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
 
-    // Add tool descriptions to system prompt (LM Studio doesn't support structured tools)
+    // Add tool descriptions to system prompt only if tools are needed
     if (mcpTools.length > 0) {
       console.log(`🔍 [LM STUDIO DEBUG] Available tools being passed to model:`, mcpTools.map(t => {
         const tool = t as { name?: string; function?: { name?: string } };
@@ -58,12 +175,26 @@ export class LMStudioProvider extends BaseProvider {
       }));
 
       systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mcpTools as ToolObject[]);
-      systemPrompt += `\n\nCRITICAL: Only use the tools listed above. DO NOT invent tool names like "get_weather" or "get_news" - they don't exist. If you need weather/news/current info, use web_search with appropriate queries.`;
+      systemPrompt += `\n\n## Tool Usage Guidance
+
+Use tools strategically for:
+- Current/real-time information (weather, news, stock prices)
+- File operations (reading, writing, managing files)
+- Memory operations (storing/recalling information)
+- System commands (terminal, processes, installations)
+- Data processing and analysis
+- External integrations and API calls
+
+Answer directly for general knowledge questions without tools.
+
+CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
 
       console.log(`🔧 LM Studio enhanced system prompt with ${mcpTools.length} text-based tool descriptions`);
       console.log(`🔍 [LM STUDIO DEBUG] System prompt length: ${systemPrompt.length} characters`);
+    } else if (needsTools) {
+      console.warn(`⚠️ [LM STUDIO DEBUG] Tools were needed but none available!`);
     } else {
-      console.warn(`⚠️ [LM STUDIO DEBUG] No tools available for LM Studio!`);
+      console.log(`✅ [LM STUDIO DEBUG] No tools included - query can be answered directly`);
     }
 
     console.log(`🔍 LM Studio system prompt source:`, {
@@ -627,44 +758,20 @@ export class LMStudioProvider extends BaseProvider {
       }
     }
 
-    // Create follow-up prompt with tool results (simplified approach for LM Studio)
-    const toolResultsText = toolResults.map(tr =>
-      `Tool: ${tr.name}\nResult: ${tr.result}\n`
-    ).join('\n');
+    // Build proper conversation history following official LM Studio format
+    const properConversationHistory = this.buildProperConversationHistory(
+      conversationHistory,
+      toolResults,
+      toolCalls
+    );
 
-    const followUpPrompt = `Based on the tool results below, please provide a helpful response to the user's question.
+    console.log(`🔄 LM Studio making native follow-up call with proper conversation format`);
 
-Tool Results:
-${toolResultsText}
-
-Original Question: ${this.getLastUserMessage(conversationHistory)}
-
-Please provide a natural, helpful response based on the tool results.`;
-
-    console.log(`🔄 LM Studio making native follow-up call with simplified prompt`);
-
-    // Clean conversation history to remove any malformed tool results
-    const cleanedHistory = conversationHistory.filter(msg => {
-      // Remove messages that contain tool execution errors
-      if (typeof msg.content === 'string' && msg.content.includes('Tool Results:') && msg.content.includes('Error:')) {
-        console.log(`🧹 Removing malformed tool result message from history`);
-        return false;
-      }
-      return true;
-    });
-
-    // Make follow-up call with simplified message format
-    const followUpMessages = [
-      ...cleanedHistory,
-      { role: 'user', content: followUpPrompt }
-    ];
-
-    // Make a follow-up call with tools enabled for agentic behavior
+    // Make a follow-up call without tools (following official LM Studio pattern)
     const followUpResponse = await this.makeDirectFollowUpCall(
-      followUpMessages,
+      properConversationHistory as Array<{role: string, content: string | Array<ContentItem>}>,
       settings,
-      onStream,
-      true // Enable tools for continued agentic behavior
+      onStream
     );
 
     return {
@@ -1154,44 +1261,38 @@ Please provide a natural, helpful response based on the tool results.`;
       }
     }
 
-    // Create follow-up prompt with tool results
-    const toolResultsText = toolResults.map(tr =>
-      `Tool: ${tr.name}\nResult: ${tr.result}\n`
-    ).join('\n');
-
-    const followUpPrompt = `Based on the tool results below, please provide a helpful response to the user's question.
-
-Tool Results:
-${toolResultsText}
-
-Original Question: ${this.getLastUserMessage(conversationHistory)}
-
-Please provide a natural, helpful response based on the tool results.`;
-
-    console.log(`🔄 LM Studio making follow-up call with tool results`);
-
-    // Clean conversation history to remove any malformed tool results
-    const cleanedHistory = conversationHistory.filter(msg => {
-      // Remove messages that contain tool execution errors
-      if (typeof msg.content === 'string' && msg.content.includes('Tool Results:') && msg.content.includes('Error:')) {
-        console.log(`🧹 Removing malformed tool result message from history`);
-        return false;
+    // For text-based tools, create a simulated proper conversation history
+    // Since text-based tools don't have structured IDs, we'll create them
+    const simulatedToolCalls = toolCalls.map((tc, index) => ({
+      id: `text_tool_${index}`,
+      type: 'function',
+      function: {
+        name: tc.name,
+        arguments: JSON.stringify(tc.arguments)
       }
-      return true;
-    });
+    }));
 
-    // Make follow-up call
-    const followUpMessages = [
-      ...cleanedHistory,
-      { role: 'user', content: followUpPrompt }
-    ];
+    const simulatedToolResults = toolResults.map((tr, index) => ({
+      id: `text_tool_${index}`,
+      name: tr.name,
+      result: tr.result,
+      error: tr.error
+    }));
 
-    // Make a follow-up call with tools enabled for agentic behavior
+    // Build proper conversation history for text-based tools
+    const properConversationHistory = this.buildProperConversationHistory(
+      conversationHistory,
+      simulatedToolResults,
+      simulatedToolCalls
+    );
+
+    console.log(`🔄 LM Studio making follow-up call with proper text-based tool conversation format`);
+
+    // Make a follow-up call without tools (following official LM Studio pattern)
     const followUpResponse = await this.makeDirectFollowUpCall(
-      followUpMessages,
+      properConversationHistory as Array<{role: string, content: string | Array<ContentItem>}>,
       settings,
-      onStream,
-      true // Enable tools for continued agentic behavior
+      onStream
     );
 
     return {
@@ -1213,42 +1314,64 @@ Please provide a natural, helpful response based on the tool results.`;
     return typeof lastMessage.content === 'string' ? lastMessage.content : 'Please help me with the information provided.';
   }
 
+  /**
+   * Builds proper conversation history following official LM Studio format
+   * Format: User message → Assistant tool call message → Tool result messages → Final response
+   */
+  private buildProperConversationHistory(
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    toolCalls: Array<{ id: string; name: string; result: string; error?: boolean }>,
+    originalToolCallsFormat: Array<{ id: string; type: string; function: { name: string; arguments: string } }>
+  ): Array<Record<string, unknown>> {
+
+    // Start with the original conversation history
+    const messages: Array<Record<string, unknown>> = [...conversationHistory];
+
+    // Add the assistant message with tool calls (following official format)
+    const assistantToolCallMessage = {
+      role: 'assistant',
+      tool_calls: originalToolCallsFormat.map(tc => ({
+        id: tc.id,
+        type: tc.type,
+        function: tc.function
+      }))
+    };
+    messages.push(assistantToolCallMessage);
+
+    // Add tool result messages (following official format)
+    for (const toolResult of toolCalls) {
+      const toolResultMessage = {
+        role: 'tool',
+        content: toolResult.result,
+        tool_call_id: toolResult.id
+      };
+      messages.push(toolResultMessage);
+    }
+
+    console.log(`🔧 Built proper conversation history with ${messages.length} messages (${toolCalls.length} tool results)`);
+    return messages;
+  }
+
   private async makeDirectFollowUpCall(
     messages: Array<{role: string, content: string | Array<ContentItem>}>,
     settings: LLMSettings,
-    onStream: (chunk: string) => void,
-    enableTools: boolean = true
+    onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
-    console.log(`🔄 Making follow-up call ${enableTools ? 'with' : 'without'} tool calling`);
+    console.log(`🔄 Making follow-up call without tools (following official LM Studio pattern)`);
 
-    // Get tools if enabled for agentic behavior
-    let tools: unknown[] = [];
-    if (enableTools && this.getMCPToolsForProvider) {
-      try {
-        tools = await this.getMCPToolsForProvider('lmstudio', settings);
-        console.log(`🔧 LM Studio follow-up call with ${tools.length} tools available for continued agentic behavior`);
-      } catch (error) {
-        console.warn(`⚠️ Failed to get tools for LM Studio follow-up call:`, error);
-      }
-    }
+    // According to official LM Studio documentation, the follow-up call should NOT include tools
+    // This prevents recursive tool calling and ensures proper synchronization
+    console.log(`✅ LM Studio follow-up call without tools - following official pattern for final response`);
 
-    // Update system message with optimized prompt if tools are available
-    if (enableTools && tools.length > 0) {
-      // Use condensed prompt for follow-up calls to avoid token limits
-      const toolNames = (tools as Array<{function?: {name?: string}, name?: string}>).map(tool => tool.function?.name || tool.name).filter(Boolean);
-      const followUpPrompt = `You are an AI assistant with access to ${tools.length} tools. Based on the tool results provided, continue the conversation naturally. Use additional tools if needed.
+    // Use a clean final response prompt (no tools)
+    const finalResponsePrompt = `You are a helpful AI assistant. Based on the conversation history and any tool results provided, give a comprehensive and helpful response to the user's question. Do not call any tools - just provide a natural response based on the information available.`;
 
-Available tools: ${toolNames.join(', ')}
-
-Continue based on the tool results above. Call additional tools if needed for a comprehensive response.`;
-
-      // Find and update system message, or add one if it doesn't exist
-      const systemMessageIndex = messages.findIndex(msg => msg.role === 'system');
-      if (systemMessageIndex >= 0) {
-        messages[systemMessageIndex].content = followUpPrompt;
-      } else {
-        messages.unshift({ role: 'system', content: followUpPrompt });
-      }
+    // Always update system message for final response (no tools)
+    const systemMessageIndex = messages.findIndex(msg => msg.role === 'system');
+    if (systemMessageIndex >= 0) {
+      messages[systemMessageIndex].content = finalResponsePrompt;
+    } else {
+      messages.unshift({ role: 'system', content: finalResponsePrompt });
     }
 
     const requestBody = {
@@ -1256,12 +1379,8 @@ Continue based on the tool results above. Call additional tools if needed for a 
       messages: messages,
       stream: true,
       temperature: settings.temperature || 0.7,
-      max_tokens: settings.maxTokens || 4000,
-      // Include tools for agentic behavior if available
-      ...(tools.length > 0 && {
-        tools,
-        tool_choice: 'auto'
-      })
+      max_tokens: settings.maxTokens || 4000
+      // No tools included - following official LM Studio pattern for final response
     };
 
     // Construct the correct URL - baseUrl might already include /v1
@@ -1286,7 +1405,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
 
     if (response.body) {
       // Handle the streaming response directly without recursion
-      return this.handleFollowUpStreamResponse(response, onStream, enableTools);
+      return this.handleFollowUpStreamResponse(response, onStream);
     } else {
       throw new Error('No response body received from LM Studio follow-up call');
     }
@@ -1294,8 +1413,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
 
   private async handleFollowUpStreamResponse(
     response: Response,
-    onStream: (chunk: string) => void,
-    enableTools: boolean = true
+    onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
     console.log(`🔄 Processing follow-up stream response`);
 
@@ -1338,23 +1456,9 @@ Continue based on the tool results above. Call additional tools if needed for a 
 
     console.log(`✅ Follow-up response completed. Content length: ${fullContent.length}`);
 
-    // Check for additional tool calls in the follow-up response (agentic behavior)
-    if (enableTools && fullContent) {
-      const toolCalls = this.parseToolCallsFromText(fullContent);
-      if (toolCalls.length > 0) {
-        console.log(`🔄 LM Studio follow-up response contains ${toolCalls.length} additional tool calls - continuing agentic workflow`);
-        // Recursively execute additional tool calls
-        return this.executeTextBasedTools(
-          toolCalls,
-          fullContent,
-          undefined,
-          { model: '', provider: 'lmstudio' } as LLMSettings,
-          { id: 'lmstudio', name: 'LM Studio' } as LLMProvider,
-          [],
-          onStream
-        );
-      }
-    }
+    // No recursive tool calling - following official LM Studio pattern
+    // The follow-up call should provide the final response without calling more tools
+    console.log(`🎯 LM Studio final response ready - no additional tool calls needed`);
 
     return {
       content: fullContent,

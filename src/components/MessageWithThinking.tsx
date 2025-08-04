@@ -763,7 +763,7 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
       {/* Main Response */}
       {parsed.response && parseTextWithContent(
         parsed.response,
-        "whitespace-pre-wrap select-text break-words text-sm",
+        "select-text break-words text-sm leading-relaxed",
         {
           WebkitAppRegion: 'no-drag',
           userSelect: 'text',

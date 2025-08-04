@@ -89,13 +89,15 @@ export interface ToolExecutionResult {
 // Helper function to check if a tool is an internal command
 function isInternalCommand(toolName: string): boolean {
   const internalCommandNames = [
-    // Terminal commands
+    // Terminal commands (from executeSpecificCommand)
     'start_process', 'read_process_output', 'interact_with_process',
     'force_terminate', 'list_sessions', 'kill_process', 'list_processes',
-    // Filesystem commands
-    'read_file', 'read_multiple_files', 'write_file', 'create_directory',
-    'list_directory', 'move_file', 'search_files', 'search_code', 'get_file_info',
-    // Text editing commands
+    // System commands (from executeSpecificCommand)
+    'get_cpu_usage', 'get_memory_usage', 'get_system_info',
+    // Filesystem commands (from executeSpecificCommand)
+    'read_file', 'write_file', 'create_directory', 'list_directory',
+    'move_file', 'search_files', 'get_file_info', 'delete_file',
+    // Text editing commands (from executeSpecificCommand)
     'edit_block'
   ];
   return internalCommandNames.includes(toolName);

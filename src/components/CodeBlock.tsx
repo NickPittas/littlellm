@@ -101,20 +101,20 @@ export function CodeBlock({ code, language, className = '' }: CodeBlockProps) {
   return (
     <div className={`relative group ${className}`}>
       {/* Header with language and copy button */}
-      <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border rounded-t-lg">
-        <span className="text-xs text-muted-foreground font-medium">
+      <div className="flex items-center justify-between bg-slate-700 px-3 py-2 border-b border-slate-600 rounded-t-lg">
+        <span className="text-xs text-slate-300 font-medium">
           {language || 'code'}
         </span>
         <Button
           variant="ghost"
           size="sm"
           onClick={handleCopy}
-          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-600 text-slate-300"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties & { WebkitAppRegion?: string }}
           title="Copy code"
         >
           {copied ? (
-            <Check className="h-3 w-3 text-green-500" />
+            <Check className="h-3 w-3 text-green-400" />
           ) : (
             <Copy className="h-3 w-3" />
           )}
@@ -123,7 +123,7 @@ export function CodeBlock({ code, language, className = '' }: CodeBlockProps) {
 
       {/* Code content */}
       <div
-        className="bg-muted/30 rounded-b-lg overflow-x-auto"
+        className="bg-slate-800 rounded-b-lg overflow-x-auto"
         style={{
           WebkitAppRegion: 'no-drag',
           userSelect: 'text',
@@ -180,8 +180,8 @@ interface InlineCodeProps {
 
 export function InlineCode({ code, className = '' }: InlineCodeProps) {
   return (
-    <code 
-      className={`bg-muted/50 px-1.5 py-0.5 rounded text-sm font-mono ${className}`}
+    <code
+      className={`bg-slate-700 text-slate-200 px-1.5 py-0.5 rounded text-sm font-mono ${className}`}
       style={{
         WebkitAppRegion: 'no-drag',
         userSelect: 'text',

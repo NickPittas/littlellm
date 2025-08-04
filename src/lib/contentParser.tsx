@@ -353,15 +353,15 @@ export function parseMarkdownContent(text: string): React.ReactNode {
         h4: ({ children }: any) => <h4 className="text-base font-bold mb-2 mt-3">{children}</h4>,
         h5: ({ children }: any) => <h5 className="text-sm font-bold mb-1 mt-2">{children}</h5>,
         h6: ({ children }: any) => <h6 className="text-xs font-bold mb-1 mt-2">{children}</h6>,
-        // Style paragraphs
-        p: ({ children }: any) => <p className="mb-3 leading-relaxed">{children}</p>,
-        // Style lists
-        ul: ({ children }: any) => <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>,
-        ol: ({ children }: any) => <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>,
+        // Style paragraphs with minimal spacing
+        p: ({ children }: any) => <p className="mb-1 last:mb-0">{children}</p>,
+        // Style lists with minimal spacing
+        ul: ({ children }: any) => <ul className="list-disc list-inside mb-2 space-y-0">{children}</ul>,
+        ol: ({ children }: any) => <ol className="list-decimal list-inside mb-2 space-y-0">{children}</ol>,
         li: ({ children }: any) => <li className="ml-4">{children}</li>,
-        // Style blockquotes
+        // Style blockquotes with minimal spacing
         blockquote: ({ children }: any) => (
-          <blockquote className="border-l-4 border-gray-500 pl-4 italic my-4 text-gray-300">
+          <blockquote className="border-l-4 border-gray-500 pl-4 italic my-2 text-gray-300">
             {children}
           </blockquote>
         ),
@@ -383,8 +383,8 @@ export function parseMarkdownContent(text: string): React.ReactNode {
             {children}
           </td>
         ),
-        // Style horizontal rules
-        hr: () => <hr className="my-6 border-gray-600" />,
+        // Style horizontal rules with minimal spacing
+        hr: () => <hr className="my-3 border-gray-600" />,
         // Style strong and emphasis
         strong: ({ children }: any) => <strong className="font-bold">{children}</strong>,
         em: ({ children }: any) => <em className="italic">{children}</em>,
@@ -400,13 +400,18 @@ export function parseTextWithContent(
   className?: string,
   style?: React.CSSProperties
 ): JSX.Element {
+  // Clean up excessive line breaks and normalize spacing
+  const cleanText = text
+    .replace(/\n{3,}/g, '\n\n') // Replace 3+ consecutive newlines with 2
+    .replace(/[ \t]+/g, ' '); // Replace multiple spaces/tabs with single space
+
   // Check if the text contains markdown elements
-  const hasMarkdown = /^#{1,6}\s|^\*\s|^\d+\.\s|^\>\s|^\|.*\||```|`[^`]+`|\*\*.*\*\*|\*.*\*|_.*_|\[.*\]\(.*\)/m.test(text);
+  const hasMarkdown = /^#{1,6}\s|^\*\s|^\d+\.\s|^\>\s|^\|.*\||```|`[^`]+`|\*\*.*\*\*|\*.*\*|_.*_|\[.*\]\(.*\)/m.test(cleanText);
 
   if (hasMarkdown) {
     return (
       <div className={className} style={style}>
-        {parseMarkdownContent(text)}
+        {parseMarkdownContent(cleanText)}
       </div>
     );
   }
@@ -414,7 +419,7 @@ export function parseTextWithContent(
   // Fallback to the original parser for simple text
   return (
     <ParsedContent className={className} style={style}>
-      {text}
+      {cleanText}
     </ParsedContent>
   );
 }
