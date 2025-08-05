@@ -1,6 +1,6 @@
 {
   "name": "littlellm",
-  "version": "3.7.0",
+  "version": "3.8.0",
   "description": "A powerful desktop AI chat application with enterprise-grade security, encrypted API key storage, and advanced features",
   "author": "LittleLLM Team",
   "private": true,

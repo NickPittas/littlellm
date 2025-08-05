@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Button } from './ui/button';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import './CodeBlock.css';
 
 
@@ -155,12 +154,16 @@ export function CodeBlock({ code, language, className = '' }: CodeBlockProps) {
                 background: 'transparent',
               }
             }}
+            // Render pre at block level to avoid <pre> inside <p> warnings
             PreTag={({ children, ...props }) => (
-              <pre {...props} style={{
-                margin: 0,
-                padding: 0,
-                background: 'transparent',
-              }}>
+              <pre
+                {...props}
+                style={{
+                  margin: 0,
+                  padding: 0,
+                  background: 'transparent',
+                }}
+              >
                 {children}
               </pre>
             )}

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { parseTextWithContent } from '../lib/contentParser';
-import { ContentItem } from '../services/providers/types';
+import { ContentItem } from '../services/chatService';
 import { ImageViewer } from './ImageViewer';
 
 interface MessageContentProps {

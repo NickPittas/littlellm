@@ -419,7 +419,7 @@ export class GeminiProvider extends BaseProvider {
         }
       };
 
-      const followupResponse = await fetch(`${provider.baseUrl}/models/${settings.model}:generateContent?key=${settings.apiKey}`, {
+      const followupResponse = await fetch(`${provider.baseUrl}/models/${settings.model}:streamGenerateContent?alt=sse&key=${settings.apiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -428,45 +428,84 @@ export class GeminiProvider extends BaseProvider {
       });
 
       if (followupResponse.ok) {
-        console.log(`✅ Getting Gemini follow-up response (non-streaming)`);
+        console.log(`✅ Getting Gemini follow-up response (streaming)`);
 
-        // Get the follow-up response as JSON instead of streaming
-        const followupData = await followupResponse.json();
-        console.log(`🔍 Gemini follow-up response data:`, JSON.stringify(followupData, null, 2));
-
-        // Process the follow-up response as a single chunk to prevent double replies
-        if (followupData.candidates?.[0]?.content?.parts) {
-          const followupText = followupData.candidates[0].content.parts
-            .filter((part: { text?: string }) => part.text)
-            .map((part: { text: string }) => part.text)
-            .join('');
-
-          if (followupText) {
-            console.log(`🔄 Gemini streaming follow-up response:`, followupText.substring(0, 100) + '...');
-            // DISABLED: debugLogger.logStreaming('Gemini', followupText, true);
-            onStream(followupText);
-          } else {
-            console.warn(`⚠️ Gemini follow-up response has no text content`);
-            debugLogger.warn('FOLLOW_UP', 'Gemini follow-up response has no text content');
-          }
-
-          // Combine usage data
-          const combinedUsage = {
-            promptTokens: (initialUsage?.prompt_tokens || 0) + (followupData.usageMetadata?.promptTokenCount || 0),
-            completionTokens: (initialUsage?.completion_tokens || 0) + (followupData.usageMetadata?.candidatesTokenCount || 0),
-            totalTokens: (initialUsage?.total_tokens || 0) + (followupData.usageMetadata?.totalTokenCount || 0)
-          };
-
-          return {
-            content: initialContent + followupText,
-            usage: combinedUsage,
-            toolCalls: toolCalls.map(tc => ({
-              id: tc.id || `gemini-${Date.now()}`,
-              name: tc.name || '',
-              arguments: tc.arguments as Record<string, unknown> || {}
-            }))
-          };
+        // Handle streaming response
+        const reader = followupResponse.body?.getReader();
+        if (!reader) {
+          throw new Error('Gemini follow-up response has no readable stream');
         }
+
+        let followupText = '';
+        let followupUsage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
+        const decoder = new TextDecoder();
+
+        try {
+          // eslint-disable-next-line no-constant-condition
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6).trim();
+                if (!data || data === '[DONE]') continue;
+
+                try {
+                  const parsed = JSON.parse(data);
+                  console.log('🔍 Gemini follow-up streaming chunk:', JSON.stringify(parsed, null, 2));
+
+                  if (parsed.candidates && parsed.candidates[0]?.content?.parts) {
+                    const parts = parsed.candidates[0].content.parts;
+
+                    for (const part of parts) {
+                      // Handle text content
+                      if (part.text) {
+                        followupText += part.text;
+                        onStream(part.text); // Stream immediately
+                      }
+                    }
+                  }
+
+                  // Gemini provides usage metadata in streaming responses
+                  if (parsed.usageMetadata) {
+                    followupUsage = {
+                      prompt_tokens: parsed.usageMetadata.promptTokenCount,
+                      completion_tokens: parsed.usageMetadata.candidatesTokenCount,
+                      total_tokens: parsed.usageMetadata.totalTokenCount
+                    };
+                  }
+                } catch (e) {
+                  console.warn('Failed to parse Gemini follow-up streaming chunk:', e);
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+
+        // Combine usage data
+        const combinedUsage = {
+          promptTokens: (initialUsage?.prompt_tokens || 0) + (followupUsage?.prompt_tokens || 0),
+          completionTokens: (initialUsage?.completion_tokens || 0) + (followupUsage?.completion_tokens || 0),
+          totalTokens: (initialUsage?.total_tokens || 0) + (followupUsage?.total_tokens || 0)
+        };
+
+        console.log(`✅ Gemini follow-up streaming completed with tool results integrated`);
+
+        return {
+          content: initialContent + followupText,
+          usage: combinedUsage,
+          toolCalls: toolCalls.map(tc => ({
+            id: tc.id || `gemini-${Date.now()}`,
+            name: tc.name || '',
+            arguments: tc.arguments as Record<string, unknown> || {}
+          }))
+        };
       } else {
         const errorText = await followupResponse.text();
         console.error(`❌ Gemini follow-up call failed (${followupResponse.status}):`, errorText);

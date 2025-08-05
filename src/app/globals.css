@@ -421,6 +421,16 @@
   /* CHAT WINDOW TITLE BAR DRAGGING - HIGHEST PRIORITY */
   .chat-title-bar-drag-zone {
     -webkit-app-region: drag !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 99999 !important;
+    pointer-events: auto !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
   }
 
   /* Only make interactive elements non-draggable, not all children */
@@ -429,6 +439,73 @@
   .chat-title-bar-drag-zone input,
   .chat-title-bar-drag-zone select,
   .chat-title-bar-drag-zone textarea {
+    -webkit-app-region: no-drag !important;
+  }
+
+  /* Ensure chat content cannot interfere with title bar dragging */
+  .chat-overlay-content {
+    -webkit-app-region: no-drag !important;
+    pointer-events: auto !important;
+    position: absolute !important;
+    top: 40px !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 1 !important;
+    overflow: hidden !important;
+  }
+
+  /* Ensure all chat messages are non-draggable and cannot overlap title bar */
+  .user-message,
+  .assistant-message,
+  .chat-messages,
+  .custom-scrollbar {
+    -webkit-app-region: no-drag !important;
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  /* Prevent any content from extending above the title bar */
+  .chat-overlay-content * {
+    -webkit-app-region: no-drag !important;
+    max-height: 100% !important;
+  }
+
+  /* Ensure scroll container is properly constrained */
+  .chat-overlay-content .custom-scrollbar {
+    max-height: 100% !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Prevent any element from overlapping the title bar area */
+  .chat-overlay-content * {
+    -webkit-app-region: no-drag !important;
+  }
+
+  /* Ensure the title bar area is always clear */
+  .chat-title-bar-drag-zone::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 99999;
+    pointer-events: none;
+  }
+
+  /* Ensure TopHeader stays above all content */
+  .drag-handle {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 9999 !important;
+    -webkit-app-region: drag !important;
+  }
+
+  /* Ensure TopHeader interactive elements are not draggable */
+  .drag-handle button,
+  .drag-handle [style*="no-drag"] {
     -webkit-app-region: no-drag !important;
   }
 

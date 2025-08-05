@@ -30,7 +30,7 @@ if (typeof window !== 'undefined') {
 }
 
 // Type for content array items used in vision API
-interface ContentItem {
+export interface ContentItem {
   type: 'text' | 'image_url' | 'document';
   text?: string;
   image_url?: {

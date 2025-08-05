@@ -19,8 +19,8 @@ import { Button } from '../ui/button';
 import { cn } from '@/lib/utils';
 
 // Import existing services
-import { chatService, type ChatSettings, type Message } from '../../services/chatService';
-import { ContentItem } from '../../types/chat';
+import { chatService, type ChatSettings, type Message, type ContentItem } from '../../services/chatService';
+import type { AgentConfiguration } from '../../types/agent';
 import { settingsService } from '../../services/settingsService';
 import { conversationHistoryService } from '../../services/conversationHistoryService';
 import { secureApiKeyService } from '../../services/secureApiKeyService';
@@ -48,8 +48,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   const [providerSelectorOpen, setProviderSelectorOpen] = useState(false);
   const [providerAnchorElement, setProviderAnchorElement] = useState<HTMLElement | null>(null);
   const [agentManagementOpen, setAgentManagementOpen] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<any>(null);
-  const [availableAgents, setAvailableAgents] = useState<any[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<AgentConfiguration | null>(null);
+  const [availableAgents, setAvailableAgents] = useState<AgentConfiguration[]>([]);
 
   // Model instructions and quick prompts state
   const [modelInstructionsOpen, setModelInstructionsOpen] = useState(false);
@@ -188,7 +188,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         setMessages(prev => [...prev, errorMessage]);
       }
     }
-  }, [messages.length, selectedModel, updateSettings]);
+  }, [messages.length, updateSettings]);
 
   // Load settings on mount
   useEffect(() => {
@@ -226,7 +226,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
     loadSettings();
     loadPremadePrompts();
-  }, []); // Empty dependency array to prevent infinite loop
+  }, [loadModelsForProvider]); // Add loadModelsForProvider to dependency array
 
   // Load available agents on mount
   useEffect(() => {
@@ -741,7 +741,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   };
 
   // Handle agent selection from management interface
-  const handleAgentSelect = async (agent: any) => {
+  const handleAgentSelect = async (agent: AgentConfiguration) => {
     try {
       console.log('🤖 Agent selected from management:', agent.name);
 
@@ -776,7 +776,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   };
 
   // Handle agent change from dropdown
-  const handleAgentChange = async (agent: any) => {
+  const handleAgentChange = async (agent: AgentConfiguration | null) => {
     try {
       console.log('🤖 Agent changed from dropdown:', agent?.name || 'No Agent');
 
@@ -1124,15 +1124,23 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Header */}
-        <TopHeader
-          selectedProvider={selectedProvider}
-          onProviderClick={handleProviderClick}
-          className="flex-shrink-0"
-        />
+      <div
+        className="flex-1 flex flex-col overflow-hidden"
+        style={{ paddingTop: '32px', WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
+        {/* Top Header - fixed top-level drag region */}
+        <div
+          className="fixed top-0 left-0 right-0 z-[1000]"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
+          <TopHeader
+            selectedProvider={selectedProvider}
+            onProviderClick={handleProviderClick}
+            className="flex-shrink-0"
+          />
+        </div>
 
-        {/* Chat Area */}
+        {/* Chat Area - pushed below fixed header */}
         <MainChatArea
           selectedModel={selectedModel}
           messages={messages}

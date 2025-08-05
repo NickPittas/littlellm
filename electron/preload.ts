@@ -120,83 +120,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
   resizeWindow: (width: number, height: number) => ipcRenderer.invoke('resize-window', width, height),
   getCurrentWindowSize: () => ipcRenderer.invoke('get-current-window-size'),
+  // Strict APIs only; programmatic drag helpers removed to surface real errors
   getWindowPosition: () => ipcRenderer.invoke('get-window-position'),
   setWindowPosition: (x: number, y: number) => ipcRenderer.invoke('set-window-position', x, y),
   getChatWindowPosition: () => ipcRenderer.invoke('get-chat-window-position'),
   setChatWindowPosition: (x: number, y: number) => ipcRenderer.invoke('set-chat-window-position', x, y),
   takeScreenshot: () => ipcRenderer.invoke('take-screenshot'),
   setWindowBackgroundColor: (backgroundColor: string) => ipcRenderer.invoke('set-window-background-color', backgroundColor),
-
-  // Window dragging for frameless windows
-  startDrag: () => {
-    // Get the current mouse position
-    let mouseX = 0;
-    let mouseY = 0;
-    let windowX = 0;
-    let windowY = 0;
-    let isDragging = false;
-
-    const handleMouseDown = (e: MouseEvent) => {
-      // Check if the click is on the draggable title bar
-      const target = e.target as HTMLElement;
-      if (target.closest('.draggable-title-bar')) {
-        isDragging = true;
-        mouseX = e.screenX;
-        mouseY = e.screenY;
-
-        // Determine which window we're in based on URL
-        const isInChatWindow = window.location.search.includes('overlay=chat');
-
-        // Get current window position
-        if (isInChatWindow) {
-          ipcRenderer.invoke('get-chat-window-position').then((pos: { x: number; y: number }) => {
-            windowX = pos.x;
-            windowY = pos.y;
-          });
-        } else {
-          ipcRenderer.invoke('get-window-position').then((pos: { x: number; y: number }) => {
-            windowX = pos.x;
-            windowY = pos.y;
-          });
-        }
-
-        e.preventDefault();
-      }
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-
-      const deltaX = e.screenX - mouseX;
-      const deltaY = e.screenY - mouseY;
-
-      // Determine which window we're in based on URL
-      const isInChatWindow = window.location.search.includes('overlay=chat');
-
-      // Update window position
-      if (isInChatWindow) {
-        ipcRenderer.invoke('set-chat-window-position', windowX + deltaX, windowY + deltaY);
-      } else {
-        ipcRenderer.invoke('set-window-position', windowX + deltaX, windowY + deltaY);
-      }
-    };
-
-    const handleMouseUp = () => {
-      isDragging = false;
-    };
-
-    // Add event listeners
-    document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    // Return cleanup function
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  },
 
   // Overlay windows
   openActionMenu: () => ipcRenderer.invoke('open-action-menu'),
@@ -324,7 +254,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Debug Logging operations
   writeDebugLog: (logLine: string) => ipcRenderer.invoke('write-debug-log', logLine),
   clearDebugLog: () => ipcRenderer.invoke('clear-debug-log'),
-  readDebugLog: () => ipcRenderer.invoke('read-debug-log')
+  readDebugLog: () => ipcRenderer.invoke('read-debug-log'),
+
+  // Immediately enable robust drag support when preload loads
+  __enableDragOnLoad: undefined
 });
 
 // Type definitions are now in src/types/electron.d.ts

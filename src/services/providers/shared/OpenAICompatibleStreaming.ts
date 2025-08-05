@@ -256,7 +256,7 @@ export class OpenAICompatibleStreaming {
       messages: followUpMessages,
       temperature: settings.temperature,
       max_tokens: settings.maxTokens,
-      stream: false,
+      stream: true, // Enable streaming for immediate response
       // Include tools to allow continued agentic behavior
       ...(availableTools.length > 0 && {
         tools: availableTools,
@@ -279,30 +279,78 @@ export class OpenAICompatibleStreaming {
     });
 
     if (followUpResponse.ok) {
-      const followUpData = await followUpResponse.json();
-      const followUpMessage = followUpData.choices[0]?.message;
+      // Handle streaming response
+      const reader = followUpResponse.body?.getReader();
+      if (!reader) {
+        throw new Error(`${providerName} follow-up response has no readable stream`);
+      }
 
-      // Combine responses
+      let followUpContent = '';
+      let followUpUsage: OpenAICompatibleUsage | undefined = undefined;
+      let followUpToolCalls: OpenAICompatibleToolCall[] = [];
+      const decoder = new TextDecoder();
+
+      try {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (!data || data === '[DONE]') continue;
+
+              try {
+                const parsed = JSON.parse(data);
+                const delta = parsed.choices?.[0]?.delta;
+
+                if (delta?.content) {
+                  followUpContent += delta.content;
+                  onStream(delta.content); // Stream immediately
+                }
+
+                if (delta?.tool_calls) {
+                  // Handle additional tool calls in streaming response
+                  for (const toolCall of delta.tool_calls) {
+                    if (toolCall.function?.name) {
+                      followUpToolCalls.push(toolCall);
+                    }
+                  }
+                }
+
+                if (parsed.usage) {
+                  followUpUsage = parsed.usage;
+                }
+              } catch (e) {
+                console.warn(`Failed to parse ${providerName} streaming chunk:`, e);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      // Combine usage data
       const combinedUsage = {
-        promptTokens: (initialUsage?.prompt_tokens || 0) + (followUpData.usage?.prompt_tokens || 0),
-        completionTokens: (initialUsage?.completion_tokens || 0) + (followUpData.usage?.completion_tokens || 0),
-        totalTokens: (initialUsage?.total_tokens || 0) + (followUpData.usage?.total_tokens || 0)
+        promptTokens: (initialUsage?.prompt_tokens || 0) + (followUpUsage?.prompt_tokens || 0),
+        completionTokens: (initialUsage?.completion_tokens || 0) + (followUpUsage?.completion_tokens || 0),
+        totalTokens: (initialUsage?.total_tokens || 0) + (followUpUsage?.total_tokens || 0)
       };
 
       // Check if the follow-up response contains additional tool calls (agentic behavior)
-      if (followUpMessage?.tool_calls && followUpMessage.tool_calls.length > 0) {
-        console.log(`🔄 ${providerName} follow-up response contains ${followUpMessage.tool_calls.length} additional tool calls - continuing agentic workflow`);
-
-        // Stream any content from the follow-up first
-        if (followUpMessage.content) {
-          onStream(followUpMessage.content);
-        }
+      if (followUpToolCalls.length > 0) {
+        console.log(`🔄 ${providerName} follow-up response contains ${followUpToolCalls.length} additional tool calls - continuing agentic workflow`);
 
         // Recursively execute additional tool calls
         return this.executeToolsAndFollowUp(
-          followUpMessage.tool_calls,
-          followUpMessage.content || '',
-          followUpData.usage,
+          followUpToolCalls,
+          followUpContent,
+          followUpUsage,
           settings,
           provider,
           [...conversationHistory, { role: 'assistant', content: initialContent } as {role: string, content: string | Array<ContentItem>}, ...toolResults],
@@ -315,17 +363,10 @@ export class OpenAICompatibleStreaming {
         );
       }
 
-      // Stream the follow-up content with type safety
-      if (followUpMessage?.content && typeof followUpMessage.content === 'string') {
-        console.log(`🔄 ${providerName} streaming follow-up content:`, followUpMessage.content.substring(0, 100) + '...');
-        // DISABLED: debugLogger.logStreaming(providerName, followUpMessage.content, true);
-        onStream(followUpMessage.content);
-      } else if (followUpMessage?.content) {
-        console.warn('⚠️ Follow-up content is not a string:', typeof followUpMessage.content, followUpMessage.content);
-      }
+      console.log(`✅ ${providerName} follow-up streaming completed with tool results integrated`);
 
       return {
-        content: followUpMessage?.content || 'Tool execution completed.',
+        content: followUpContent || 'Tool execution completed.',
         usage: combinedUsage,
         toolCalls: toolCalls
           .filter(tc => tc.id && tc.function?.name)

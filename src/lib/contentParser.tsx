@@ -319,22 +319,30 @@ export function parseMarkdownContent(text: string): React.ReactNode {
       remarkPlugins={[remarkGfm]}
       components={{
         // Custom code block component
+        // Types for react-markdown renderers kept broad to match library's dynamic nodes
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any
         code({ node, inline, className, children, ...props }: any) {
           const match = /language-(\w+)/.exec(className || '');
           const language = match ? match[1] : undefined;
 
           if (inline) {
             return <InlineCode code={String(children).replace(/\n$/, '')} />;
-          } else {
-            return (
+          }
+
+          // Block code: render as a block-level container to avoid nesting <pre> within <p>
+          return (
+            <div className="my-2">
               <CodeBlock
                 code={String(children).replace(/\n$/, '')}
                 language={language}
               />
-            );
-          }
+            </div>
+          );
         },
         // Custom link component
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any
         a({ href, children, ...props }: any) {
           return (
             <button
@@ -354,6 +362,7 @@ export function parseMarkdownContent(text: string): React.ReactNode {
         h5: ({ children }: any) => <h5 className="text-sm font-bold mb-1 mt-2">{children}</h5>,
         h6: ({ children }: any) => <h6 className="text-xs font-bold mb-1 mt-2">{children}</h6>,
         // Style paragraphs with minimal spacing
+        // Avoid placing block elements like <pre> inside <p>
         p: ({ children }: any) => <p className="mb-1 last:mb-0">{children}</p>,
         // Style lists with minimal spacing
         ul: ({ children }: any) => <ul className="list-disc list-inside mb-2 space-y-0">{children}</ul>,
@@ -366,6 +375,7 @@ export function parseMarkdownContent(text: string): React.ReactNode {
           </blockquote>
         ),
         // Style tables
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         table: ({ children }: any) => (
           <div className="overflow-x-auto my-4">
             <table className="min-w-full border-collapse border border-gray-600">
@@ -373,11 +383,13 @@ export function parseMarkdownContent(text: string): React.ReactNode {
             </table>
           </div>
         ),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         th: ({ children }: any) => (
           <th className="border border-gray-600 px-3 py-2 bg-gray-700 font-semibold text-left">
             {children}
           </th>
         ),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         td: ({ children }: any) => (
           <td className="border border-gray-600 px-3 py-2">
             {children}
@@ -386,7 +398,9 @@ export function parseMarkdownContent(text: string): React.ReactNode {
         // Style horizontal rules with minimal spacing
         hr: () => <hr className="my-3 border-gray-600" />,
         // Style strong and emphasis
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         strong: ({ children }: any) => <strong className="font-bold">{children}</strong>,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         em: ({ children }: any) => <em className="italic">{children}</em>,
       }}
     >
@@ -406,7 +420,7 @@ export function parseTextWithContent(
     .replace(/[ \t]+/g, ' '); // Replace multiple spaces/tabs with single space
 
   // Check if the text contains markdown elements
-  const hasMarkdown = /^#{1,6}\s|^\*\s|^\d+\.\s|^\>\s|^\|.*\||```|`[^`]+`|\*\*.*\*\*|\*.*\*|_.*_|\[.*\]\(.*\)/m.test(cleanText);
+  const hasMarkdown = /^#{1,6}\s|^\*\s|^\d+\.\s|^>\s|^\|.*\||```|`[^`]+`|\*\*.*\*\*|\*.*\*|_.*_|\[.*\]\(.*\)/m.test(cleanText);
 
   if (hasMarkdown) {
     return (

@@ -21,8 +21,7 @@ import { KnowledgeBaseIndicator } from './KnowledgeBaseIndicator';
 
 // Settings handled by separate overlay window
 
-import { chatService, type ChatSettings, type Message } from '../services/chatService';
-import { ContentItem } from '../types/chat';
+import { chatService, type ChatSettings, type Message, type ContentItem } from '../services/chatService';
 import { settingsService } from '../services/settingsService';
 import { conversationHistoryService } from '../services/conversationHistoryService';
 import { sessionService } from '../services/sessionService';

@@ -4671,6 +4671,7 @@ console.debug = (...args: unknown[]) => {
       y: y,
       show: false,
       frame: false, // Frameless window
+      titleBarStyle: 'hidden', // Hide title bar completely
       resizable: true, // Make it resizable
       alwaysOnTop: true,
       skipTaskbar: true,

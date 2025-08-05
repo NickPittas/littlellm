@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { X, Minus, MessageSquare, ChevronDown } from 'lucide-react';
@@ -11,7 +11,7 @@ import { KnowledgeBaseIndicator } from './KnowledgeBaseIndicator';
 import { sessionService } from '../services/sessionService';
 import type { Message } from '../services/chatService';
 import type { SessionStats } from '../services/sessionService';
-import { useEnhancedWindowDrag } from '../hooks/useEnhancedWindowDrag';
+
 import './ChatOverlay.css';
 
 interface ChatOverlayProps {
@@ -27,8 +27,13 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize CSS-based window dragging (same as main window)
-  useEnhancedWindowDrag();
+  // Initialize window dragging using preload script
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.startDrag) {
+      const cleanup = window.electronAPI.startDrag();
+      return cleanup;
+    }
+  }, []);
 
   const handleClose = () => {
     if (typeof window !== 'undefined' && window.electronAPI) {
@@ -108,64 +113,44 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
     setSessionStats(sessionService.getSessionStats());
   }, [messages]);
 
-  // Scroll to bottom function
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  // Debounced scroll to bottom function using requestAnimationFrame for smooth performance
+  const scrollToBottom = useCallback(() => {
+    if (!messagesEndRef.current) return;
 
-  // Auto-scroll to bottom when response finishes
-  const scrollToBottomOnComplete = () => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
-  };
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'end'
+      });
+    });
+  }, []);
 
-
-
-  // Auto-scroll to bottom when messages change (only if user was already at bottom)
-  useEffect(() => {
-    if (!scrollContainerRef.current) return;
+  // Check if user is at bottom of scroll container
+  const isAtBottom = useCallback(() => {
+    if (!scrollContainerRef.current) return false;
 
     const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-    const wasAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+    return scrollHeight - scrollTop - clientHeight < 50; // 50px threshold
+  }, []);
 
-    if (wasAtBottom) {
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
-    }
-  }, [messages]);
-
-  // Auto-scroll to bottom when new messages are received (response finished)
+  // Unified scroll management - handles all scroll scenarios
   useEffect(() => {
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      // If the last message is from assistant and has content, it means response is complete
-      if (lastMessage.role === 'assistant' && lastMessage.content && !lastMessage.isThinking) {
-        scrollToBottomOnComplete();
-      }
-    }
-  }, [messages]);
+    if (!scrollContainerRef.current || messages.length === 0) return;
 
-  // Auto-scroll during streaming (when message content changes)
-  useEffect(() => {
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage && lastMessage.role === 'assistant' && !lastMessage.isThinking) {
-        // Check if user is at bottom before scrolling during streaming
-        if (!scrollContainerRef.current) return;
+    const wasAtBottom = isAtBottom();
 
-        const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-        const wasAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-
-        if (wasAtBottom) {
-          setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-          }, 10); // Faster scroll during streaming
+    // Auto-scroll if user was at bottom or if it's the first message
+    if (wasAtBottom || messages.length === 1) {
+      // Use a small delay to ensure DOM is updated, but avoid conflicts
+      const timeoutId = setTimeout(() => {
+        if (isAtBottom() || messages.length === 1) {
+          scrollToBottom();
         }
-      }
+      }, 50);
+
+      return () => clearTimeout(timeoutId);
     }
-  }, [messages]);
+  }, [messages, scrollToBottom, isAtBottom]);
 
   // Add scroll listener
   useEffect(() => {
@@ -191,13 +176,31 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   }, [messages.length]);
 
   return (
-    <div className="h-full w-full bg-background overflow-hidden flex flex-col">
-      {/* Title Bar - CSS-based draggable area */}
+    <div
+      className="h-screen w-full bg-background overflow-hidden flex flex-col"
+      style={{
+        position: 'relative',
+        height: '100vh',
+        maxHeight: '100vh'
+      }}
+    >
+      {/* Title Bar - Draggable area using preload script */}
       <div
-        className="flex-none h-10 bg-muted/50 border-b border-border flex items-center justify-between px-3 select-none"
+        className="flex-none h-10 bg-muted/50 border-b border-border flex items-center justify-between px-3 select-none chat-title-bar-drag-zone"
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 10000,
+          backdropFilter: 'blur(8px)',
+          backgroundColor: 'hsl(var(--muted) / 0.98)',
+          pointerEvents: 'auto',
+          cursor: 'grab'
+        }}
       >
         <span className="text-sm font-medium">CHAT WINDOW</span>
-        
+
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
@@ -221,7 +224,20 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden p-4">
+      <div
+        className="chat-overlay-content"
+        style={{
+          position: 'absolute',
+          top: '40px',                    // Start below the fixed title bar
+          left: '0',
+          right: '0',
+          bottom: '0',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          padding: '16px'
+        }}
+      >
         {/* Knowledge Base Search Indicator */}
         {isKnowledgeBaseSearching && (
           <div className="mb-4">
@@ -243,7 +259,12 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
         ) : (
           <div
             ref={scrollContainerRef}
-            className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar relative"
+            className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar"
+            style={{
+              height: '100%',                  // Fill the content area
+              overflowY: 'auto',
+              overflowX: 'hidden'
+            }}
           >
             {messages.map((message) => (
               <div

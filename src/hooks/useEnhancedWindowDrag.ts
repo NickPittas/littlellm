@@ -16,83 +16,34 @@ export function useEnhancedWindowDrag() {
       return;
     }
 
-    // Apply CSS-based dragging to non-interactive elements
-    const applyDragRegions = () => {
-      // Set the entire body as draggable by default
-      document.body.style.setProperty('-webkit-app-region', 'drag');
+    // Scoped strategy: ensure root elements have no app-region so component-level regions work
+    document.documentElement.style.removeProperty('-webkit-app-region');
+    document.body.style.removeProperty('-webkit-app-region');
 
-      // Find all interactive elements and mark them as no-drag
-      // BUT respect existing drag regions (don't override elements that are explicitly set to drag)
-      const interactiveElements = document.querySelectorAll([
-        'input',
-        'textarea',
-        'button',
-        'select',
-        'a',
-        '[contenteditable]',
-        '[role="button"]',
-        '[role="textbox"]',
-        '[role="combobox"]',
-        '[role="listbox"]',
-        '[role="option"]',
-        '[role="menuitem"]',
-        '[role="tab"]',
-        '[role="slider"]',
-        '[role="spinbutton"]',
-        '.cursor-pointer',
-        '.cursor-text',
-        '[data-radix-select-trigger]',
-        '[data-radix-select-content]',
-        '[data-radix-select-item]',
-        '[data-radix-popover-trigger]',
-        '[data-radix-popover-content]',
-        '[data-radix-dialog-trigger]',
-        '[data-radix-dialog-content]',
-        '.scrollbar-thumb',
-        '.scrollbar-track',
-        '[data-interactive]'
-      ].join(', '));
+    // Debug computed styles to verify correct regions
+    try {
+      const logRegion = (label: string, el: Element | null) => {
+        if (!el) return;
+        const cs = getComputedStyle(el as HTMLElement) as CSSStyleDeclaration;
+        // Access vendor property without using 'any'
+        const region =
+          (cs as unknown as Record<string, string>)['-webkit-app-region'] ||
+          (cs.getPropertyValue && cs.getPropertyValue('-webkit-app-region')) ||
+          'unset';
+        debugLogger.debug(`EnhancedWindowDrag: ${label} app-region=${region}`);
+      };
+      logRegion('html', document.documentElement);
+      logRegion('body', document.body);
+      const header = document.querySelector('.draggable-title-bar');
+      logRegion('.draggable-title-bar', header);
+    } catch {
+      // ignore logging errors
+    }
 
-      interactiveElements.forEach(element => {
-        const htmlElement = element as HTMLElement;
-
-        // Check if the element or its parent has an explicit drag region set
-        const hasExplicitDragRegion = htmlElement.style.getPropertyValue('-webkit-app-region') === 'drag' ||
-                                     htmlElement.closest('[style*="-webkit-app-region: drag"]');
-
-        // Only set to no-drag if it doesn't have an explicit drag region
-        if (!hasExplicitDragRegion) {
-          htmlElement.style.setProperty('-webkit-app-region', 'no-drag');
-        }
-      });
-
-      debugLogger.debug('Applied CSS drag regions to', interactiveElements.length, 'interactive elements');
-    };
-
-    // Apply drag regions immediately
-    applyDragRegions();
-
-    // Reapply when DOM changes (for dynamically added elements)
-    const observer = new MutationObserver(() => {
-      applyDragRegions();
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['data-interactive']
-    });
-
-    // Cleanup function
     return () => {
-      observer.disconnect();
-      // Reset drag regions
+      // leave root without app-region
+      document.documentElement.style.removeProperty('-webkit-app-region');
       document.body.style.removeProperty('-webkit-app-region');
-      const allElements = document.querySelectorAll('[style*="-webkit-app-region"]');
-      allElements.forEach(element => {
-        (element as HTMLElement).style.removeProperty('-webkit-app-region');
-      });
     };
   }, []);
 

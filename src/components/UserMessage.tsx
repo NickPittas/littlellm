@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Button } from './ui/button';
 import { MessageContent } from './MessageContent';
-import { ContentItem } from '../types/chat';
+import { ContentItem } from '../services/chatService';
 
 interface UserMessageProps {
   content: string | ContentItem[];
