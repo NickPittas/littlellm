@@ -1058,7 +1058,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     console.log('New chat started - all state cleared');
   };
 
-  // Listen for prompt selections from action menu overlay (same as VoilaInterface)
+  // Listen for prompt selections from action menu overlay
   useEffect(() => {
     console.log('🎯 Setting up prompt selection listener in ModernChatInterface');
 

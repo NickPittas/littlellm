@@ -89,10 +89,10 @@ Following Tailwind's spacing scale with consistent patterns:
 ## Component Hierarchy
 
 ### Layout Components
-1. **Main Container**: VoilaInterface with Magic UI enhancements
-2. **Sidebar**: Animated slide-in panel with history and navigation
-3. **Chat Area**: Magic Card containers for messages
-4. **Bottom Toolbar**: Dock component with animated icons
+1. **Main Container**: ModernChatInterface with Magic UI enhancements
+2. **Sidebar**: LeftSidebar with animated slide-in panel with history and navigation
+3. **Chat Area**: MainChatArea with Magic Card containers for messages
+4. **Bottom Input**: BottomInputArea with integrated controls and animations
 
 ### Interactive Components
 1. **Buttons**: Enhanced with hover animations
@@ -125,9 +125,9 @@ Following Tailwind's spacing scale with consistent patterns:
 4. **Phase 4**: Testing and accessibility improvements
 
 ## Component Mapping
-- **VoilaInterface** → Magic Container + Animated Layout
+- **ModernChatInterface** → Magic Container + Animated Layout
 - **Message Bubbles** → Magic Card with hover effects
-- **Bottom Toolbar** → Dock with animated icons
-- **Sidebar** → Animated panel with Blur Fade content
-- **Settings** → Tabbed interface with smooth transitions
+- **BottomInputArea** → Integrated input with animated controls
+- **LeftSidebar** → Animated panel with Blur Fade content
+- **Settings** → SettingsModal with tabbed interface and smooth transitions
 - **File Upload** → Enhanced drag-drop with animations

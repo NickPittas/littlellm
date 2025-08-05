@@ -4,19 +4,22 @@
 
 ### Main Interface Components
 
-#### VoilaInterface.tsx
-**Current**: Main container with basic styling
-**New**: Magic Container with enhanced animations
-- Add Blur Fade for content appearance
-- Implement smooth resize animations
+#### ModernChatInterface.tsx
+**Current**: Modern main interface with Magic UI components
+**Features**:
+- Magic Container with enhanced animations
+- Blur Fade for content appearance
+- Smooth resize animations
 - Enhanced transparency effects
+- Integrated sidebar and modern layout
 
-#### BottomToolbar
-**Current**: Basic button layout
-**New**: Dock component with animated icons
-- Magnification effect on hover
-- Smooth icon transitions
-- Better visual hierarchy
+#### BottomInputArea
+**Current**: Modern input area with integrated controls
+**Features**:
+- Integrated provider/model selection
+- Tool toggles and file upload
+- Agent selection dropdown
+- Send/stop button toggle
 
 ### Message System
 

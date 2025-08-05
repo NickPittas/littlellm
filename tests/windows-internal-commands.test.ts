@@ -44,7 +44,7 @@ describe('Windows Internal Commands', () => {
     };
 
     commandHandler = new ElectronInternalCommandHandler();
-    await commandHandler.updateConfiguration(config);
+    await commandHandler.setConfig(config);
 
     // Setup test directory and file
     testDir = path.join(os.tmpdir(), 'littlellm-test');

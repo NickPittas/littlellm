@@ -26,7 +26,7 @@ interface ElectronProcessSession {
   process?: ChildProcess; // Proper Node.js ChildProcess type
 }
 
-class ElectronInternalCommandHandler {
+export class ElectronInternalCommandHandler {
   private config: InternalCommandConfig | null = null;
   private commandHistory: Array<{ timestamp: number; command: string; success: boolean }> = [];
   private readonly MAX_COMMANDS_PER_MINUTE = 60;

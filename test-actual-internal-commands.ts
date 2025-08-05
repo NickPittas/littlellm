@@ -91,7 +91,7 @@ const mockElectronInternalCommandHandler = {
 
 async function testInternalCommands() {
   console.log('🔧 Testing Internal Command Handler Interface on Windows');
-  console.log('=' * 50);
+  console.log('='.repeat(50));
 
   const handler = mockElectronInternalCommandHandler;
 

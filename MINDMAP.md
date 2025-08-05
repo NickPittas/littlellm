@@ -32,24 +32,24 @@ LittleLLM is an Electron-based desktop AI chat application built with Next.js, R
 - `app/layout.tsx` - Root layout with theme providers
 
 **Components (`/src/components`):**
-- `VoilaInterface.tsx` - **MAIN CHAT INTERFACE**
+- `modern-ui/ModernChatInterface.tsx` - **MAIN CHAT INTERFACE**
+  - Modern UI with Magic UI components
   - Manages chat state, messages, file attachments
   - Handles window resizing and expansion
   - Integrates all other components
   - Controls conversation flow
 
-- `ChatInterface.tsx` - **CORE CHAT COMPONENT**
+- `modern-ui/MainChatArea.tsx` - **CORE CHAT COMPONENT**
   - Message display and input handling
   - Streaming response management
   - File attachment processing
   - Integration with LLM services
 
-- `BottomToolbarNew.tsx` - **PROVIDER/MODEL SELECTION**
-  - Provider dropdown with dynamic model fetching
-  - Model persistence per provider
-  - File upload and screenshot buttons
-  - Settings and history access
-  - **NEW**: Reset chat button for clearing conversations
+- `modern-ui/BottomInputArea.tsx` - **PROVIDER/MODEL SELECTION**
+  - Integrated input area with provider/model selection
+  - Tool toggles and file upload
+  - Agent selection dropdown
+  - Send/stop button toggle
   - **NEW**: MCP servers dropdown with enable/disable toggles
   - **NEW**: Token usage display (tokens/s and total tokens)
 
@@ -434,9 +434,9 @@ Each provider implements standardized interface:
 ## 🚨 Critical Dependencies & Relationships
 
 ### Component Dependencies
-- `VoilaInterface` → All other components (root orchestrator)
-- `ChatInterface` → `MessageWithThinking`, `UserMessage`
-- `BottomToolbar` → `llmService`, `settingsService`, **NEW**: `mcpService`
+- `ModernChatInterface` → All other modern UI components (root orchestrator)
+- `MainChatArea` → `MessageWithThinking`, `UserMessage`
+- `BottomInputArea` → `llmService`, `settingsService`, **NEW**: `mcpService`
 - **NEW**: `MCPDropdown` → `mcpService`, Electron IPC
 - **NEW**: `SettingsOverlay` → `mcpService` for MCP management
 - All components → UI component library
@@ -451,7 +451,7 @@ Each provider implements standardized interface:
 ### Critical Files for Functionality
 - `llmService.ts` - Core AI provider logic, **NEW**: MCP tool integration
 - `main.ts` - Electron application lifecycle, **NEW**: MCP SDK hosting
-- `VoilaInterface.tsx` - Main UI orchestration
+- `ModernChatInterface.tsx` - Main UI orchestration
 - `settingsService.ts` - Configuration persistence
 - **NEW**: `mcpService.ts` - MCP server management and IPC bridge
 - **NEW**: `mcp-dropdown.tsx` - MCP server UI controls
