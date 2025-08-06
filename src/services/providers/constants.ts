@@ -241,7 +241,8 @@ export const COMMON_HEADERS = {
 export const DEFAULT_SETTINGS = {
   temperature: 0.7,
   maxTokens: 4000,
-  toolCallingEnabled: true
+  toolCallingEnabled: false, // Disabled by default for security and user control
+  promptCachingEnabled: true // Enable prompt caching by default for cost savings
 };
 
 // Cache duration for model lists (5 minutes)

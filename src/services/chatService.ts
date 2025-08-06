@@ -65,6 +65,14 @@ export interface Message {
     completionTokens: number;
     totalTokens: number;
   };
+  cost?: {
+    inputCost: number;
+    outputCost: number;
+    totalCost: number;
+    currency: string;
+    provider: string;
+    model: string;
+  };
   timing?: {
     startTime: number;
     endTime: number;
@@ -608,11 +616,18 @@ export const chatService = {
           totalTokens: response.usage.totalTokens || (response.usage.promptTokens || 0) + (response.usage.completionTokens || 0)
         };
 
+        // Prepare cost information if available
+        const costInfo = response.cost ? {
+          totalCost: response.cost.totalCost,
+          currency: response.cost.currency
+        } : undefined;
+
         console.log('📊 Adding token usage to session:', {
           original: response.usage,
-          normalized: normalizedUsage
+          normalized: normalizedUsage,
+          cost: costInfo
         });
-        await sessionService.addTokenUsage(normalizedUsage);
+        await sessionService.addTokenUsage(normalizedUsage, costInfo);
 
         // Also log to window for debugging
         if (typeof window !== 'undefined') {
@@ -640,6 +655,7 @@ export const chatService = {
         role: 'assistant' as const,
         timestamp: new Date(),
         usage: response.usage,
+        cost: response.cost,
         timing: {
           startTime,
           endTime,

@@ -24,6 +24,7 @@ export interface LLMSettings {
   maxTokens: number;
   systemPrompt?: string;
   toolCallingEnabled?: boolean;
+  promptCachingEnabled?: boolean; // Enable prompt caching when supported
   memoryContext?: MemoryContext; // Memory context for provider-specific integration
 }
 

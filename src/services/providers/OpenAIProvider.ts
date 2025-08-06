@@ -14,6 +14,7 @@ import {
 
 import { OPENAI_SYSTEM_PROMPT, generateOpenAIToolPrompt } from './prompts/openai';
 import { OpenAIFileService, OpenAIFileUpload } from '../OpenAIFileService';
+import { PricingService } from '../pricingService';
 // import { RAGService } from '../RAGService'; // Moved to Electron main process, accessed via IPC
 
 export class OpenAIProvider extends BaseProvider {
@@ -24,6 +25,8 @@ export class OpenAIProvider extends BaseProvider {
     supportsTools: true,
     supportsStreaming: true,
     supportsSystemMessages: true,
+    supportsPromptCaching: true,
+    promptCachingType: 'automatic', // Automatic caching for prompts ≥1024 tokens
     maxToolNameLength: 64,
     toolFormat: 'openai'
   };
@@ -191,16 +194,22 @@ export class OpenAIProvider extends BaseProvider {
       settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
 
     const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
+    const cachingEnabled = settings.promptCachingEnabled ?? true;
 
     console.log(`🔍 OpenAI Chat Completions system prompt source:`, {
       hasCustom: hasCustomSystemPrompt,
       usingCustom: hasCustomSystemPrompt,
       promptLength: systemPrompt?.length || 0,
-      promptStart: systemPrompt?.substring(0, 100) + '...'
+      promptStart: systemPrompt?.substring(0, 100) + '...',
+      cachingEnabled,
+      automaticCaching: systemPrompt && systemPrompt.length > 4096 ? 'eligible' : 'too_small'
     });
 
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
+      if (cachingEnabled && systemPrompt.length > 4096) {
+        console.log(`🔧 OpenAI: System prompt eligible for automatic caching (${systemPrompt.length} chars, ≥1024 tokens)`);
+      }
     }
 
     // Add conversation history
@@ -209,9 +218,18 @@ export class OpenAIProvider extends BaseProvider {
     // Add current message (handle both string and array formats)
     if (typeof message === 'string') {
       messages.push({ role: 'user', content: message });
+      if (cachingEnabled && message.length > 4096) {
+        console.log(`🔧 OpenAI: User message eligible for automatic caching (${message.length} chars, ≥1024 tokens)`);
+      }
     } else if (Array.isArray(message)) {
       // Handle ContentItem array format (images, text)
       messages.push({ role: 'user', content: message });
+      if (cachingEnabled) {
+        const totalTextLength = message.filter(item => item.type === 'text').reduce((sum, item) => sum + (item.text?.length || 0), 0);
+        if (totalTextLength > 4096) {
+          console.log(`🔧 OpenAI: User message content eligible for automatic caching (${totalTextLength} chars total text, ≥1024 tokens)`);
+        }
+      }
     } else {
       // Handle legacy vision format (convert to OpenAI format)
       const messageWithImages = message as { text: string; images: string[] };
@@ -378,13 +396,11 @@ export class OpenAIProvider extends BaseProvider {
       );
     }
 
+    const { usage: usageInfo, cost } = this.createUsageAndCost(settings.model, usage);
     return {
       content: fullContent,
-      usage: usage ? {
-        promptTokens: usage.prompt_tokens || 0,
-        completionTokens: usage.completion_tokens || 0,
-        totalTokens: usage.total_tokens || 0
-      } : undefined
+      usage: usageInfo,
+      cost
     };
   }
 
@@ -1137,13 +1153,11 @@ export class OpenAIProvider extends BaseProvider {
       return this.executeToolsAndFollowUp(validToolCalls, fullContent, usage, settings, provider, conversationHistory, onStream, conversationId);
     }
 
+    const { usage: usageInfo, cost } = this.createUsageAndCost(settings.model, usage);
     return {
       content: fullContent,
-      usage: usage ? {
-        promptTokens: usage.prompt_tokens || 0,
-        completionTokens: usage.completion_tokens || 0,
-        totalTokens: usage.total_tokens || 0
-      } : undefined,
+      usage: usageInfo,
+      cost,
       toolCalls: validToolCalls
         .filter(tc => tc.id && tc.function?.name) // Only include tool calls with valid id and name
         .map(tc => ({
@@ -1371,13 +1385,35 @@ export class OpenAIProvider extends BaseProvider {
       };
     }
 
+    const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
     return {
       content: message.content,
-      usage: data.usage ? {
-        promptTokens: data.usage.prompt_tokens,
-        completionTokens: data.usage.completion_tokens,
-        totalTokens: data.usage.total_tokens
-      } : undefined
+      usage,
+      cost
     };
+  }
+
+  /**
+   * Calculate cost for OpenAI API usage
+   */
+  private calculateCost(model: string, promptTokens: number, completionTokens: number) {
+    return PricingService.calculateCost('openai', model, promptTokens, completionTokens);
+  }
+
+  /**
+   * Create usage and cost information from OpenAI API response
+   */
+  private createUsageAndCost(model: string, usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }) {
+    if (!usage) return { usage: undefined, cost: undefined };
+
+    const usageInfo = {
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0
+    };
+
+    const costInfo = this.calculateCost(model, usageInfo.promptTokens, usageInfo.completionTokens);
+
+    return { usage: usageInfo, cost: costInfo };
   }
 }

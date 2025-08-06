@@ -19,6 +19,14 @@ interface MessageWithThinkingProps {
     completionTokens: number;
     totalTokens: number;
   };
+  cost?: {
+    inputCost: number;
+    outputCost: number;
+    totalCost: number;
+    currency: string;
+    provider: string;
+    model: string;
+  };
   timing?: {
     startTime: number;
     endTime: number;
@@ -41,7 +49,7 @@ interface ParsedMessage {
   response: string;
 }
 
-export function MessageWithThinking({ content, className = '', usage, timing, toolCalls, sources }: MessageWithThinkingProps) {
+export function MessageWithThinking({ content, className = '', usage, cost, timing, toolCalls, sources }: MessageWithThinkingProps) {
   const [showThinking, setShowThinking] = useState(false);
   const [showToolExecution, setShowToolExecution] = useState(false);
   const [showTools, setShowTools] = useState(false);
@@ -842,8 +850,8 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
         } as React.CSSProperties & { WebkitAppRegion?: string }
       )}
 
-      {/* Token Usage and Performance Info */}
-      {(usage || timing) && (
+      {/* Token Usage, Cost, and Performance Info */}
+      {(usage || cost || timing) && (
         <div className="mt-3 pt-2">
           <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
             {timing?.tokensPerSecond && (
@@ -856,6 +864,17 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
               <div className="flex items-center gap-1">
                 <span className="font-medium">📊</span>
                 <span>{usage.totalTokens} tokens ({usage.promptTokens} in, {usage.completionTokens} out)</span>
+              </div>
+            )}
+            {cost && (
+              <div className="flex items-center gap-1">
+                <span className="font-medium">💰</span>
+                <span>
+                  {cost.totalCost < 0.000001 ? '<$0.000001' :
+                   cost.totalCost < 0.01 ? `$${cost.totalCost.toFixed(6)}` :
+                   `$${cost.totalCost.toFixed(4)}`}
+                  {cost.provider && ` (${cost.provider})`}
+                </span>
               </div>
             )}
             {timing && (

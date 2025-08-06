@@ -294,6 +294,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
                                 : String(message.content)
                           }
                           usage={message.usage}
+                          cost={message.cost}
                           timing={message.timing}
                           toolCalls={message.toolCalls}
                           sources={message.sources}
@@ -332,7 +333,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
         <div className="flex-none px-4 pb-2">
           <div className="text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded text-center">
             <div className="truncate">
-              Session: {sessionStats.totalTokens} tokens • {sessionStats.messagesCount} messages • {sessionService.formatSessionDuration()}
+              Session: {sessionStats.totalTokens} tokens • {sessionStats.messagesCount} messages • {sessionService.formatSessionCost()} • {sessionService.formatSessionDuration()}
             </div>
           </div>
         </div>

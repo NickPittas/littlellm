@@ -1,17 +1,18 @@
 // Google Gemini provider implementation
 
 import { BaseProvider } from './BaseProvider';
-import { 
-  LLMSettings, 
-  LLMResponse, 
-  MessageContent, 
-  ContentItem, 
+import {
+  LLMSettings,
+  LLMResponse,
+  MessageContent,
+  ContentItem,
   LLMProvider,
   ToolObject,
   ProviderCapabilities
 } from './types';
 
 import { GEMINI_SYSTEM_PROMPT } from './prompts/gemini';
+import { PricingService } from '../pricingService';
 import { debugLogger } from '../debugLogger';
 
 export class GeminiProvider extends BaseProvider {
@@ -22,6 +23,8 @@ export class GeminiProvider extends BaseProvider {
     supportsTools: true,
     supportsStreaming: true,
     supportsSystemMessages: true,
+    supportsPromptCaching: true,
+    promptCachingType: 'both', // Supports both implicit (automatic) and explicit (manual) caching
     maxToolNameLength: undefined,
     toolFormat: 'gemini'
   };
@@ -45,12 +48,15 @@ export class GeminiProvider extends BaseProvider {
       settings.systemPrompt !== "You are a helpful AI assistant. Please provide concise and helpful responses.";
 
     const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
+    const cachingEnabled = settings.promptCachingEnabled ?? true;
 
     console.log(`🔍 Gemini system prompt source:`, {
       hasCustom: hasCustomSystemPrompt,
       usingCustom: hasCustomSystemPrompt,
       promptLength: systemPrompt?.length || 0,
-      promptStart: systemPrompt?.substring(0, 100) + '...'
+      promptStart: systemPrompt?.substring(0, 100) + '...',
+      cachingEnabled,
+      implicitCachingEligible: systemPrompt && systemPrompt.length > 8192 ? 'yes' : 'no' // 2048 tokens for Pro
     });
 
     const contents = [];
@@ -67,17 +73,29 @@ export class GeminiProvider extends BaseProvider {
 
     // Add current message
     if (typeof message === 'string') {
+      // For large string messages, log caching eligibility
+      if (cachingEnabled && message.length > 8192) { // ~2048 tokens for Gemini Pro
+        console.log(`🔧 Gemini: User message eligible for implicit caching (${message.length} chars, ≥2048 tokens)`);
+      }
       contents.push({
         role: 'user',
         parts: [{ text: message }]
       });
     } else if (Array.isArray(message)) {
       // Handle ContentItem array format (from chatService.ts)
-      const parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }> = [];
+      const parts: Array<{ text: string; cache_control?: { type: 'ephemeral' } } | { inline_data: { mime_type: string; data: string } }> = [];
 
       for (const item of message as ContentItem[]) {
         if (item.type === 'text') {
-          parts.push({ text: item.text || '' });
+          // Add explicit cache_control for large text content if caching enabled
+          const textPart: { text: string; cache_control?: { type: 'ephemeral' } } = { text: item.text || '' };
+          if (cachingEnabled && item.cache_control) {
+            textPart.cache_control = item.cache_control;
+            console.log(`🔧 Gemini: Added explicit cache_control to text content (${item.text?.length || 0} chars)`);
+          } else if (cachingEnabled && item.text && item.text.length > 8192) {
+            console.log(`🔧 Gemini: Large text content eligible for implicit caching (${item.text.length} chars, ≥2048 tokens)`);
+          }
+          parts.push(textPart);
         } else if (item.type === 'image_url') {
           // Convert OpenAI format to Gemini format
           const imageUrl = item.image_url?.url || '';
@@ -151,6 +169,30 @@ export class GeminiProvider extends BaseProvider {
         maxOutputTokens: settings.maxTokens
       }
     };
+
+    // Add system instruction with potential caching
+    if (systemPrompt) {
+      if (cachingEnabled && systemPrompt.length > 8192) {
+        // For large system prompts, add explicit cache_control
+        requestBody.systemInstruction = {
+          parts: [
+            {
+              text: systemPrompt,
+              cache_control: { type: 'ephemeral' }
+            }
+          ]
+        };
+        console.log(`🔧 Gemini: Added explicit cache_control to system instruction (${systemPrompt.length} chars)`);
+      } else {
+        // Regular system instruction (may still benefit from implicit caching)
+        requestBody.systemInstruction = {
+          parts: [{ text: systemPrompt }]
+        };
+        if (cachingEnabled && systemPrompt.length > 8192) {
+          console.log(`🔧 Gemini: System instruction eligible for implicit caching (${systemPrompt.length} chars, ≥2048 tokens)`);
+        }
+      }
+    }
 
     // Add tools if available (Gemini uses its own format)
     if (formattedTools.length > 0) {
@@ -878,18 +920,33 @@ export class GeminiProvider extends BaseProvider {
         }
       }
 
+      const { usage, cost } = this.createUsageAndCost(settings.model, data.usageMetadata);
       return {
         content,
-        usage: data.usageMetadata ? {
-          promptTokens: data.usageMetadata.promptTokenCount,
-          completionTokens: data.usageMetadata.candidatesTokenCount,
-          totalTokens: data.usageMetadata.totalTokenCount
-        } : undefined,
+        usage,
+        cost,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined
       };
     } catch (error) {
       console.error('❌ Failed to parse Gemini response:', error);
       return { content: 'Error: Failed to parse response from Gemini' };
     }
+  }
+
+  /**
+   * Create usage and cost information from Gemini API response
+   */
+  private createUsageAndCost(model: string, usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number }) {
+    if (!usageMetadata) return { usage: undefined, cost: undefined };
+
+    const usageInfo = {
+      promptTokens: usageMetadata.promptTokenCount || 0,
+      completionTokens: usageMetadata.candidatesTokenCount || 0,
+      totalTokens: usageMetadata.totalTokenCount || 0
+    };
+
+    const costInfo = PricingService.calculateCost('gemini', model, usageInfo.promptTokens, usageInfo.completionTokens);
+
+    return { usage: usageInfo, cost: costInfo };
   }
 }

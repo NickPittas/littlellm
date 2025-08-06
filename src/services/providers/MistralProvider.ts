@@ -13,6 +13,7 @@ import {
 } from './types';
 
 import { MISTRAL_SYSTEM_PROMPT } from './prompts/mistral';
+import { PricingService } from '../pricingService';
 import { MistralFileService } from '../mistralFileService';
 
 export class MistralProvider extends BaseProvider {
@@ -1017,13 +1018,11 @@ export class MistralProvider extends BaseProvider {
       }
     }
 
+    const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
     return {
       content: message.content,
-      usage: data.usage ? {
-        promptTokens: data.usage.prompt_tokens,
-        completionTokens: data.usage.completion_tokens,
-        totalTokens: data.usage.total_tokens
-      } : undefined
+      usage,
+      cost
     };
   }
 
@@ -1102,5 +1101,22 @@ export class MistralProvider extends BaseProvider {
    */
   static isFileSupported(file: File): { supported: boolean; reason?: string } {
     return MistralFileService.isFileSupported(file);
+  }
+
+  /**
+   * Create usage and cost information from Mistral API response
+   */
+  private createUsageAndCost(model: string, usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }) {
+    if (!usage) return { usage: undefined, cost: undefined };
+
+    const usageInfo = {
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0
+    };
+
+    const costInfo = PricingService.calculateCost('mistral', model, usageInfo.promptTokens, usageInfo.completionTokens);
+
+    return { usage: usageInfo, cost: costInfo };
   }
 }

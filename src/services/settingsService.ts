@@ -34,7 +34,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     systemPrompt: '',
     temperature: 0.3,
     maxTokens: 8192,
-    toolCallingEnabled: true,
+    toolCallingEnabled: false, // Disabled by default for security and user control
     ragEnabled: false,
     providers: {
       openai: { lastSelectedModel: '' },

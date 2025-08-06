@@ -14,6 +14,7 @@ import {
 import { ToolNameUtils } from './utils';
 import { ANTHROPIC_SYSTEM_PROMPT } from './prompts/anthropic';
 import { debugLogger } from '../debugLogger';
+import { PricingService } from '../pricingService';
 
 export class AnthropicProvider extends BaseProvider {
   readonly id = 'anthropic';
@@ -23,6 +24,8 @@ export class AnthropicProvider extends BaseProvider {
     supportsTools: true,
     supportsStreaming: true,
     supportsSystemMessages: true,
+    supportsPromptCaching: true,
+    promptCachingType: 'manual', // Requires cache_control parameters
     maxToolNameLength: 64,
     toolFormat: 'anthropic'
   };
@@ -136,13 +139,17 @@ export class AnthropicProvider extends BaseProvider {
     signal?: AbortSignal,
     conversationId?: string
   ): Promise<LLMResponse> {
+    // Initialize caching setting early
+    const cachingEnabled = settings.promptCachingEnabled ?? true;
+
     // Debug API key details
     console.log('🔍 Anthropic API key debug:', {
       hasApiKey: !!settings.apiKey,
       keyLength: settings.apiKey?.length || 0,
       keyStart: settings.apiKey?.substring(0, 10) || 'undefined',
       keyType: typeof settings.apiKey,
-      startsWithSkAnt: settings.apiKey?.startsWith('sk-ant-') || false
+      startsWithSkAnt: settings.apiKey?.startsWith('sk-ant-') || false,
+      cachingEnabled
     });
 
     // Validate API key format
@@ -200,12 +207,30 @@ export class AnthropicProvider extends BaseProvider {
 
     // Add current message
     if (typeof message === 'string') {
-      messages.push({ role: 'user', content: message });
+      // For large string messages, add cache_control if caching is enabled
+      if (cachingEnabled && message.length > 4096) { // ~1024 tokens
+        const contentWithCaching = [
+          {
+            type: 'text',
+            text: message,
+            cache_control: { type: 'ephemeral' }
+          }
+        ];
+        messages.push({ role: 'user', content: contentWithCaching });
+        console.log(`🔧 Anthropic: Added cache_control to large user message (${message.length} chars)`);
+      } else {
+        messages.push({ role: 'user', content: message });
+      }
     } else if (Array.isArray(message)) {
       // Handle ContentItem array format (from chatService.ts)
-      const anthropicContent = message.map((item: ContentItem) => {
+      const anthropicContent = message.map((item: ContentItem, index) => {
         if (item.type === 'text') {
-          return { type: 'text', text: item.text };
+          // Add cache_control to large text content and make it the last cacheable item
+          const textItem = { type: 'text', text: item.text };
+          if (cachingEnabled && item.text && item.text.length > 4096 && index === message.length - 1) {
+            return { ...textItem, cache_control: { type: 'ephemeral' } };
+          }
+          return textItem;
         } else if (item.type === 'image_url') {
           // Convert OpenAI format to Anthropic format
           const imageUrl = item.image_url?.url || '';
@@ -279,14 +304,28 @@ export class AnthropicProvider extends BaseProvider {
       hasCustom: hasCustomSystemPrompt,
       usingCustom: hasCustomSystemPrompt,
       promptLength: systemPrompt?.length || 0,
-      promptStart: systemPrompt?.substring(0, 100) + '...'
+      promptStart: systemPrompt?.substring(0, 100) + '...',
+      cachingEnabled
     });
+
+    // Add cache_control to system prompt if caching is enabled and content is large enough
+    let systemWithCaching: unknown = systemPrompt;
+    if (cachingEnabled && systemPrompt && systemPrompt.length > 4096) { // ~1024 tokens
+      systemWithCaching = [
+        {
+          type: 'text',
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' }
+        }
+      ];
+      console.log(`🔧 Anthropic: Added cache_control to system prompt (${systemPrompt.length} chars)`);
+    }
 
     const requestBody: Record<string, unknown> = {
       model: settings.model,
       max_tokens: maxTokens,
       temperature: settings.temperature,
-      system: systemPrompt || undefined,
+      system: systemWithCaching || undefined,
       messages: messages,
       stream: !!onStream
     };
@@ -1009,14 +1048,29 @@ export class AnthropicProvider extends BaseProvider {
       arguments: block.input || {}
     }));
 
+    const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
     return {
       content,
-      usage: data.usage ? {
-        promptTokens: data.usage.input_tokens,
-        completionTokens: data.usage.output_tokens,
-        totalTokens: data.usage.input_tokens + data.usage.output_tokens
-      } : undefined,
+      usage,
+      cost,
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined
     };
+  }
+
+  /**
+   * Create usage and cost information from Anthropic API response
+   */
+  private createUsageAndCost(model: string, usage?: { input_tokens?: number; output_tokens?: number }) {
+    if (!usage) return { usage: undefined, cost: undefined };
+
+    const usageInfo = {
+      promptTokens: usage.input_tokens || 0,
+      completionTokens: usage.output_tokens || 0,
+      totalTokens: (usage.input_tokens || 0) + (usage.output_tokens || 0)
+    };
+
+    const costInfo = PricingService.calculateCost('anthropic', model, usageInfo.promptTokens, usageInfo.completionTokens);
+
+    return { usage: usageInfo, cost: costInfo };
   }
 }

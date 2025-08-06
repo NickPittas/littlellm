@@ -21,6 +21,7 @@ export interface LLMSettings {
   maxTokens: number;
   systemPrompt?: string;
   toolCallingEnabled?: boolean;
+  promptCachingEnabled?: boolean; // Enable prompt caching when supported
   memoryContext?: MemoryContext; // Memory context for provider-specific integration
 }
 
@@ -38,6 +39,9 @@ export interface ContentItem {
   };
   fileName?: string;
   fileContent?: string;
+  cache_control?: {
+    type: 'ephemeral';
+  }; // For prompt caching support (Anthropic/Gemini via OpenRouter)
 }
 
 export type MessageContent = string | Array<ContentItem> | { text: string; images: string[] };
@@ -86,6 +90,14 @@ export interface LLMResponse {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
+  };
+  cost?: {
+    inputCost: number;
+    outputCost: number;
+    totalCost: number;
+    currency: string;
+    provider: string;
+    model: string;
   };
   toolCalls?: Array<{
     id: string;
@@ -173,6 +185,8 @@ export interface ProviderCapabilities {
   supportsTools: boolean;
   supportsStreaming: boolean;
   supportsSystemMessages: boolean;
+  supportsPromptCaching?: boolean; // Whether provider supports prompt caching
+  promptCachingType?: 'automatic' | 'manual' | 'both'; // Type of caching support
   maxToolNameLength?: number;
   toolFormat: 'openai' | 'anthropic' | 'gemini' | 'custom' | 'text' | 'adaptive';
 }

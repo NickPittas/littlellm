@@ -23,6 +23,8 @@ export class OpenRouterProvider extends BaseProvider {
     supportsTools: true,
     supportsStreaming: true,
     supportsSystemMessages: true,
+    supportsPromptCaching: true,
+    promptCachingType: 'both', // Supports both automatic (OpenAI/Grok/DeepSeek) and manual (Anthropic/Gemini)
     maxToolNameLength: 64,
     toolFormat: 'openai'
   };
@@ -126,6 +128,68 @@ export class OpenRouterProvider extends BaseProvider {
     }
   }
 
+  private modelSupportsManualCaching(underlyingProvider: string): boolean {
+    // Check if underlying provider supports manual cache_control parameters
+    switch (underlyingProvider) {
+      case 'anthropic':
+      case 'google': // Gemini models
+        return true;
+      case 'openai':
+      case 'grok':
+      case 'deepseek':
+        return false; // These use automatic caching
+      default:
+        return false;
+    }
+  }
+
+  private addCacheControlToSystemPrompt(systemPrompt: string, underlyingProvider: string, cachingEnabled: boolean): unknown {
+    // Add cache_control to system prompt for providers that support manual caching
+    if (!cachingEnabled || !this.modelSupportsManualCaching(underlyingProvider)) {
+      return systemPrompt;
+    }
+
+    if (underlyingProvider === 'anthropic') {
+      // Anthropic format: array of content objects with cache_control
+      return [
+        {
+          type: 'text',
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' }
+        }
+      ];
+    } else if (underlyingProvider === 'google') {
+      // For Gemini via OpenRouter, system prompt caching is handled differently
+      // Return as string but we'll add cache_control to messages instead
+      return systemPrompt;
+    }
+
+    return systemPrompt;
+  }
+
+  private addCacheControlToLargeContent(content: Array<ContentItem>, enableCaching: boolean): Array<ContentItem> {
+    if (!enableCaching) {
+      return content;
+    }
+
+    // Add cache_control to large text content (>1024 tokens estimated)
+    return content.map((item, index) => {
+      if (item.type === 'text' && item.text) {
+        // Rough token estimation: ~4 characters per token
+        const estimatedTokens = item.text.length / 4;
+
+        // Add cache_control to large content (>1024 tokens) and make it the last cacheable item
+        if (estimatedTokens > 1024 && index === content.length - 1) {
+          return {
+            ...item,
+            cache_control: { type: 'ephemeral' as const }
+          };
+        }
+      }
+      return item;
+    });
+  }
+
   private async buildProviderSpecificRequest(
     underlyingProvider: string,
     settings: LLMSettings,
@@ -137,7 +201,11 @@ export class OpenRouterProvider extends BaseProvider {
   ): Promise<{ requestBody: Record<string, unknown>; messages: unknown[] }> {
 
     const supportsStructuredTools = this.modelSupportsStructuredTools(underlyingProvider);
+    const supportsManualCaching = this.modelSupportsManualCaching(underlyingProvider);
+    const cachingEnabled = settings.promptCachingEnabled ?? false;
+
     console.log(`🔧 OpenRouter underlying provider "${underlyingProvider}" supports structured tools: ${supportsStructuredTools}`);
+    console.log(`🔧 OpenRouter underlying provider "${underlyingProvider}" supports manual caching: ${supportsManualCaching}, enabled: ${cachingEnabled}`);
 
     // Build messages based on provider format
     let messages: unknown[];
@@ -145,10 +213,11 @@ export class OpenRouterProvider extends BaseProvider {
 
     if (underlyingProvider === 'anthropic') {
       // Anthropic format: system parameter + messages without system role
-      messages = await this.constructMessagesWithFiles(message, conversationHistory, ''); // No system in messages
+      messages = await this.constructMessagesWithFiles(message, conversationHistory, '', cachingEnabled && supportsManualCaching);
+      const systemWithCaching = this.addCacheControlToSystemPrompt(systemPrompt, underlyingProvider, cachingEnabled);
       requestBody = {
         model: settings.model,
-        system: systemPrompt, // Separate system parameter
+        system: systemWithCaching, // System parameter with optional caching
         messages,
         temperature: settings.temperature,
         max_tokens: settings.maxTokens,
@@ -156,7 +225,7 @@ export class OpenRouterProvider extends BaseProvider {
       };
     } else {
       // OpenAI format (default): system message first in messages array
-      messages = await this.constructMessagesWithFiles(message, conversationHistory, systemPrompt);
+      messages = await this.constructMessagesWithFiles(message, conversationHistory, systemPrompt, cachingEnabled && supportsManualCaching);
       requestBody = {
         model: settings.model,
         messages,
@@ -617,7 +686,8 @@ export class OpenRouterProvider extends BaseProvider {
   private async constructMessagesWithFiles(
     message: MessageContent,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    systemPrompt: string
+    systemPrompt: string,
+    enableCaching: boolean = false
   ): Promise<Array<{role: string, content: string | Array<ContentItem>}>> {
     const messages: Array<{role: string, content: string | Array<ContentItem>}> = [];
 
@@ -628,7 +698,19 @@ export class OpenRouterProvider extends BaseProvider {
     messages.push(...conversationHistory);
 
     if (typeof message === 'string') {
-      messages.push({ role: 'user', content: message }); // RAG integration now handled in chatService
+      // For string messages, add cache_control if it's large content
+      if (enableCaching && message.length > 4096) { // ~1024 tokens
+        const contentWithCaching: Array<ContentItem> = [
+          {
+            type: 'text',
+            text: message,
+            cache_control: { type: 'ephemeral' }
+          }
+        ];
+        messages.push({ role: 'user', content: contentWithCaching });
+      } else {
+        messages.push({ role: 'user', content: message });
+      }
     } else if (Array.isArray(message)) {
       const userContent: Array<ContentItem> = [];
       for (const item of message) {
@@ -665,7 +747,10 @@ export class OpenRouterProvider extends BaseProvider {
           userContent.push(item);
         }
       }
-      messages.push({ role: 'user', content: userContent });
+
+      // Add cache_control to large content items
+      const contentWithCaching = this.addCacheControlToLargeContent(userContent, enableCaching);
+      messages.push({ role: 'user', content: contentWithCaching });
     }
 
     return messages;

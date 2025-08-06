@@ -199,8 +199,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
         const provider = savedSettings.provider || 'ollama';
         setSelectedProvider(provider);
-        setToolsEnabled(savedSettings.toolCallingEnabled || false);
-        setKnowledgeBaseEnabled(savedSettings.ragEnabled || false);
+        setToolsEnabled(savedSettings.toolCallingEnabled ?? false); // Use nullish coalescing to respect explicit false
+        setKnowledgeBaseEnabled(savedSettings.ragEnabled ?? false);
 
         // Try to get the last selected model for this provider
         let modelToUse = savedSettings.model || 'gemma3:gpu';
@@ -798,13 +798,14 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         setSelectedModel(agent.defaultModel);
         await loadModelsForProvider(agent.defaultProvider);
       } else {
-        // Clear agent configuration - use default settings
+        // Clear agent configuration - preserve user's tool calling preference
+        const savedSettings = settingsService.getChatSettings();
         setSettings(prev => ({
           ...prev,
           systemPrompt: '',
           temperature: 0.7,
           maxTokens: 4000,
-          toolCallingEnabled: true
+          toolCallingEnabled: savedSettings.toolCallingEnabled // Preserve user's preference
         }));
       }
 
