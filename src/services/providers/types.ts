@@ -91,6 +91,8 @@ export interface LLMResponse {
     id: string;
     name: string;
     arguments: ToolCallArguments;
+    result?: string;
+    error?: boolean;
   }>;
 }
 

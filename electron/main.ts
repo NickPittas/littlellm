@@ -3242,8 +3242,7 @@ function setupIPC() {
 
   ipcMain.handle('close-window', () => {
     if (mainWindow) {
-      isQuitting = true;
-      app.quit();
+      mainWindow.hide();
     }
   });
 
@@ -4916,12 +4915,41 @@ console.debug = (...args: unknown[]) => {
         systemText: '#00ff41',
       },
     },
+    {
+      id: 'purple',
+      name: 'Purple Dream',
+      colors: {
+        background: '#1a0d2e',
+        foreground: '#e0d4ff',
+        card: '#2d1b4e',
+        cardForeground: '#ffffff',
+        primary: '#9d4edd',
+        primaryForeground: '#ffffff',
+        secondary: '#c77dff',
+        secondaryForeground: '#000000',
+        accent: '#9d4edd',
+        accentForeground: '#ffffff',
+        muted: '#2d1b4e',
+        mutedForeground: '#b19cd9',
+        border: '#5a4b7c',
+        input: '#3c2a5a',
+        ring: '#9d4edd',
+        destructive: '#f44747',
+        destructiveForeground: '#ffffff',
+        systemText: '#e0d4ff',
+      },
+    },
   ];
 
   function getThemePreset(id: string) {
     const preset = THEME_PRESETS.find(theme => theme.id === id);
     if (!preset) {
-      throw new Error(`Theme preset '${id}' not found - no fallback to defaults`);
+      console.warn(`⚠️ Theme preset '${id}' not found, falling back to 'default'`);
+      const defaultPreset = THEME_PRESETS.find(theme => theme.id === 'default');
+      if (!defaultPreset) {
+        throw new Error(`Critical: Default theme preset not found`);
+      }
+      return defaultPreset;
     }
     return preset;
   }

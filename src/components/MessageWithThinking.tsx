@@ -29,6 +29,8 @@ interface MessageWithThinkingProps {
     id: string;
     name: string;
     arguments: Record<string, unknown>;
+    result?: string;
+    error?: boolean;
   }>;
   sources?: Source[];
 }
@@ -48,6 +50,50 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
   const autoPlayTriggeredRef = useRef(false);
 
   // Debug tool calls - now handled in useEffect to prevent spam
+  useEffect(() => {
+    if (toolCalls && toolCalls.length > 0) {
+      console.log(`🔧 MessageWithThinking received ${toolCalls.length} tool calls:`, toolCalls);
+      toolCalls.forEach((tc, index) => {
+        console.log(`🔧 Tool ${index}: ${tc.name}, has result: ${!!tc.result}, result length: ${tc.result?.length || 0}, error: ${tc.error}`);
+        if (tc.result) {
+          console.log(`🔧 Tool ${index} result preview:`, tc.result.substring(0, 100) + '...');
+        }
+      });
+    }
+  }, [toolCalls]);
+
+  // Helper function to remove model-specific template tags
+  const removeTemplateTags = (text: string): string => {
+    let cleanedText = text;
+
+    // Remove new model format tags: <|start|>, <|message|>, <|channel|>, <|end|>, <|constrain|>
+    cleanedText = cleanedText.replace(/<\|start\|>/gi, '');
+    cleanedText = cleanedText.replace(/<\|message\|>/gi, '');
+    cleanedText = cleanedText.replace(/<\|channel\|>/gi, '');
+    cleanedText = cleanedText.replace(/<\|end\|>/gi, '');
+    cleanedText = cleanedText.replace(/<\|constrain\|>/gi, '');
+
+    // Remove Qwen3 format tags: <|im_start|>, <|im_end|>
+    cleanedText = cleanedText.replace(/<\|im_start\|>/gi, '');
+    cleanedText = cleanedText.replace(/<\|im_end\|>/gi, '');
+
+    // Remove concatenated role and channel indicators (e.g., "assistantfinal", "systemcommentary")
+    cleanedText = cleanedText.replace(/(system|user|assistant)(final|analysis|commentary)/gi, '');
+
+    // Remove standalone role indicators
+    cleanedText = cleanedText.replace(/\b(system|user|assistant)\b/gi, '');
+
+    // Remove standalone channel indicators
+    cleanedText = cleanedText.replace(/\b(final|analysis|commentary)\b/gi, '');
+
+    // Remove tool call commands (e.g., "to=web_search json{...}", "to=list_directoryjson{...}") - handles nested JSON, hyphens, function prefixes, optional space, and multiple calls
+    cleanedText = cleanedText.replace(/(?:commentary\s+)?to=(?:functions\.)?[a-zA-Z_][a-zA-Z0-9_-]*\s*json\{(?:[^{}]|{[^{}]*})*\}/gi, '');
+
+    // Clean up any remaining template-like patterns
+    cleanedText = cleanedText.replace(/<\|[^|]*\|>/gi, '');
+
+    return cleanedText;
+  };
 
   // Parse the message content to extract thinking sections, tool execution, and response
   const parseMessage = (text: string): ParsedMessage => {
@@ -71,7 +117,8 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
 
     // Enhanced parsing for thinking models - ONLY for explicit thinking patterns
     // Look for content that appears before tool calls AND has strong thinking indicators
-    const beforeToolCallMatch = text.match(/^([\s\S]*?)(?=```json)/);
+    // Support both ```json and new model format (to=tool_name json{...} or to=tool_namejson{...})
+    const beforeToolCallMatch = text.match(/^([\s\S]*?)(?=```json|(?:commentary\s+)?to=[a-zA-Z_][a-zA-Z0-9_-]*\s*json)/);
     if (beforeToolCallMatch) {
       const potentialThinking = beforeToolCallMatch[1].trim();
 
@@ -80,7 +127,8 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
         'okay let me think through this', 'let me think through', 'i need to think about',
         'let me analyze this', 'let me break this down', 'thinking through this',
         'let me consider the', 'i should think about', 'let me reason through',
-        'okay let me think', 'let me think carefully', 'i need to consider'
+        'okay let me think', 'let me think carefully', 'i need to consider',
+        'commentary', 'commentarythe', 'according to developer instruction'
       ];
 
       // Check for multiple strong indicators or very explicit thinking language
@@ -90,9 +138,9 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
 
       // Very strict criteria: must have strong thinking language AND be substantial content
       // AND appear before a tool call (not standalone responses)
-      const hasToolCall = text.includes('```json');
+      const hasToolCall = text.includes('```json') || /(?:commentary\s+)?to=[a-zA-Z_][a-zA-Z0-9_-]*\s*json/.test(text);
       const isExplicitThinking = strongIndicatorCount > 0 && potentialThinking.length > 100;
-      const startsWithThinking = /^(okay let me think|let me think|i need to think|thinking through)/i.test(potentialThinking);
+      const startsWithThinking = /^(okay let me think|let me think|i need to think|thinking through|commentary)/i.test(potentialThinking);
 
       if (hasToolCall && (isExplicitThinking || startsWithThinking)) {
         thinking.push(potentialThinking);
@@ -115,6 +163,9 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
     for (const thinkingContent of thinking) {
       response = response.replace(thinkingContent, '');
     }
+
+    // Remove model-specific template tags
+    response = removeTemplateTags(response);
 
     // Clean up extra whitespace and empty lines
     response = response.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
@@ -631,16 +682,40 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
 
                   <div className="space-y-3">
                     {allToolCalls.map((tool, toolIndex) => (
-                      <div key={toolIndex} className="border border-border/50 rounded-lg p-2">
+                      <div key={toolIndex} className={`border rounded-lg p-3 ${
+                        tool.error ? 'border-red-500/30 bg-red-500/5' : 'border-border/50'
+                      }`}>
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-xs font-medium text-foreground">{tool.name}</span>
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
-                            ✓ Success
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            tool.error
+                              ? 'bg-red-500/20 text-red-400'
+                              : 'bg-green-500/20 text-green-400'
+                          }`}>
+                            {tool.error ? '✗ Failed' : '✓ Success'}
                           </span>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          **Tool executed successfully.** Results are shown in the Tool Usage section below if available.
-                        </div>
+
+                        {/* Show actual tool results */}
+                        {tool.result !== undefined ? (
+                          <div className="mt-2">
+                            <div className="text-xs font-medium text-muted-foreground mb-1">Result:</div>
+                            <div className="bg-muted rounded p-2 text-xs whitespace-pre-wrap text-foreground select-text break-words max-h-40 overflow-y-auto"
+                                 style={{
+                                   WebkitAppRegion: 'no-drag',
+                                   userSelect: 'text',
+                                   WebkitUserSelect: 'text',
+                                   wordWrap: 'break-word',
+                                   overflowWrap: 'break-word'
+                                 } as React.CSSProperties & { WebkitAppRegion?: string }}>
+                              {tool.result || '(empty result)'}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            Tool executed successfully. No detailed results available.
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -686,36 +761,29 @@ export function MessageWithThinking({ content, className = '', usage, timing, to
                     <span className="text-muted-foreground">#{toolCall.id}</span>
                   </div>
 
-                  {/* Tool Arguments */}
-                  <div className="mb-2">
-                    <div className="text-xs font-medium text-muted-foreground mb-1">Arguments:</div>
-                    <div
-                      className="bg-muted rounded p-2 text-xs font-mono whitespace-pre-wrap text-foreground select-text break-words"
-                      style={{
-                        WebkitAppRegion: 'no-drag',
-                        userSelect: 'text',
-                        WebkitUserSelect: 'text',
-                        textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                        border: 'none',
-                        wordWrap: 'break-word',
-                        overflowWrap: 'break-word',
-                        maxWidth: '100%'
-                      } as React.CSSProperties & { WebkitAppRegion?: string }}
-                    >
-                      {Object.keys(toolCall.arguments).length > 0
-                        ? JSON.stringify(toolCall.arguments, null, 2)
-                        : '(no arguments)'}
-                    </div>
-                  </div>
-
-                  {/* Tool Execution Status */}
+                  {/* Tool Status and Summary */}
                   <div className="text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 mb-1">
                       <span className="font-medium">Status:</span>
-                      <span className="text-green-400">✓ Executed</span>
+                      <span className={toolCall.error ? 'text-red-400' : 'text-green-400'}>
+                        {toolCall.error ? '✗ Failed' : '✓ Executed'}
+                      </span>
                     </div>
+
+                    {/* Show arguments summary */}
+                    {Object.keys(toolCall.arguments).length > 0 && (
+                      <div className="mt-1">
+                        <span className="font-medium">Arguments: </span>
+                        <span className="text-xs">
+                          {Object.entries(toolCall.arguments).map(([key, value]) =>
+                            `${key}: ${String(value).substring(0, 50)}${String(value).length > 50 ? '...' : ''}`
+                          ).join(', ')}
+                        </span>
+                      </div>
+                    )}
+
                     <div className="mt-1 text-xs">
-                      Results are shown in the Tool Execution section above if available.
+                      Full results are shown in the Tool Execution section above.
                     </div>
                   </div>
                 </div>

@@ -949,6 +949,12 @@ Please integrate these results into a natural, helpful response.`;
       }
     }
 
+    // Show tool execution completion
+    const successCount = toolResults.filter(tr => !tr.error).length;
+    const failureCount = toolResults.filter(tr => tr.error).length;
+    const completionMessage = `<tool_execution>\n🏁 **Tool Execution Complete**\n\n✅ ${successCount} successful, ❌ ${failureCount} failed\n</tool_execution>\n\n`;
+    onStream(completionMessage);
+
     // Create follow-up prompt with tool results (simplified approach like LM Studio)
     const toolResultsText = toolResults.map(tr =>
       `Tool: ${tr.name}\nResult: ${tr.result}\n`
@@ -989,23 +995,12 @@ Please provide a natural, helpful response based on the tool results.`;
       true // Enable tools for continued agentic behavior
     );
 
-    // Create tool execution content for UI display (like LM Studio)
-    const toolExecutionContent = `<tool_execution>
-${toolResults.map(tr => {
-  const status = tr.error ? 'failed' : 'success';
-  return `Tool: ${tr.name}
-Status: ${status}
-Result: ${tr.result}`;
-}).join('\n\n')}
-</tool_execution>`;
-
-    // Combine tool execution content with the final response
-    const finalContent = toolExecutionContent + '\n\n' + (followUpResponse.content || '');
-
-    console.log(`🎯 Ollama: Final response with tool execution:`, finalContent);
+    // According to OpenAI/LM Studio docs, we should return ONLY the final assistant response
+    // Tool execution details are handled by the UI separately via toolCalls
+    console.log(`🎯 Ollama: Final response (clean):`, followUpResponse.content);
 
     return {
-      content: finalContent,
+      content: followUpResponse.content || '',
       usage: followUpResponse.usage,
       toolCalls: toolCalls.map(tc => {
         let parsedArgs: Record<string, unknown> = {};
@@ -1015,10 +1010,13 @@ Result: ${tr.result}`;
           console.warn(`⚠️ Failed to parse tool arguments for return: ${tc.function.arguments}`, error);
         }
 
+        const result = toolResults.find(tr => tr.name === tc.function.name);
         return {
           id: tc.id,
           name: tc.function.name,
-          arguments: parsedArgs
+          arguments: parsedArgs,
+          result: result?.result,
+          error: result?.error
         };
       })
     };
@@ -1436,7 +1434,99 @@ Continue based on the tool results above. Call additional tools if needed for a 
     console.log(`🔍 Ollama parsing text for tools. Available tools:`, availableTools);
     console.log(`🔍 Content to parse:`, content);
 
-    // Pattern 1: Enhanced tool_call format with ```json wrapper (Option 2)
+    // Pattern 1: New model format with optional commentary prefix and to=tool_name and JSON arguments
+    // Example: "commentary to=web_search json{"query":"dad joke", "topn":5}" or "to=list_directoryjson{...}"
+    // Updated to handle nested JSON, multiple tool calls, hyphens, function namespace prefixes, and optional space before json
+    const newModelFormatRegex = /(?:commentary\s+)?to=(?:functions\.)?([a-zA-Z_][a-zA-Z0-9_-]*)\s*json(\{(?:[^{}]|{[^{}]*})*\})/gi;
+
+    // Pattern 1b: Nested function call format - to=functions json{"name":"tool_name","arguments":{...}}
+    // CHECK THIS FIRST before the general pattern to avoid conflicts
+    const nestedFunctionFormatRegex = /(?:commentary\s+)?to=functions\s*json\{[^}]*"name"\s*:\s*"([^"]+)"[^}]*"arguments"\s*:\s*(\{[^}]*\})[^}]*\}/gi;
+
+    // Handle nested function format FIRST
+    let nestedMatch;
+    while ((nestedMatch = nestedFunctionFormatRegex.exec(content)) !== null) {
+      try {
+        const rawToolName = nestedMatch[1];
+        const jsonArgs = nestedMatch[2];
+        const args = JSON.parse(jsonArgs);
+
+        // Apply same tool name mapping
+        const toolNameMapping: Record<string, string> = {
+          'memory_store': 'memory-store',
+          'memory_search': 'memory-search',
+          'memory_retrieve': 'memory-retrieve',
+          'knowledge_base': 'knowledge-base',
+          'knowledge_search': 'knowledge-base',
+          'internal_tools': 'internal-commands',
+          'internal_commands': 'internal-commands',
+          'search': 'web_search'
+        };
+
+        const toolName = toolNameMapping[rawToolName] || rawToolName;
+
+        // Verify this is a valid tool name
+        if (availableTools.includes(toolName)) {
+          toolCalls.push({ name: toolName, arguments: args });
+          console.log(`✅ Found nested function format tool call: ${rawToolName} -> ${toolName} with args:`, args);
+        } else {
+          console.log(`⚠️ Nested function tool name "${rawToolName}" (mapped to "${toolName}") not in available tools:`, availableTools);
+        }
+      } catch (error) {
+        console.log(`⚠️ Failed to parse nested function format tool call:`, nestedMatch[0], error);
+      }
+    }
+
+    // If we found nested function calls, return them immediately
+    if (toolCalls.length > 0) {
+      console.log(`✅ Found ${toolCalls.length} nested function format tool calls, returning them`);
+      return toolCalls;
+    }
+
+    let newModelMatch;
+    while ((newModelMatch = newModelFormatRegex.exec(content)) !== null) {
+      try {
+        const rawToolName = newModelMatch[1];
+        const jsonArgs = newModelMatch[2];
+
+        // Only parse tools that actually exist - no guessing or mapping
+        if (availableTools.includes(rawToolName)) {
+          try {
+            // Handle malformed empty JSON like {"":""}
+            let cleanJsonArgs = jsonArgs;
+            if (jsonArgs === '{"":""}' || jsonArgs === '{"": ""}') {
+              cleanJsonArgs = '{}';
+              console.log(`🔧 Fixed malformed empty JSON: ${jsonArgs} -> ${cleanJsonArgs}`);
+            }
+
+            const args = JSON.parse(cleanJsonArgs);
+            toolCalls.push({ name: rawToolName, arguments: args });
+            console.log(`✅ Found valid tool call: ${rawToolName} with args:`, args);
+          } catch (error) {
+            console.log(`⚠️ Failed to parse JSON arguments for ${rawToolName}:`, jsonArgs, error);
+          }
+        } else {
+          console.log(`⚠️ Tool "${rawToolName}" not found. Available tools:`, availableTools.slice(0, 10), '...');
+          // Return an error response that the LLM can see and correct
+          return [{
+            name: 'error_response',
+            arguments: {
+              error: `Tool "${rawToolName}" does not exist. Available tools include: ${availableTools.slice(0, 10).join(', ')}, and ${availableTools.length - 10} more. Please use an exact tool name from the available list.`
+            }
+          }];
+        }
+      } catch (error) {
+        console.log(`⚠️ Failed to parse new model format tool call:`, newModelMatch[0], error);
+      }
+    }
+
+    // If we found any new model format tool calls, return them
+    if (toolCalls.length > 0) {
+      console.log(`✅ Found ${toolCalls.length} new model format tool calls, returning them`);
+      return toolCalls;
+    }
+
+    // Pattern 2: Enhanced tool_call format with ```json wrapper (Option 2)
     // ```json { "tool_call": { "name": "web_search", "arguments": {...} } } ```
     const jsonWrappedToolCallRegex = /```json\s*(\{[\s\S]*?"tool_call"[\s\S]*?\})\s*```/gi;
     let match = jsonWrappedToolCallRegex.exec(content);
@@ -1456,7 +1546,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
       }
     }
 
-    // Pattern 2: Direct JSON tool_call format (Option 1) - Enhanced with robust JSON parsing
+    // Pattern 3: Direct JSON tool_call format (Option 1) - Enhanced with robust JSON parsing
     // { "tool_call": { "name": "web_search", "arguments": {...} } }
     const toolCallPattern = /\{\s*"tool_call"\s*:\s*\{/gi;
     let directMatch;
@@ -1636,22 +1726,35 @@ Continue based on the tool results above. Call additional tools if needed for a 
   ): Promise<LLMResponse> {
     console.log(`🔧 Ollama executing ${toolCalls.length} text-based tool calls`);
 
-    // Execute all tool calls
+    // STEP 1: STOP all streaming and execute tools completely
+    console.log(`🛑 Ollama: Stopping stream to execute tools cleanly`);
+
+    // Show tool execution start (this is the ONLY streaming during tool execution)
+    const toolExecutionHeader = `\n\n<tool_execution>\n🔧 **Tool Execution Started**\n\nExecuting ${toolCalls.length} tool${toolCalls.length !== 1 ? 's' : ''}:\n${toolCalls.map(tc => `- ${tc.name}`).join('\n')}\n</tool_execution>\n\n`;
+    onStream(toolExecutionHeader);
+
+    // STEP 2: Execute ALL tools to completion WITHOUT streaming
+    console.log(`🔧 Ollama: Executing ${toolCalls.length} tools to completion...`);
     const toolResults: Array<{ name: string; result: string; error?: boolean }> = [];
 
     for (const toolCall of toolCalls) {
       try {
         console.log(`🔧 Executing Ollama tool: ${toolCall.name} with args:`, toolCall.arguments);
+
         const result = await this.executeMCPTool(toolCall.name, toolCall.arguments);
+        const resultString = typeof result === 'string' ? result : JSON.stringify(result);
+
         toolResults.push({
           name: toolCall.name,
-          result: typeof result === 'string' ? result : JSON.stringify(result),
+          result: resultString,
           error: false
         });
+
         console.log(`✅ Ollama tool ${toolCall.name} executed successfully`);
       } catch (error) {
         console.error(`❌ Ollama tool ${toolCall.name} failed:`, error);
         const userFriendlyError = this.formatToolError(toolCall.name, error);
+
         toolResults.push({
           name: toolCall.name,
           result: userFriendlyError,
@@ -1703,10 +1806,12 @@ Please provide a natural, helpful response based on the tool results.`;
     return {
       content: followUpResponse.content,
       usage: followUpResponse.usage,
-      toolCalls: toolCalls.map((tc, index) => ({
+      toolCalls: toolResults.map((tr, index) => ({
         id: `text_tool_${index}`,
-        name: tc.name,
-        arguments: tc.arguments
+        name: tr.name,
+        arguments: toolCalls.find(tc => tc.name === tr.name)?.arguments || {},
+        result: tr.result,
+        error: tr.error
       }))
     };
   }
@@ -1747,7 +1852,7 @@ Please provide a natural, helpful response based on the tool results.`;
   }
 
   private removeThinkingContent(content: string): string {
-    // Remove various thinking patterns from content before parsing for tool calls
+    // Remove various thinking patterns and model template tags from content before parsing for tool calls
     let cleanedContent = content;
 
     // Remove <think>...</think> blocks
@@ -1759,6 +1864,27 @@ Please provide a natural, helpful response based on the tool results.`;
     // Remove unclosed thinking tags (in case they're at the end)
     cleanedContent = cleanedContent.replace(/<think>[\s\S]*$/gi, '');
     cleanedContent = cleanedContent.replace(/<thinking>[\s\S]*$/gi, '');
+
+    // Remove model-specific template tags
+    // New model format tags: <|start|>, <|message|>, <|channel|>, <|end|>, <|constrain|>
+    cleanedContent = cleanedContent.replace(/<\|start\|>/gi, '');
+    cleanedContent = cleanedContent.replace(/<\|message\|>/gi, '');
+    cleanedContent = cleanedContent.replace(/<\|channel\|>/gi, '');
+    cleanedContent = cleanedContent.replace(/<\|end\|>/gi, '');
+    cleanedContent = cleanedContent.replace(/<\|constrain\|>/gi, '');
+
+    // Qwen3 format tags: <|im_start|>, <|im_end|>
+    cleanedContent = cleanedContent.replace(/<\|im_start\|>/gi, '');
+    cleanedContent = cleanedContent.replace(/<\|im_end\|>/gi, '');
+
+    // Remove role indicators that might appear after template tags
+    cleanedContent = cleanedContent.replace(/^(system|user|assistant)\s*/gim, '');
+
+    // Remove channel indicators that might appear after <|channel|> tags
+    cleanedContent = cleanedContent.replace(/^(final|analysis|commentary)\s*/gim, '');
+
+    // Clean up any remaining template-like patterns
+    cleanedContent = cleanedContent.replace(/<\|[^|]*\|>/gi, '');
 
     // Clean up any extra whitespace
     cleanedContent = cleanedContent.trim();

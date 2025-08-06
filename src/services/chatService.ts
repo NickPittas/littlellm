@@ -75,6 +75,8 @@ export interface Message {
     id: string;
     name: string;
     arguments: ToolCallArguments;
+    result?: string;
+    error?: boolean;
   }>;
   sources?: Source[];
 }
