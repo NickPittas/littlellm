@@ -144,26 +144,24 @@ export function TopHeader({
         className
       )}
       style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 9999,
+        // Note: positioning is controlled by the fixed wrapper in ModernChatInterface
+        // Using relative here prevents creating an extra stacking context that could
+        // interact poorly with overlapping content and Electron drag hit-testing.
+        position: 'relative',
         userSelect: 'none',
         WebkitAppRegion: 'drag',
         cursor: 'default'
       } as React.CSSProperties}
     >
-      {/* Guaranteed drag strip (6px) above everything else but narrow to avoid blocking controls */}
+      {/* Full header drag background: sits above visual bg, below controls */}
       <div
         aria-hidden="true"
         style={{
           position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 6,
+          inset: 0,
           WebkitAppRegion: 'drag',
           pointerEvents: 'auto',
-          zIndex: 3, // above visuals, below content row controls (which are no-drag)
+          zIndex: 1,
           background: 'transparent'
         } as React.CSSProperties}
       />
@@ -181,7 +179,7 @@ export function TopHeader({
         } as React.CSSProperties}
       />
 
-      {/* Content row: header wrapper remains draggable; mark interactive elements as no-drag */}
+      {/* Content row: header surface is draggable; interactive elements inside are no-drag */}
       <div
         className="relative h-8 px-4 flex items-center justify-between"
         style={{ zIndex: 4, WebkitAppRegion: 'drag', pointerEvents: 'auto' } as React.CSSProperties}

@@ -1827,11 +1827,11 @@ async function createWindow() {
     maxHeight: 1200,
     show: !appSettings.ui?.startMinimized,
     alwaysOnTop: appSettings.ui?.alwaysOnTop !== false, // Default to true if not set
-    frame: false, // Remove traditional frame completely for Windows
+    frame: true, // Use native window frame and title bar for Windows
     resizable: true, // Enable resizing
     skipTaskbar: true, // Show in taskbar
     autoHideMenuBar: true, // Hide menu bar
-    titleBarStyle: 'hidden', // Hide title bar completely
+    // Use default title bar style (native). Removing the hidden style restores drag.
     transparent: false, // Solid window for better compatibility
     backgroundColor: getCurrentBackgroundColor(), // Dynamic background color from settings
 

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { LeftSidebar } from './LeftSidebar';
-import { TopHeader } from './TopHeader';
 import { MainChatArea } from './MainChatArea';
 import { BottomInputArea } from './BottomInputArea';
 import { RightPanel } from './RightPanel';
@@ -1121,27 +1120,18 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       {/* Left Sidebar */}
       <LeftSidebar
         onItemClick={handleSidebarItemClick}
+        selectedProvider={selectedProvider}
+        onProviderClick={handleProviderClick}
         className="flex-shrink-0"
       />
 
       {/* Main Content Area */}
       <div
         className="flex-1 flex flex-col overflow-hidden"
-        style={{ paddingTop: '32px', WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        {/* Top Header - fixed top-level drag region */}
-        <div
-          className="fixed top-0 left-0 right-0 z-[1000]"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-        >
-          <TopHeader
-            selectedProvider={selectedProvider}
-            onProviderClick={handleProviderClick}
-            className="flex-shrink-0"
-          />
-        </div>
+        {/* Native Windows title bar provides drag; no custom header */}
 
-        {/* Chat Area - pushed below fixed header */}
+        {/* Chat Area */}
         <MainChatArea
           selectedModel={selectedModel}
           messages={messages}
