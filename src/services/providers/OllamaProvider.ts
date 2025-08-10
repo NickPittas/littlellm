@@ -1434,6 +1434,69 @@ Continue based on the tool results above. Call additional tools if needed for a 
     console.log(`🔍 Ollama parsing text for tools. Available tools:`, availableTools);
     console.log(`🔍 Content to parse:`, content);
 
+    // Pattern 0: XML-style tool tags as instructed in the Ollama system prompt
+    // Example:
+    // <web_search>
+    //   <query>current weather</query>
+    // </web_search>
+    try {
+      const xmlTagRegex = /<([a-zA-Z_][\w-]*)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+      let xmlMatch: RegExpExecArray | null;
+
+      while ((xmlMatch = xmlTagRegex.exec(content)) !== null) {
+        const rawToolName = xmlMatch[1];
+        const inner = (xmlMatch[2] || '').trim();
+
+        // Only handle tags that correspond to available tools; ignore others (e.g., <switch_mode>)
+        if (!availableTools.includes(rawToolName)) {
+          continue;
+        }
+
+        const args: Record<string, unknown> = {};
+
+        // Parse child tags as arguments: <param>value</param>
+        const childTagRegex = /<([a-zA-Z_][\w-]*)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+        let childFound = false;
+        let childMatch: RegExpExecArray | null;
+        while ((childMatch = childTagRegex.exec(inner)) !== null) {
+          childFound = true;
+          const key = childMatch[1];
+          const value = (childMatch[2] || '').trim();
+
+          if (args[key] === undefined) {
+            args[key] = value;
+          } else if (Array.isArray(args[key])) {
+            (args[key] as unknown[]).push(value);
+          } else {
+            args[key] = [args[key], value];
+          }
+        }
+
+        if (!childFound) {
+          // If no child tags, try JSON first, then fallback to single "input"
+          if (inner.startsWith('{') || inner.startsWith('[')) {
+            try {
+              Object.assign(args, JSON.parse(inner));
+            } catch {
+              args.input = inner;
+            }
+          } else {
+            args.input = inner;
+          }
+        }
+
+        toolCalls.push({ name: rawToolName, arguments: args });
+      }
+    } catch (e) {
+      console.log('⚠️ XML-style parsing failed:', e);
+    }
+
+    if (toolCalls.length > 0) {
+      console.log(`✅ Found ${toolCalls.length} XML-style tool calls, returning them`);
+      const uniqueXmlCalls = this.deduplicateToolCalls ? this.deduplicateToolCalls(toolCalls) : toolCalls;
+      return uniqueXmlCalls;
+    }
+
     // Pattern 1: New model format with optional commentary prefix and to=tool_name and JSON arguments
     // Example: "commentary to=web_search json{"query":"dad joke", "topn":5}" or "to=list_directoryjson{...}"
     // Updated to handle nested JSON, multiple tool calls, hyphens, function namespace prefixes, and optional space before json
@@ -1688,6 +1751,23 @@ Continue based on the tool results above. Call additional tools if needed for a 
       console.log(`✅ Fallback parsing extracted:`, args);
       return args;
     }
+  }
+
+  private deduplicateToolCalls(toolCalls: Array<{ name: string; arguments: Record<string, unknown> }>): Array<{ name: string; arguments: Record<string, unknown> }> {
+    const seen = new Set<string>();
+    const unique: Array<{ name: string; arguments: Record<string, unknown> }> = [];
+
+    for (const toolCall of toolCalls) {
+      const key = `${toolCall.name}:${JSON.stringify(toolCall.arguments)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(toolCall);
+      } else {
+        console.log(`🔧 Removed duplicate tool call: ${toolCall.name}`);
+      }
+    }
+
+    return unique;
   }
 
   private availableToolNames: string[] = [];

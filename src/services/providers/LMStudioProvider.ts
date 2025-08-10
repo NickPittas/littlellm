@@ -13,6 +13,7 @@ import {
 } from './types';
 
 import { LMSTUDIO_SYSTEM_PROMPT, generateLMStudioToolPrompt } from './prompts/lmstudio';
+import { JSONUtils } from './utils';
 
 export class LMStudioProvider extends BaseProvider {
   readonly id = 'lmstudio';
@@ -644,7 +645,11 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       console.log(`⚠️ Content too short (${fullContent.length} chars), likely incomplete - skipping tool parsing`);
       return {
         content: fullContent,
-        usage,
+        usage: usage ? {
+          promptTokens: usage.promptTokens || 0,
+          completionTokens: usage.completionTokens || 0,
+          totalTokens: usage.totalTokens || 0
+        } : undefined,
         toolCalls: []
       };
     }
@@ -812,10 +817,15 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
           }
         }
 
+        // Attach execution results for UI parity with text-based tools
+        const matched = toolResults.find(tr => tr.id === tc.id);
+
         return {
           id: tc.id,
           name: tc.function.name,
-          arguments: parsedArgs
+          arguments: parsedArgs,
+          result: matched ? matched.result : undefined,
+          error: matched ? matched.error : undefined
         };
       })
     };
@@ -968,6 +978,89 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
 
     // STEP 1: Look for structured tool call formats first
 
+    // Pattern 0: Fenced tool/function_call blocks (Harmony-style variations)
+    // ```tool {"name":"web_search","arguments":{"query":"..."}} ```
+    // ```function_call {"name":"...","arguments":{...}} ```
+    // Also accept multiple JSON objects inside a single fenced block
+    try {
+      const fencedRegex = /```\s*(tool|tool_call|call|function_call)[^\n]*\n([\s\S]*?)```/gi;
+      let fencedMatch: RegExpExecArray | null;
+      while ((fencedMatch = fencedRegex.exec(content)) !== null) {
+        const block = fencedMatch[2].trim();
+        // Try to parse the block directly as JSON or detect multiple JSON objects
+        // 1) Direct JSON object
+        const tryParseSingle = (jsonStr: string) => {
+          try {
+            const obj = JSON.parse(jsonStr);
+            if (obj.tool_call && obj.tool_call.name) {
+              const tName = obj.tool_call.name;
+              const tArgsRaw = obj.tool_call.arguments;
+              const tArgs = typeof tArgsRaw === 'string' ? (JSON.parse(tArgsRaw) as Record<string, unknown>) : (tArgsRaw || {});
+              if (availableTools.includes(tName)) {
+                toolCalls.push({ name: tName, arguments: tArgs });
+              }
+              return true;
+            } else if (obj.name && obj.arguments) {
+              const tName = obj.name;
+              const tArgsRaw = obj.arguments;
+              const tArgs = typeof tArgsRaw === 'string' ? (JSON.parse(tArgsRaw) as Record<string, unknown>) : (tArgsRaw || {});
+              if (availableTools.includes(tName)) {
+                toolCalls.push({ name: tName, arguments: tArgs });
+              }
+              return true;
+            } else if (Array.isArray(obj)) {
+              // Array of tool calls
+              for (const item of obj) {
+                const tName = item?.tool_call?.name || item?.name;
+                const tArgsRaw = item?.tool_call?.arguments ?? item?.arguments ?? {};
+                const tArgs = typeof tArgsRaw === 'string' ? (JSON.parse(tArgsRaw) as Record<string, unknown>) : (tArgsRaw || {});
+                if (tName && availableTools.includes(tName)) {
+                  toolCalls.push({ name: tName, arguments: tArgs });
+                }
+              }
+              return true;
+            }
+          } catch {
+            // ignore
+          }
+          return false;
+        };
+
+        if (!tryParseSingle(block)) {
+          // 2) Scan the fenced block for multiple JSON tool_call objects
+          const toolCallPattern = /\{\s*"tool_call"\s*:\s*\{/gi;
+          let dm: RegExpExecArray | null;
+          while ((dm = toolCallPattern.exec(block)) !== null) {
+            const start = dm.index;
+            const extracted = JSONUtils.extractCompleteJSON(block, start);
+            if (extracted) {
+              try {
+                const parsed = JSON.parse(extracted.jsonStr);
+                if (parsed.tool_call?.name) {
+                  const tName = parsed.tool_call.name;
+                  const tArgsRaw = parsed.tool_call.arguments ?? {};
+                  const tArgs = typeof tArgsRaw === 'string' ? (JSON.parse(tArgsRaw) as Record<string, unknown>) : tArgsRaw;
+                  if (availableTools.includes(tName)) {
+                    toolCalls.push({ name: tName, arguments: tArgs });
+                  }
+                }
+              } catch {
+                // ignore individual failures
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log('⚠️ Fenced tool block parsing failed:', e);
+    }
+
+    if (toolCalls.length > 0) {
+      const unique = this.deduplicateToolCalls(toolCalls);
+      console.log(`✅ Found ${unique.length} fenced tool calls`);
+      return unique;
+    }
+
     // Pattern 1: New model format with optional commentary prefix and to=tool_name and JSON arguments
     // Example: "commentary to=web_search json{"query":"dad joke", "topn":5}" or "to=list_directoryjson{...}"
     // Updated to handle nested JSON, multiple tool calls, hyphens, function namespace prefixes, and optional space before json
@@ -1077,12 +1170,27 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     if (match) {
       try {
         const jsonObj = JSON.parse(match[1]);
-        if (jsonObj.tool_call && jsonObj.tool_call.name && jsonObj.tool_call.arguments) {
-          toolCalls.push({
-            name: jsonObj.tool_call.name,
-            arguments: jsonObj.tool_call.arguments
-          });
-          console.log(`✅ Found JSON-wrapped tool call: ${jsonObj.tool_call.name} with args:`, jsonObj.tool_call.arguments);
+        if (Array.isArray(jsonObj)) {
+          for (const item of jsonObj) {
+            const tName = item?.tool_call?.name || item?.name;
+            if (!tName) continue;
+            const tArgsRaw = item?.tool_call?.arguments ?? item?.arguments ?? {};
+            const tArgs = typeof tArgsRaw === 'string' ? (JSON.parse(tArgsRaw) as Record<string, unknown>) : tArgsRaw;
+            if (availableTools.includes(tName)) {
+              toolCalls.push({ name: tName, arguments: tArgs });
+            }
+          }
+          if (toolCalls.length > 0) {
+            const unique = this.deduplicateToolCalls(toolCalls);
+            console.log(`✅ Found ${unique.length} JSON-wrapped array tool calls`);
+            return unique;
+          }
+        } else if (jsonObj.tool_call && jsonObj.tool_call.name) {
+          const tName = jsonObj.tool_call.name;
+          const tArgsRaw = jsonObj.tool_call.arguments ?? {};
+          const tArgs = typeof tArgsRaw === 'string' ? (JSON.parse(tArgsRaw) as Record<string, unknown>) : tArgsRaw;
+          toolCalls.push({ name: tName, arguments: tArgs });
+          console.log(`✅ Found JSON-wrapped tool call: ${tName} with args:`, tArgs);
           return toolCalls; // Return early if we found the structured format
         }
       } catch {
@@ -1092,40 +1200,58 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
 
     // Pattern 3: Direct JSON tool_call format (Option 1)
     // { "tool_call": { "name": "web_search", "arguments": {...} } }
-    const directToolCallRegex = /\{\s*"tool_call"\s*:\s*\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[\s\S]*?\})\s*\}\s*\}/gi;
-    match = directToolCallRegex.exec(content);
-    if (match) {
+    // Robust iterative scan for direct tool_call objects, including multiple occurrences
+    const toolCallPattern = /\{\s*"tool_call"\s*:\s*\{/gi;
+    let directMatch: RegExpExecArray | null;
+    while ((directMatch = toolCallPattern.exec(content)) !== null) {
       try {
-        const toolName = match[1];
-        const args = JSON.parse(match[2]);
-        toolCalls.push({ name: toolName, arguments: args });
-        console.log(`✅ Found direct tool call: ${toolName} with args:`, args);
-        return toolCalls; // Return early if we found the structured format
-      } catch {
-        console.log(`⚠️ Failed to parse direct tool call arguments:`, match[2]);
-        // Try fallback parsing
-        const toolName = match[1];
-        const args = this.parseArgumentsFromText(match[2]);
-        if (Object.keys(args).length > 0) {
-          toolCalls.push({ name: toolName, arguments: args });
-          console.log(`✅ Found direct tool call (fallback): ${toolName} with args:`, args);
-          return toolCalls;
+        const startIndex = directMatch.index;
+        const extracted = JSONUtils.extractCompleteJSON(content, startIndex);
+        if (extracted) {
+          const parsed = JSON.parse(extracted.jsonStr);
+          if (parsed.tool_call?.name) {
+            const tName = parsed.tool_call.name;
+            const tArgsRaw = parsed.tool_call.arguments ?? {};
+            const tArgs = typeof tArgsRaw === 'string' ? (JSON.parse(tArgsRaw) as Record<string, unknown>) : tArgsRaw;
+            toolCalls.push({ name: tName, arguments: tArgs });
+          }
         }
+      } catch (e) {
+        console.log(`⚠️ Failed to parse direct tool_call JSON:`, e);
       }
+    }
+    if (toolCalls.length > 0) {
+      const unique = this.deduplicateToolCalls(toolCalls);
+      console.log(`✅ Found ${unique.length} direct tool_call objects`);
+      return unique;
     }
 
     // Pattern 4: Look for any JSON blocks and check if they contain tool calls
-    const jsonBlockRegex = /```json\s*(\{[\s\S]*?\})\s*```/gi;
+    const jsonBlockRegex = /```json\s*([\s\S]*?)\s*```/gi;
     let jsonMatch;
     while ((jsonMatch = jsonBlockRegex.exec(content)) !== null) {
       try {
-        const jsonObj = JSON.parse(jsonMatch[1]);
-        if (jsonObj.tool_call && jsonObj.tool_call.name && jsonObj.tool_call.arguments) {
+        const jsonText = jsonMatch[1].trim();
+        const jsonObj = JSON.parse(jsonText);
+        if (Array.isArray(jsonObj)) {
+          for (const item of jsonObj) {
+            const tName = item?.tool_call?.name || item?.name;
+            if (!tName) continue;
+            const tArgsRaw = item?.tool_call?.arguments ?? item?.arguments ?? {};
+            const tArgs = typeof tArgsRaw === 'string' ? (JSON.parse(tArgsRaw) as Record<string, unknown>) : tArgsRaw;
+            if (availableTools.includes(tName)) {
+              toolCalls.push({ name: tName, arguments: tArgs });
+            }
+          }
+        } else if (jsonObj.tool_call && jsonObj.tool_call.name) {
+          const tName = jsonObj.tool_call.name;
+          const tArgsRaw = jsonObj.tool_call.arguments ?? {};
+          const tArgs = typeof tArgsRaw === 'string' ? (JSON.parse(tArgsRaw) as Record<string, unknown>) : tArgsRaw;
           toolCalls.push({
-            name: jsonObj.tool_call.name,
-            arguments: jsonObj.tool_call.arguments
+            name: tName,
+            arguments: tArgs
           });
-          console.log(`✅ Found JSON block tool call: ${jsonObj.tool_call.name} with args:`, jsonObj.tool_call.arguments);
+          console.log(`✅ Found JSON block tool call: ${tName} with args:`, tArgs);
         }
       } catch {
         console.log(`⚠️ Failed to parse JSON block:`, jsonMatch[1]);
@@ -1335,6 +1461,15 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
         }
       }
 
+      if (Object.keys(args).length === 0) {
+        // Last resort: attempt to salvage from malformed JSON
+        const recovered = JSONUtils.extractArgumentsFromMalformedJson(argsText);
+        if (Object.keys(recovered).length > 0) {
+          console.log(`✅ Recovered arguments from malformed JSON:`, recovered);
+          return recovered;
+        }
+      }
+
       console.log(`✅ Fallback parsing extracted:`, args);
       return args;
     }
@@ -1385,10 +1520,12 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       try {
         // Handle error responses from tool parsing
         if (toolCall.name === 'error_response') {
-          console.log(`⚠️ Tool parsing error:`, toolCall.arguments.error);
+          const errVal = (toolCall.arguments as Record<string, unknown>)?.error;
+          console.log(`⚠️ Tool parsing error:`, errVal);
+          const errStr = typeof errVal === 'string' ? errVal : JSON.stringify(errVal ?? 'Tool parsing error');
           toolResults.push({
             name: 'error_response',
-            result: toolCall.arguments.error,
+            result: errStr,
             error: true
           });
           continue;
@@ -1532,6 +1669,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     // Add the assistant message with tool calls (following official format)
     const assistantToolCallMessage = {
       role: 'assistant',
+      content: '',
       tool_calls: originalToolCallsFormat.map(tc => ({
         id: tc.id,
         type: tc.type,
@@ -1545,10 +1683,18 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       const toolResultMessage = {
         role: 'tool',
         content: toolResult.result,
-        tool_call_id: toolResult.id
+        tool_call_id: toolResult.id,
+        name: toolResult.name
       };
       messages.push(toolResultMessage);
     }
+
+    // Add a final instruction prompting the model to use the tool outputs
+    const finalInstruction = {
+      role: 'user',
+      content: `Use the tool outputs above to produce the final answer to your previous request: "${this.getLastUserMessage(conversationHistory)}". Do not call tools again. Provide a concise answer grounded in those results.`
+    };
+    messages.push(finalInstruction);
 
     console.log(`🔧 Built cleaned conversation history with ${messages.length} messages (filtered previous tool results + ${toolCalls.length} current tool results)`);
     return messages;
@@ -1584,6 +1730,35 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       max_tokens: settings.maxTokens || 4000
       // No tools included - following official LM Studio pattern for final response
     };
+
+    // Sanitize and log a small preview of the follow-up payload to verify tool outputs are included
+    try {
+      const msgs = requestBody.messages as Array<Record<string, any>>;
+      const preview = {
+        model: requestBody.model,
+        messageCount: msgs.length,
+        roles: msgs.map(m => m.role),
+        assistantToolCallIncluded: msgs.some(m => Array.isArray((m as any).tool_calls) && (m as any).tool_calls.length > 0),
+        toolResultSummaries: msgs
+          .map((m, idx) => ({ idx, role: m.role, name: (m as any).name, id: (m as any).tool_call_id, content: (m as any).content }))
+          .filter(s => s.role === 'tool')
+          .map(s => ({
+            idx: s.idx,
+            name: s.name,
+            id: s.id,
+            contentLen: typeof s.content === 'string' ? s.content.length : JSON.stringify(s.content || '').length,
+            contentPreview: typeof s.content === 'string' ? s.content.slice(0, 160) : '[non-string]'
+          })),
+        finalInstructionPreview: (() => {
+          const last = msgs[msgs.length - 1];
+          const txt = typeof last?.content === 'string' ? last.content : JSON.stringify(last?.content || '');
+          return txt.slice(0, 200);
+        })()
+      };
+      console.log('🔎 [LM STUDIO DEBUG] Follow-up payload preview:', preview);
+    } catch (e) {
+      console.warn('⚠️ [LM STUDIO DEBUG] Failed to build follow-up payload preview:', e);
+    }
 
     // Construct the correct URL - baseUrl might already include /v1
     const baseUrl = settings.baseUrl || 'http://localhost:1234';

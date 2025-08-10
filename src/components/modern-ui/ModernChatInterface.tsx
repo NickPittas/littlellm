@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { LeftSidebar } from './LeftSidebar';
 import { MainChatArea } from './MainChatArea';
 import { BottomInputArea } from './BottomInputArea';
@@ -49,6 +49,14 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   const [agentManagementOpen, setAgentManagementOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentConfiguration | null>(null);
   const [availableAgents, setAvailableAgents] = useState<AgentConfiguration[]>([]);
+
+  // Track if user has manually changed provider to avoid init overwrite
+  const userChangedProviderRef = useRef(false);
+  // Track current provider synchronously for async guards
+  const selectedProviderRef = useRef(selectedProvider);
+  useEffect(() => {
+    selectedProviderRef.current = selectedProvider;
+  }, [selectedProvider]);
 
   // Model instructions and quick prompts state
   const [modelInstructionsOpen, setModelInstructionsOpen] = useState(false);
@@ -126,6 +134,12 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       const models = await chatService.fetchModels(providerId, apiKey, baseUrl);
       console.log(`Loaded ${models.length} models for ${providerId}:`, models);
 
+      // If the provider has changed since this request started, ignore results
+      if (providerId !== selectedProviderRef.current) {
+        console.log('⏭️ Ignoring models for stale provider load:', providerId, 'current is', selectedProviderRef.current);
+        return;
+      }
+
       setAvailableModels(models);
 
       // Try to restore the last selected model for this provider
@@ -152,6 +166,11 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
       // Update the selected model if we found one
       if (modelToSelect) {
+        // Guard again in case provider changed while computing model
+        if (providerId !== selectedProviderRef.current) {
+          console.log('⏭️ Skipping model apply for stale provider:', providerId);
+          return;
+        }
         setSelectedModel(modelToSelect);
         updateSettings({ model: modelToSelect });
       }
@@ -197,7 +216,12 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         setSettings(savedSettings);
 
         const provider = savedSettings.provider || 'ollama';
-        setSelectedProvider(provider);
+        // Only apply initial provider if user hasn't changed it yet
+        if (!userChangedProviderRef.current) {
+          setSelectedProvider(provider);
+        } else {
+          console.log('🛑 Skipping init provider apply; user already changed provider');
+        }
         setToolsEnabled(savedSettings.toolCallingEnabled ?? false); // Use nullish coalescing to respect explicit false
         setKnowledgeBaseEnabled(savedSettings.ragEnabled ?? false);
 
@@ -214,10 +238,14 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           console.warn(`Failed to get last selected model for ${provider} on startup:`, error);
         }
 
-        setSelectedModel(modelToUse);
-
-        // Load models for the selected provider (this will validate and potentially update the model)
-        await loadModelsForProvider(provider);
+        // Only apply initial model/load if user hasn't changed provider
+        if (!userChangedProviderRef.current) {
+          setSelectedModel(modelToUse);
+          // Load models for the selected provider (this will validate and potentially update the model)
+          await loadModelsForProvider(provider);
+        } else {
+          console.log('🛑 Skipping init model load; user already changed provider');
+        }
       } catch (error) {
         console.error('Failed to load settings:', error);
       }
@@ -726,6 +754,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   // Handle provider selection
   const handleProviderSelect = async (providerId: string) => {
     console.log('Provider selected:', providerId);
+    userChangedProviderRef.current = true;
     setSelectedProvider(providerId);
     updateSettings({ provider: providerId });
 
@@ -759,6 +788,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       }));
 
       // Set selected provider and model
+      userChangedProviderRef.current = true;
       setSelectedProvider(agent.defaultProvider);
       setSelectedModel(agent.defaultModel);
 
@@ -793,6 +823,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           toolCallingEnabled: agent.toolCallingEnabled
         }));
 
+        userChangedProviderRef.current = true;
         setSelectedProvider(agent.defaultProvider);
         setSelectedModel(agent.defaultModel);
         await loadModelsForProvider(agent.defaultProvider);
