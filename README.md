@@ -17,13 +17,14 @@ A powerful, enterprise-grade desktop AI chat application that provides seamless 
 - **DeepInfra**: High-performance inference platform ✅
 - **Groq**: Ultra-fast inference with LPU technology ✅
 - **LM Studio**: Local server for any GGUF model (free) ✅
+- **Jan AI**: Privacy-first local AI with OpenAI-compatible API ✅
 - **Ollama**: Local models support with enhanced vision capabilities ✅
 - **OpenRouter**: 150+ models from multiple providers ✅
 - **Requesty**: 80+ models with smart routing ✅
 - **Replicate**: Cloud-hosted models ✅
 - **n8n**: Custom workflow integration with multipart form data support ✅
 
-> **All 13 providers fully implemented with streaming support, vision capabilities, and tool calling integration**
+> **All 14 providers fully implemented with streaming support, vision capabilities, and tool calling integration**
 
 ### 🖼️ **Vision Support**
 - Send images directly to vision-capable models
@@ -161,6 +162,7 @@ A powerful, enterprise-grade desktop AI chat application that provides seamless 
    - **OpenRouter**: Get from [openrouter.ai](https://openrouter.ai)
    - **Requesty**: Get from [app.requesty.ai](https://app.requesty.ai)
    - **LM Studio**: No API key needed (local server)
+   - **Jan AI**: API key may be required (local AI application)
    - **Ollama**: No API key needed (local models)
 
 ### Start Chatting

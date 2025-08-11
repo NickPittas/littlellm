@@ -30,13 +30,13 @@ export function InlineProviderDropdown({
       const allProviders = DEFAULT_PROVIDERS;
       
       if (type === 'local') {
-        const localProviders = allProviders.filter(p => 
-          p.id === 'ollama' || p.id === 'lmstudio'
+        const localProviders = allProviders.filter(p =>
+          p.id === 'ollama' || p.id === 'lmstudio' || p.id === 'jan'
         );
         setProviders(localProviders);
       } else {
-        const remoteProviders = allProviders.filter(p => 
-          p.id !== 'ollama' && p.id !== 'lmstudio'
+        const remoteProviders = allProviders.filter(p =>
+          p.id !== 'ollama' && p.id !== 'lmstudio' && p.id !== 'jan'
         );
         setProviders(remoteProviders);
       }

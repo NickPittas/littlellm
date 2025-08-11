@@ -27,6 +27,7 @@ export interface ProvidersConfig {
   deepinfra: ProviderSettings;
   groq: ProviderSettings;
   lmstudio: ProviderSettings;
+  jan: ProviderSettings;
   ollama: ProviderSettings;
   requesty: ProviderSettings;
   n8n: ProviderSettings;

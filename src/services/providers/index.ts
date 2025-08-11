@@ -19,6 +19,7 @@ export { MistralProvider } from './MistralProvider';
 export { DeepSeekProvider } from './DeepSeekProvider';
 export { DeepinfraProvider } from './DeepinfraProvider';
 export { LMStudioProvider } from './LMStudioProvider';
+export { JanProvider } from './JanProvider';
 export { OllamaProvider } from './OllamaProvider';
 export { OpenRouterProvider } from './OpenRouterProvider';
 export { RequestyProvider } from './RequestyProvider';

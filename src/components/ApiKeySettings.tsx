@@ -39,6 +39,7 @@ const PROVIDERS = [
   { id: 'requesty', name: 'Requesty', placeholder: 'API Key...' },
   { id: 'replicate', name: 'Replicate', placeholder: 'r8_...' },
   { id: 'lmstudio', name: 'LM Studio', placeholder: 'Not required', hasBaseUrl: true },
+  { id: 'jan', name: 'Jan AI', placeholder: 'API Key...', hasBaseUrl: true },
   { id: 'ollama', name: 'Ollama', placeholder: 'Not required', hasBaseUrl: true },
   { id: 'n8n', name: 'N8N', placeholder: 'API Key...', hasBaseUrl: true },
 ];
@@ -285,7 +286,7 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
           console.log(`✅ Saved API key for ${providerId}`);
 
           // Also save baseUrl to regular settings for providers that use it
-          if (data.baseUrl?.trim() && (providerId === 'ollama' || providerId === 'lmstudio' || providerId === 'n8n')) {
+          if (data.baseUrl?.trim() && (providerId === 'ollama' || providerId === 'lmstudio' || providerId === 'jan' || providerId === 'n8n')) {
             try {
               const currentSettings = settingsService.getSettings();
               if (currentSettings?.chat?.providers) {
@@ -379,6 +380,7 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
                     value={apiKeys[provider.id]?.baseUrl || ''}
                     placeholder={
                       provider.id === 'lmstudio' ? 'http://localhost:1234/v1' :
+                      provider.id === 'jan' ? 'http://127.0.0.1:1337/v1' :
                       provider.id === 'ollama' ? 'http://localhost:11434' :
                       provider.id === 'n8n' ? 'https://your-n8n-instance.com/webhook/your-webhook-id' :
                       'Base URL...'

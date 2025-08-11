@@ -45,6 +45,7 @@ const DEFAULT_SETTINGS: AppSettings = {
       deepinfra: { lastSelectedModel: '' },
       groq: { lastSelectedModel: '' },
       lmstudio: { baseUrl: '', lastSelectedModel: '' },
+      jan: { baseUrl: '', lastSelectedModel: '' },
       ollama: { baseUrl: '', lastSelectedModel: '' },
       openrouter: { lastSelectedModel: '' },
       requesty: { lastSelectedModel: '' },

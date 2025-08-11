@@ -9,6 +9,7 @@ import { MistralProvider } from './MistralProvider';
 import { DeepSeekProvider } from './DeepSeekProvider';
 import { DeepinfraProvider } from './DeepinfraProvider';
 import { LMStudioProvider } from './LMStudioProvider';
+import { JanProvider } from './JanProvider';
 import { OllamaProvider } from './OllamaProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
 import { RequestyProvider } from './RequestyProvider';
@@ -35,6 +36,7 @@ export class ProviderFactory {
     this.registerProvider(new DeepSeekProvider());
     this.registerProvider(new DeepinfraProvider());
     this.registerProvider(new LMStudioProvider());
+    this.registerProvider(new JanProvider());
     this.registerProvider(new OllamaProvider());
     this.registerProvider(new OpenRouterProvider());
     this.registerProvider(new RequestyProvider());

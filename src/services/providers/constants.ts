@@ -64,6 +64,14 @@ export const DEFAULT_PROVIDERS: LLMProvider[] = [
     logo: '/assets/providers/lmstudio.png'
   },
   {
+    id: 'jan',
+    name: 'Jan AI',
+    baseUrl: 'http://127.0.0.1:1337/v1',
+    requiresApiKey: true,
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/jan.svg'
+  },
+  {
     id: 'ollama',
     name: 'Ollama (Local)',
     baseUrl: '',
@@ -175,6 +183,16 @@ export const PROVIDER_CAPABILITIES = {
     supportsStreaming: true,
     supportsSystemMessages: true,
     maxToolNameLength: undefined,
+    toolFormat: 'openai' as const,
+    nativeDocumentSupport: ['txt', 'md'], // Basic text support
+    documentParsingRequired: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf']
+  },
+  jan: {
+    supportsVision: true,
+    supportsTools: true,
+    supportsStreaming: true,
+    supportsSystemMessages: true,
+    maxToolNameLength: 64,
     toolFormat: 'openai' as const,
     nativeDocumentSupport: ['txt', 'md'], // Basic text support
     documentParsingRequired: ['pdf', 'docx', 'doc', 'xlsx', 'xls', 'ods', 'pptx', 'ppt', 'csv', 'json', 'html', 'htm', 'xml', 'ics', 'rtf']

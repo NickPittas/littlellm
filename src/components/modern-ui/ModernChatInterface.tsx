@@ -82,6 +82,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       deepinfra: { lastSelectedModel: '' },
       groq: { lastSelectedModel: '' },
       lmstudio: { baseUrl: '', lastSelectedModel: '' },
+      jan: { baseUrl: '', lastSelectedModel: '' },
       ollama: { baseUrl: '', lastSelectedModel: '' },
       openrouter: { lastSelectedModel: '' },
       requesty: { lastSelectedModel: '' },

@@ -212,6 +212,55 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
     }
   };
 
+  // Helper functions for managing arguments and environment variables
+  const addArgument = () => {
+    setNewMcpServer(prev => ({
+      ...prev,
+      args: [...prev.args, '']
+    }));
+  };
+
+  const removeArgument = (index: number) => {
+    setNewMcpServer(prev => ({
+      ...prev,
+      args: prev.args.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateArgument = (index: number, value: string) => {
+    setNewMcpServer(prev => ({
+      ...prev,
+      args: prev.args.map((arg, i) => i === index ? value : arg)
+    }));
+  };
+
+  const addEnvVariable = () => {
+    const key = `ENV_VAR_${Object.keys(newMcpServer.env).length + 1}`;
+    setNewMcpServer(prev => ({
+      ...prev,
+      env: { ...prev.env, [key]: '' }
+    }));
+  };
+
+  const removeEnvVariable = (key: string) => {
+    setNewMcpServer(prev => {
+      const newEnv = { ...prev.env };
+      delete newEnv[key];
+      return { ...prev, env: newEnv };
+    });
+  };
+
+  const updateEnvVariable = (oldKey: string, newKey: string, value: string) => {
+    setNewMcpServer(prev => {
+      const newEnv = { ...prev.env };
+      if (oldKey !== newKey) {
+        delete newEnv[oldKey];
+      }
+      newEnv[newKey] = value;
+      return { ...prev, env: newEnv };
+    });
+  };
+
   const handleDeleteMcpServer = async (serverId: string) => {
     try {
       const success = await mcpService.removeServer(serverId);
@@ -441,27 +490,6 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
   const handleOpenMcpJsonEditor = () => {
     loadMcpJson();
-  };
-
-  const addArgument = () => {
-    setNewMcpServer(prev => ({
-      ...prev,
-      args: [...prev.args, '']
-    }));
-  };
-
-  const updateArgument = (index: number, value: string) => {
-    setNewMcpServer(prev => ({
-      ...prev,
-      args: prev.args.map((arg, i) => i === index ? value : arg)
-    }));
-  };
-
-  const removeArgument = (index: number) => {
-    setNewMcpServer(prev => ({
-      ...prev,
-      args: prev.args.filter((_, i) => i !== index)
-    }));
   };
 
   // Main save function (copied from SettingsOverlay)
@@ -1313,6 +1341,51 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                         )}
                       </div>
 
+                      {/* Environment Variables Section */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs">Environment Variables</Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={addEnvVariable}
+                            className="h-6 text-xs flex items-center gap-1"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Add Variable
+                          </Button>
+                        </div>
+                        {Object.entries(newMcpServer.env).map(([key, value]) => (
+                          <div key={key} className="flex gap-1">
+                            <Input
+                              value={key}
+                              placeholder="Variable name"
+                              className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                              onChange={(e) => updateEnvVariable(key, e.target.value, value)}
+                            />
+                            <Input
+                              value={value}
+                              placeholder="Variable value"
+                              className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                              onChange={(e) => updateEnvVariable(key, key, e.target.value)}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => removeEnvVariable(key)}
+                              className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                        {Object.keys(newMcpServer.env).length === 0 && (
+                          <p className="text-xs text-muted-foreground">No environment variables configured</p>
+                        )}
+                      </div>
+
                       <div className="flex justify-end gap-1">
                         <Button
                           variant="outline"
@@ -1480,6 +1553,51 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               ))}
                               {newMcpServer.args.length === 0 && (
                                 <p className="text-xs text-muted-foreground">No arguments configured</p>
+                              )}
+                            </div>
+
+                            {/* Environment Variables Section */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs">Environment Variables</Label>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={addEnvVariable}
+                                  className="h-6 text-xs flex items-center gap-1"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                  Add Variable
+                                </Button>
+                              </div>
+                              {Object.entries(newMcpServer.env).map(([key, value]) => (
+                                <div key={key} className="flex gap-1">
+                                  <Input
+                                    value={key}
+                                    placeholder="Variable name"
+                                    className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                                    onChange={(e) => updateEnvVariable(key, e.target.value, value)}
+                                  />
+                                  <Input
+                                    value={value}
+                                    placeholder="Variable value"
+                                    className="h-7 text-xs bg-muted/80 border-input focus:bg-muted hover:bg-muted/90 transition-colors"
+                                    onChange={(e) => updateEnvVariable(key, key, e.target.value)}
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => removeEnvVariable(key)}
+                                    className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ))}
+                              {Object.keys(newMcpServer.env).length === 0 && (
+                                <p className="text-xs text-muted-foreground">No environment variables configured</p>
                               )}
                             </div>
 

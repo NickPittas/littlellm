@@ -166,6 +166,14 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
     logo: '/assets/providers/lmstudio.png'
   },
   {
+    id: 'jan',
+    name: 'Jan AI',
+    baseUrl: 'http://127.0.0.1:1337/v1',
+    requiresApiKey: true,
+    models: [],
+    logo: '/assets/providers/jan.svg'
+  },
+  {
     id: 'ollama',
     name: 'Ollama (Local)',
     baseUrl: '',
