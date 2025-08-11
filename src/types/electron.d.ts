@@ -180,6 +180,14 @@ export interface ElectronAPI {
   setTransparency?: (enabled: boolean) => Promise<void>;
   setOpacity?: (opacity: number) => Promise<void>;
   setVibrancyType?: (type: string) => Promise<void>;
+
+  // Llama.cpp operations
+  llamaCppGetModels: () => Promise<unknown[]>;
+  llamaCppStartSwap: () => Promise<{ success: boolean; message?: string; error?: string }>;
+  llamaCppStopSwap: () => Promise<{ success: boolean; message?: string; error?: string }>;
+  llamaCppIsSwapRunning: () => Promise<boolean>;
+  llamaCppUpdateModelParameters: (modelId: string, parameters: unknown) => Promise<{ success: boolean; error?: string }>;
+  llamaCppDeleteModel: (modelId: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 declare global {

@@ -256,6 +256,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearDebugLog: () => ipcRenderer.invoke('clear-debug-log'),
   readDebugLog: () => ipcRenderer.invoke('read-debug-log'),
 
+  // Llama.cpp operations
+  llamaCppGetModels: () => ipcRenderer.invoke('llamacpp:get-models'),
+  llamaCppStartSwap: () => ipcRenderer.invoke('llamacpp:start-swap'),
+  llamaCppStopSwap: () => ipcRenderer.invoke('llamacpp:stop-swap'),
+  llamaCppIsSwapRunning: () => ipcRenderer.invoke('llamacpp:is-swap-running'),
+  llamaCppUpdateModelParameters: (modelId: string, parameters: any) => ipcRenderer.invoke('llamacpp:update-model-parameters', modelId, parameters),
+  llamaCppDeleteModel: (modelId: string) => ipcRenderer.invoke('llamacpp:delete-model', modelId),
+
   // Immediately enable robust drag support when preload loads
   __enableDragOnLoad: undefined
 });

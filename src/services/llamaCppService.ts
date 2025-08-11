@@ -94,9 +94,18 @@ class LlamaCppService {
   }
 
   async getModels(): Promise<LlamaCppModel[]> {
-    // In a real implementation, this would call Electron IPC
-    // For now, return mock data
-    return Array.from(this.models.values());
+    try {
+      // Call Electron IPC to get models
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const models = await window.electronAPI.llamaCppGetModels();
+        return models as LlamaCppModel[] || [];
+      }
+      // Fallback to mock data if not in Electron
+      return Array.from(this.models.values());
+    } catch (error) {
+      console.error('Failed to get models from Electron:', error);
+      return Array.from(this.models.values());
+    }
   }
 
   async getModel(modelId: string): Promise<LlamaCppModel | null> {
@@ -104,11 +113,20 @@ class LlamaCppService {
   }
 
   async updateModelParameters(modelId: string, parameters: Partial<LlamaCppParameters>): Promise<void> {
-    const model = this.models.get(modelId);
-    if (model) {
-      model.parameters = { ...model.parameters, ...parameters };
-      this.models.set(modelId, model);
-      // In a real implementation, this would call Electron IPC to update config
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        await window.electronAPI.llamaCppUpdateModelParameters(modelId, parameters);
+      } else {
+        // Fallback for non-Electron environment
+        const model = this.models.get(modelId);
+        if (model) {
+          model.parameters = { ...model.parameters, ...parameters };
+          this.models.set(modelId, model);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update model parameters:', error);
+      throw error;
     }
   }
 
@@ -118,24 +136,56 @@ class LlamaCppService {
   }
 
   async startLlamaSwap(): Promise<void> {
-    // In a real implementation, this would call Electron IPC to start llama-swap
-    console.log('🚀 Starting llama-swap proxy...');
-    // Simulate startup delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log('✅ Llama-swap started successfully');
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const result = await window.electronAPI.llamaCppStartSwap();
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to start llama-swap');
+        }
+        console.log('✅ Llama-swap started successfully');
+      } else {
+        // Fallback for non-Electron environment
+        console.log('🚀 Starting llama-swap proxy...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log('✅ Llama-swap started successfully');
+      }
+    } catch (error) {
+      console.error('Failed to start llama-swap:', error);
+      throw error;
+    }
   }
 
   async stopLlamaSwap(): Promise<void> {
-    // In a real implementation, this would call Electron IPC to stop llama-swap
-    console.log('🛑 Stopping llama-swap proxy...');
-    await new Promise(resolve => setTimeout(resolve, 500));
-    console.log('✅ Llama-swap stopped successfully');
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const result = await window.electronAPI.llamaCppStopSwap();
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to stop llama-swap');
+        }
+        console.log('✅ Llama-swap stopped successfully');
+      } else {
+        // Fallback for non-Electron environment
+        console.log('🛑 Stopping llama-swap proxy...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log('✅ Llama-swap stopped successfully');
+      }
+    } catch (error) {
+      console.error('Failed to stop llama-swap:', error);
+      throw error;
+    }
   }
 
   async isLlamaSwapRunning(): Promise<boolean> {
-    // In a real implementation, this would call Electron IPC to check status
-    // For now, return false
-    return false;
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        return await window.electronAPI.llamaCppIsSwapRunning();
+      }
+      // Fallback for non-Electron environment
+      return false;
+    } catch (error) {
+      console.error('Failed to check llama-swap status:', error);
+      return false;
+    }
   }
 
   async getAvailableModelsFromHuggingFace(): Promise<Array<{
@@ -172,9 +222,22 @@ class LlamaCppService {
   }
 
   async deleteModel(modelId: string): Promise<void> {
-    // In a real implementation, this would call Electron IPC to delete the model file
-    this.models.delete(modelId);
-    console.log(`🗑️ Deleted model: ${modelId}`);
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const result = await window.electronAPI.llamaCppDeleteModel(modelId);
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to delete model');
+        }
+        console.log(`🗑️ Deleted model: ${modelId}`);
+      } else {
+        // Fallback for non-Electron environment
+        this.models.delete(modelId);
+        console.log(`🗑️ Deleted model: ${modelId}`);
+      }
+    } catch (error) {
+      console.error('Failed to delete model:', error);
+      throw error;
+    }
   }
 }
 

@@ -28,6 +28,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
+import * as yaml from 'js-yaml';
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -5634,6 +5635,183 @@ console.debug = (...args: unknown[]) => {
       }
     } else {
       createConsoleWindow();
+    }
+  });
+
+  // Llama.cpp and llama-swap IPC handlers
+  let llamaSwapProcess: any = null;
+  const llamaModels: Map<string, any> = new Map();
+
+  ipcMain.handle('llamacpp:get-models', async () => {
+    try {
+      // Check for .gguf files in the models directory
+      const modelsDir = path.join(process.cwd(), 'models');
+      const models: any[] = [];
+
+      if (fs.existsSync(modelsDir)) {
+        const files = fs.readdirSync(modelsDir);
+        const modelFiles = files.filter(file => file.endsWith('.gguf'));
+
+        for (const file of modelFiles) {
+          const filePath = path.join(modelsDir, file);
+          const stats = fs.statSync(filePath);
+          const modelId = path.basename(file, '.gguf');
+
+          const model = {
+            id: modelId,
+            name: modelId.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+            filePath,
+            size: stats.size,
+            parameters: {
+              contextSize: 4096,
+              threads: -1,
+              gpuLayers: 0,
+              temperature: 0.7,
+              topK: 40,
+              topP: 0.9,
+              repeatPenalty: 1.1,
+              batchSize: 512,
+              port: 8080,
+              host: '127.0.0.1'
+            },
+            isDownloaded: true,
+            isRunning: false
+          };
+
+          models.push(model);
+          llamaModels.set(modelId, model);
+        }
+      }
+
+      console.log(`🦙 Found ${models.length} Llama.cpp models`);
+      return models;
+    } catch (error) {
+      console.error('❌ Failed to get Llama.cpp models:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('llamacpp:start-swap', async () => {
+    try {
+      if (llamaSwapProcess) {
+        console.log('🔄 Llama-swap is already running');
+        return { success: true, message: 'Already running' };
+      }
+
+      const llamaSwapPath = path.join(process.cwd(), 'llama', 'llama-swap.exe');
+      const configPath = path.join(process.cwd(), 'llama-swap-config.yaml');
+
+      // Create basic config if it doesn't exist
+      if (!fs.existsSync(configPath)) {
+        const config = {
+          startPort: 10001,
+          healthCheckTimeout: 120,
+          logLevel: 'info',
+          models: {}
+        };
+
+        // Add models to config
+        for (const [modelId, model] of llamaModels) {
+          if (model.isDownloaded) {
+            config.models[modelId] = {
+              cmd: `${path.join(process.cwd(), 'llama', 'llama-server.exe')} --model "${model.filePath}" --port \${PORT} --host 127.0.0.1`,
+              proxy: `http://127.0.0.1:8080`,
+              name: model.name,
+              ttl: 300
+            };
+          }
+        }
+
+        fs.writeFileSync(configPath, yaml.dump(config));
+      }
+
+      console.log('🚀 Starting llama-swap proxy...');
+
+      llamaSwapProcess = spawn(llamaSwapPath, [
+        '--config', configPath,
+        '--listen', '127.0.0.1:8080'
+      ], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: process.cwd()
+      });
+
+      llamaSwapProcess.stdout?.on('data', (data: Buffer) => {
+        console.log(`📡 llama-swap: ${data.toString().trim()}`);
+      });
+
+      llamaSwapProcess.stderr?.on('data', (data: Buffer) => {
+        console.error(`❌ llama-swap error: ${data.toString().trim()}`);
+      });
+
+      llamaSwapProcess.on('close', (code: number) => {
+        console.log(`🛑 llama-swap process exited with code ${code}`);
+        llamaSwapProcess = null;
+      });
+
+      // Wait a moment for the process to start
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      return { success: true, message: 'Llama-swap started successfully' };
+    } catch (error) {
+      console.error('❌ Failed to start llama-swap:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('llamacpp:stop-swap', async () => {
+    try {
+      if (llamaSwapProcess) {
+        console.log('🛑 Stopping llama-swap proxy...');
+        llamaSwapProcess.kill('SIGTERM');
+        llamaSwapProcess = null;
+        return { success: true, message: 'Llama-swap stopped successfully' };
+      }
+      return { success: true, message: 'Llama-swap was not running' };
+    } catch (error) {
+      console.error('❌ Failed to stop llama-swap:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('llamacpp:is-swap-running', async () => {
+    return llamaSwapProcess !== null && !llamaSwapProcess.killed;
+  });
+
+  ipcMain.handle('llamacpp:update-model-parameters', async (_, modelId: string, parameters: any) => {
+    try {
+      const model = llamaModels.get(modelId);
+      if (model) {
+        model.parameters = { ...model.parameters, ...parameters };
+        llamaModels.set(modelId, model);
+        console.log(`🔧 Updated parameters for model: ${modelId}`);
+        return { success: true };
+      }
+      return { success: false, error: 'Model not found' };
+    } catch (error) {
+      console.error('❌ Failed to update model parameters:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('llamacpp:delete-model', async (_, modelId: string) => {
+    try {
+      const model = llamaModels.get(modelId);
+      if (model && model.isDownloaded) {
+        // Delete the file
+        if (fs.existsSync(model.filePath)) {
+          fs.unlinkSync(model.filePath);
+        }
+
+        // Remove from models map
+        llamaModels.delete(modelId);
+
+        console.log(`🗑️ Deleted model: ${modelId}`);
+        return { success: true };
+      }
+      return { success: false, error: 'Model not found' };
+    } catch (error) {
+      console.error('❌ Failed to delete model:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 }
