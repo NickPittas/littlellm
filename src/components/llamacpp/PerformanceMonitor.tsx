@@ -1,22 +1,24 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Activity, 
-  Cpu, 
-  HardDrive, 
-  Zap, 
-  Clock, 
+import {
+  Activity,
+  Cpu,
+  HardDrive,
+  Zap,
+  Clock,
   TrendingUp,
   AlertTriangle,
   CheckCircle,
-  Info
+  Info,
+  Server
 } from 'lucide-react';
-import { 
-  llamaCppPerformanceMonitor, 
+import {
+  llamaCppPerformanceMonitor,
   PerformanceMetrics,
   LlamaCppPerformanceMonitor
 } from '../../services/llamaCppPerformanceMonitor';
+import { llamaCppModelCache, CachedModel, ModelSwitchingMetrics } from '../../services/llamaCppModelCache';
 
 interface PerformanceMonitorProps {
   isVisible: boolean;
@@ -26,6 +28,10 @@ interface PerformanceMonitorProps {
 export function PerformanceMonitor({ isVisible, onClose }: PerformanceMonitorProps) {
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null);
   const [recommendations, setRecommendations] = useState<string[]>([]);
+  const [cacheStatus, setCacheStatus] = useState<{
+    cachedModels: CachedModel[];
+    metrics: ModelSwitchingMetrics;
+  } | null>(null);
 
   useEffect(() => {
     if (!isVisible) return;
@@ -44,7 +50,22 @@ export function PerformanceMonitor({ isVisible, onClose }: PerformanceMonitorPro
       setRecommendations(newReport.recommendations);
     });
 
-    return unsubscribe;
+    // Get cache status
+    const updateCacheStatus = () => {
+      const status = llamaCppModelCache.getCacheStatus();
+      setCacheStatus({
+        cachedModels: status.cachedModels,
+        metrics: status.metrics
+      });
+    };
+
+    updateCacheStatus();
+    const cacheInterval = setInterval(updateCacheStatus, 5000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(cacheInterval);
+    };
   }, [isVisible]);
 
   if (!isVisible || !metrics) return null;
@@ -222,6 +243,106 @@ export function PerformanceMonitor({ isVisible, onClose }: PerformanceMonitorPro
               </div>
             </div>
           </div>
+
+          {/* Model Cache Status */}
+          {cacheStatus && (
+            <div className="mt-6">
+              <h3 className="text-lg font-medium text-white mb-4">Model Cache & Switching</h3>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Cache Metrics */}
+                <div className="space-y-4">
+                  <div className="bg-gray-800/50 rounded-lg p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <HardDrive className="w-5 h-5 text-blue-400" />
+                      <span className="text-gray-300">Cache Performance</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-lg font-bold text-white">
+                          {cacheStatus.metrics.cacheHitRate.toFixed(1)}%
+                        </div>
+                        <div className="text-xs text-gray-500">Cache Hit Rate</div>
+                      </div>
+                      <div>
+                        <div className="text-lg font-bold text-white">
+                          {cacheStatus.metrics.averageSwitchTime.toFixed(0)}ms
+                        </div>
+                        <div className="text-xs text-gray-500">Avg Switch Time</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-800/50 rounded-lg p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <TrendingUp className="w-5 h-5 text-green-400" />
+                      <span className="text-gray-300">Switch Statistics</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-lg font-bold text-white">
+                          {cacheStatus.metrics.switchCount}
+                        </div>
+                        <div className="text-xs text-gray-500">Total Switches</div>
+                      </div>
+                      <div>
+                        <div className="text-lg font-bold text-white">
+                          {cacheStatus.metrics.totalCacheSize.toFixed(1)}GB
+                        </div>
+                        <div className="text-xs text-gray-500">Cache Size</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cached Models */}
+                <div className="space-y-4">
+                  <div className="bg-gray-800/50 rounded-lg p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <Server className="w-5 h-5 text-purple-400" />
+                      <span className="text-gray-300">Cached Models</span>
+                    </div>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {cacheStatus.cachedModels.length === 0 ? (
+                        <div className="text-sm text-gray-500">No models cached</div>
+                      ) : (
+                        cacheStatus.cachedModels.map((model, index) => (
+                          <div key={index} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${
+                                model.isActive ? 'bg-green-400' :
+                                model.isPreloaded ? 'bg-blue-400' : 'bg-gray-400'
+                              }`} />
+                              <span className="text-white truncate">{model.name}</span>
+                            </div>
+                            <div className="text-gray-400">
+                              {model.size.toFixed(1)}GB
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="mt-3 pt-2 border-t border-gray-700/50">
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-green-400" />
+                          Active
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-blue-400" />
+                          Preloaded
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-gray-400" />
+                          Cached
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Recommendations */}
           {recommendations.length > 0 && (

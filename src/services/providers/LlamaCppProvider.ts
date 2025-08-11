@@ -15,6 +15,7 @@ import {
 import { LLAMACPP_SYSTEM_PROMPT } from './prompts/llamacpp';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
 import { llamaCppPerformanceMonitor } from '../llamaCppPerformanceMonitor';
+import { llamaCppModelCache } from '../llamaCppModelCache';
 
 export class LlamaCppProvider extends BaseProvider {
   readonly id = 'llamacpp';
@@ -32,6 +33,10 @@ export class LlamaCppProvider extends BaseProvider {
   // This method is injected by the ProviderAdapter from the LLMService
   private getMCPToolsForProvider!: (providerId: string, settings: LLMSettings) => Promise<unknown[]>;
 
+  // Model switching state
+  private currentModel: string | null = null;
+  private baseURL = 'http://127.0.0.1:8080';
+
   async sendMessage(
     message: MessageContent,
     settings: LLMSettings,
@@ -45,9 +50,24 @@ export class LlamaCppProvider extends BaseProvider {
     const requestId = Math.random().toString(36).substr(2, 9);
     llamaCppPerformanceMonitor.startRequest(requestId);
 
+    // Handle model switching if needed
+    const targetModel = settings.model || 'default';
+    if (this.currentModel !== targetModel) {
+      console.log(`🔄 Switching from ${this.currentModel} to ${targetModel}`);
+      const switchResult = await llamaCppModelCache.switchToModel(targetModel);
+
+      if (!switchResult.success) {
+        llamaCppPerformanceMonitor.completeRequest(requestId, 'Model switch failed');
+        throw new Error(`Failed to switch to model ${targetModel}`);
+      }
+
+      this.currentModel = targetModel;
+      console.log(`✅ Model switch completed in ${switchResult.switchTime}ms (from cache: ${switchResult.fromCache})`);
+    }
+
     // Update model configuration for monitoring
     llamaCppPerformanceMonitor.updateModelConfig(
-      settings.model || 'unknown',
+      targetModel,
       4096, // Default context size - could be extracted from settings
       512   // Default batch size - could be extracted from settings
     );
