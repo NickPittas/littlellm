@@ -1,0 +1,181 @@
+// Service for managing Llama.cpp models and llama-swap proxy
+
+// Browser-compatible service that communicates with Electron main process
+
+export interface LlamaCppModel {
+  id: string;
+  name: string;
+  description?: string;
+  filePath: string;
+  size: number;
+  parameters: LlamaCppParameters;
+  isDownloaded: boolean;
+  isRunning: boolean;
+}
+
+export interface LlamaCppParameters {
+  contextSize?: number;
+  threads?: number;
+  gpuLayers?: number;
+  temperature?: number;
+  topK?: number;
+  topP?: number;
+  repeatPenalty?: number;
+  batchSize?: number;
+  port?: number;
+  host?: string;
+  [key: string]: any;
+}
+
+export interface LlamaSwapConfig {
+  models: Record<string, {
+    cmd: string;
+    proxy?: string;
+    name?: string;
+    description?: string;
+    env?: string[];
+    ttl?: number;
+  }>;
+  startPort?: number;
+  healthCheckTimeout?: number;
+  logLevel?: string;
+}
+
+class LlamaCppService {
+  private models: Map<string, LlamaCppModel> = new Map();
+
+  constructor() {
+    this.loadMockModels();
+  }
+
+  private loadMockModels(): void {
+    // For now, load some mock models for demonstration
+    const mockModels: LlamaCppModel[] = [
+      {
+        id: 'phi-3-mini-4k-instruct-q4',
+        name: 'Phi-3 Mini 4K Instruct (Q4_K_M)',
+        description: 'Small but capable model from Microsoft',
+        filePath: '/models/phi-3-mini-4k-instruct-q4_k_m.gguf',
+        size: 2300000000, // ~2.3GB
+        parameters: this.getDefaultParameters(),
+        isDownloaded: false,
+        isRunning: false
+      },
+      {
+        id: 'qwen2-5-0-5b-instruct-q4',
+        name: 'Qwen2.5 0.5B Instruct (Q4_K_M)',
+        description: 'Very small and fast model for basic tasks',
+        filePath: '/models/qwen2.5-0.5b-instruct-q4_k_m.gguf',
+        size: 350000000, // ~350MB
+        parameters: this.getDefaultParameters(),
+        isDownloaded: false,
+        isRunning: false
+      }
+    ];
+
+    for (const model of mockModels) {
+      this.models.set(model.id, model);
+    }
+  }
+
+  private getDefaultParameters(): LlamaCppParameters {
+    return {
+      contextSize: 4096,
+      threads: -1,
+      gpuLayers: 0,
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.9,
+      repeatPenalty: 1.1,
+      batchSize: 512,
+      port: 8080,
+      host: '127.0.0.1'
+    };
+  }
+
+  async getModels(): Promise<LlamaCppModel[]> {
+    // In a real implementation, this would call Electron IPC
+    // For now, return mock data
+    return Array.from(this.models.values());
+  }
+
+  async getModel(modelId: string): Promise<LlamaCppModel | null> {
+    return this.models.get(modelId) || null;
+  }
+
+  async updateModelParameters(modelId: string, parameters: Partial<LlamaCppParameters>): Promise<void> {
+    const model = this.models.get(modelId);
+    if (model) {
+      model.parameters = { ...model.parameters, ...parameters };
+      this.models.set(modelId, model);
+      // In a real implementation, this would call Electron IPC to update config
+    }
+  }
+
+  async downloadModel(huggingFaceRepo: string, quantization: string = 'Q4_K_M'): Promise<string> {
+    // In a real implementation, this would call Electron IPC to download the model
+    throw new Error('Model downloading not yet implemented. Please manually place .gguf files in the models directory.');
+  }
+
+  async startLlamaSwap(): Promise<void> {
+    // In a real implementation, this would call Electron IPC to start llama-swap
+    console.log('🚀 Starting llama-swap proxy...');
+    // Simulate startup delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    console.log('✅ Llama-swap started successfully');
+  }
+
+  async stopLlamaSwap(): Promise<void> {
+    // In a real implementation, this would call Electron IPC to stop llama-swap
+    console.log('🛑 Stopping llama-swap proxy...');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    console.log('✅ Llama-swap stopped successfully');
+  }
+
+  async isLlamaSwapRunning(): Promise<boolean> {
+    // In a real implementation, this would call Electron IPC to check status
+    // For now, return false
+    return false;
+  }
+
+  async getAvailableModelsFromHuggingFace(): Promise<Array<{
+    id: string;
+    name: string;
+    description: string;
+    downloads: number;
+    quantizations: string[];
+  }>> {
+    // This would query Hugging Face for available GGUF models
+    return [
+      {
+        id: 'microsoft/Phi-3-mini-4k-instruct-gguf',
+        name: 'Phi-3 Mini 4K Instruct',
+        description: 'Small but capable model from Microsoft',
+        downloads: 50000,
+        quantizations: ['Q4_K_M', 'Q5_K_M', 'Q8_0', 'F16']
+      },
+      {
+        id: 'Qwen/Qwen2.5-0.5B-Instruct-GGUF',
+        name: 'Qwen2.5 0.5B Instruct',
+        description: 'Very small and fast model for basic tasks',
+        downloads: 30000,
+        quantizations: ['Q4_K_M', 'Q5_K_M', 'Q8_0']
+      },
+      {
+        id: 'bartowski/Llama-3.2-3B-Instruct-GGUF',
+        name: 'Llama 3.2 3B Instruct',
+        description: 'Efficient model from Meta',
+        downloads: 75000,
+        quantizations: ['Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0']
+      }
+    ];
+  }
+
+  async deleteModel(modelId: string): Promise<void> {
+    // In a real implementation, this would call Electron IPC to delete the model file
+    this.models.delete(modelId);
+    console.log(`🗑️ Deleted model: ${modelId}`);
+  }
+}
+
+export const llamaCppService = new LlamaCppService();

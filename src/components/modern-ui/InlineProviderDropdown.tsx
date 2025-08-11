@@ -31,12 +31,12 @@ export function InlineProviderDropdown({
       
       if (type === 'local') {
         const localProviders = allProviders.filter(p =>
-          p.id === 'ollama' || p.id === 'lmstudio' || p.id === 'jan'
+          p.id === 'ollama' || p.id === 'lmstudio' || p.id === 'jan' || p.id === 'llamacpp'
         );
         setProviders(localProviders);
       } else {
         const remoteProviders = allProviders.filter(p =>
-          p.id !== 'ollama' && p.id !== 'lmstudio' && p.id !== 'jan'
+          p.id !== 'ollama' && p.id !== 'lmstudio' && p.id !== 'jan' && p.id !== 'llamacpp'
         );
         setProviders(remoteProviders);
       }

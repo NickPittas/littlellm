@@ -10,6 +10,7 @@ import { ChatHistoryPanel } from './ChatHistoryPanel';
 import { FloatingProviderSelector } from './FloatingProviderSelector';
 import { AttachmentPreview } from '../AttachmentPreview';
 import { AgentManagement } from './AgentManagement';
+import { LlamaCppPanel } from '../llamacpp/LlamaCppPanel';
 import { agentService } from '../../services/agentService';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
@@ -47,6 +48,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   const [providerSelectorOpen, setProviderSelectorOpen] = useState(false);
   const [providerAnchorElement, setProviderAnchorElement] = useState<HTMLElement | null>(null);
   const [agentManagementOpen, setAgentManagementOpen] = useState(false);
+  const [llamaCppPanelOpen, setLlamaCppPanelOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentConfiguration | null>(null);
   const [availableAgents, setAvailableAgents] = useState<AgentConfiguration[]>([]);
 
@@ -280,6 +282,9 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     switch (itemId) {
       case 'agents':
         setAgentManagementOpen(true);
+        break;
+      case 'llamacpp':
+        setLlamaCppPanelOpen(true);
         break;
       case 'settings':
         setSettingsModalOpen(true);
@@ -1367,6 +1372,12 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Llama.cpp Management Panel */}
+      <LlamaCppPanel
+        isOpen={llamaCppPanelOpen}
+        onClose={() => setLlamaCppPanelOpen(false)}
+      />
     </div>
   );
 }

@@ -34,10 +34,10 @@ export function FloatingProviderSelector({
     const allProviders = DEFAULT_PROVIDERS;
 
     const local = allProviders.filter(p =>
-      p.id === 'ollama' || p.id === 'lmstudio' || p.id === 'jan'
+      p.id === 'ollama' || p.id === 'lmstudio' || p.id === 'jan' || p.id === 'llamacpp'
     );
     const remote = allProviders.filter(p =>
-      p.id !== 'ollama' && p.id !== 'lmstudio' && p.id !== 'jan'
+      p.id !== 'ollama' && p.id !== 'lmstudio' && p.id !== 'jan' && p.id !== 'llamacpp'
     );
 
     setLocalProviders(local);

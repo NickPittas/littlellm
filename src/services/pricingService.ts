@@ -190,7 +190,7 @@ export class PricingService {
    * Check if a provider is local (no API costs)
    */
   static isLocalProvider(provider: string): boolean {
-    const localProviders = ['ollama', 'lmstudio'];
+    const localProviders = ['ollama', 'lmstudio', 'jan', 'llamacpp'];
     return localProviders.includes(provider.toLowerCase());
   }
 

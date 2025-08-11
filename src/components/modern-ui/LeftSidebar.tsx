@@ -11,7 +11,8 @@ import {
   Terminal,
   Bot,
   Volume2,
-  VolumeX
+  VolumeX,
+  Cpu
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { cn } from '@/lib/utils';
@@ -91,6 +92,12 @@ export function LeftSidebar({
       label: 'CUSTOM AGENTS',
       icon: Bot,
       onClick: () => handleItemClick('agents')
+    },
+    {
+      id: 'llamacpp',
+      label: 'LLAMA.CPP',
+      icon: Cpu,
+      onClick: () => handleItemClick('llamacpp')
     },
     {
       id: 'mcp-servers',

@@ -11,6 +11,7 @@ import { DeepinfraProvider } from './DeepinfraProvider';
 import { LMStudioProvider } from './LMStudioProvider';
 import { JanProvider } from './JanProvider';
 import { OllamaProvider } from './OllamaProvider';
+import { LlamaCppProvider } from './LlamaCppProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
 import { RequestyProvider } from './RequestyProvider';
 import { ReplicateProvider } from './ReplicateProvider';
@@ -38,6 +39,7 @@ export class ProviderFactory {
     this.registerProvider(new LMStudioProvider());
     this.registerProvider(new JanProvider());
     this.registerProvider(new OllamaProvider());
+    this.registerProvider(new LlamaCppProvider());
     this.registerProvider(new OpenRouterProvider());
     this.registerProvider(new RequestyProvider());
     this.registerProvider(new ReplicateProvider());

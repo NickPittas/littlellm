@@ -110,6 +110,14 @@ export const DEFAULT_PROVIDERS: LLMProvider[] = [
     requiresApiKey: false,
     models: [], // Will be fetched dynamically
     logo: '/assets/providers/n8n.png'
+  },
+  {
+    id: 'llamacpp',
+    name: 'Llama.cpp',
+    baseUrl: 'http://127.0.0.1:8080/v1',
+    requiresApiKey: false,
+    models: [], // Will be fetched dynamically
+    logo: '/assets/providers/llamacpp.svg'
   }
 ];
 
