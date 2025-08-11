@@ -13,11 +13,13 @@ import {
   Cpu,
   Zap,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Activity
 } from 'lucide-react';
 import { llamaCppService, LlamaCppModel } from '../../services/llamaCppService';
 import { LlamaCppErrorBoundary, useLlamaCppErrorHandler } from './ErrorBoundary';
 import { useLlamaCppNotifications } from './NotificationSystem';
+import { PerformanceMonitor } from './PerformanceMonitor';
 
 interface LlamaCppPanelProps {
   isOpen: boolean;
@@ -32,6 +34,7 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
   const [showParametersDialog, setShowParametersDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPerformanceMonitor, setShowPerformanceMonitor] = useState(false);
 
   const { handleError } = useLlamaCppErrorHandler();
   const notifications = useLlamaCppNotifications();
@@ -138,12 +141,28 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
             <Server className="w-6 h-6 text-blue-400" />
             <h2 className="text-xl font-semibold text-white">Llama.cpp Management</h2>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            ✕
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowPerformanceMonitor(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm"
+            >
+              <Activity className="w-4 h-4" />
+              Performance
+            </button>
+            <button
+              onClick={() => setShowDownloadDialog(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Add Model
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Status Bar */}
@@ -309,6 +328,12 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
           onSave={loadModels}
         />
       )}
+
+      {/* Performance Monitor */}
+      <PerformanceMonitor
+        isVisible={showPerformanceMonitor}
+        onClose={() => setShowPerformanceMonitor(false)}
+      />
       </LlamaCppErrorBoundary>
     </div>
   );

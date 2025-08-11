@@ -14,6 +14,7 @@ import {
 
 import { LLAMACPP_SYSTEM_PROMPT } from './prompts/llamacpp';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
+import { llamaCppPerformanceMonitor } from '../llamaCppPerformanceMonitor';
 
 export class LlamaCppProvider extends BaseProvider {
   readonly id = 'llamacpp';
@@ -40,6 +41,16 @@ export class LlamaCppProvider extends BaseProvider {
     signal?: AbortSignal,
     conversationId?: string
   ): Promise<LLMResponse> {
+    // Start performance monitoring
+    const requestId = Math.random().toString(36).substr(2, 9);
+    llamaCppPerformanceMonitor.startRequest(requestId);
+
+    // Update model configuration for monitoring
+    llamaCppPerformanceMonitor.updateModelConfig(
+      settings.model || 'unknown',
+      4096, // Default context size - could be extracted from settings
+      512   // Default batch size - could be extracted from settings
+    );
     // Llama.cpp uses OpenAI-compatible API through llama-swap proxy
     // Default to llama-swap proxy URL
     let baseUrl = settings.baseUrl || provider.baseUrl || 'http://127.0.0.1:8080/v1';
@@ -125,12 +136,13 @@ export class LlamaCppProvider extends BaseProvider {
       }
 
       if (onStream) {
-        return this.handleStreamResponse(response, onStream, settings, provider, conversationHistory, signal);
+        return this.handleStreamResponse(response, onStream, settings, provider, conversationHistory, signal, requestId);
       } else {
-        return this.handleNonStreamResponse(response, settings, provider, conversationHistory);
+        return this.handleNonStreamResponse(response, settings, provider, conversationHistory, requestId);
       }
     } catch (error) {
       console.error('🚨 Llama.cpp: Request failed:', error);
+      llamaCppPerformanceMonitor.completeRequest(requestId, error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -278,37 +290,85 @@ When you need to use a tool, include the tool call in your response and I will e
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    requestId?: string
   ): Promise<LLMResponse> {
-    return OpenAICompatibleStreaming.handleStreamResponse(
-      response,
-      onStream,
-      (content, usage) => this.processResponseForTools(content, usage, settings, provider, conversationHistory, onStream),
-      signal
-    );
+    let firstTokenReceived = false;
+
+    const wrappedOnStream = (chunk: string) => {
+      if (!firstTokenReceived && requestId) {
+        llamaCppPerformanceMonitor.recordFirstToken(requestId);
+        firstTokenReceived = true;
+      }
+      if (requestId) {
+        llamaCppPerformanceMonitor.recordToken(requestId);
+      }
+      onStream(chunk);
+    };
+
+    try {
+      const result = await OpenAICompatibleStreaming.handleStreamResponse(
+        response,
+        wrappedOnStream,
+        (content, usage) => this.processResponseForTools(content, usage, settings, provider, conversationHistory, wrappedOnStream),
+        signal
+      );
+
+      if (requestId) {
+        llamaCppPerformanceMonitor.completeRequest(requestId);
+      }
+
+      return result;
+    } catch (error) {
+      if (requestId) {
+        llamaCppPerformanceMonitor.completeRequest(requestId, error instanceof Error ? error.message : String(error));
+      }
+      throw error;
+    }
   }
 
   private async handleNonStreamResponse(
     response: Response,
     settings: LLMSettings,
     provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>
+    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    requestId?: string
   ): Promise<LLMResponse> {
-    const data: APIResponseData = await response.json();
-    const message = data.choices?.[0]?.message;
-    const content = message?.content || '';
+    try {
+      const data: APIResponseData = await response.json();
+      const message = data.choices?.[0]?.message;
+      const content = message?.content || '';
 
-    return this.processResponseForTools(
-      content,
-      data.usage ? {
-        promptTokens: data.usage.prompt_tokens,
-        completionTokens: data.usage.completion_tokens,
-        totalTokens: data.usage.total_tokens
-      } : undefined,
-      settings,
-      provider,
-      conversationHistory
-    );
+      // Record tokens for performance monitoring
+      if (requestId && data.usage?.completion_tokens) {
+        for (let i = 0; i < data.usage.completion_tokens; i++) {
+          llamaCppPerformanceMonitor.recordToken(requestId);
+        }
+      }
+
+      const result = await this.processResponseForTools(
+        content,
+        data.usage ? {
+          promptTokens: data.usage.prompt_tokens,
+          completionTokens: data.usage.completion_tokens,
+          totalTokens: data.usage.total_tokens
+        } : undefined,
+        settings,
+        provider,
+        conversationHistory
+      );
+
+      if (requestId) {
+        llamaCppPerformanceMonitor.completeRequest(requestId);
+      }
+
+      return result;
+    } catch (error) {
+      if (requestId) {
+        llamaCppPerformanceMonitor.completeRequest(requestId, error instanceof Error ? error.message : String(error));
+      }
+      throw error;
+    }
   }
 
   private async processResponseForTools(
