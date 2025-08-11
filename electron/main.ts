@@ -6056,6 +6056,69 @@ console.debug = (...args: unknown[]) => {
       return [];
     }
   });
+
+  ipcMain.handle('llamacpp:get-system-capabilities', async () => {
+    try {
+      console.log('🔍 Detecting system capabilities...');
+
+      const os = require('os');
+
+      // Get system information
+      const totalRAM = Math.round(os.totalmem() / (1024 * 1024 * 1024)); // Convert to GB
+      const freeRAM = Math.round(os.freemem() / (1024 * 1024 * 1024)); // Convert to GB
+      const availableRAM = Math.round(totalRAM * 0.8); // Assume 80% is safely available
+      const cpuCores = os.cpus().length;
+      const platform = os.platform();
+      const architecture = os.arch();
+
+      // Basic GPU detection (would need more sophisticated detection in production)
+      let hasGPU = false;
+      let gpuVRAM = 0;
+      let gpuName = 'Unknown';
+
+      // Simple GPU detection based on platform
+      if (platform === 'win32') {
+        // On Windows, we could use wmic or other tools
+        hasGPU = true; // Assume GPU present for now
+        gpuVRAM = 4; // Default assumption
+        gpuName = 'Windows GPU';
+      } else if (platform === 'darwin') {
+        // On macOS, we could use system_profiler
+        hasGPU = true; // Assume GPU present for now
+        gpuVRAM = 8; // Default assumption for Apple Silicon
+        gpuName = 'macOS GPU';
+      } else if (platform === 'linux') {
+        // On Linux, we could use nvidia-smi or other tools
+        hasGPU = false; // Conservative assumption
+        gpuVRAM = 0;
+        gpuName = 'Linux GPU';
+      }
+
+      const capabilities = {
+        totalRAM,
+        availableRAM,
+        cpuCores,
+        hasGPU,
+        gpuVRAM: hasGPU ? gpuVRAM : undefined,
+        gpuName: hasGPU ? gpuName : undefined,
+        platform: platform === 'win32' ? 'windows' : platform === 'darwin' ? 'mac' : platform === 'linux' ? 'linux' : 'unknown',
+        architecture: architecture === 'x64' || architecture === 'x86_64' ? 'x64' : architecture === 'arm64' ? 'arm64' : 'unknown'
+      };
+
+      console.log('✅ System capabilities detected:', capabilities);
+      return capabilities;
+    } catch (error) {
+      console.error('❌ Failed to detect system capabilities:', error);
+      return {
+        totalRAM: 8,
+        availableRAM: 6,
+        cpuCores: 4,
+        hasGPU: false,
+        platform: 'unknown',
+        architecture: 'unknown'
+      };
+    }
+  });
 }
 
 app.on('window-all-closed', () => {

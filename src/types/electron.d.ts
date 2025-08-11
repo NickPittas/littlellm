@@ -193,6 +193,18 @@ export interface ElectronAPI {
 
   // Llama.cpp event listeners
   onLlamaCppDownloadProgress: (callback: (data: { modelId: string; progress: number; status: string }) => void) => () => void;
+
+  // System capabilities
+  llamaCppGetSystemCapabilities: () => Promise<{
+    totalRAM: number;
+    availableRAM: number;
+    cpuCores: number;
+    hasGPU: boolean;
+    gpuVRAM?: number;
+    gpuName?: string;
+    platform: string;
+    architecture: string;
+  }>;
 }
 
 declare global {

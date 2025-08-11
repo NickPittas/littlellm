@@ -272,6 +272,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeAllListeners('llamacpp:download-progress');
   },
 
+  // System capabilities
+  llamaCppGetSystemCapabilities: () => ipcRenderer.invoke('llamacpp:get-system-capabilities'),
+
   // Immediately enable robust drag support when preload loads
   __enableDragOnLoad: undefined
 });

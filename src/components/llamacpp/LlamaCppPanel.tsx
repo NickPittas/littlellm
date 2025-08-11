@@ -20,6 +20,8 @@ import { llamaCppService, LlamaCppModel } from '../../services/llamaCppService';
 import { LlamaCppErrorBoundary, useLlamaCppErrorHandler } from './ErrorBoundary';
 import { useLlamaCppNotifications } from './NotificationSystem';
 import { PerformanceMonitor } from './PerformanceMonitor';
+import { AutoConfigDialog } from './AutoConfigDialog';
+import { OptimalConfiguration } from '../../services/llamaCppAutoConfig';
 
 interface LlamaCppPanelProps {
   isOpen: boolean;
@@ -35,6 +37,7 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPerformanceMonitor, setShowPerformanceMonitor] = useState(false);
+  const [showAutoConfig, setShowAutoConfig] = useState(false);
 
   const { handleError } = useLlamaCppErrorHandler();
   const notifications = useLlamaCppNotifications();
@@ -122,6 +125,41 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
     }
   };
 
+  const handleApplyAutoConfig = async (config: OptimalConfiguration) => {
+    if (!selectedModel) return;
+
+    try {
+      const updatedParameters = {
+        ...selectedModel.parameters,
+        contextSize: config.contextSize,
+        threads: config.threads,
+        gpuLayers: config.gpuLayers,
+        batchSize: config.batchSize,
+        temperature: config.temperature,
+        topK: config.topK,
+        topP: config.topP,
+        repeatPenalty: config.repeatPenalty
+      };
+
+      await llamaCppService.updateModelParameters(selectedModel.id, updatedParameters);
+      await loadModels();
+      notifications.notifyModelConfigured(selectedModel.name);
+
+      // Show reasoning in notification
+      if (config.reasoning.length > 0) {
+        notifications.notifyInfo(
+          'Auto-Configuration Applied',
+          `Configuration optimized based on: ${config.reasoning.slice(0, 2).join(', ')}`
+        );
+      }
+    } catch (err) {
+      const error = err as Error;
+      console.error('Failed to apply auto-configuration:', error);
+      const errorInfo = handleError(error, 'applyAutoConfig');
+      notifications.notifyError('Failed to Apply Configuration', errorInfo.message);
+    }
+  };
+
   const formatFileSize = (bytes: number): string => {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     if (bytes === 0) return '0 B';
@@ -142,6 +180,13 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
             <h2 className="text-xl font-semibold text-white">Llama.cpp Management</h2>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowAutoConfig(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm"
+            >
+              <Settings className="w-4 h-4" />
+              Auto-Config
+            </button>
             <button
               onClick={() => setShowPerformanceMonitor(true)}
               className="flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors text-sm"
@@ -333,6 +378,14 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
       <PerformanceMonitor
         isVisible={showPerformanceMonitor}
         onClose={() => setShowPerformanceMonitor(false)}
+      />
+
+      {/* Auto-Configuration Dialog */}
+      <AutoConfigDialog
+        isOpen={showAutoConfig}
+        onClose={() => setShowAutoConfig(false)}
+        onApplyConfig={handleApplyAutoConfig}
+        currentModelId={selectedModel?.id}
       />
       </LlamaCppErrorBoundary>
     </div>
