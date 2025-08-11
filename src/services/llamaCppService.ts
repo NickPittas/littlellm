@@ -131,8 +131,21 @@ class LlamaCppService {
   }
 
   async downloadModel(huggingFaceRepo: string, quantization: string = 'Q4_K_M'): Promise<string> {
-    // In a real implementation, this would call Electron IPC to download the model
-    throw new Error('Model downloading not yet implemented. Please manually place .gguf files in the models directory.');
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const result = await window.electronAPI.llamaCppDownloadModel(huggingFaceRepo, quantization);
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to download model');
+        }
+        return `${huggingFaceRepo.split('/').pop()}-${quantization}`;
+      } else {
+        // Fallback for non-Electron environment
+        throw new Error('Model downloading not yet implemented. Please manually place .gguf files in the models directory.');
+      }
+    } catch (error) {
+      console.error('Failed to download model:', error);
+      throw error;
+    }
   }
 
   async startLlamaSwap(): Promise<void> {
@@ -194,31 +207,49 @@ class LlamaCppService {
     description: string;
     downloads: number;
     quantizations: string[];
+    size?: Record<string, string>;
   }>> {
-    // This would query Hugging Face for available GGUF models
-    return [
-      {
-        id: 'microsoft/Phi-3-mini-4k-instruct-gguf',
-        name: 'Phi-3 Mini 4K Instruct',
-        description: 'Small but capable model from Microsoft',
-        downloads: 50000,
-        quantizations: ['Q4_K_M', 'Q5_K_M', 'Q8_0', 'F16']
-      },
-      {
-        id: 'Qwen/Qwen2.5-0.5B-Instruct-GGUF',
-        name: 'Qwen2.5 0.5B Instruct',
-        description: 'Very small and fast model for basic tasks',
-        downloads: 30000,
-        quantizations: ['Q4_K_M', 'Q5_K_M', 'Q8_0']
-      },
-      {
-        id: 'bartowski/Llama-3.2-3B-Instruct-GGUF',
-        name: 'Llama 3.2 3B Instruct',
-        description: 'Efficient model from Meta',
-        downloads: 75000,
-        quantizations: ['Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0']
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI) {
+        const models = await window.electronAPI.llamaCppGetAvailableModels();
+        return models as Array<{
+          id: string;
+          name: string;
+          description: string;
+          downloads: number;
+          quantizations: string[];
+          size?: Record<string, string>;
+        }>;
+      } else {
+        // Fallback for non-Electron environment
+        return [
+          {
+            id: 'microsoft/Phi-3-mini-4k-instruct-gguf',
+            name: 'Phi-3 Mini 4K Instruct',
+            description: 'Small but capable model from Microsoft',
+            downloads: 50000,
+            quantizations: ['Q4_K_M', 'Q5_K_M', 'Q8_0', 'F16']
+          },
+          {
+            id: 'Qwen/Qwen2.5-0.5B-Instruct-GGUF',
+            name: 'Qwen2.5 0.5B Instruct',
+            description: 'Very small and fast model for basic tasks',
+            downloads: 30000,
+            quantizations: ['Q4_K_M', 'Q5_K_M', 'Q8_0']
+          },
+          {
+            id: 'bartowski/Llama-3.2-3B-Instruct-GGUF',
+            name: 'Llama 3.2 3B Instruct',
+            description: 'Efficient model from Meta',
+            downloads: 75000,
+            quantizations: ['Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0']
+          }
+        ];
       }
-    ];
+    } catch (error) {
+      console.error('Failed to get available models:', error);
+      return [];
+    }
   }
 
   async deleteModel(modelId: string): Promise<void> {

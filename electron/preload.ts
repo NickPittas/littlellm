@@ -263,6 +263,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   llamaCppIsSwapRunning: () => ipcRenderer.invoke('llamacpp:is-swap-running'),
   llamaCppUpdateModelParameters: (modelId: string, parameters: any) => ipcRenderer.invoke('llamacpp:update-model-parameters', modelId, parameters),
   llamaCppDeleteModel: (modelId: string) => ipcRenderer.invoke('llamacpp:delete-model', modelId),
+  llamaCppDownloadModel: (huggingFaceRepo: string, quantization: string) => ipcRenderer.invoke('llamacpp:download-model', huggingFaceRepo, quantization),
+  llamaCppGetAvailableModels: () => ipcRenderer.invoke('llamacpp:get-available-models'),
 
   // Immediately enable robust drag support when preload loads
   __enableDragOnLoad: undefined

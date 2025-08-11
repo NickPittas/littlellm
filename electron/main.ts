@@ -5814,6 +5814,102 @@ console.debug = (...args: unknown[]) => {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
+
+  ipcMain.handle('llamacpp:download-model', async (_, huggingFaceRepo: string, quantization: string = 'Q4_K_M') => {
+    try {
+      console.log(`📥 Starting download: ${huggingFaceRepo} (${quantization})`);
+
+      // For now, return a placeholder implementation
+      // In a real implementation, this would:
+      // 1. Use huggingface-hub to download the model
+      // 2. Show progress updates via IPC events
+      // 3. Validate the downloaded file
+      // 4. Add it to the models list
+
+      return {
+        success: false,
+        error: 'Model downloading not yet implemented. Please manually place .gguf files in the models directory.'
+      };
+    } catch (error) {
+      console.error('❌ Failed to download model:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('llamacpp:get-available-models', async () => {
+    try {
+      // Return popular GGUF models available on Hugging Face
+      const availableModels = [
+        {
+          id: 'microsoft/Phi-3-mini-4k-instruct-gguf',
+          name: 'Phi-3 Mini 4K Instruct',
+          description: 'Small but capable 3.8B parameter model from Microsoft, optimized for instruction following',
+          downloads: 50000,
+          quantizations: ['Q4_K_M', 'Q5_K_M', 'Q8_0', 'F16'],
+          size: {
+            'Q4_K_M': '2.3GB',
+            'Q5_K_M': '2.8GB',
+            'Q8_0': '4.1GB',
+            'F16': '7.6GB'
+          }
+        },
+        {
+          id: 'Qwen/Qwen2.5-0.5B-Instruct-GGUF',
+          name: 'Qwen2.5 0.5B Instruct',
+          description: 'Very small and fast 0.5B parameter model for basic tasks and edge devices',
+          downloads: 30000,
+          quantizations: ['Q4_K_M', 'Q5_K_M', 'Q8_0'],
+          size: {
+            'Q4_K_M': '350MB',
+            'Q5_K_M': '420MB',
+            'Q8_0': '650MB'
+          }
+        },
+        {
+          id: 'bartowski/Llama-3.2-3B-Instruct-GGUF',
+          name: 'Llama 3.2 3B Instruct',
+          description: 'Efficient 3B parameter model from Meta with strong reasoning capabilities',
+          downloads: 75000,
+          quantizations: ['Q4_K_M', 'Q5_K_M', 'Q6_K', 'Q8_0'],
+          size: {
+            'Q4_K_M': '1.9GB',
+            'Q5_K_M': '2.3GB',
+            'Q6_K': '2.7GB',
+            'Q8_0': '3.2GB'
+          }
+        },
+        {
+          id: 'bartowski/Llama-3.2-1B-Instruct-GGUF',
+          name: 'Llama 3.2 1B Instruct',
+          description: 'Ultra-compact 1B parameter model from Meta, perfect for resource-constrained environments',
+          downloads: 45000,
+          quantizations: ['Q4_K_M', 'Q5_K_M', 'Q8_0'],
+          size: {
+            'Q4_K_M': '700MB',
+            'Q5_K_M': '850MB',
+            'Q8_0': '1.1GB'
+          }
+        },
+        {
+          id: 'microsoft/DialoGPT-medium-gguf',
+          name: 'DialoGPT Medium',
+          description: 'Conversational AI model optimized for dialogue generation',
+          downloads: 25000,
+          quantizations: ['Q4_K_M', 'Q5_K_M'],
+          size: {
+            'Q4_K_M': '800MB',
+            'Q5_K_M': '950MB'
+          }
+        }
+      ];
+
+      console.log(`📋 Returning ${availableModels.length} available models for download`);
+      return availableModels;
+    } catch (error) {
+      console.error('❌ Failed to get available models:', error);
+      return [];
+    }
+  });
 }
 
 app.on('window-all-closed', () => {

@@ -260,44 +260,376 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
   );
 }
 
-// Placeholder components - will be implemented next
+// Model Download Dialog Component
 function ModelDownloadDialog({ onClose, onDownload }: { onClose: () => void; onDownload: () => void }) {
+  const [availableModels, setAvailableModels] = useState<Array<{
+    id: string;
+    name: string;
+    description: string;
+    downloads: number;
+    quantizations: string[];
+    size?: Record<string, string>;
+  }>>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedQuantization, setSelectedQuantization] = useState<string>('Q4_K_M');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadAvailableModels();
+  }, []);
+
+  const loadAvailableModels = async () => {
+    try {
+      const models = await llamaCppService.getAvailableModelsFromHuggingFace();
+      setAvailableModels(models);
+      if (models.length > 0) {
+        setSelectedModel(models[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load available models:', error);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!selectedModel) return;
+
+    setLoading(true);
+    try {
+      await llamaCppService.downloadModel(selectedModel, selectedQuantization);
+      onDownload();
+      onClose();
+    } catch (error) {
+      console.error('Failed to download model:', error);
+      alert('Model downloading is not yet implemented. Please manually place .gguf files in the models directory.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectedModelData = availableModels.find(m => m.id === selectedModel);
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-60 flex items-center justify-center">
-      <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 w-full max-w-md">
-        <h3 className="text-lg font-semibold text-white mb-4">Download Model</h3>
-        <p className="text-gray-400 mb-4">Model downloading will be implemented in the next phase.</p>
-        <button
-          onClick={onClose}
-          className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
-        >
-          Close
-        </button>
+      <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-white">Download Model</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          {/* Model Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Select Model
+            </label>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {availableModels.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.name} ({model.downloads.toLocaleString()} downloads)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Model Description */}
+          {selectedModelData && (
+            <div className="bg-gray-800/50 rounded-lg p-4">
+              <h4 className="font-medium text-white mb-2">{selectedModelData.name}</h4>
+              <p className="text-gray-400 text-sm mb-3">{selectedModelData.description}</p>
+              <div className="text-xs text-gray-500">
+                Downloads: {selectedModelData.downloads.toLocaleString()}
+              </div>
+            </div>
+          )}
+
+          {/* Quantization Selection */}
+          {selectedModelData && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Quantization Level
+              </label>
+              <select
+                value={selectedQuantization}
+                onChange={(e) => setSelectedQuantization(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {selectedModelData.quantizations.map((quant) => {
+                  const size = selectedModelData.size?.[quant];
+                  return (
+                    <option key={quant} value={quant}>
+                      {quant} {quant === 'Q4_K_M' ? '(Recommended)' : ''} {size ? `- ${size}` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Q4_K_M provides the best balance of quality and performance for most use cases.
+                {selectedModelData.size?.[selectedQuantization] && (
+                  <span className="block mt-1">
+                    Download size: {selectedModelData.size[selectedQuantization]}
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
+
+          {/* Download Notice */}
+          <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <div className="text-yellow-400 mt-0.5">⚠️</div>
+              <div>
+                <h4 className="text-yellow-300 font-medium mb-1">Download Notice</h4>
+                <p className="text-yellow-200/80 text-sm">
+                  Model downloading is currently not implemented. Please manually download .gguf files
+                  from Hugging Face and place them in the models directory.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDownload}
+              disabled={loading || !selectedModel}
+              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:opacity-50 text-white rounded-lg transition-colors"
+            >
+              {loading ? 'Downloading...' : 'Download'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function ModelParametersDialog({ 
-  model, 
-  onClose, 
-  onSave 
-}: { 
-  model: LlamaCppModel; 
-  onClose: () => void; 
-  onSave: () => void; 
+function ModelParametersDialog({
+  model,
+  onClose,
+  onSave
+}: {
+  model: LlamaCppModel;
+  onClose: () => void;
+  onSave: () => void;
 }) {
+  const [parameters, setParameters] = useState(model.parameters);
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      await llamaCppService.updateModelParameters(model.id, parameters);
+      onSave();
+      onClose();
+    } catch (error) {
+      console.error('Failed to update parameters:', error);
+      alert('Failed to update model parameters. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleParameterChange = (key: string, value: number | string) => {
+    setParameters(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-60 flex items-center justify-center">
-      <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 w-full max-w-md">
-        <h3 className="text-lg font-semibold text-white mb-4">Configure {model.name}</h3>
-        <p className="text-gray-400 mb-4">Parameter configuration will be implemented in the next phase.</p>
-        <button
-          onClick={onClose}
-          className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
-        >
-          Close
-        </button>
+      <div className="bg-gray-900 rounded-lg border border-gray-700 p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-white">Configure {model.name}</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          {/* Context Size */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Context Size
+            </label>
+            <input
+              type="number"
+              value={parameters.contextSize || 4096}
+              onChange={(e) => handleParameterChange('contextSize', parseInt(e.target.value))}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min="512"
+              max="32768"
+              step="512"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Maximum number of tokens the model can process at once (512-32768)
+            </p>
+          </div>
+
+          {/* Threads */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              CPU Threads
+            </label>
+            <input
+              type="number"
+              value={parameters.threads || -1}
+              onChange={(e) => handleParameterChange('threads', parseInt(e.target.value))}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min="-1"
+              max="32"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Number of CPU threads to use (-1 for auto-detect)
+            </p>
+          </div>
+
+          {/* GPU Layers */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              GPU Layers
+            </label>
+            <input
+              type="number"
+              value={parameters.gpuLayers || 0}
+              onChange={(e) => handleParameterChange('gpuLayers', parseInt(e.target.value))}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min="0"
+              max="100"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Number of layers to offload to GPU (0 for CPU-only)
+            </p>
+          </div>
+
+          {/* Temperature */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Temperature
+            </label>
+            <input
+              type="number"
+              value={parameters.temperature || 0.7}
+              onChange={(e) => handleParameterChange('temperature', parseFloat(e.target.value))}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min="0.1"
+              max="2.0"
+              step="0.1"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Controls randomness in generation (0.1-2.0, lower = more focused)
+            </p>
+          </div>
+
+          {/* Top K */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Top K
+            </label>
+            <input
+              type="number"
+              value={parameters.topK || 40}
+              onChange={(e) => handleParameterChange('topK', parseInt(e.target.value))}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min="1"
+              max="100"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Limits vocabulary to top K most likely tokens
+            </p>
+          </div>
+
+          {/* Top P */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Top P
+            </label>
+            <input
+              type="number"
+              value={parameters.topP || 0.9}
+              onChange={(e) => handleParameterChange('topP', parseFloat(e.target.value))}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min="0.1"
+              max="1.0"
+              step="0.1"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Nucleus sampling threshold (0.1-1.0)
+            </p>
+          </div>
+
+          {/* Repeat Penalty */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Repeat Penalty
+            </label>
+            <input
+              type="number"
+              value={parameters.repeatPenalty || 1.1}
+              onChange={(e) => handleParameterChange('repeatPenalty', parseFloat(e.target.value))}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min="1.0"
+              max="2.0"
+              step="0.1"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Penalty for repeating tokens (1.0 = no penalty, higher = less repetition)
+            </p>
+          </div>
+
+          {/* Batch Size */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Batch Size
+            </label>
+            <input
+              type="number"
+              value={parameters.batchSize || 512}
+              onChange={(e) => handleParameterChange('batchSize', parseInt(e.target.value))}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min="1"
+              max="2048"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Number of tokens to process in parallel
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-4">
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={loading}
+              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:opacity-50 text-white rounded-lg transition-colors"
+            >
+              {loading ? 'Saving...' : 'Save Parameters'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
