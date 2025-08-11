@@ -38,7 +38,7 @@ jspm_packages/
 
 # Optional npm cache directory
 .npm
-
+ll
 # Optional eslint cache
 .eslintcache
 
@@ -252,3 +252,6 @@ coverage/
 # package-lock.json
 # yarn.lock
 # pnpm-lock.yaml
+
+# Llama folder
+llama/
