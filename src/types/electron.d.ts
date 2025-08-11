@@ -188,8 +188,11 @@ export interface ElectronAPI {
   llamaCppIsSwapRunning: () => Promise<boolean>;
   llamaCppUpdateModelParameters: (modelId: string, parameters: unknown) => Promise<{ success: boolean; error?: string }>;
   llamaCppDeleteModel: (modelId: string) => Promise<{ success: boolean; error?: string }>;
-  llamaCppDownloadModel: (huggingFaceRepo: string, quantization: string) => Promise<{ success: boolean; error?: string }>;
+  llamaCppDownloadModel: (huggingFaceRepo: string, quantization: string) => Promise<{ success: boolean; error?: string; modelId?: string; filePath?: string }>;
   llamaCppGetAvailableModels: () => Promise<unknown[]>;
+
+  // Llama.cpp event listeners
+  onLlamaCppDownloadProgress: (callback: (data: { modelId: string; progress: number; status: string }) => void) => () => void;
 }
 
 declare global {

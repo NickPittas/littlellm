@@ -5815,21 +5815,167 @@ console.debug = (...args: unknown[]) => {
     }
   });
 
-  ipcMain.handle('llamacpp:download-model', async (_, huggingFaceRepo: string, quantization: string = 'Q4_K_M') => {
+  ipcMain.handle('llamacpp:download-model', async (event, huggingFaceRepo: string, quantization: string = 'Q4_K_M') => {
     try {
       console.log(`📥 Starting download: ${huggingFaceRepo} (${quantization})`);
 
-      // For now, return a placeholder implementation
-      // In a real implementation, this would:
-      // 1. Use huggingface-hub to download the model
-      // 2. Show progress updates via IPC events
-      // 3. Validate the downloaded file
-      // 4. Add it to the models list
+      // Create models directory if it doesn't exist
+      const modelsDir = path.join(process.cwd(), 'models');
+      if (!fs.existsSync(modelsDir)) {
+        fs.mkdirSync(modelsDir, { recursive: true });
+      }
 
-      return {
-        success: false,
-        error: 'Model downloading not yet implemented. Please manually place .gguf files in the models directory.'
-      };
+      // Generate filename from repo and quantization
+      const modelName = huggingFaceRepo.split('/').pop() || 'model';
+      const filename = `${modelName}-${quantization.toLowerCase()}.gguf`;
+      const filePath = path.join(modelsDir, filename);
+
+      // Check if file already exists
+      if (fs.existsSync(filePath)) {
+        console.log(`📁 Model already exists: ${filename}`);
+        return { success: false, error: 'Model already downloaded' };
+      }
+
+      // Construct Hugging Face download URL
+      // This is a simplified approach - in production, you'd use the HF API
+      const downloadUrl = `https://huggingface.co/${huggingFaceRepo}/resolve/main/${filename}`;
+
+      console.log(`🌐 Download URL: ${downloadUrl}`);
+
+      // Send progress update
+      event.sender.send('llamacpp:download-progress', {
+        modelId: filename,
+        progress: 0,
+        status: 'Starting download...'
+      });
+
+      // Use Node.js https module for download with progress tracking
+      const https = require('https');
+      const url = require('url');
+
+      return new Promise((resolve) => {
+        const parsedUrl = url.parse(downloadUrl);
+
+        const request = https.get(parsedUrl, (response: any) => {
+          if (response.statusCode === 302 || response.statusCode === 301) {
+            // Handle redirect
+            const redirectUrl = response.headers.location;
+            console.log(`🔄 Redirecting to: ${redirectUrl}`);
+
+            // For now, return error for redirects (would need recursive handling)
+            resolve({
+              success: false,
+              error: 'Model downloading requires manual download. Please visit the Hugging Face repository and download the .gguf file manually.'
+            });
+            return;
+          }
+
+          if (response.statusCode !== 200) {
+            console.error(`❌ Download failed with status: ${response.statusCode}`);
+            resolve({
+              success: false,
+              error: `Download failed: HTTP ${response.statusCode}. Please download manually from Hugging Face.`
+            });
+            return;
+          }
+
+          const totalSize = parseInt(response.headers['content-length'] || '0', 10);
+          let downloadedSize = 0;
+
+          const fileStream = fs.createWriteStream(filePath);
+
+          response.on('data', (chunk: Buffer) => {
+            downloadedSize += chunk.length;
+            fileStream.write(chunk);
+
+            // Send progress update
+            const progress = totalSize > 0 ? (downloadedSize / totalSize) * 100 : 0;
+            event.sender.send('llamacpp:download-progress', {
+              modelId: filename,
+              progress: Math.round(progress),
+              status: `Downloading... ${Math.round(downloadedSize / 1024 / 1024)}MB / ${Math.round(totalSize / 1024 / 1024)}MB`
+            });
+          });
+
+          response.on('end', () => {
+            fileStream.end();
+
+            // Verify file was downloaded completely
+            if (totalSize > 0 && downloadedSize !== totalSize) {
+              fs.unlinkSync(filePath); // Clean up incomplete file
+              resolve({
+                success: false,
+                error: 'Download incomplete. Please try again or download manually.'
+              });
+              return;
+            }
+
+            // Add to models map
+            const modelId = path.basename(filename, '.gguf');
+            const model = {
+              id: modelId,
+              name: modelId.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+              filePath,
+              size: downloadedSize,
+              parameters: {
+                contextSize: 4096,
+                threads: -1,
+                gpuLayers: 0,
+                temperature: 0.7,
+                topK: 40,
+                topP: 0.9,
+                repeatPenalty: 1.1,
+                batchSize: 512,
+                port: 8080,
+                host: '127.0.0.1'
+              },
+              isDownloaded: true,
+              isRunning: false
+            };
+
+            llamaModels.set(modelId, model);
+
+            // Send completion update
+            event.sender.send('llamacpp:download-progress', {
+              modelId: filename,
+              progress: 100,
+              status: 'Download complete!'
+            });
+
+            console.log(`✅ Model downloaded successfully: ${filename}`);
+            resolve({ success: true, modelId, filePath });
+          });
+
+          response.on('error', (error: Error) => {
+            fileStream.destroy();
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath); // Clean up incomplete file
+            }
+            console.error(`❌ Download error: ${error.message}`);
+            resolve({
+              success: false,
+              error: `Download failed: ${error.message}. Please download manually from Hugging Face.`
+            });
+          });
+        });
+
+        request.on('error', (error: Error) => {
+          console.error(`❌ Request error: ${error.message}`);
+          resolve({
+            success: false,
+            error: `Network error: ${error.message}. Please check your connection and try again.`
+          });
+        });
+
+        request.setTimeout(300000, () => { // 5 minute timeout
+          request.destroy();
+          resolve({
+            success: false,
+            error: 'Download timeout. Please try again or download manually.'
+          });
+        });
+      });
+
     } catch (error) {
       console.error('❌ Failed to download model:', error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };

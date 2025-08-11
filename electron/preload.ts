@@ -266,6 +266,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   llamaCppDownloadModel: (huggingFaceRepo: string, quantization: string) => ipcRenderer.invoke('llamacpp:download-model', huggingFaceRepo, quantization),
   llamaCppGetAvailableModels: () => ipcRenderer.invoke('llamacpp:get-available-models'),
 
+  // Llama.cpp event listeners
+  onLlamaCppDownloadProgress: (callback: (data: any) => void) => {
+    ipcRenderer.on('llamacpp:download-progress', (_, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('llamacpp:download-progress');
+  },
+
   // Immediately enable robust drag support when preload loads
   __enableDragOnLoad: undefined
 });

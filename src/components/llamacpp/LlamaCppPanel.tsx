@@ -1,19 +1,23 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Download, 
-  Play, 
-  Square, 
-  Settings, 
-  Trash2, 
+import {
+  Download,
+  Play,
+  Square,
+  Settings,
+  Trash2,
   Plus,
   Server,
   HardDrive,
   Cpu,
-  Zap
+  Zap,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { llamaCppService, LlamaCppModel } from '../../services/llamaCppService';
+import { LlamaCppErrorBoundary, useLlamaCppErrorHandler } from './ErrorBoundary';
+import { useLlamaCppNotifications } from './NotificationSystem';
 
 interface LlamaCppPanelProps {
   isOpen: boolean;
@@ -27,20 +31,29 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
   const [showDownloadDialog, setShowDownloadDialog] = useState(false);
   const [showParametersDialog, setShowParametersDialog] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { handleError } = useLlamaCppErrorHandler();
+  const notifications = useLlamaCppNotifications();
 
   useEffect(() => {
     if (isOpen) {
       loadModels();
       checkSwapStatus();
     }
-  }, [isOpen]);
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadModels = async () => {
     try {
+      setError(null);
       const modelList = await llamaCppService.getModels();
       setModels(modelList);
-    } catch (error) {
+    } catch (err) {
+      const error = err as Error;
       console.error('Failed to load models:', error);
+      const errorInfo = handleError(error, 'loadModels');
+      setError(errorInfo.message);
+      notifications.notifyError('Failed to Load Models', errorInfo.message);
     }
   };
 
@@ -48,8 +61,11 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
     try {
       const running = await llamaCppService.isLlamaSwapRunning();
       setIsSwapRunning(running);
-    } catch (error) {
+    } catch (err) {
+      const error = err as Error;
       console.error('Failed to check swap status:', error);
+      const errorInfo = handleError(error, 'checkSwapStatus');
+      notifications.notifyWarning('Status Check Failed', errorInfo.message);
     }
   };
 
@@ -58,8 +74,12 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
     try {
       await llamaCppService.startLlamaSwap();
       setIsSwapRunning(true);
-    } catch (error) {
+      notifications.notifyLlamaSwapStarted();
+    } catch (err) {
+      const error = err as Error;
       console.error('Failed to start llama-swap:', error);
+      const errorInfo = handleError(error, 'startLlamaSwap');
+      notifications.notifyLlamaSwapError(errorInfo.message);
     } finally {
       setLoading(false);
     }
@@ -70,20 +90,31 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
     try {
       await llamaCppService.stopLlamaSwap();
       setIsSwapRunning(false);
-    } catch (error) {
+      notifications.notifyLlamaSwapStopped();
+    } catch (err) {
+      const error = err as Error;
       console.error('Failed to stop llama-swap:', error);
+      const errorInfo = handleError(error, 'stopLlamaSwap');
+      notifications.notifyError('Failed to Stop Llama-swap', errorInfo.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteModel = async (modelId: string) => {
-    if (confirm('Are you sure you want to delete this model? This action cannot be undone.')) {
+    const model = models.find(m => m.id === modelId);
+    const modelName = model?.name || modelId;
+
+    if (confirm(`Are you sure you want to delete "${modelName}"? This action cannot be undone.`)) {
       try {
         await llamaCppService.deleteModel(modelId);
         await loadModels();
-      } catch (error) {
+        notifications.notifyModelDeleted(modelName);
+      } catch (err) {
+        const error = err as Error;
         console.error('Failed to delete model:', error);
+        const errorInfo = handleError(error, 'deleteModel');
+        notifications.notifyError('Failed to Delete Model', errorInfo.message);
       }
     }
   };
@@ -99,7 +130,8 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
-      <div className="bg-gray-900/95 backdrop-blur-md rounded-xl border border-gray-700/50 w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl">
+      <LlamaCppErrorBoundary>
+        <div className="bg-gray-900/95 backdrop-blur-md rounded-xl border border-gray-700/50 w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700/50">
           <div className="flex items-center gap-3">
@@ -138,8 +170,8 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
                   disabled={loading}
                   className="flex items-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50"
                 >
-                  <Square className="w-4 h-4" />
-                  Stop
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4" />}
+                  {loading ? 'Stopping...' : 'Stop'}
                 </button>
               ) : (
                 <button
@@ -147,8 +179,8 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
                   disabled={loading}
                   className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50"
                 >
-                  <Play className="w-4 h-4" />
-                  Start
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                  {loading ? 'Starting...' : 'Start'}
                 </button>
               )}
               <button
@@ -161,6 +193,27 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
             </div>
           </div>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="p-4 border-b border-gray-700/50">
+            <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <h4 className="text-red-300 font-medium mb-1">Error</h4>
+                  <p className="text-red-200/80 text-sm">{error}</p>
+                  <button
+                    onClick={() => setError(null)}
+                    className="mt-2 text-xs text-red-300 hover:text-red-200 underline"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Models List */}
         <div className="flex-1 overflow-y-auto p-4">
@@ -256,6 +309,7 @@ export function LlamaCppPanel({ isOpen, onClose }: LlamaCppPanelProps) {
           onSave={loadModels}
         />
       )}
+      </LlamaCppErrorBoundary>
     </div>
   );
 }
@@ -273,10 +327,37 @@ function ModelDownloadDialog({ onClose, onDownload }: { onClose: () => void; onD
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedQuantization, setSelectedQuantization] = useState<string>('Q4_K_M');
   const [loading, setLoading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<{
+    progress: number;
+    status: string;
+  } | null>(null);
 
   useEffect(() => {
     loadAvailableModels();
-  }, []);
+
+    // Set up download progress listener
+    let cleanup: (() => void) | undefined;
+    if (typeof window !== 'undefined' && window.electronAPI?.onLlamaCppDownloadProgress) {
+      cleanup = window.electronAPI.onLlamaCppDownloadProgress((data) => {
+        setDownloadProgress({
+          progress: data.progress,
+          status: data.status
+        });
+
+        if (data.progress === 100) {
+          // Download complete, refresh models list
+          setTimeout(() => {
+            setDownloadProgress(null);
+            onDownload();
+          }, 2000);
+        }
+      });
+    }
+
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [onDownload]);
 
   const loadAvailableModels = async () => {
     try {
@@ -294,15 +375,27 @@ function ModelDownloadDialog({ onClose, onDownload }: { onClose: () => void; onD
     if (!selectedModel) return;
 
     setLoading(true);
+    setDownloadProgress({ progress: 0, status: 'Preparing download...' });
+
     try {
-      await llamaCppService.downloadModel(selectedModel, selectedQuantization);
-      onDownload();
-      onClose();
+      const result = await llamaCppService.downloadModel(selectedModel, selectedQuantization);
+
+      if (result) {
+        // Download initiated successfully
+        console.log('Download started for:', selectedModel);
+        // Progress will be tracked via the event listener
+      }
     } catch (error) {
       console.error('Failed to download model:', error);
-      alert('Model downloading is not yet implemented. Please manually place .gguf files in the models directory.');
-    } finally {
+      setDownloadProgress(null);
       setLoading(false);
+
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('manually')) {
+        alert('Automatic downloading is not available for this model. Please download the .gguf file manually from Hugging Face and place it in the models directory.');
+      } else {
+        alert(`Download failed: ${errorMessage}`);
+      }
     }
   };
 
@@ -382,19 +475,45 @@ function ModelDownloadDialog({ onClose, onDownload }: { onClose: () => void; onD
             </div>
           )}
 
-          {/* Download Notice */}
-          <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
-            <div className="flex items-start gap-3">
-              <div className="text-yellow-400 mt-0.5">⚠️</div>
-              <div>
-                <h4 className="text-yellow-300 font-medium mb-1">Download Notice</h4>
-                <p className="text-yellow-200/80 text-sm">
-                  Model downloading is currently not implemented. Please manually download .gguf files
-                  from Hugging Face and place them in the models directory.
-                </p>
+          {/* Download Progress */}
+          {downloadProgress && (
+            <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-blue-400 mt-0.5">📥</div>
+                <div className="flex-1">
+                  <h4 className="text-blue-300 font-medium mb-2">Downloading Model</h4>
+                  <div className="w-full bg-gray-700 rounded-full h-2 mb-2">
+                    <div
+                      className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${downloadProgress.progress}%` }}
+                    />
+                  </div>
+                  <p className="text-blue-200/80 text-sm">
+                    {downloadProgress.status}
+                  </p>
+                  <p className="text-blue-200/60 text-xs mt-1">
+                    {downloadProgress.progress}% complete
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* Download Notice */}
+          {!downloadProgress && (
+            <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-yellow-400 mt-0.5">⚠️</div>
+                <div>
+                  <h4 className="text-yellow-300 font-medium mb-1">Download Notice</h4>
+                  <p className="text-yellow-200/80 text-sm">
+                    Automatic downloading may not work for all models. If download fails,
+                    please manually download .gguf files from Hugging Face and place them in the models directory.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex gap-3 pt-4">
@@ -406,10 +525,11 @@ function ModelDownloadDialog({ onClose, onDownload }: { onClose: () => void; onD
             </button>
             <button
               onClick={handleDownload}
-              disabled={loading || !selectedModel}
+              disabled={loading || !selectedModel || !!downloadProgress}
               className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:opacity-50 text-white rounded-lg transition-colors"
             >
-              {loading ? 'Downloading...' : 'Download'}
+              {downloadProgress ? `Downloading... ${downloadProgress.progress}%` :
+               loading ? 'Preparing...' : 'Download'}
             </button>
           </div>
         </div>

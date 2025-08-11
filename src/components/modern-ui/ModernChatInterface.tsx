@@ -11,6 +11,7 @@ import { FloatingProviderSelector } from './FloatingProviderSelector';
 import { AttachmentPreview } from '../AttachmentPreview';
 import { AgentManagement } from './AgentManagement';
 import { LlamaCppPanel } from '../llamacpp/LlamaCppPanel';
+import { NotificationProvider } from '../llamacpp/NotificationSystem';
 import { agentService } from '../../services/agentService';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
@@ -1144,16 +1145,17 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
 
   return (
-    <div
-      className={cn(
-        "flex h-screen bg-gray-950 text-white overflow-hidden modern-chat-interface",
-        className
-      )}
-      style={{
-        borderRadius: '32px',
-        overflow: 'hidden'
-      }}
-    >
+    <NotificationProvider>
+      <div
+        className={cn(
+          "flex h-screen bg-gray-950 text-white overflow-hidden modern-chat-interface",
+          className
+        )}
+        style={{
+          borderRadius: '32px',
+          overflow: 'hidden'
+        }}
+      >
       {/* Left Sidebar */}
       <LeftSidebar
         onItemClick={handleSidebarItemClick}
@@ -1378,6 +1380,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         isOpen={llamaCppPanelOpen}
         onClose={() => setLlamaCppPanelOpen(false)}
       />
-    </div>
+      </div>
+    </NotificationProvider>
   );
 }

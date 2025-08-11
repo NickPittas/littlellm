@@ -130,17 +130,17 @@ class LlamaCppService {
     }
   }
 
-  async downloadModel(huggingFaceRepo: string, quantization: string = 'Q4_K_M'): Promise<string> {
+  async downloadModel(huggingFaceRepo: string, quantization: string = 'Q4_K_M'): Promise<string | null> {
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
         const result = await window.electronAPI.llamaCppDownloadModel(huggingFaceRepo, quantization);
         if (!result.success) {
           throw new Error(result.error || 'Failed to download model');
         }
-        return `${huggingFaceRepo.split('/').pop()}-${quantization}`;
+        return result.modelId || `${huggingFaceRepo.split('/').pop()}-${quantization}`;
       } else {
         // Fallback for non-Electron environment
-        throw new Error('Model downloading not yet implemented. Please manually place .gguf files in the models directory.');
+        throw new Error('Model downloading not available in browser mode. Please use the Electron application.');
       }
     } catch (error) {
       console.error('Failed to download model:', error);
