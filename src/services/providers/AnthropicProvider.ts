@@ -15,6 +15,26 @@ import { ToolNameUtils } from './utils';
 import { ANTHROPIC_SYSTEM_PROMPT } from './prompts/anthropic';
 import { PricingService } from '../pricingService';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 export class AnthropicProvider extends BaseProvider {
   readonly id = 'anthropic';
   readonly name = 'Anthropic';
@@ -53,22 +73,22 @@ export class AnthropicProvider extends BaseProvider {
   // Anthropic-specific tool calling methods
   private async getAnthropicTools(settings: LLMSettings): Promise<unknown[]> {
     try {
-      console.log(`🔍 Getting tools for Anthropic provider`);
-      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🔍 Getting tools for Anthropic provider`);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
 
       // Check if tool calling is disabled
       if (settings?.toolCallingEnabled === false) {
-        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
+        safeDebugLog('info', 'ANTHROPICPROVIDER', `🚫 Tool calling is disabled, returning empty tools array`);
         return [];
       }
 
       // Get raw tools from the centralized service
-      console.log(`🔧 AnthropicProvider: Calling _getMCPToolsForProvider for anthropic`);
-      console.log(`🔧 AnthropicProvider: _getMCPToolsForProvider method exists:`, typeof this._getMCPToolsForProvider === 'function');
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 AnthropicProvider: Calling _getMCPToolsForProvider for anthropic`);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 AnthropicProvider: _getMCPToolsForProvider method exists:`, typeof this._getMCPToolsForProvider === 'function');
 
       const rawTools = await this._getMCPToolsForProvider!('anthropic', settings);
-      console.log(`🔧 AnthropicProvider: Received ${rawTools.length} raw tools from _getMCPToolsForProvider`);
-      console.log(`📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{ function?: { name?: string }, serverId?: string }>).map(t => ({
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 AnthropicProvider: Received ${rawTools.length} raw tools from _getMCPToolsForProvider`);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{ function?: { name?: string }, serverId?: string }>).map(t => ({
         name: t.function?.name,
         serverId: t.serverId,
         isInternal: t.serverId === 'internal-commands'
@@ -76,11 +96,11 @@ export class AnthropicProvider extends BaseProvider {
 
       // Format tools specifically for Anthropic
       const formattedTools = this.formatToolsForAnthropic(rawTools as Array<{ type?: string; function?: { name?: string; description?: string; parameters?: unknown } }>);
-      console.log(`🔧 Formatted ${formattedTools.length} tools for Anthropic`);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Formatted ${formattedTools.length} tools for Anthropic`);
 
       return formattedTools;
     } catch (error) {
-      console.error('❌ Failed to get Anthropic tools:', error);
+      safeDebugLog('error', 'ANTHROPICPROVIDER', '❌ Failed to get Anthropic tools:', error);
       return [];
     }
   }
@@ -102,7 +122,7 @@ export class AnthropicProvider extends BaseProvider {
         };
       }
       
-      console.warn(`⚠️ Skipping invalid tool (not in unified format):`, tool);
+      safeDebugLog('warn', 'ANTHROPICPROVIDER', `⚠️ Skipping invalid tool (not in unified format):`, tool);
       return null;
     }).filter(tool => tool !== null);
   }
@@ -142,7 +162,7 @@ export class AnthropicProvider extends BaseProvider {
     const cachingEnabled = settings.promptCachingEnabled ?? true;
 
     // Debug API key details
-    console.log('🔍 Anthropic API key debug:', {
+    safeDebugLog('info', 'ANTHROPICPROVIDER', '🔍 Anthropic API key debug:', {
       hasApiKey: !!settings.apiKey,
       keyLength: settings.apiKey?.length || 0,
       keyStart: settings.apiKey?.substring(0, 10) || 'undefined',
@@ -153,7 +173,7 @@ export class AnthropicProvider extends BaseProvider {
 
     // Validate API key format
     if (!settings.apiKey || !settings.apiKey.startsWith('sk-ant-')) {
-      console.error('❌ Anthropic API key validation failed:', {
+      safeDebugLog('error', 'ANTHROPICPROVIDER', '❌ Anthropic API key validation failed:', {
         apiKey: settings.apiKey,
         hasApiKey: !!settings.apiKey,
         startsWithSkAnt: settings.apiKey?.startsWith('sk-ant-')
@@ -200,7 +220,7 @@ export class AnthropicProvider extends BaseProvider {
           content: content
         });
       } else {
-        console.warn(`⚠️ Skipping empty message in Anthropic conversation history:`, historyMessage);
+        safeDebugLog('warn', 'ANTHROPICPROVIDER', `⚠️ Skipping empty message in Anthropic conversation history:`, historyMessage);
       }
     }
 
@@ -216,7 +236,7 @@ export class AnthropicProvider extends BaseProvider {
           }
         ];
         messages.push({ role: 'user', content: contentWithCaching });
-        console.log(`🔧 Anthropic: Added cache_control to large user message (${message.length} chars)`);
+        safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Anthropic: Added cache_control to large user message (${message.length} chars)`);
       } else {
         messages.push({ role: 'user', content: message });
       }
@@ -299,7 +319,7 @@ export class AnthropicProvider extends BaseProvider {
 
     const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
 
-    console.log(`🔍 Anthropic system prompt source:`, {
+    safeDebugLog('info', 'ANTHROPICPROVIDER', `🔍 Anthropic system prompt source:`, {
       hasCustom: hasCustomSystemPrompt,
       usingCustom: hasCustomSystemPrompt,
       promptLength: systemPrompt?.length || 0,
@@ -317,7 +337,7 @@ export class AnthropicProvider extends BaseProvider {
           cache_control: { type: 'ephemeral' }
         }
       ];
-      console.log(`🔧 Anthropic: Added cache_control to system prompt (${systemPrompt.length} chars)`);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Anthropic: Added cache_control to system prompt (${systemPrompt.length} chars)`);
     }
 
     const requestBody: Record<string, unknown> = {
@@ -341,16 +361,16 @@ export class AnthropicProvider extends BaseProvider {
       // Use auto tool choice to allow Claude to decide when to use tools
       requestBody.tool_choice = { type: "auto" };
 
-      console.log(`🚀 Anthropic API call with ${anthropicTools.length} tools:`, {
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🚀 Anthropic API call with ${anthropicTools.length} tools:`, {
         model: settings.model,
         toolCount: anthropicTools.length,
         toolChoice: requestBody.tool_choice
       });
     } else {
-      console.log(`🚀 Anthropic API call without tools (no tools available)`);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🚀 Anthropic API call without tools (no tools available)`);
     }
 
-    console.log('🔍 Anthropic request body:', JSON.stringify(requestBody, null, 2));
+    safeDebugLog('info', 'ANTHROPICPROVIDER', '🔍 Anthropic request body:', JSON.stringify(requestBody, null, 2));
 
     const response = await fetch(`${provider.baseUrl}/messages`, {
       method: 'POST',
@@ -363,11 +383,11 @@ export class AnthropicProvider extends BaseProvider {
       signal
     });
 
-    console.log('🔍 Anthropic response status:', response.status, response.statusText);
+    safeDebugLog('info', 'ANTHROPICPROVIDER', '🔍 Anthropic response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('❌ Anthropic API error response:', error);
+      safeDebugLog('error', 'ANTHROPICPROVIDER', '❌ Anthropic API error response:', error);
       if (response.status === 401) {
         throw new Error(`Anthropic API authentication failed. Please check your API key in Settings. The key may be expired or invalid. Error: ${error}`);
       }
@@ -383,12 +403,12 @@ export class AnthropicProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.error('❌ No Anthropic API key provided - cannot fetch models');
+      safeDebugLog('error', 'ANTHROPICPROVIDER', '❌ No Anthropic API key provided - cannot fetch models');
       throw new Error('Anthropic API key is required to fetch available models. Please add your API key in settings.');
     }
 
     try {
-      console.log('🔍 Fetching Anthropic models from API...');
+      safeDebugLog('info', 'ANTHROPICPROVIDER', '🔍 Fetching Anthropic models from API...');
       const response = await fetch('https://api.anthropic.com/v1/models', {
         headers: {
           'x-api-key': apiKey,
@@ -399,14 +419,14 @@ export class AnthropicProvider extends BaseProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Anthropic API error: ${response.status} ${response.statusText}`, errorText);
+        safeDebugLog('error', 'ANTHROPICPROVIDER', `❌ Anthropic API error: ${response.status} ${response.statusText}`, errorText);
         throw new Error(`Failed to fetch Anthropic models: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json() as { data: Array<{ id: string; display_name: string }> };
       const models = data.data?.map((model) => model.id)?.sort() || [];
 
-      console.log(`✅ Fetched ${models.length} Anthropic models from API:`, models);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `✅ Fetched ${models.length} Anthropic models from API:`, models);
 
       if (models.length === 0) {
         throw new Error('No Anthropic models returned from API. This may indicate an API issue or insufficient permissions.');
@@ -414,7 +434,7 @@ export class AnthropicProvider extends BaseProvider {
 
       return models;
     } catch (error) {
-      console.error('❌ Failed to fetch Anthropic models from API:', error);
+      safeDebugLog('error', 'ANTHROPICPROVIDER', '❌ Failed to fetch Anthropic models from API:', error);
       throw error instanceof Error ? error : new Error(`Failed to fetch Anthropic models: ${String(error)}`);
     }
   }
@@ -428,7 +448,7 @@ export class AnthropicProvider extends BaseProvider {
         : originalName;
 
       if (originalName !== truncatedName) {
-        console.warn(`⚠️ Truncated tool name for Anthropic: "${originalName}" -> "${truncatedName}"`);
+        safeDebugLog('warn', 'ANTHROPICPROVIDER', `⚠️ Truncated tool name for Anthropic: "${originalName}" -> "${truncatedName}"`);
       }
 
       return {
@@ -456,7 +476,7 @@ export class AnthropicProvider extends BaseProvider {
 
     // Anthropic uses structured tool calling with tools parameter and tool_choice
     // Don't add XML tool instructions as they conflict with native function calling
-    console.log(`🔧 Anthropic using structured tools, skipping XML tool instructions`);
+    safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Anthropic using structured tools, skipping XML tool instructions`);
     return basePrompt;
   }
 
@@ -538,7 +558,7 @@ export class AnthropicProvider extends BaseProvider {
     // Prevent infinite recursion
     AnthropicProvider.streamingCallCount++;
     if (AnthropicProvider.streamingCallCount > AnthropicProvider.MAX_STREAMING_CALLS) {
-      console.error('❌ CRITICAL: Too many streaming calls detected - preventing infinite loop');
+      safeDebugLog('error', 'ANTHROPICPROVIDER', '❌ CRITICAL: Too many streaming calls detected - preventing infinite loop');
       AnthropicProvider.streamingCallCount = 0;
       throw new Error('Maximum streaming calls exceeded - preventing infinite loop');
     }
@@ -586,7 +606,7 @@ export class AnthropicProvider extends BaseProvider {
 
               // Handle content_block_start for tool_use
               if (parsed.type === 'content_block_start' && parsed.content_block?.type === 'tool_use') {
-                console.log(`🔧 Anthropic streaming tool use started:`, parsed.content_block);
+                safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Anthropic streaming tool use started:`, parsed.content_block);
                 currentToolBlocks[parsed.index] = parsed.content_block;
                 toolInputBuffers[parsed.index] = '';
                 assistantContent.push({
@@ -622,7 +642,7 @@ export class AnthropicProvider extends BaseProvider {
                   parsed.delta?.partial_json !== undefined) {
                 const index = parsed.index;
                 toolInputBuffers[index] += parsed.delta.partial_json;
-                console.log(`🔧 Anthropic streaming tool input:`, { index, partial: parsed.delta.partial_json });
+                safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Anthropic streaming tool input:`, { index, partial: parsed.delta.partial_json });
               }
 
               // Handle content_block_stop for tool_use
@@ -631,11 +651,11 @@ export class AnthropicProvider extends BaseProvider {
                 const toolBlock = currentToolBlocks[index];
                 const inputJson = toolInputBuffers[index];
 
-                console.log(`🔧 Anthropic streaming tool use completed:`, { toolBlock, inputJson });
+                safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Anthropic streaming tool use completed:`, { toolBlock, inputJson });
 
                 try {
                   const toolInput = JSON.parse(inputJson);
-                  console.log(`🔧 Collected streaming tool for parallel execution:`, toolBlock.name, toolInput);
+                  safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Collected streaming tool for parallel execution:`, toolBlock.name, toolInput);
 
                   // Update assistant content with final input
                   if (assistantContent[index] && assistantContent[index].type === 'tool_use') {
@@ -655,7 +675,7 @@ export class AnthropicProvider extends BaseProvider {
                   onStream(preparingMessage);
 
                 } catch (error) {
-                  console.error(`❌ Anthropic streaming tool input parsing failed:`, error);
+                  safeDebugLog('error', 'ANTHROPICPROVIDER', `❌ Anthropic streaming tool input parsing failed:`, error);
 
                   // Show parsing error in chat
                   const errorMessage = `❌ Tool ${toolBlock.name} input parsing failed: ${error instanceof Error ? error.message : String(error)}\n`;
@@ -686,11 +706,11 @@ export class AnthropicProvider extends BaseProvider {
               }
             } catch (e) {
               // Skip invalid JSON
-              console.warn('Failed to parse streaming event:', e);
+              safeDebugLog('warn', 'ANTHROPICPROVIDER', 'Failed to parse streaming event:', e);
 
               // Prevent infinite loops from debug logger errors
               if (e instanceof Error && e.message.includes('debugLogger') && e.message.includes('is not a function')) {
-                console.error('❌ Critical: Debug logger method missing - breaking streaming loop to prevent infinite recursion');
+                safeDebugLog('error', 'ANTHROPICPROVIDER', '❌ Critical: Debug logger method missing - breaking streaming loop to prevent infinite recursion');
                 break; // Exit the streaming loop
               }
             }
@@ -704,7 +724,7 @@ export class AnthropicProvider extends BaseProvider {
     }
 
     // If we have tool calls, execute them in parallel and make a follow-up streaming call
-    console.log(`🔍 Anthropic tool execution check:`, {
+    safeDebugLog('info', 'ANTHROPICPROVIDER', `🔍 Anthropic tool execution check:`, {
       toolCallsCount: toolCalls.length,
       hasExecuteMultipleToolsParallel: !!this._executeMultipleToolsParallel,
       hasSummarizeToolResultsForModel: !!this._summarizeToolResultsForModel,
@@ -713,7 +733,7 @@ export class AnthropicProvider extends BaseProvider {
     });
 
     if (toolCalls.length > 0 && this._executeMultipleToolsParallel && this._summarizeToolResultsForModel && this._aggregateToolResults && this._formatToolResult) {
-      console.log(`🚀 Executing ${toolCalls.length} Anthropic tools in parallel before follow-up`);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🚀 Executing ${toolCalls.length} Anthropic tools in parallel before follow-up`);
 
       // Show parallel execution message
       const parallelMessage = `\n🚀 Executing ${toolCalls.length} tools in parallel...\n`;
@@ -742,17 +762,17 @@ export class AnthropicProvider extends BaseProvider {
       const toolSummary = this._summarizeToolResultsForModel(parallelResults);
 
       // Log detailed results for debugging (not shown to user)
-      console.log('🔧 Detailed tool execution results:', this._aggregateToolResults(parallelResults));
+      safeDebugLog('info', 'ANTHROPICPROVIDER', '🔧 Detailed tool execution results:', this._aggregateToolResults(parallelResults));
 
       // Only add the clean summary to the content stream
       fullContent += toolSummary;
       onStream(toolSummary);
 
       // Log tool execution for debugging
-      console.log(`🔍 Executed tools:`, parallelResults.map(r => r.name));
-      console.log(`🔍 Tool execution completed, proceeding with follow-up call`);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🔍 Executed tools:`, parallelResults.map(r => r.name));
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🔍 Tool execution completed, proceeding with follow-up call`);
 
-      console.log(`🔄 Making follow-up Anthropic streaming call with ${parallelResults.length} tool results`);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🔄 Making follow-up Anthropic streaming call with ${parallelResults.length} tool results`);
 
       // Reconstruct the conversation with tool results
       const messages = conversationHistory ? [...conversationHistory] : [];
@@ -791,7 +811,7 @@ export class AnthropicProvider extends BaseProvider {
 
       // Get tools for continued agentic behavior
       const anthropicTools = await this.getAnthropicTools(settings);
-      console.log(`🔧 Anthropic follow-up call with ${anthropicTools.length} tools available for continued agentic behavior`);
+      safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Anthropic follow-up call with ${anthropicTools.length} tools available for continued agentic behavior`);
 
       // Use behavioral system prompt only for follow-up (no tool descriptions)
       // Tools are sent separately in the tools parameter
@@ -830,14 +850,14 @@ export class AnthropicProvider extends BaseProvider {
       });
 
       if (followUpResponse.ok) {
-        console.log(`✅ Starting follow-up streaming response`);
+        safeDebugLog('info', 'ANTHROPICPROVIDER', `✅ Starting follow-up streaming response`);
 
         try {
           // Stream the follow-up response with updated conversation history for agentic behavior
           const followUpResult = await this.handleStreamResponse(
             followUpResponse,
             (chunk: string) => {
-              console.log(`🔄 Anthropic streaming follow-up chunk:`, chunk.substring(0, 50) + '...');
+              safeDebugLog('info', 'ANTHROPICPROVIDER', `🔄 Anthropic streaming follow-up chunk:`, chunk.substring(0, 50) + '...');
               // DISABLED: debugLogger.logStreaming('Anthropic', chunk, true);
               onStream(chunk);
             },
@@ -847,7 +867,7 @@ export class AnthropicProvider extends BaseProvider {
             signal
           );
 
-          console.log(`✅ Follow-up streaming completed:`, {
+          safeDebugLog('info', 'ANTHROPICPROVIDER', `✅ Follow-up streaming completed:`, {
             contentLength: followUpResult.content?.length || 0,
             hasUsage: !!followUpResult.usage,
             hasToolCalls: !!followUpResult.toolCalls
@@ -865,7 +885,7 @@ export class AnthropicProvider extends BaseProvider {
           const followUpToolCalls = followUpResult.toolCalls || [];
           const allToolCalls = [...initialToolCalls, ...followUpToolCalls];
 
-          console.log(`🔧 Combined tool calls: ${initialToolCalls.length} initial + ${followUpToolCalls.length} follow-up = ${allToolCalls.length} total`);
+          safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Combined tool calls: ${initialToolCalls.length} initial + ${followUpToolCalls.length} follow-up = ${allToolCalls.length} total`);
 
           return {
             content: fullContent + followUpResult.content,
@@ -881,8 +901,8 @@ export class AnthropicProvider extends BaseProvider {
             toolCalls: allToolCalls
           };
         } catch (error) {
-          console.error(`❌ Anthropic follow-up streaming failed:`, error);
-          console.error(`❌ Error details:`, {
+          safeDebugLog('error', 'ANTHROPICPROVIDER', `❌ Anthropic follow-up streaming failed:`, error);
+          safeDebugLog('error', 'ANTHROPICPROVIDER', `❌ Error details:`, {
             errorType: typeof error,
             errorMessage: error instanceof Error ? error.message : String(error),
             errorStack: error instanceof Error ? error.stack : undefined
@@ -893,7 +913,7 @@ export class AnthropicProvider extends BaseProvider {
 
           // Prevent infinite loops by not retrying on specific errors
           if (error instanceof Error && error.message.includes('debugLogger') && error.message.includes('is not a function')) {
-            console.error('❌ Critical: Debug logger method missing - this would cause infinite loops. Stopping retry attempts.');
+            safeDebugLog('error', 'ANTHROPICPROVIDER', '❌ Critical: Debug logger method missing - this would cause infinite loops. Stopping retry attempts.');
             // Don't retry, just provide fallback response
           }
 
@@ -909,7 +929,7 @@ export class AnthropicProvider extends BaseProvider {
           if (error && typeof error === 'object' && 'error' in error) {
             const apiError = error as { error?: { type?: string } };
             if (apiError.error?.type === 'rate_limit_error') {
-              console.warn('⚠️ Anthropic: Rate limit exceeded, attempting local tool execution');
+              safeDebugLog('warn', 'ANTHROPICPROVIDER', '⚠️ Anthropic: Rate limit exceeded, attempting local tool execution');
 
               // Try to execute tools locally if methods are available
               if (this.executeMCPTool && toolCalls.length > 0) {
@@ -917,7 +937,7 @@ export class AnthropicProvider extends BaseProvider {
                   const localResults = await this.executeToolsLocally(toolCalls, fullContent, usage);
                   return localResults as unknown as LLMResponse;
                 } catch (localError) {
-                  console.error('❌ Local tool execution also failed:', localError);
+                  safeDebugLog('error', 'ANTHROPICPROVIDER', '❌ Local tool execution also failed:', localError);
                 }
               }
             }
@@ -927,8 +947,8 @@ export class AnthropicProvider extends BaseProvider {
         }
       } else {
         const errorText = await followUpResponse.text();
-        console.error(`❌ Anthropic follow-up streaming call failed:`, followUpResponse.status, followUpResponse.statusText);
-        console.error(`❌ Follow-up error details:`, errorText);
+        safeDebugLog('error', 'ANTHROPICPROVIDER', `❌ Anthropic follow-up streaming call failed:`, followUpResponse.status, followUpResponse.statusText);
+        safeDebugLog('error', 'ANTHROPICPROVIDER', `❌ Follow-up error details:`, errorText);
 
         // Provide a fallback response with tool results
         const fallbackMessage = `\n\n**Tool execution completed successfully, but follow-up request failed (${followUpResponse.status}). Here are the tool results:**\n\n`;
@@ -942,8 +962,8 @@ export class AnthropicProvider extends BaseProvider {
 
     // If we reach here, either no tool calls or tool execution methods not available
     if (toolCalls.length > 0) {
-      console.warn(`⚠️ Anthropic: Tool calls detected but execution methods not available. Tool calls will not be executed.`);
-      console.warn(`⚠️ Anthropic: Returning tool calls for external handling.`);
+      safeDebugLog('warn', 'ANTHROPICPROVIDER', `⚠️ Anthropic: Tool calls detected but execution methods not available. Tool calls will not be executed.`);
+      safeDebugLog('warn', 'ANTHROPICPROVIDER', `⚠️ Anthropic: Returning tool calls for external handling.`);
     }
 
     return {
@@ -964,7 +984,7 @@ export class AnthropicProvider extends BaseProvider {
     } catch (error) {
       // Reset streaming counter on error to prevent permanent lockout
       AnthropicProvider.streamingCallCount = 0;
-      console.error('❌ Anthropic streaming error:', error);
+      safeDebugLog('error', 'ANTHROPICPROVIDER', '❌ Anthropic streaming error:', error);
       throw error;
     }
   }
@@ -977,21 +997,21 @@ export class AnthropicProvider extends BaseProvider {
     content: string,
     usage: Record<string, unknown> | undefined
   ): Promise<Record<string, unknown>> {
-    console.log(`🔧 Executing ${toolCalls.length} tools locally due to API limitations`);
+    safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Executing ${toolCalls.length} tools locally due to API limitations`);
 
     const toolResults = [];
     for (const toolCall of toolCalls) {
       try {
-        console.log(`🔧 Executing local tool: ${toolCall.name} with args:`, toolCall.arguments);
+        safeDebugLog('info', 'ANTHROPICPROVIDER', `🔧 Executing local tool: ${toolCall.name} with args:`, toolCall.arguments);
         const result = await this.executeMCPTool!(String(toolCall.name), toolCall.arguments as Record<string, unknown>);
         toolResults.push({
           toolCallId: toolCall.id,
           toolName: toolCall.name,
           result: result
         });
-        console.log(`✅ Local tool execution successful for ${toolCall.name}`);
+        safeDebugLog('info', 'ANTHROPICPROVIDER', `✅ Local tool execution successful for ${toolCall.name}`);
       } catch (error) {
-        console.error(`❌ Local tool execution failed for ${toolCall.name}:`, error);
+        safeDebugLog('error', 'ANTHROPICPROVIDER', `❌ Local tool execution failed for ${toolCall.name}:`, error);
         toolResults.push({
           toolCallId: toolCall.id,
           toolName: toolCall.name,
@@ -1025,7 +1045,7 @@ export class AnthropicProvider extends BaseProvider {
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
-    console.log('🔍 Anthropic raw response:', JSON.stringify(data, null, 2));
+    safeDebugLog('info', 'ANTHROPICPROVIDER', '🔍 Anthropic raw response:', JSON.stringify(data, null, 2));
 
     // Handle tool calls in Anthropic format
     let content = '';
@@ -1047,7 +1067,7 @@ export class AnthropicProvider extends BaseProvider {
       arguments: block.input || {}
     }));
 
-    const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
+    const { usage, cost } = this.createUsageAndCost(_settings.model, data.usage);
     return {
       content,
       usage,

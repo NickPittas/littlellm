@@ -1,7 +1,28 @@
 // Mistral File Upload and Document AI Service
 // Handles file uploads, OCR, and document processing for Mistral AI
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 export interface MistralFileUploadResponse {
+
   id: string;
   object: string;
   bytes: number;
@@ -63,7 +84,7 @@ export class MistralFileService {
       throw new Error('Fine-tuning only supports .jsonl files');
     }
 
-    console.log(`📤 Uploading file to Mistral: ${file.name} (${Math.round(file.size / 1024)}KB) for ${purpose}`);
+    safeDebugLog('info', 'MISTRALFILESERVICE', `📤 Uploading file to Mistral: ${file.name} (${Math.round(file.size / 1024)}KB) for ${purpose}`);
 
     const formData = new FormData();
     formData.append('file', file);
@@ -81,7 +102,7 @@ export class MistralFileService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Mistral file upload failed (${response.status}):`, errorText);
+        safeDebugLog('error', 'MISTRALFILESERVICE', `❌ Mistral file upload failed (${response.status}):`, errorText);
         
         let errorMessage = errorText;
         try {
@@ -95,11 +116,11 @@ export class MistralFileService {
       }
 
       const result = await response.json() as MistralFileUploadResponse;
-      console.log(`✅ File uploaded to Mistral successfully:`, result);
+      safeDebugLog('info', 'MISTRALFILESERVICE', `✅ File uploaded to Mistral successfully:`, result);
       return result;
 
     } catch (error) {
-      console.error('❌ Mistral file upload error:', error);
+      safeDebugLog('error', 'MISTRALFILESERVICE', '❌ Mistral file upload error:', error);
       throw error;
     }
   }
@@ -136,7 +157,7 @@ export class MistralFileService {
 
       return await response.json() as MistralFileListResponse;
     } catch (error) {
-      console.error('❌ Mistral list files error:', error);
+      safeDebugLog('error', 'MISTRALFILESERVICE', '❌ Mistral list files error:', error);
       throw error;
     }
   }
@@ -160,7 +181,7 @@ export class MistralFileService {
 
       return await response.json() as MistralFileUploadResponse;
     } catch (error) {
-      console.error('❌ Mistral get file error:', error);
+      safeDebugLog('error', 'MISTRALFILESERVICE', '❌ Mistral get file error:', error);
       throw error;
     }
   }
@@ -183,9 +204,9 @@ export class MistralFileService {
         throw new Error(`Failed to delete file: ${errorText}`);
       }
 
-      console.log(`✅ File ${fileId} deleted successfully`);
+      safeDebugLog('info', 'MISTRALFILESERVICE', `✅ File ${fileId} deleted successfully`);
     } catch (error) {
-      console.error('❌ Mistral delete file error:', error);
+      safeDebugLog('error', 'MISTRALFILESERVICE', '❌ Mistral delete file error:', error);
       throw error;
     }
   }
@@ -209,7 +230,7 @@ export class MistralFileService {
 
       return await response.blob();
     } catch (error) {
-      console.error('❌ Mistral download file error:', error);
+      safeDebugLog('error', 'MISTRALFILESERVICE', '❌ Mistral download file error:', error);
       throw error;
     }
   }
@@ -219,7 +240,7 @@ export class MistralFileService {
    * This uses the /v1/ocr endpoint for PDFs and documents
    */
   async processDocumentOCR(file: File): Promise<MistralOCRResponse> {
-    console.log(`🔍 Processing document with Mistral OCR: ${file.name} (${file.type}, ${Math.round(file.size/1024)}KB)`);
+    safeDebugLog('info', 'MISTRALFILESERVICE', `🔍 Processing document with Mistral OCR: ${file.name} (${file.type}, ${Math.round(file.size/1024)}KB)`);
 
     // Validate file size for OCR (50MB limit)
     const maxSize = 50 * 1024 * 1024; // 50 MB
@@ -245,7 +266,7 @@ export class MistralFileService {
         throw new Error(`File type ${file.type} not supported for OCR`);
       }
 
-      console.log(`📡 Calling Mistral OCR endpoint: ${this.baseUrl}/ocr`);
+      safeDebugLog('info', 'MISTRALFILESERVICE', `📡 Calling Mistral OCR endpoint: ${this.baseUrl}/ocr`);
 
       const response = await fetch(`${this.baseUrl}/ocr`, {
         method: 'POST',
@@ -264,23 +285,23 @@ export class MistralFileService {
         })
       });
 
-      console.log(`📡 OCR response status: ${response.status} ${response.statusText}`);
+      safeDebugLog('info', 'MISTRALFILESERVICE', `📡 OCR response status: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Mistral OCR failed (${response.status}):`, errorText);
+        safeDebugLog('error', 'MISTRALFILESERVICE', `❌ Mistral OCR failed (${response.status}):`, errorText);
         throw new Error(`Mistral OCR failed (${response.status}): ${errorText}`);
       }
 
       const result = await response.json() as MistralOCRResponse;
-      console.log(`✅ Document processed with Mistral OCR successfully:`, {
+      safeDebugLog('info', 'MISTRALFILESERVICE', `✅ Document processed with Mistral OCR successfully:`, {
         contentLength: result.content?.length || 0,
         hasMetadata: !!result.metadata
       });
       return result;
 
     } catch (error) {
-      console.error('❌ Mistral OCR error:', error);
+      safeDebugLog('error', 'MISTRALFILESERVICE', '❌ Mistral OCR error:', error);
       throw error;
     }
   }
@@ -306,11 +327,11 @@ export class MistralFileService {
    * Returns the appropriate format for including in chat completions
    */
   async prepareFileForVision(file: File): Promise<{ type: string; image_url?: { url: string }; text?: string }> {
-    console.log(`🔍 Preparing file for Mistral: ${file.name} (${file.type})`);
+    safeDebugLog('info', 'MISTRALFILESERVICE', `🔍 Preparing file for Mistral: ${file.name} (${file.type})`);
 
     if (file.type.startsWith('image/')) {
       // For images, use vision models with proper image format
-      console.log(`🖼️ Processing image for vision: ${file.name}`);
+      safeDebugLog('info', 'MISTRALFILESERVICE', `🖼️ Processing image for vision: ${file.name}`);
       const base64 = await this.fileToBase64(file);
 
       // Ensure proper image format for vision models
@@ -328,7 +349,7 @@ export class MistralFileService {
                file.type.includes('excel') ||
                file.type.includes('powerpoint')) {
       // For PDFs and documents, use OCR to extract text
-      console.log(`📄 Processing document with OCR: ${file.name}`);
+      safeDebugLog('info', 'MISTRALFILESERVICE', `📄 Processing document with OCR: ${file.name}`);
       try {
         const ocrResult = await this.processDocumentOCR(file);
         return {
@@ -336,7 +357,7 @@ export class MistralFileService {
           text: `[Document: ${file.name}]\n${ocrResult.content}`
         };
       } catch (ocrError) {
-        console.warn(`⚠️ OCR failed for ${file.name}, providing file info:`, ocrError);
+        safeDebugLog('warn', 'MISTRALFILESERVICE', `⚠️ OCR failed for ${file.name}, providing file info:`, ocrError);
         return {
           type: 'text',
           text: `[Document: ${file.name}]\nFile type: ${file.type}\nSize: ${Math.round(file.size / 1024)}KB\nNote: OCR processing failed: ${ocrError instanceof Error ? ocrError.message : String(ocrError)}`
@@ -344,7 +365,7 @@ export class MistralFileService {
       }
     } else if (file.type.startsWith('text/') || file.type === 'text/csv' || file.type === 'application/json') {
       // For text files, read content directly
-      console.log(`📝 Reading text file: ${file.name}`);
+      safeDebugLog('info', 'MISTRALFILESERVICE', `📝 Reading text file: ${file.name}`);
       const text = await this.readTextFile(file);
       return {
         type: 'text',
@@ -352,7 +373,7 @@ export class MistralFileService {
       };
     } else {
       // For other file types, provide a descriptive message
-      console.log(`❓ Unsupported file type: ${file.name} (${file.type})`);
+      safeDebugLog('info', 'MISTRALFILESERVICE', `❓ Unsupported file type: ${file.name} (${file.type})`);
       return {
         type: 'text',
         text: `[File: ${file.name}]\nFile type: ${file.type}\nSize: ${Math.round(file.size / 1024)}KB\nNote: This file type cannot be processed for content extraction, but has been included in the conversation.`

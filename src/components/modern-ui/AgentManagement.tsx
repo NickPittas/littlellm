@@ -23,6 +23,26 @@ import { agentService } from '../../services/agentService';
 import { CreateAgentDialog } from './CreateAgentDialog';
 import { EditAgentDialog } from './EditAgentDialog';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 interface AgentManagementProps {
   className?: string;
   onAgentSelect?: (agent: AgentConfiguration) => void;
@@ -58,7 +78,7 @@ export function AgentManagement({
       setAgents(agentsData);
       setTemplates(templatesData);
     } catch (error) {
-      console.error('Failed to load agent data:', error);
+      safeDebugLog('error', 'AGENT_MANAGEMENT', 'Failed to load agent data:', error);
     } finally {
       setLoading(false);
     }
@@ -101,7 +121,7 @@ export function AgentManagement({
         await agentService.deleteAgent(agent.id);
         await loadData();
       } catch (error) {
-        console.error('Failed to delete agent:', error);
+        safeDebugLog('error', 'AGENT_MANAGEMENT', 'Failed to delete agent:', error);
       }
     }
   };
@@ -111,7 +131,7 @@ export function AgentManagement({
       await agentService.duplicateAgent(agent.id);
       await loadData();
     } catch (error) {
-      console.error('Failed to duplicate agent:', error);
+      safeDebugLog('error', 'AGENT_MANAGEMENT', 'Failed to duplicate agent:', error);
     }
   };
 
@@ -130,7 +150,7 @@ export function AgentManagement({
         URL.revokeObjectURL(url);
       }
     } catch (error) {
-      console.error('Failed to export agent:', error);
+      safeDebugLog('error', 'AGENTMANAGEMENT', 'Failed to export agent:', error);
     }
   };
 
@@ -150,7 +170,7 @@ export function AgentManagement({
         alert(`Failed to import agent: ${result.errors?.join(', ')}`);
       }
     } catch (error) {
-      console.error('Failed to import agent:', error);
+      safeDebugLog('error', 'AGENTMANAGEMENT', 'Failed to import agent:', error);
       alert('Failed to import agent: Invalid file format');
     }
     

@@ -14,6 +14,7 @@ import {
 } from '../../types/internalCommands';
 import { processManager } from '../processManager';
 import { internalCommandService } from '../internalCommandService';
+import { debugLogger } from '../debugLogger';
 
 /**
  * Start a new terminal process

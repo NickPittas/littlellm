@@ -6,6 +6,7 @@ import { ProviderLogo } from '../ui/provider-logo';
 import { DEFAULT_PROVIDERS } from '../../services/providers/constants';
 import type { LLMProvider } from '../../services/llmService';
 import { cn } from '@/lib/utils';
+import { debugLogger } from '../../services/debugLogger';
 
 interface FloatingProviderSelectorProps {
   isOpen: boolean;

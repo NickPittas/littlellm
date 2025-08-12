@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { debugLogger } from '../services/debugLogger';
 
 interface ProgressEntry {
   id: string;

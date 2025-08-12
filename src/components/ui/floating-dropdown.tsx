@@ -2,7 +2,25 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 
-
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface FloatingDropdownProps {
   trigger: React.ReactNode;
   children: React.ReactNode;
@@ -37,7 +55,7 @@ export function FloatingDropdown({ trigger, children, className = '', disabled =
       await window.electronAPI.openDropdown(x, y, dropdownWidth, dropdownHeight, content);
       setIsOpen(true);
     } catch (error) {
-      console.error('Failed to open floating dropdown:', error);
+      safeDebugLog('error', 'FLOATING_DROPDOWN', 'Failed to open floating dropdown:', error);
       setIsOpen(true); // Fallback to regular dropdown
     }
   };
@@ -47,7 +65,7 @@ export function FloatingDropdown({ trigger, children, className = '', disabled =
       try {
         await window.electronAPI.closeDropdown();
       } catch (error) {
-        console.error('Failed to close floating dropdown:', error);
+        safeDebugLog('error', 'FLOATING_DROPDOWN', 'Failed to close floating dropdown:', error);
       }
     }
     setIsOpen(false);

@@ -1,7 +1,28 @@
 // MCP Service for renderer process - uses IPC to communicate with main process
 // The actual MCP SDK runs in the main process to avoid Node.js module conflicts
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 export interface MCPServer {
+
   id: string;
   name: string;
   command: string;
@@ -51,7 +72,7 @@ class MCPService {
         return (mcpData.servers as MCPServer[]) || [];
       }
     } catch (error) {
-      console.warn('Failed to load MCP servers:', error);
+      safeDebugLog('warn', 'MCPSERVICE', 'Failed to load MCP servers:', error);
     }
     return [];
   }
@@ -62,7 +83,7 @@ class MCPService {
         return (await window.electronAPI.addMCPServer(server)) as MCPServer;
       }
     } catch (error) {
-      console.error('Failed to add MCP server:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to add MCP server:', error);
     }
     throw new Error('Failed to add MCP server');
   }
@@ -73,7 +94,7 @@ class MCPService {
         return await window.electronAPI.updateMCPServer(id, updates);
       }
     } catch (error) {
-      console.error('Failed to update MCP server:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to update MCP server:', error);
     }
     return false;
   }
@@ -84,7 +105,7 @@ class MCPService {
         return await window.electronAPI.removeMCPServer(id);
       }
     } catch (error) {
-      console.error('Failed to remove MCP server:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to remove MCP server:', error);
     }
     return false;
   }
@@ -96,7 +117,7 @@ class MCPService {
         return await window.electronAPI.connectMCPServer(serverId);
       }
     } catch (error) {
-      console.error('Failed to connect MCP server:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to connect MCP server:', error);
     }
     return false;
   }
@@ -107,7 +128,7 @@ class MCPService {
         await window.electronAPI.disconnectMCPServer(serverId);
       }
     } catch (error) {
-      console.error('Failed to disconnect MCP server:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to disconnect MCP server:', error);
     }
   }
 
@@ -117,7 +138,7 @@ class MCPService {
         await window.electronAPI.disconnectAllMCPServers();
       }
     } catch (error) {
-      console.error('Failed to disconnect all MCP servers:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to disconnect all MCP servers:', error);
     }
   }
 
@@ -128,7 +149,7 @@ class MCPService {
         return (await window.electronAPI.getAllMCPTools()) as MCPTool[];
       }
     } catch (error) {
-      console.warn('Failed to get available MCP tools:', error);
+      safeDebugLog('warn', 'MCPSERVICE', 'Failed to get available MCP tools:', error);
     }
     return [];
   }
@@ -139,7 +160,7 @@ class MCPService {
         return await window.electronAPI.callMCPTool(toolName, args);
       }
     } catch (error) {
-      console.error('Failed to call MCP tool:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to call MCP tool:', error);
       // Enhance error with more context
       const enhancedError = this.enhanceMCPError(toolName, error, args);
       throw enhancedError;
@@ -162,7 +183,7 @@ class MCPService {
     error?: string;
     executionTime: number;
   }>> {
-    console.log(`🚀 MCP Service: Executing ${toolCalls.length} tools concurrently`);
+    safeDebugLog('info', 'MCPSERVICE', `🚀 MCP Service: Executing ${toolCalls.length} tools concurrently`);
 
     const startTime = Date.now();
 
@@ -214,7 +235,7 @@ class MCPService {
     });
 
     const successCount = processedResults.filter(r => r.success).length;
-    console.log(`✅ MCP Service: Concurrent execution completed in ${totalTime}ms: ${successCount}/${toolCalls.length} successful`);
+    safeDebugLog('info', 'MCPSERVICE', `✅ MCP Service: Concurrent execution completed in ${totalTime}ms: ${successCount}/${toolCalls.length} successful`);
 
     return processedResults;
   }
@@ -266,7 +287,7 @@ class MCPService {
   }>> {
     // For now, use sequential execution directly to avoid console errors
     // TODO: Implement parallel execution when Electron API is available
-    console.log(`🔄 Executing ${toolCalls.length} tools sequentially`);
+    safeDebugLog('info', 'MCPSERVICE', `🔄 Executing ${toolCalls.length} tools sequentially`);
     return await this.callMultipleToolsSequential(toolCalls);
   }
 
@@ -285,7 +306,7 @@ class MCPService {
     error?: string;
     executionTime: number;
   }>> {
-    console.log(`🔄 Sequential execution for ${toolCalls.length} tools`);
+    safeDebugLog('info', 'MCPSERVICE', `🔄 Sequential execution for ${toolCalls.length} tools`);
 
     const results = [];
 
@@ -326,7 +347,7 @@ class MCPService {
         return (await window.electronAPI.getAllMCPResources()) as MCPResource[];
       }
     } catch (error) {
-      console.warn('Failed to get available MCP resources:', error);
+      safeDebugLog('warn', 'MCPSERVICE', 'Failed to get available MCP resources:', error);
     }
     return [];
   }
@@ -337,7 +358,7 @@ class MCPService {
         return await window.electronAPI.readMCPResource(uri);
       }
     } catch (error) {
-      console.error('Failed to read MCP resource:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to read MCP resource:', error);
       throw error;
     }
     throw new Error(`Resource ${uri} not found in any connected MCP server`);
@@ -350,7 +371,7 @@ class MCPService {
         return (await window.electronAPI.getAllMCPPrompts()) as MCPPrompt[];
       }
     } catch (error) {
-      console.warn('Failed to get available MCP prompts:', error);
+      safeDebugLog('warn', 'MCPSERVICE', 'Failed to get available MCP prompts:', error);
     }
     return [];
   }
@@ -361,7 +382,7 @@ class MCPService {
         return await window.electronAPI.getMCPPrompt(name, args);
       }
     } catch (error) {
-      console.error('Failed to get MCP prompt:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to get MCP prompt:', error);
       throw error;
     }
     throw new Error(`Prompt ${name} not found in any connected MCP server`);
@@ -374,7 +395,7 @@ class MCPService {
         return await window.electronAPI.getMCPConnectionStatus();
       }
     } catch (error) {
-      console.warn('Failed to get MCP connection status:', error);
+      safeDebugLog('warn', 'MCPSERVICE', 'Failed to get MCP connection status:', error);
     }
     return {};
   }
@@ -385,7 +406,7 @@ class MCPService {
         return await window.electronAPI.getConnectedMCPServerIds();
       }
     } catch (error) {
-      console.warn('Failed to get connected MCP server IDs:', error);
+      safeDebugLog('warn', 'MCPSERVICE', 'Failed to get connected MCP server IDs:', error);
     }
     return [];
   }
@@ -395,7 +416,7 @@ class MCPService {
       const connectionStatus = await this.getConnectionStatus();
       return connectionStatus[serverId] || false;
     } catch (error) {
-      console.warn('Failed to check MCP server connection status:', error);
+      safeDebugLog('warn', 'MCPSERVICE', 'Failed to check MCP server connection status:', error);
       return false;
     }
   }
@@ -407,7 +428,7 @@ class MCPService {
         await window.electronAPI.connectEnabledMCPServers();
       }
     } catch (error) {
-      console.error('Failed to auto-connect enabled MCP servers:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to auto-connect enabled MCP servers:', error);
     }
   }
 
@@ -420,7 +441,7 @@ class MCPService {
         await window.electronAPI.connectEnabledMCPServers();
       }
     } catch (error) {
-      console.error('Failed to restart MCP servers:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to restart MCP servers:', error);
     }
   }
 
@@ -431,7 +452,7 @@ class MCPService {
       }
       return { totalServers: 0, connectedServers: 0, servers: [] };
     } catch (error) {
-      console.error('Failed to get detailed MCP status:', error);
+      safeDebugLog('error', 'MCPSERVICE', 'Failed to get detailed MCP status:', error);
       return { totalServers: 0, connectedServers: 0, servers: [] };
     }
   }

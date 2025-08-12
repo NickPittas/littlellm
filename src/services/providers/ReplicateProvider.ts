@@ -13,6 +13,25 @@ import {
 
 import { REPLICATE_SYSTEM_PROMPT, generateReplicateToolPrompt } from './prompts/replicate';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export class ReplicateProvider extends BaseProvider {
   readonly id = 'replicate';
   readonly name = 'Replicate';
@@ -100,7 +119,7 @@ export class ReplicateProvider extends BaseProvider {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.error('❌ No Replicate API key provided - cannot fetch models');
+      safeDebugLog('error', 'REPLICATEPROVIDER', '❌ No Replicate API key provided - cannot fetch models');
       throw new Error('Replicate API key is required to fetch available models. Please add your API key in settings.');
     }
 

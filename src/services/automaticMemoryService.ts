@@ -7,6 +7,25 @@ import { memoryService } from './memoryService';
 import { memoryContextService } from './memoryContextService';
 import { MemoryType, MemoryEntry } from '../types/memory';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export interface AutoMemoryConfig {
   enableAutoSearch: boolean;
   enableAutoSave: boolean;
@@ -44,7 +63,7 @@ class AutomaticMemoryService {
   private config: AutoMemoryConfig = { ...this.DEFAULT_CONFIG };
 
   constructor() {
-    console.log('🧠 AutomaticMemoryService initialized with config:', this.config);
+    safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 AutomaticMemoryService initialized with config:', this.config);
   }
 
   /**
@@ -52,7 +71,7 @@ class AutomaticMemoryService {
    */
   updateConfig(newConfig: Partial<AutoMemoryConfig>): void {
     this.config = { ...this.config, ...newConfig };
-    console.log('🧠 Auto-memory config updated:', this.config);
+    safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 Auto-memory config updated:', this.config);
   }
 
   /**
@@ -65,7 +84,7 @@ class AutomaticMemoryService {
     conversationId?: string,
     projectId?: string
   ): Promise<MemoryEnhancedPrompt> {
-    console.log('🧠 AutoMemoryService.enhancePromptWithMemories called with:', {
+    safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 AutoMemoryService.enhancePromptWithMemories called with:', {
       enableAutoSearch: this.config.enableAutoSearch,
       userMessage: userMessage.substring(0, 100),
       conversationId,
@@ -73,7 +92,7 @@ class AutomaticMemoryService {
     });
 
     if (!this.config.enableAutoSearch) {
-      console.log('🧠 Auto-search disabled, returning original prompt');
+      safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 Auto-search disabled, returning original prompt');
       return {
         enhancedPrompt: originalPrompt,
         memoriesUsed: [],
@@ -83,14 +102,14 @@ class AutomaticMemoryService {
 
     try {
       // Get relevant memories automatically
-      console.log('🧠 Calling memoryContextService.getMemoryContext...');
+      safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 Calling memoryContextService.getMemoryContext...');
       const memoryContext = await memoryContextService.getMemoryContext(
         userMessage,
         conversationId,
         projectId,
         conversationHistory
       );
-      console.log('🧠 Memory context result:', {
+      safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 Memory context result:', {
         relevantMemoriesCount: memoryContext.relevantMemories.length,
         contextSummary: memoryContext.contextSummary.substring(0, 100)
       });
@@ -112,7 +131,7 @@ class AutomaticMemoryService {
       const memorySection = this.buildMemorySection(relevantMemories);
       const enhancedPrompt = this.injectMemoryIntoPrompt(originalPrompt, memorySection);
 
-      console.log(`🧠 Auto-enhanced prompt with ${relevantMemories.length} memories`);
+      safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', `🧠 Auto-enhanced prompt with ${relevantMemories.length} memories`);
 
       return {
         enhancedPrompt,
@@ -133,7 +152,7 @@ class AutomaticMemoryService {
         originalPrompt
       };
     } catch (error) {
-      console.error('Error enhancing prompt with memories:', error);
+      safeDebugLog('error', 'AUTOMATICMEMORYSERVICE', 'Error enhancing prompt with memories:', error);
       return {
         enhancedPrompt: originalPrompt,
         memoriesUsed: [],
@@ -152,7 +171,7 @@ class AutomaticMemoryService {
     conversationId?: string,
     projectId?: string
   ): Promise<{ saved: number; candidates: AutoSaveCandidate[] }> {
-    console.log('🧠 AutoMemoryService.autoSaveFromConversation called with:', {
+    safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 AutoMemoryService.autoSaveFromConversation called with:', {
       enableAutoSave: this.config.enableAutoSave,
       userMessage: userMessage.substring(0, 100),
       aiResponse: aiResponse.substring(0, 100),
@@ -161,13 +180,13 @@ class AutomaticMemoryService {
     });
 
     if (!this.config.enableAutoSave) {
-      console.log('🧠 Auto-save disabled, returning empty result');
+      safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 Auto-save disabled, returning empty result');
       return { saved: 0, candidates: [] };
     }
 
     try {
       // Analyze conversation for save-worthy content
-      console.log('🧠 Identifying save candidates...');
+      safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 Identifying save candidates...');
       const candidates = await this.identifySaveCandidates(
         userMessage,
         aiResponse,
@@ -175,7 +194,7 @@ class AutomaticMemoryService {
         conversationId,
         projectId
       );
-      console.log('🧠 Found candidates:', candidates.length, candidates.map(c => c.title));
+      safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 Found candidates:', candidates.length, candidates.map(c => c.title));
 
       // Filter by confidence threshold
       const highConfidenceCandidates = candidates.filter(
@@ -198,16 +217,16 @@ class AutomaticMemoryService {
 
           if (result.success) {
             saved++;
-            console.log(`🧠 Auto-saved memory: ${candidate.title} (${candidate.type})`);
+            safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', `🧠 Auto-saved memory: ${candidate.title} (${candidate.type})`);
           }
         } catch (error) {
-          console.error('Failed to auto-save memory candidate:', error);
+          safeDebugLog('error', 'AUTOMATICMEMORYSERVICE', 'Failed to auto-save memory candidate:', error);
         }
       }
 
       return { saved, candidates };
     } catch (error) {
-      console.error('Error in auto-save analysis:', error);
+      safeDebugLog('error', 'AUTOMATICMEMORYSERVICE', 'Error in auto-save analysis:', error);
       return { saved: 0, candidates: [] };
     }
   }
@@ -320,7 +339,7 @@ Use this context to provide more informed and personalized responses. Reference 
     );
 
     if (!hasPreferenceIndicator && !hasIdentityIndicator) {
-      console.log('🧠 No preference or identity indicators found in:', message);
+      safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 No preference or identity indicators found in:', message);
       return null;
     }
 
@@ -337,7 +356,7 @@ Use this context to provide more informed and personalized responses. Reference 
       // If no sentences match, use the whole message if it's short
       if (userMessage.length < 100) {
         const content = userMessage.trim();
-        console.log('🧠 Using whole message as preference content:', content);
+        safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 Using whole message as preference content:', content);
         return {
           type: 'user_preference',
           title: `User Info: ${content.slice(0, 50)}${content.length > 50 ? '...' : ''}`,
@@ -351,7 +370,7 @@ Use this context to provide more informed and personalized responses. Reference 
     }
 
     const content = relevantSentences.join('. ').trim();
-    console.log('🧠 Extracted preference/identity content:', content);
+    safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', '🧠 Extracted preference/identity content:', content);
 
     return {
       type: 'user_preference',
@@ -485,7 +504,7 @@ Use this context to provide more informed and personalized responses. Reference 
   setEnabled(autoSearch: boolean, autoSave: boolean): void {
     this.config.enableAutoSearch = autoSearch;
     this.config.enableAutoSave = autoSave;
-    console.log(`🧠 Auto-memory: search=${autoSearch}, save=${autoSave}`);
+    safeDebugLog('info', 'AUTOMATICMEMORYSERVICE', `🧠 Auto-memory: search=${autoSearch}, save=${autoSave}`);
   }
 }
 

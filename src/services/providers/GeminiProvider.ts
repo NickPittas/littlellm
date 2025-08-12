@@ -14,6 +14,25 @@ import {
 import { GEMINI_SYSTEM_PROMPT } from './prompts/gemini';
 import { PricingService } from '../pricingService';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export class GeminiProvider extends BaseProvider {
   readonly id = 'gemini';
   readonly name = 'Google Gemini';
@@ -37,7 +56,7 @@ export class GeminiProvider extends BaseProvider {
     signal?: AbortSignal,
     conversationId?: string
   ): Promise<LLMResponse> {
-    console.log('🧠 Gemini: Integrating memory context');
+    safeDebugLog('info', 'GEMINIPROVIDER', '🧠 Gemini: Integrating memory context');
 
     // Use behavioral system prompt only (no tool descriptions)
     // System instruction will be set in request body, not as user/model messages
@@ -49,7 +68,7 @@ export class GeminiProvider extends BaseProvider {
     const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
     const cachingEnabled = settings.promptCachingEnabled ?? true;
 
-    console.log(`🔍 Gemini system prompt source:`, {
+    safeDebugLog('info', 'GEMINIPROVIDER', `🔍 Gemini system prompt source:`, {
       hasCustom: hasCustomSystemPrompt,
       usingCustom: hasCustomSystemPrompt,
       promptLength: systemPrompt?.length || 0,
@@ -74,7 +93,7 @@ export class GeminiProvider extends BaseProvider {
     if (typeof message === 'string') {
       // For large string messages, log caching eligibility
       if (cachingEnabled && message.length > 8192) { // ~2048 tokens for Gemini Pro
-        console.log(`🔧 Gemini: User message eligible for implicit caching (${message.length} chars, ≥2048 tokens)`);
+        safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini: User message eligible for implicit caching (${message.length} chars, ≥2048 tokens)`);
       }
       contents.push({
         role: 'user',
@@ -90,9 +109,9 @@ export class GeminiProvider extends BaseProvider {
           const textPart: { text: string; cache_control?: { type: 'ephemeral' } } = { text: item.text || '' };
           if (cachingEnabled && item.cache_control) {
             textPart.cache_control = item.cache_control;
-            console.log(`🔧 Gemini: Added explicit cache_control to text content (${item.text?.length || 0} chars)`);
+            safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini: Added explicit cache_control to text content (${item.text?.length || 0} chars)`);
           } else if (cachingEnabled && item.text && item.text.length > 8192) {
-            console.log(`🔧 Gemini: Large text content eligible for implicit caching (${item.text.length} chars, ≥2048 tokens)`);
+            safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini: Large text content eligible for implicit caching (${item.text.length} chars, ≥2048 tokens)`);
           }
           parts.push(textPart);
         } else if (item.type === 'image_url') {
@@ -143,12 +162,12 @@ export class GeminiProvider extends BaseProvider {
     }
 
     // Get MCP tools for Gemini
-    console.log(`🔧 GeminiProvider: Calling getMCPToolsForProvider for gemini`);
-    console.log(`🔧 GeminiProvider: getMCPToolsForProvider method exists:`, typeof this.getMCPToolsForProvider === 'function');
+    safeDebugLog('info', 'GEMINIPROVIDER', `🔧 GeminiProvider: Calling getMCPToolsForProvider for gemini`);
+    safeDebugLog('info', 'GEMINIPROVIDER', `🔧 GeminiProvider: getMCPToolsForProvider method exists:`, typeof this.getMCPToolsForProvider === 'function');
 
     const rawMcpTools = await this.getMCPToolsForProvider('gemini', settings);
-    console.log(`🔧 GeminiProvider: Received ${rawMcpTools.length} raw tools from getMCPToolsForProvider`);
-    console.log(`🔧 GeminiProvider: Raw tools:`, rawMcpTools.map((t: any) => ({
+    safeDebugLog('info', 'GEMINIPROVIDER', `🔧 GeminiProvider: Received ${rawMcpTools.length} raw tools from getMCPToolsForProvider`);
+    safeDebugLog('info', 'GEMINIPROVIDER', `🔧 GeminiProvider: Raw tools:`, rawMcpTools.map((t: any) => ({
       name: t.function?.name || t.name,
       type: t.type,
       serverId: t.serverId,
@@ -181,14 +200,14 @@ export class GeminiProvider extends BaseProvider {
             }
           ]
         };
-        console.log(`🔧 Gemini: Added explicit cache_control to system instruction (${systemPrompt.length} chars)`);
+        safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini: Added explicit cache_control to system instruction (${systemPrompt.length} chars)`);
       } else {
         // Regular system instruction (may still benefit from implicit caching)
         requestBody.systemInstruction = {
           parts: [{ text: systemPrompt }]
         };
         if (cachingEnabled && systemPrompt.length > 8192) {
-          console.log(`🔧 Gemini: System instruction eligible for implicit caching (${systemPrompt.length} chars, ≥2048 tokens)`);
+          safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini: System instruction eligible for implicit caching (${systemPrompt.length} chars, ≥2048 tokens)`);
         }
       }
     }
@@ -196,14 +215,14 @@ export class GeminiProvider extends BaseProvider {
     // Add tools if available (Gemini uses its own format)
     if (formattedTools.length > 0) {
       requestBody.tools = formattedTools;
-      console.log(`🚀 Gemini API call with ${rawMcpTools.length} raw tools formatted to ${formattedTools.length} Gemini tools:`, {
+      safeDebugLog('info', 'GEMINIPROVIDER', `🚀 Gemini API call with ${rawMcpTools.length} raw tools formatted to ${formattedTools.length} Gemini tools:`, {
         model: settings.model,
         rawToolCount: rawMcpTools.length,
         formattedToolCount: formattedTools.length,
         tools: formattedTools
       });
     } else {
-      console.log(`🚀 Gemini API call without tools (no MCP tools available)`);
+      safeDebugLog('info', 'GEMINIPROVIDER', `🚀 Gemini API call without tools (no MCP tools available)`);
     }
 
     // Set system instruction (behavioral prompt only - no tool descriptions)
@@ -211,13 +230,13 @@ export class GeminiProvider extends BaseProvider {
       requestBody.system_instruction = {
         parts: [{ text: systemPrompt }]
       };
-      console.log(`🔧 Gemini system instruction set:`, {
+      safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini system instruction set:`, {
         length: systemPrompt.length,
         preview: systemPrompt.substring(0, 100) + '...'
       });
     }
 
-    console.log('🔍 Gemini request body:', JSON.stringify(requestBody, null, 2));
+    safeDebugLog('info', 'GEMINIPROVIDER', '🔍 Gemini request body:', JSON.stringify(requestBody, null, 2));
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
@@ -234,11 +253,11 @@ export class GeminiProvider extends BaseProvider {
       signal
     });
 
-    console.log('🔍 Gemini response status:', response.status, response.statusText);
+    safeDebugLog('info', 'GEMINIPROVIDER', '🔍 Gemini response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('❌ Gemini API error response:', error);
+      safeDebugLog('error', 'GEMINIPROVIDER', '❌ Gemini API error response:', error);
       throw new Error(`Gemini API error: ${error}`);
     }
 
@@ -251,7 +270,7 @@ export class GeminiProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.error('❌ No Gemini API key provided - cannot fetch models');
+      safeDebugLog('error', 'GEMINIPROVIDER', '❌ No Gemini API key provided - cannot fetch models');
       throw new Error('Gemini API key is required to fetch available models. Please add your API key in settings.');
     }
 
@@ -261,7 +280,7 @@ export class GeminiProvider extends BaseProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Gemini API error: ${response.status}`, errorText);
+        safeDebugLog('error', 'GEMINIPROVIDER', `❌ Gemini API error: ${response.status}`, errorText);
         throw new Error(`Failed to fetch Gemini models: ${response.status} - ${errorText}`);
       }
 
@@ -277,13 +296,13 @@ export class GeminiProvider extends BaseProvider {
 
       return models;
     } catch (error) {
-      console.error('❌ Failed to fetch Gemini models:', error);
+      safeDebugLog('error', 'GEMINIPROVIDER', '❌ Failed to fetch Gemini models:', error);
       throw error instanceof Error ? error : new Error(`Failed to fetch Gemini models: ${String(error)}`);
     }
   }
 
   formatTools(tools: ToolObject[]): unknown[] {
-    console.log(`🔧 Gemini formatTools received ${tools.length} tools:`, tools.map(t => ({
+    safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini formatTools received ${tools.length} tools:`, tools.map(t => ({
       keys: Object.keys(t),
       name: t.name,
       functionName: t.function?.name,
@@ -305,7 +324,7 @@ export class GeminiProvider extends BaseProvider {
         const parameters = tool.parameters || tool.function?.parameters || (tool as {input_schema?: unknown}).input_schema || (tool as {parameters?: unknown}).parameters;
         const cleanedParameters = this.cleanSchemaForGemini(parameters);
 
-        console.log(`🔧 Gemini tool formatting - ${originalName} -> ${sanitizedName}:`, {
+        safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini tool formatting - ${originalName} -> ${sanitizedName}:`, {
           originalTool: tool,
           cleanedParameters: JSON.stringify(cleanedParameters, null, 2)
         });
@@ -318,7 +337,7 @@ export class GeminiProvider extends BaseProvider {
       })
     }];
 
-    console.log(`🔧 Gemini formatted tools:`, JSON.stringify(formattedTools, null, 2));
+    safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini formatted tools:`, JSON.stringify(formattedTools, null, 2));
     return formattedTools;
   }
 
@@ -346,7 +365,7 @@ export class GeminiProvider extends BaseProvider {
       sanitized = 'tool';
     }
 
-    console.log(`🔧 Gemini tool name sanitization: "${name}" -> "${sanitized}"`);
+    safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini tool name sanitization: "${name}" -> "${sanitized}"`);
     return sanitized;
   }
 
@@ -354,7 +373,7 @@ export class GeminiProvider extends BaseProvider {
     try {
       return JSON.parse(jsonString);
     } catch {
-      console.warn(`🚫 Gemini: Failed to parse JSON "${jsonString}", returning as string`);
+      safeDebugLog('warn', 'GEMINIPROVIDER', `🚫 Gemini: Failed to parse JSON "${jsonString}", returning as string`);
       return { result: jsonString };
     }
   }
@@ -370,7 +389,7 @@ export class GeminiProvider extends BaseProvider {
 
     // Gemini uses structured tool calling with tools parameter
     // Don't add XML tool instructions as they conflict with native function calling
-    console.log(`🔧 Gemini using structured tools, skipping XML tool instructions`);
+    safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini using structured tools, skipping XML tool instructions`);
     return basePrompt;
   }
 
@@ -420,7 +439,7 @@ export class GeminiProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
-    console.log(`🔄 Making follow-up Gemini streaming call with ${toolCalls.length} tool results`);
+    safeDebugLog('info', 'GEMINIPROVIDER', `🔄 Making follow-up Gemini streaming call with ${toolCalls.length} tool results`);
 
     try {
       if (!settings.apiKey) {
@@ -469,7 +488,7 @@ export class GeminiProvider extends BaseProvider {
       });
 
       if (followupResponse.ok) {
-        console.log(`✅ Getting Gemini follow-up response (streaming)`);
+        safeDebugLog('info', 'GEMINIPROVIDER', `✅ Getting Gemini follow-up response (streaming)`);
 
         // Handle streaming response
         const reader = followupResponse.body?.getReader();
@@ -497,7 +516,7 @@ export class GeminiProvider extends BaseProvider {
 
                 try {
                   const parsed = JSON.parse(data);
-                  console.log('🔍 Gemini follow-up streaming chunk:', JSON.stringify(parsed, null, 2));
+                  safeDebugLog('info', 'GEMINIPROVIDER', '🔍 Gemini follow-up streaming chunk:', JSON.stringify(parsed, null, 2));
 
                   if (parsed.candidates && parsed.candidates[0]?.content?.parts) {
                     const parts = parsed.candidates[0].content.parts;
@@ -520,7 +539,7 @@ export class GeminiProvider extends BaseProvider {
                     };
                   }
                 } catch (e) {
-                  console.warn('Failed to parse Gemini follow-up streaming chunk:', e);
+                  safeDebugLog('warn', 'GEMINIPROVIDER', 'Failed to parse Gemini follow-up streaming chunk:', e);
                 }
               }
             }
@@ -536,7 +555,7 @@ export class GeminiProvider extends BaseProvider {
           totalTokens: (initialUsage?.total_tokens || 0) + (followupUsage?.total_tokens || 0)
         };
 
-        console.log(`✅ Gemini follow-up streaming completed with tool results integrated`);
+        safeDebugLog('info', 'GEMINIPROVIDER', `✅ Gemini follow-up streaming completed with tool results integrated`);
 
         return {
           content: initialContent + followupText,
@@ -549,7 +568,7 @@ export class GeminiProvider extends BaseProvider {
         };
       } else {
         const errorText = await followupResponse.text();
-        console.error(`❌ Gemini follow-up call failed (${followupResponse.status}):`, errorText);
+        safeDebugLog('error', 'GEMINIPROVIDER', `❌ Gemini follow-up call failed (${followupResponse.status}):`, errorText);
 
         // Provide a fallback response with tool results
         const fallbackMessage = `\n\n**Tool execution completed successfully, but follow-up request failed (${followupResponse.status}). Here are the tool results:**\n\n`;
@@ -562,8 +581,8 @@ export class GeminiProvider extends BaseProvider {
         onStream(toolSummary);
       }
     } catch (error) {
-      console.error(`❌ Gemini follow-up call error:`, error);
-      console.error(`❌ Error details:`, {
+      safeDebugLog('error', 'GEMINIPROVIDER', `❌ Gemini follow-up call error:`, error);
+      safeDebugLog('error', 'GEMINIPROVIDER', `❌ Error details:`, {
         errorType: typeof error,
         errorMessage: error instanceof Error ? error.message : String(error),
         errorStack: error instanceof Error ? error.stack : undefined
@@ -611,7 +630,7 @@ export class GeminiProvider extends BaseProvider {
     const hasComplexFeatures = this.hasUnsupportedFeatures(schemaObj);
 
     if (hasComplexFeatures) {
-      console.log(`🚫 Gemini schema has complex features, using simplified fallback`);
+      safeDebugLog('info', 'GEMINIPROVIDER', `🚫 Gemini schema has complex features, using simplified fallback`);
       // Return a very simple fallback schema
       return {
         type: 'object',
@@ -624,7 +643,7 @@ export class GeminiProvider extends BaseProvider {
     // Recursively clean the schema to remove all unsupported properties
     const cleanedSchema = this.deepCleanForGemini(schemaObj);
 
-    console.log(`🧹 Gemini schema cleaning:`, {
+    safeDebugLog('info', 'GEMINIPROVIDER', `🧹 Gemini schema cleaning:`, {
       original: JSON.stringify(schemaObj, null, 2),
       cleaned: JSON.stringify(cleanedSchema, null, 2)
     });
@@ -652,7 +671,7 @@ export class GeminiProvider extends BaseProvider {
 
     for (const prop of unsupportedProps) {
       if (prop in input) {
-        console.log(`🚫 Found unsupported feature: ${prop}`);
+        safeDebugLog('info', 'GEMINIPROVIDER', `🚫 Found unsupported feature: ${prop}`);
         return true;
       }
     }
@@ -694,7 +713,7 @@ export class GeminiProvider extends BaseProvider {
     for (const [key, value] of Object.entries(input)) {
       // Skip rejected properties entirely
       if (rejectedProps.includes(key)) {
-        console.log(`🚫 Gemini schema cleaning: Removing unsupported property '${key}'`);
+        safeDebugLog('info', 'GEMINIPROVIDER', `🚫 Gemini schema cleaning: Removing unsupported property '${key}'`);
         continue;
       }
 
@@ -723,7 +742,7 @@ export class GeminiProvider extends BaseProvider {
         }
       } else {
         // Log any other properties we're skipping
-        console.log(`🚫 Gemini schema cleaning: Skipping unknown property '${key}'`);
+        safeDebugLog('info', 'GEMINIPROVIDER', `🚫 Gemini schema cleaning: Skipping unknown property '${key}'`);
       }
     }
 
@@ -750,7 +769,7 @@ export class GeminiProvider extends BaseProvider {
     signal?: AbortSignal
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
-    console.log(`🔍 Starting Gemini stream response handling...`);
+    safeDebugLog('info', 'GEMINIPROVIDER', `🔍 Starting Gemini stream response handling...`);
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('No response body');
@@ -777,7 +796,7 @@ export class GeminiProvider extends BaseProvider {
 
             try {
               const parsed = JSON.parse(data);
-              console.log('🔍 Gemini streaming chunk:', JSON.stringify(parsed, null, 2));
+              safeDebugLog('info', 'GEMINIPROVIDER', '🔍 Gemini streaming chunk:', JSON.stringify(parsed, null, 2));
 
               if (parsed.candidates && parsed.candidates[0]?.content?.parts) {
                 const parts = parsed.candidates[0].content.parts;
@@ -791,7 +810,7 @@ export class GeminiProvider extends BaseProvider {
 
                   // Handle function calls
                   if (part.functionCall) {
-                    console.log(`🔧 Gemini streaming function call:`, part.functionCall);
+                    safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini streaming function call:`, part.functionCall);
 
                     // Show minimal tool usage in chat
                     const toolMessage = `\n\n🔧 **Using tool: ${part.functionCall.name}**\n⚙️ Executing...\n`;
@@ -824,7 +843,7 @@ export class GeminiProvider extends BaseProvider {
                       });
 
                     } catch (error) {
-                      console.error(`❌ Gemini streaming tool call failed:`, error);
+                      safeDebugLog('error', 'GEMINIPROVIDER', `❌ Gemini streaming tool call failed:`, error);
 
                       // Show tool error in chat
                       const errorMessage = `❌ Tool ${part.functionCall.name} failed: ${error instanceof Error ? error.message : String(error)}\n`;
@@ -852,7 +871,7 @@ export class GeminiProvider extends BaseProvider {
                 };
               }
             } catch (e) {
-              console.warn('Failed to parse Gemini streaming chunk:', e);
+              safeDebugLog('warn', 'GEMINIPROVIDER', 'Failed to parse Gemini streaming chunk:', e);
             }
           }
         }
@@ -890,13 +909,13 @@ export class GeminiProvider extends BaseProvider {
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     try {
-      console.log('🔍 About to parse Gemini response...');
+      safeDebugLog('info', 'GEMINIPROVIDER', '🔍 About to parse Gemini response...');
       const data = await response.json();
-      console.log('🔍 Gemini raw response:', JSON.stringify(data, null, 2));
+      safeDebugLog('info', 'GEMINIPROVIDER', '🔍 Gemini raw response:', JSON.stringify(data, null, 2));
 
       const candidate = data.candidates[0];
       if (!candidate || !candidate.content || !candidate.content.parts) {
-        console.error('❌ Gemini response missing expected structure:', data);
+        safeDebugLog('error', 'GEMINIPROVIDER', '❌ Gemini response missing expected structure:', data);
         return { content: 'Error: Invalid response structure from Gemini' };
       }
 
@@ -904,12 +923,12 @@ export class GeminiProvider extends BaseProvider {
       let content = '';
       const toolCalls = [];
 
-      console.log('🔍 Gemini candidate parts:', candidate.content.parts);
+      safeDebugLog('info', 'GEMINIPROVIDER', '🔍 Gemini candidate parts:', candidate.content.parts);
       for (const part of candidate.content.parts) {
         if (part.text) {
           content += part.text;
         } else if (part.functionCall) {
-          console.log(`🔧 Gemini response contains function call:`, part.functionCall);
+          safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini response contains function call:`, part.functionCall);
           // Tool execution will be handled by the main service
           toolCalls.push({
             id: `gemini-${Date.now()}`,
@@ -927,7 +946,7 @@ export class GeminiProvider extends BaseProvider {
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined
       };
     } catch (error) {
-      console.error('❌ Failed to parse Gemini response:', error);
+      safeDebugLog('error', 'GEMINIPROVIDER', '❌ Failed to parse Gemini response:', error);
       return { content: 'Error: Failed to parse response from Gemini' };
     }
   }

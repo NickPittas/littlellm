@@ -3,6 +3,7 @@
 // This is the complete tool calling prompt used for Mistral
 
 import { generateComplexToolPrompt } from './shared-complex-prompt';
+import { debugLogger } from '../../debugLogger';
 
 export function generateMistralToolPrompt(tools: unknown[]): string {
   return generateComplexToolPrompt(tools);

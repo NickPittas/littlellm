@@ -1,5 +1,6 @@
 import React from 'react';
 import { Search, Database, BookOpen } from 'lucide-react';
+import { debugLogger } from '../services/debugLogger';
 
 interface KnowledgeBaseIndicatorProps {
   isSearching: boolean;

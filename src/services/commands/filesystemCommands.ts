@@ -20,6 +20,7 @@ import {
 import { filesystemManager } from '../filesystemManager';
 import { internalCommandService } from '../internalCommandService';
 import { processManager } from '../processManager';
+import { debugLogger } from '../debugLogger';
 
 /**
  * Read file contents with optional offset and length

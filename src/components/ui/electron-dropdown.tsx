@@ -1,3 +1,25 @@
+
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 "use client"
 
 import * as React from "react"
@@ -48,7 +70,7 @@ export function ElectronDropdown({
       try {
         await window.electronAPI.closeDropdown()
       } catch (error) {
-        console.error('Failed to close floating dropdown:', error)
+        safeDebugLog('error', 'ELECTRON_DROPDOWN', 'Failed to close floating dropdown:', error)
       }
     }
     setOpen(false)
@@ -86,7 +108,7 @@ export function ElectronDropdown({
       const x = rect.left
       const y = rect.bottom + 4 // 4px gap below the button
 
-      console.log('🔍 ElectronDropdown position debug:', {
+      safeDebugLog('info', 'ELECTRON_DROPDOWN', '🔍 ElectronDropdown position debug:', {
         rect: { left: rect.left, top: rect.top, bottom: rect.bottom, right: rect.right },
         calculated: { x, y },
         dropdownSize: { width: dropdownWidth, height: dropdownHeight }
@@ -99,7 +121,7 @@ export function ElectronDropdown({
       await window.electronAPI.openDropdown(x, y, dropdownWidth, dropdownHeight, content)
       setOpen(true)
     } catch (error) {
-      console.error('Failed to open floating dropdown:', error)
+      safeDebugLog('error', 'ELECTRON_DROPDOWN', 'Failed to open floating dropdown:', error)
       setOpen(true) // Fallback to regular dropdown
     }
   }
@@ -115,24 +137,24 @@ export function ElectronDropdown({
   }
 
   const handleSelect = (selectedValue: string) => {
-    console.log('ElectronDropdown handleSelect called with:', selectedValue);
+    safeDebugLog('info', 'ELECTRON_DROPDOWN', 'ElectronDropdown handleSelect called with:', selectedValue);
     onValueChange?.(selectedValue);
     handleClose(); // This will close dropdown and restore window size
-    console.log('ElectronDropdown selection completed');
+    safeDebugLog('info', 'ELECTRON_DROPDOWN', 'ElectronDropdown selection completed');
   }
 
   // Handle dropdown selection events from Electron
   React.useEffect(() => {
     if (isElectron && window.electronAPI?.onDropdownItemSelected) {
       const handleSelection = (selectedValue: string) => {
-        console.log('🔥 ELECTRON DROPDOWN: Item selected:', selectedValue);
-        console.log('🔥 ELECTRON DROPDOWN: Available options:', options);
-        console.log('🔥 ELECTRON DROPDOWN: Is selected value in options?', options.includes(selectedValue));
+        safeDebugLog('info', 'ELECTRON_DROPDOWN', '🔥 ELECTRON DROPDOWN: Item selected:', selectedValue);
+        safeDebugLog('info', 'ELECTRON_DROPDOWN', '🔥 ELECTRON DROPDOWN: Available options:', options);
+        safeDebugLog('info', 'ELECTRON_DROPDOWN', '🔥 ELECTRON DROPDOWN: Is selected value in options?', options.includes(selectedValue));
 
         // ONLY handle selections that are actually in our options list
         // This prevents cross-dropdown contamination
         if (!options.includes(selectedValue)) {
-          console.log('🔥 ELECTRON DROPDOWN: Ignoring selection not in our options:', selectedValue);
+          safeDebugLog('info', 'ELECTRON_DROPDOWN', '🔥 ELECTRON DROPDOWN: Ignoring selection not in our options:', selectedValue);
           return;
         }
 
@@ -237,7 +259,7 @@ export function ElectronDropdown({
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            console.log('Dropdown item clicked:', option);
+                            safeDebugLog('info', 'ELECTRON_DROPDOWN', 'Dropdown item clicked:', option);
                             handleSelect(option);
                           }}
                           className={cn(

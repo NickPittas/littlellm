@@ -1,3 +1,25 @@
+
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 "use client"
 
 import * as React from "react"
@@ -41,11 +63,11 @@ export function SearchableSelect({
   }, [sortedOptions, searchValue])
 
   const handleSelect = (selectedValue: string) => {
-    console.log('SearchableSelect handleSelect called with:', selectedValue);
+    safeDebugLog('info', 'SEARCHABLE_SELECT', 'SearchableSelect handleSelect called with:', selectedValue);
     onValueChange?.(selectedValue);
     setOpen(false);
     setSearchValue("");
-    console.log('SearchableSelect selection completed');
+    safeDebugLog('info', 'SEARCHABLE_SELECT', 'SearchableSelect selection completed');
   }
 
   const displayValue = value || placeholder
@@ -112,7 +134,7 @@ export function SearchableSelect({
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        console.log('Dropdown item clicked:', option);
+                        safeDebugLog('info', 'SEARCHABLE_SELECT', 'Dropdown item clicked:', option);
                         handleSelect(option);
                       }}
                       className={cn(

@@ -6,6 +6,25 @@ import { Button } from './ui/button';
 import { MessageContent } from './MessageContent';
 import { ContentItem } from '../services/chatService';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface UserMessageProps {
   content: string | ContentItem[];
   className?: string;
@@ -28,7 +47,7 @@ export function UserMessage({ content, className = '' }: UserMessageProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
-      console.error('Failed to copy text:', error);
+      safeDebugLog('error', 'USERMESSAGE', 'Failed to copy text:', error);
       // Fallback for older browsers
       try {
         const textContent = typeof content === 'string'
@@ -46,7 +65,7 @@ export function UserMessage({ content, className = '' }: UserMessageProps) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch (fallbackError) {
-        console.error('Fallback copy also failed:', fallbackError);
+        safeDebugLog('error', 'USERMESSAGE', 'Fallback copy also failed:', fallbackError);
       }
     }
   };

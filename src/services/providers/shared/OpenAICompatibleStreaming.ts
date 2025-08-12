@@ -1,6 +1,28 @@
 // Shared streaming implementation for OpenAI-compatible providers
 // This can be used by OpenAI, OpenRouter, Mistral, DeepSeek, LM Studio, etc.
 
+
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 import {
   LLMSettings,
   LLMResponse,
@@ -44,7 +66,7 @@ export class OpenAICompatibleStreaming {
       onStream: (chunk: string) => void
     ) => Promise<LLMResponse>
   ): Promise<LLMResponse> {
-    console.log(`🔍 Starting ${providerName} stream response handling...`);
+    safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `🔍 Starting ${providerName} stream response handling...`);
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('No response body');
@@ -65,7 +87,7 @@ export class OpenAICompatibleStreaming {
         const chunk = decoder.decode(value);
         chunkCount++;
         if (chunkCount <= 3) {
-          console.log(`🔍 ${providerName} stream chunk ${chunkCount}:`, chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''));
+          safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `🔍 ${providerName} stream chunk ${chunkCount}:`, chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''));
         }
         const lines = chunk.split('\n');
 
@@ -77,7 +99,7 @@ export class OpenAICompatibleStreaming {
             try {
               const parsed = JSON.parse(data);
               if (chunkCount <= 5) {
-                console.log(`🔍 ${providerName} parsed chunk ${chunkCount}:`, JSON.stringify(parsed, null, 2));
+                safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `🔍 ${providerName} parsed chunk ${chunkCount}:`, JSON.stringify(parsed, null, 2));
               }
 
               const choice = parsed.choices?.[0];
@@ -87,14 +109,14 @@ export class OpenAICompatibleStreaming {
               if (content && typeof content === 'string') {
                 fullContent += content;
                 onStream(content);
-                console.log(`📝 ${providerName} content chunk: "${content}"`);
+                safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `📝 ${providerName} content chunk: "${content}"`);
               } else if (content) {
-                console.warn(`⚠️ ${providerName} content chunk is not a string:`, typeof content, content);
+                safeDebugLog('warn', 'OPENAICOMPATIBLESTREAMING', `⚠️ ${providerName} content chunk is not a string:`, typeof content, content);
               }
 
               // Check for tool calls and assemble them
               if (delta?.tool_calls) {
-                console.log(`🔧 ${providerName} tool calls detected:`, delta.tool_calls);
+                safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `🔧 ${providerName} tool calls detected:`, delta.tool_calls);
 
                 for (const toolCall of delta.tool_calls) {
                   const index = toolCall.index;
@@ -133,7 +155,7 @@ export class OpenAICompatibleStreaming {
                 usage = parsed.usage;
               }
             } catch (error) {
-              console.error(`❌ ${providerName} error parsing chunk:`, error, `Data: ${data.substring(0, 100)}...`);
+              safeDebugLog('error', 'OPENAICOMPATIBLESTREAMING', `❌ ${providerName} error parsing chunk:`, error, `Data: ${data.substring(0, 100)}...`);
             }
           }
         }
@@ -145,7 +167,7 @@ export class OpenAICompatibleStreaming {
     // Filter out empty tool calls and log final state
     const validToolCalls = toolCalls.filter(tc => tc && tc.function?.name);
 
-    console.log(`🔍 ${providerName} stream response completed:`, {
+    safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `🔍 ${providerName} stream response completed:`, {
       contentLength: fullContent.length,
       hasUsage: !!usage,
       usage: usage,
@@ -153,7 +175,7 @@ export class OpenAICompatibleStreaming {
     });
 
     if (validToolCalls.length > 0) {
-      console.log(`🔧 ${providerName} assembled ${validToolCalls.length} tool calls:`, validToolCalls.map(tc => ({
+      safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `🔧 ${providerName} assembled ${validToolCalls.length} tool calls:`, validToolCalls.map(tc => ({
         name: tc.function?.name,
         arguments: tc.function?.arguments
       })));
@@ -196,13 +218,13 @@ export class OpenAICompatibleStreaming {
     getMCPTools?: () => Promise<unknown[]>,
     getEnhancedSystemPrompt?: (tools: unknown[]) => string
   ): Promise<LLMResponse> {
-    console.log(`🔧 ${providerName} streaming detected ${toolCalls.length} tool calls, executing...`);
+    safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `🔧 ${providerName} streaming detected ${toolCalls.length} tool calls, executing...`);
 
     // Execute all tool calls
     const toolResults = [];
     for (const toolCall of toolCalls) {
       try {
-        console.log(`🔧 Executing ${providerName} tool call: ${toolCall.function?.name}`);
+        safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `🔧 Executing ${providerName} tool call: ${toolCall.function?.name}`);
         const toolName = toolCall.function?.name || '';
         const toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
         const toolResult = await executeMCPTool(toolName, toolArgs);
@@ -212,7 +234,7 @@ export class OpenAICompatibleStreaming {
           content: JSON.stringify(toolResult)
         });
       } catch (error) {
-        console.error(`❌ ${providerName} tool execution failed:`, error);
+        safeDebugLog('error', 'OPENAICOMPATIBLESTREAMING', `❌ ${providerName} tool execution failed:`, error);
         toolResults.push({
           role: 'tool',
           tool_call_id: toolCall.id,
@@ -248,7 +270,7 @@ export class OpenAICompatibleStreaming {
       ...toolResults
     ];
 
-    console.log(`🔄 Making ${providerName} follow-up call to process tool results...`);
+    safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `🔄 Making ${providerName} follow-up call to process tool results...`);
 
     const followUpRequestBody = {
       model: settings.model,
@@ -263,7 +285,7 @@ export class OpenAICompatibleStreaming {
       })
     };
 
-    console.log(`🔧 ${providerName} follow-up call with ${availableTools.length} tools available for continued agentic behavior`);
+    safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `🔧 ${providerName} follow-up call with ${availableTools.length} tools available for continued agentic behavior`);
 
     const headers = {
       'Content-Type': 'application/json',
@@ -325,7 +347,7 @@ export class OpenAICompatibleStreaming {
                   followUpUsage = parsed.usage;
                 }
               } catch (e) {
-                console.warn(`Failed to parse ${providerName} streaming chunk:`, e);
+                safeDebugLog('warn', 'OPENAICOMPATIBLESTREAMING', `Failed to parse ${providerName} streaming chunk:`, e);
               }
             }
           }
@@ -343,7 +365,7 @@ export class OpenAICompatibleStreaming {
 
       // Check if the follow-up response contains additional tool calls (agentic behavior)
       if (followUpToolCalls.length > 0) {
-        console.log(`🔄 ${providerName} follow-up response contains ${followUpToolCalls.length} additional tool calls - continuing agentic workflow`);
+        safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `🔄 ${providerName} follow-up response contains ${followUpToolCalls.length} additional tool calls - continuing agentic workflow`);
 
         // Recursively execute additional tool calls
         return this.executeToolsAndFollowUp(
@@ -362,7 +384,7 @@ export class OpenAICompatibleStreaming {
         );
       }
 
-      console.log(`✅ ${providerName} follow-up streaming completed with tool results integrated`);
+      safeDebugLog('info', 'OPENAICOMPATIBLESTREAMING', `✅ ${providerName} follow-up streaming completed with tool results integrated`);
 
       return {
         content: followUpContent || 'Tool execution completed.',
@@ -377,7 +399,7 @@ export class OpenAICompatibleStreaming {
       };
     } else {
       const errorText = await followUpResponse.text();
-      console.error(`❌ ${providerName} follow-up call failed (${followUpResponse.status}):`, errorText);
+      safeDebugLog('error', 'OPENAICOMPATIBLESTREAMING', `❌ ${providerName} follow-up call failed (${followUpResponse.status}):`, errorText);
       
       // Return original response with tool calls
       return {

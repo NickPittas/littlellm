@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { THEME_PRESETS, type ThemePreset } from '../../config/themes';
 import { Check } from 'lucide-react';
+import { debugLogger } from '../../services/debugLogger';
 
 interface ThemeSelectorProps {
   selectedThemeId: string;

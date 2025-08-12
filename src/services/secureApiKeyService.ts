@@ -7,6 +7,25 @@
 
 import { initializationManager } from './initializationManager';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export interface ProviderApiKeyData {
   apiKey: string;
   baseUrl?: string;
@@ -50,7 +69,7 @@ class SecureApiKeyService {
           // Check for migration from old settings format
           await this.checkAndMigrateFromSettings();
         } else {
-          console.log('🔐 SecureApiKeyService skipped initialization (server-side rendering)');
+          safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔐 SecureApiKeyService skipped initialization (server-side rendering)');
         }
       }
     );
@@ -61,7 +80,7 @@ class SecureApiKeyService {
    */
   private async waitForElectronAPI(): Promise<void> {
     if (typeof window === 'undefined') {
-      console.warn('⚠️ Window not available (likely server-side rendering), skipping API key initialization');
+      safeDebugLog('warn', 'SECUREAPIKEYSERVICE', '⚠️ Window not available (likely server-side rendering), skipping API key initialization');
       return; // Don't throw error, just skip initialization
     }
 
@@ -78,14 +97,14 @@ class SecureApiKeyService {
     return new Promise((resolve) => {
       const checkAPI = () => {
         if (window.electronAPI && typeof window.electronAPI.getSecureApiKeys === 'function') {
-          console.log('🔐 Electron API is now available');
+          safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔐 Electron API is now available');
           resolve();
           return;
         }
 
         waitTime += checkInterval;
         if (waitTime >= maxWaitTime) {
-          console.warn('⚠️ Electron API not available after waiting, continuing without persistence');
+          safeDebugLog('warn', 'SECUREAPIKEYSERVICE', '⚠️ Electron API not available after waiting, continuing without persistence');
           resolve(); // Don't reject, just continue without persistence
           return;
         }
@@ -106,25 +125,25 @@ class SecureApiKeyService {
         const encryptedData = await window.electronAPI.getSecureApiKeys();
         if (encryptedData) {
           this.apiKeys = encryptedData;
-          console.log('🔐 Loaded encrypted API keys for providers:', Object.keys(this.apiKeys));
+          safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔐 Loaded encrypted API keys for providers:', Object.keys(this.apiKeys));
         } else {
-          console.log('🔐 No encrypted API keys found in storage');
+          safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔐 No encrypted API keys found in storage');
           // Don't overwrite existing in-memory keys if storage is empty
           // This prevents losing keys when Electron storage is not available
           if (Object.keys(this.apiKeys).length === 0) {
-            console.log('🔐 No in-memory keys either, starting with empty storage');
+            safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔐 No in-memory keys either, starting with empty storage');
             this.apiKeys = {};
           } else {
-            console.log('🔐 Keeping existing in-memory keys since storage is empty');
+            safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔐 Keeping existing in-memory keys since storage is empty');
           }
         }
       } catch (error) {
-        console.error('❌ Failed to load encrypted API keys:', error);
+        safeDebugLog('error', 'SECUREAPIKEYSERVICE', '❌ Failed to load encrypted API keys:', error);
         // Don't overwrite existing in-memory keys on error
-        console.log('🔐 Keeping existing in-memory keys due to storage error');
+        safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔐 Keeping existing in-memory keys due to storage error');
       }
     } else {
-      console.warn('⚠️ Electron API not available, keeping existing in-memory API keys');
+      safeDebugLog('warn', 'SECUREAPIKEYSERVICE', '⚠️ Electron API not available, keeping existing in-memory API keys');
       // Don't overwrite existing keys when Electron API is not available
     }
   }
@@ -139,16 +158,16 @@ class SecureApiKeyService {
       if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.setSecureApiKeys === 'function') {
         const success = await window.electronAPI.setSecureApiKeys(this.apiKeys);
         if (success) {
-          console.log('🔐 Successfully saved encrypted API keys');
+          safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔐 Successfully saved encrypted API keys');
           return true;
         } else {
-          console.error('❌ Failed to save encrypted API keys - main process returned false');
+          safeDebugLog('error', 'SECUREAPIKEYSERVICE', '❌ Failed to save encrypted API keys - main process returned false');
           // Still return true to indicate we attempted the save
           return true;
         }
       } else {
-        console.warn('⚠️ Electron API not available, but continuing anyway (ALWAYS SAVE mode)');
-        console.log('🔍 Debug info:', {
+        safeDebugLog('warn', 'SECUREAPIKEYSERVICE', '⚠️ Electron API not available, but continuing anyway (ALWAYS SAVE mode)');
+        safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔍 Debug info:', {
           windowAvailable: typeof window !== 'undefined',
           electronAPIAvailable: typeof window !== 'undefined' && !!window.electronAPI,
           setSecureApiKeysAvailable: typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.setSecureApiKeys === 'function'
@@ -157,7 +176,7 @@ class SecureApiKeyService {
         return true;
       }
     } catch (error) {
-      console.error('❌ Error saving encrypted API keys:', error);
+      safeDebugLog('error', 'SECUREAPIKEYSERVICE', '❌ Error saving encrypted API keys:', error);
       // Still return true to indicate we attempted the save (ALWAYS SAVE mode)
       return true;
     }
@@ -168,13 +187,13 @@ class SecureApiKeyService {
    */
   getApiKeyData(providerId: string): ProviderApiKeyData | null {
     if (!this.isInitialized()) {
-      console.error('❌ SecureApiKeyService not initialized - cannot retrieve API key data');
+      safeDebugLog('error', 'SECUREAPIKEYSERVICE', '❌ SecureApiKeyService not initialized - cannot retrieve API key data');
       throw new Error('SecureApiKeyService not initialized. Please wait for initialization to complete.');
     }
 
     const data = this.apiKeys[providerId];
     if (data) {
-      console.log(`🔐 Retrieved API key data for ${providerId}:`, {
+      safeDebugLog('info', 'SECUREAPIKEYSERVICE', `🔐 Retrieved API key data for ${providerId}:`, {
         hasApiKey: !!data.apiKey,
         keyLength: data.apiKey?.length || 0,
         hasBaseUrl: !!data.baseUrl,
@@ -198,7 +217,7 @@ class SecureApiKeyService {
   async setApiKeyData(providerId: string, data: ProviderApiKeyData): Promise<boolean> {
     // ALWAYS SAVE - No conditions that prevent saving
 
-    console.log(`🔐 Setting API key data for ${providerId}:`, {
+    safeDebugLog('info', 'SECUREAPIKEYSERVICE', `🔐 Setting API key data for ${providerId}:`, {
       hasApiKey: !!data.apiKey,
       keyLength: data.apiKey?.length || 0,
       hasBaseUrl: !!data.baseUrl,
@@ -233,7 +252,7 @@ class SecureApiKeyService {
   async removeApiKeyData(providerId: string): Promise<boolean> {
     // ALWAYS SAVE - No conditions that prevent saving
 
-    console.log(`🔐 Removing API key data for ${providerId}`);
+    safeDebugLog('info', 'SECUREAPIKEYSERVICE', `🔐 Removing API key data for ${providerId}`);
     delete this.apiKeys[providerId];
     const success = await this.saveApiKeys();
     
@@ -343,7 +362,7 @@ class SecureApiKeyService {
       try {
         callback(providerId, hasKey);
       } catch (error) {
-        console.error('Error in API key change listener:', error);
+        safeDebugLog('error', 'SECUREAPIKEYSERVICE', 'Error in API key change listener:', error);
       }
     });
   }
@@ -367,7 +386,7 @@ class SecureApiKeyService {
    */
   async retryInitialization(): Promise<void> {
     if (!this.isInitialized() && typeof window !== 'undefined') {
-      console.log('🔐 Retrying SecureApiKeyService initialization...');
+      safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔐 Retrying SecureApiKeyService initialization...');
       await this.initializeService();
     }
   }
@@ -376,8 +395,8 @@ class SecureApiKeyService {
    * Force reload API keys from storage (useful after save operations)
    */
   async forceReloadApiKeys(): Promise<void> {
-    console.log('🔄 Force reloading API keys from secure storage...');
-    console.log('🔍 Current API keys before reload:', Object.keys(this.apiKeys));
+    safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔄 Force reloading API keys from secure storage...');
+    safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔍 Current API keys before reload:', Object.keys(this.apiKeys));
 
     // Always try to reload from storage when explicitly requested
     if (typeof window !== 'undefined' && window.electronAPI?.getSecureApiKeys) {
@@ -386,21 +405,21 @@ class SecureApiKeyService {
         const encryptedData = await window.electronAPI.getSecureApiKeys();
         if (encryptedData) {
           this.apiKeys = encryptedData;
-          console.log('✅ API keys force reloaded from storage successfully');
-          console.log('🔍 API keys after reload:', Object.keys(this.apiKeys));
+          safeDebugLog('info', 'SECUREAPIKEYSERVICE', '✅ API keys force reloaded from storage successfully');
+          safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔍 API keys after reload:', Object.keys(this.apiKeys));
 
           // Notify all listeners about the reload
           Object.keys(this.apiKeys).forEach(providerId => {
             this.notifyListeners(providerId, !!this.apiKeys[providerId]?.apiKey);
           });
         } else {
-          console.warn('⚠️ No API keys found in storage during force reload');
+          safeDebugLog('warn', 'SECUREAPIKEYSERVICE', '⚠️ No API keys found in storage during force reload');
         }
       } catch (error) {
-        console.error('❌ Failed to force reload API keys:', error);
+        safeDebugLog('error', 'SECUREAPIKEYSERVICE', '❌ Failed to force reload API keys:', error);
       }
     } else {
-      console.warn('⚠️ Electron API not available, cannot force reload from storage');
+      safeDebugLog('warn', 'SECUREAPIKEYSERVICE', '⚠️ Electron API not available, cannot force reload from storage');
     }
   }
 
@@ -408,11 +427,11 @@ class SecureApiKeyService {
    * Debug method to check current API key state
    */
   debugApiKeyState(): void {
-    console.log('🔍 DEBUG: Current API key state:');
-    console.log('🔍 Service initialized:', this.isInitialized());
-    console.log('🔍 Providers with API keys:', Object.keys(this.apiKeys));
+    safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔍 DEBUG: Current API key state:');
+    safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔍 Service initialized:', this.isInitialized());
+    safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔍 Providers with API keys:', Object.keys(this.apiKeys));
     Object.entries(this.apiKeys).forEach(([providerId, data]) => {
-      console.log(`🔍 ${providerId}:`, {
+      safeDebugLog('info', 'SECUREAPIKEYSERVICE', `🔍 ${providerId}:`, {
         hasApiKey: !!data.apiKey,
         keyLength: data.apiKey?.length || 0,
         hasBaseUrl: !!data.baseUrl
@@ -427,7 +446,7 @@ class SecureApiKeyService {
     try {
       // Only attempt migration if we don't have any API keys yet
       if (Object.keys(this.apiKeys).length > 0) {
-        console.log('🔐 API keys already exist in secure storage, skipping migration');
+        safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔐 API keys already exist in secure storage, skipping migration');
         return;
       }
 
@@ -436,13 +455,13 @@ class SecureApiKeyService {
         const oldSettings = await window.electronAPI.getAppSettings() as any;
 
         if (oldSettings?.chat?.providers) {
-          console.log('🔄 Checking for API keys to migrate from old settings...');
+          safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔄 Checking for API keys to migrate from old settings...');
           let migrated = false;
 
           for (const [providerId, providerData] of Object.entries(oldSettings.chat.providers)) {
             const data = providerData as any;
             if (data.apiKey && data.apiKey.trim() !== '') {
-              console.log(`🔄 Migrating API key for ${providerId}`);
+              safeDebugLog('info', 'SECUREAPIKEYSERVICE', `🔄 Migrating API key for ${providerId}`);
               await this.setApiKeyData(providerId, {
                 apiKey: data.apiKey,
                 baseUrl: data.baseUrl,
@@ -453,17 +472,17 @@ class SecureApiKeyService {
           }
 
           if (migrated) {
-            console.log('✅ API key migration completed successfully');
+            safeDebugLog('info', 'SECUREAPIKEYSERVICE', '✅ API key migration completed successfully');
 
             // Clean up API keys from old settings
             await this.cleanupOldSettingsApiKeys(oldSettings);
           } else {
-            console.log('ℹ️ No API keys found to migrate');
+            safeDebugLog('info', 'SECUREAPIKEYSERVICE', 'ℹ️ No API keys found to migrate');
           }
         }
       }
     } catch (error) {
-      console.error('❌ Error during API key migration:', error);
+      safeDebugLog('error', 'SECUREAPIKEYSERVICE', '❌ Error during API key migration:', error);
     }
   }
 
@@ -472,7 +491,7 @@ class SecureApiKeyService {
    */
   private async cleanupOldSettingsApiKeys(oldSettings: any): Promise<void> {
     try {
-      console.log('🧹 Cleaning up API keys from old settings...');
+      safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🧹 Cleaning up API keys from old settings...');
 
       // Remove API keys from the providers
       if (oldSettings.chat?.providers) {
@@ -480,18 +499,18 @@ class SecureApiKeyService {
           const data = providerData as any;
           if (data.apiKey) {
             delete data.apiKey;
-            console.log(`🧹 Removed API key from settings for ${providerId}`);
+            safeDebugLog('info', 'SECUREAPIKEYSERVICE', `🧹 Removed API key from settings for ${providerId}`);
           }
         }
 
         // Save the cleaned settings back
         if (typeof window !== 'undefined' && window.electronAPI?.updateAppSettings) {
           await window.electronAPI.updateAppSettings(oldSettings);
-          console.log('✅ Cleaned up API keys from old settings');
+          safeDebugLog('info', 'SECUREAPIKEYSERVICE', '✅ Cleaned up API keys from old settings');
         }
       }
     } catch (error) {
-      console.error('❌ Error cleaning up old settings:', error);
+      safeDebugLog('error', 'SECUREAPIKEYSERVICE', '❌ Error cleaning up old settings:', error);
     }
   }
 
@@ -501,12 +520,12 @@ class SecureApiKeyService {
   async migrateFromSettings(oldProviders: Record<string, { apiKey?: string; baseUrl?: string; lastSelectedModel?: string }>): Promise<boolean> {
     // ALWAYS SAVE - No conditions that prevent saving
 
-    console.log('🔄 Migrating API keys from old settings format...');
+    safeDebugLog('info', 'SECUREAPIKEYSERVICE', '🔄 Migrating API keys from old settings format...');
     let migrated = false;
 
     for (const [providerId, providerData] of Object.entries(oldProviders)) {
       if (providerData.apiKey && !this.hasApiKey(providerId)) {
-        console.log(`🔄 Migrating API key for ${providerId}`);
+        safeDebugLog('info', 'SECUREAPIKEYSERVICE', `🔄 Migrating API key for ${providerId}`);
         await this.setApiKeyData(providerId, {
           apiKey: providerData.apiKey,
           baseUrl: providerData.baseUrl,
@@ -517,9 +536,9 @@ class SecureApiKeyService {
     }
 
     if (migrated) {
-      console.log('✅ API key migration completed successfully');
+      safeDebugLog('info', 'SECUREAPIKEYSERVICE', '✅ API key migration completed successfully');
     } else {
-      console.log('ℹ️ No API keys to migrate');
+      safeDebugLog('info', 'SECUREAPIKEYSERVICE', 'ℹ️ No API keys to migrate');
     }
 
     return migrated;

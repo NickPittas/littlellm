@@ -2,6 +2,25 @@ import { getStorageItem } from '../utils/storage';
 import type { Message } from './chatService';
 import type { ElectronAPI } from '../types/electron';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 // Type for conversation data from storage
 interface ConversationData {
   id: string;
@@ -67,10 +86,10 @@ class ConversationHistoryService {
             };
           });
 
-          console.log(`Loaded ${this.conversations.length} conversations from disk`);
+          safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', `Loaded ${this.conversations.length} conversations from disk`);
         } else {
           // Fallback: try loading from old storage system
-          console.log('No conversation index found, trying legacy storage...');
+          safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', 'No conversation index found, trying legacy storage...');
           const stored = await getStorageItem('conversation-history');
           if (stored && Array.isArray(stored)) {
             this.conversations = stored.map(conv => ({
@@ -84,7 +103,7 @@ class ConversationHistoryService {
             }));
 
             // Migrate to new file-based system
-            console.log('Migrating conversations to new file-based system...');
+            safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', 'Migrating conversations to new file-based system...');
             await this.migrateToFileSystem();
           }
         }
@@ -104,7 +123,7 @@ class ConversationHistoryService {
         }
       }
     } catch (error) {
-      console.error('Failed to load conversation history:', error);
+      safeDebugLog('error', 'CONVERSATIONHISTORYSERVICE', 'Failed to load conversation history:', error);
       this.conversations = [];
     }
 
@@ -127,15 +146,15 @@ class ConversationHistoryService {
 
         const success = await window.electronAPI.saveConversationToFile(conversation.id, serializedConversation);
         if (success) {
-          console.log(`Conversation ${conversation.id} saved to file successfully`);
+          safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', `Conversation ${conversation.id} saved to file successfully`);
         } else {
-          console.error(`Failed to save conversation ${conversation.id} to file`);
+          safeDebugLog('error', 'CONVERSATIONHISTORYSERVICE', `Failed to save conversation ${conversation.id} to file`);
         }
         return success;
       }
       return false;
     } catch (error) {
-      console.error('Error saving conversation to file:', error);
+      safeDebugLog('error', 'CONVERSATIONHISTORYSERVICE', 'Error saving conversation to file:', error);
       return false;
     }
   }
@@ -147,9 +166,9 @@ class ConversationHistoryService {
         await this.saveConversationToFile(conversation);
       }
       await this.saveConversationIndex();
-      console.log('Migration to file-based system completed');
+      safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', 'Migration to file-based system completed');
     } catch (error) {
-      console.error('Failed to migrate conversations to file system:', error);
+      safeDebugLog('error', 'CONVERSATIONHISTORYSERVICE', 'Failed to migrate conversations to file system:', error);
     }
   }
 
@@ -176,7 +195,7 @@ class ConversationHistoryService {
       }
       return null;
     } catch (error) {
-      console.error(`Failed to load full conversation ${conversationId}:`, error);
+      safeDebugLog('error', 'CONVERSATIONHISTORYSERVICE', `Failed to load full conversation ${conversationId}:`, error);
       return null;
     }
   }
@@ -195,13 +214,13 @@ class ConversationHistoryService {
 
         const success = await window.electronAPI.saveConversationIndex(conversationIndex);
         if (success) {
-          console.log('Conversation index saved successfully');
+          safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', 'Conversation index saved successfully');
         }
         return success;
       }
       return false;
     } catch (error) {
-      console.error('Error saving conversation index:', error);
+      safeDebugLog('error', 'CONVERSATIONHISTORYSERVICE', 'Error saving conversation index:', error);
       return false;
     }
   }
@@ -301,7 +320,7 @@ class ConversationHistoryService {
 
   async deleteConversation(conversationId: string) {
     await this.initialize();
-    console.log(`🗑️ Deleting conversation: ${conversationId}`);
+    safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', `🗑️ Deleting conversation: ${conversationId}`);
 
     // Remove from in-memory array
     this.conversations = this.conversations.filter(c => c.id !== conversationId);
@@ -312,24 +331,24 @@ class ConversationHistoryService {
 
     // Update the index (file deletion is now handled by IPC handler)
     await this.saveConversationIndex();
-    console.log(`✅ Conversation ${conversationId} deleted from memory`);
+    safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', `✅ Conversation ${conversationId} deleted from memory`);
   }
 
   async clearAllHistory() {
-    console.log('🗑️ ConversationHistoryService.clearAllHistory() called');
+    safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', '🗑️ ConversationHistoryService.clearAllHistory() called');
     await this.initialize();
-    console.log('🗑️ Service initialized, current conversations count:', this.conversations.length);
+    safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', '🗑️ Service initialized, current conversations count:', this.conversations.length);
 
     // Clear in-memory data (file deletion is now handled by IPC handler)
-    console.log('🗑️ Clearing in-memory conversations');
+    safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', '🗑️ Clearing in-memory conversations');
     this.conversations = [];
     this.currentConversationId = null;
 
     // Save empty index
-    console.log('🗑️ Saving empty conversation index');
+    safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', '🗑️ Saving empty conversation index');
     await this.saveConversationIndex();
 
-    console.log('✅ All chat history cleared from memory');
+    safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', '✅ All chat history cleared from memory');
   }
 
   getCurrentConversationId(): string | null {

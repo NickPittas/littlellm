@@ -6,7 +6,25 @@ import { Button } from './ui/button';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import './CodeBlock.css';
 
-
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface CodeBlockProps {
   code: string;
   language?: string;
@@ -80,7 +98,7 @@ export function CodeBlock({ code, language, className = '' }: CodeBlockProps) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
-      console.error('Failed to copy code:', error);
+      safeDebugLog('error', 'CODEBLOCK', 'Failed to copy code:', error);
       // Fallback for older browsers
       try {
         const textArea = document.createElement('textarea');
@@ -92,7 +110,7 @@ export function CodeBlock({ code, language, className = '' }: CodeBlockProps) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch (fallbackError) {
-        console.error('Fallback copy also failed:', fallbackError);
+        safeDebugLog('error', 'CODEBLOCK', 'Fallback copy also failed:', fallbackError);
       }
     }
   };

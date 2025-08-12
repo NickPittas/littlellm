@@ -19,6 +19,25 @@ import { ColorPicker } from './ui/color-picker';
 import { ThemeSelector } from './ui/theme-selector';
 import { useTheme } from '../contexts/ThemeContext';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface SettingsOverlayProps {
   onClose?: () => void;
 }
@@ -96,7 +115,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
     try {
       // Always use the settings service to ensure consistency
       const loadedSettings = settingsService.getSettings();
-      console.log('🔍 SettingsOverlay: Loaded settings from service:', loadedSettings);
+      safeDebugLog('info', 'SETTINGSOVERLAY', '🔍 SettingsOverlay: Loaded settings from service:', loadedSettings);
 
       setSettings(loadedSettings);
       setFormData(JSON.parse(JSON.stringify(loadedSettings))); // Deep copy
@@ -107,7 +126,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
 
       return loadedSettings;
     } catch (error) {
-      console.error('Failed to load settings:', error);
+      safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to load settings:', error);
       return undefined;
     } finally {
       setIsLoading(false);
@@ -119,7 +138,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
       const servers = await mcpService.getServers();
       setMcpServers(servers);
     } catch (error) {
-      console.error('Failed to load MCP servers:', error);
+      safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to load MCP servers:', error);
     }
   };
 
@@ -144,7 +163,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
       });
       setShowAddMcpServer(false);
     } catch (error) {
-      console.error('Failed to add MCP server:', error);
+      safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to add MCP server:', error);
     }
   };
 
@@ -155,7 +174,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
         setMcpServers(prev => prev.filter(s => s.id !== serverId));
       }
     } catch (error) {
-      console.error('Failed to remove MCP server:', error);
+      safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to remove MCP server:', error);
     }
   };
 
@@ -168,7 +187,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
         ));
       }
     } catch (error) {
-      console.error('Failed to toggle MCP server:', error);
+      safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to toggle MCP server:', error);
     }
   };
 
@@ -216,7 +235,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
         setShowAddMcpServer(false);
       }
     } catch (error) {
-      console.error('Failed to update MCP server:', error);
+      safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to update MCP server:', error);
     }
   };
 
@@ -228,7 +247,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
         setShowMcpJsonEditor(true);
       }
     } catch (error) {
-      console.error('Failed to load MCP JSON:', error);
+      safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to load MCP JSON:', error);
     }
   };
 
@@ -243,7 +262,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
         }
       }
     } catch (error) {
-      console.error('Failed to save MCP JSON:', error);
+      safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to save MCP JSON:', error);
       alert('Invalid JSON format. Please check your syntax.');
     }
   };
@@ -303,7 +322,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
     const currentSettings = loadedSettings || settings || settingsService.getSettings();
     const commandSettings = currentSettings.internalCommands;
 
-    console.log('🔧 Loading internal commands settings:', {
+    safeDebugLog('info', 'SETTINGSOVERLAY', '🔧 Loading internal commands settings:', {
       loadedSettings: !!loadedSettings,
       currentSettings: !!currentSettings,
       commandSettings,
@@ -312,7 +331,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
 
     // Safety check in case internalCommands is not initialized
     if (!commandSettings) {
-      console.warn('Internal commands settings not found, using defaults');
+      safeDebugLog('warn', 'SETTINGSOVERLAY', 'Internal commands settings not found, using defaults');
       setInternalCommandsEnabled(false);
       setAllowedDirectories([]);
       setBlockedCommands([]);
@@ -327,7 +346,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
       return;
     }
 
-    console.log('🔧 Setting internal commands state:', {
+    safeDebugLog('info', 'SETTINGSOVERLAY', '🔧 Setting internal commands state:', {
       enabled: commandSettings.enabled,
       allowedDirectories: commandSettings.allowedDirectories,
       blockedCommands: commandSettings.blockedCommands,
@@ -350,7 +369,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
       const tools = internalCommandService.getAvailableTools();
       setAvailableTools(tools);
     } catch (error) {
-      console.error('Failed to load available tools:', error);
+      safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to load available tools:', error);
       setAvailableTools([]);
     }
   };
@@ -389,7 +408,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
       enabledTools
     };
 
-    console.log('🔧 Saving internal commands settings:', {
+    safeDebugLog('info', 'SETTINGSOVERLAY', '🔧 Saving internal commands settings:', {
       current: {
         enabled: internalCommandsEnabled,
         allowedDirectories,
@@ -405,7 +424,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
       internalCommands: updatedInternalCommands
     });
 
-    console.log('🔧 Internal commands settings updated in form data');
+    safeDebugLog('info', 'SETTINGSOVERLAY', '🔧 Internal commands settings updated in form data');
   };
 
   const saveInternalCommandsSettingsWithDirectories = (directories: string[]) => {
@@ -447,7 +466,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
       internalCommands: updatedInternalCommands
     });
 
-    console.log('🔧 Internal commands settings updated with directories:', directories);
+    safeDebugLog('info', 'SETTINGSOVERLAY', '🔧 Internal commands settings updated with directories:', directories);
   };
 
   const addAllowedDirectory = () => {
@@ -487,7 +506,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
           }
         }
       } catch (error) {
-        console.error('Failed to browse for directory:', error);
+        safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to browse for directory:', error);
         // Fallback to manual entry
         alert('Directory browser not available. Please enter the path manually.');
       }
@@ -533,7 +552,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
       internalCommands: updatedInternalCommands
     });
 
-    console.log('🔧 Internal commands settings updated with blocked commands:', commands);
+    safeDebugLog('info', 'SETTINGSOVERLAY', '🔧 Internal commands settings updated with blocked commands:', commands);
   };
 
   const addBlockedCommand = () => {
@@ -572,11 +591,11 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
 
       if (apiKeySaveRef.current) {
         try {
-          console.log('🔐 SettingsOverlay: Triggering API key save via ref');
+          safeDebugLog('info', 'SETTINGSOVERLAY', '🔐 SettingsOverlay: Triggering API key save via ref');
           await apiKeySaveRef.current();
-          console.log('🔐 SettingsOverlay: API key save completed');
+          safeDebugLog('info', 'SETTINGSOVERLAY', '🔐 SettingsOverlay: API key save completed');
         } catch (error) {
-          console.error('🔐 SettingsOverlay: Failed to save API keys:', error);
+          safeDebugLog('error', 'SETTINGSOVERLAY', '🔐 SettingsOverlay: Failed to save API keys:', error);
           apiKeySaveSuccess = false;
           apiKeyError = error instanceof Error ? error.message : 'Unknown API key save error';
         }
@@ -585,14 +604,14 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
       if (success && apiKeySaveSuccess) {
         // Don't reload settings from disk - this might interfere with API keys
         // API keys are stored separately in secure storage, not in the JSON file
-        console.log('🔄 Settings and API keys saved successfully');
+        safeDebugLog('info', 'SETTINGSOVERLAY', '🔄 Settings and API keys saved successfully');
 
         setSettings(formData);
         // Always reset hasChanges after successful save
         setHasChanges(false);
 
         // Trigger model refresh for all components by dispatching a custom event
-        console.log('🔄 Settings saved successfully - triggering model refresh');
+        safeDebugLog('info', 'SETTINGSOVERLAY', '🔄 Settings saved successfully - triggering model refresh');
         window.dispatchEvent(new CustomEvent('settingsSaved', {
           detail: {
             apiKeysSaved: apiKeySaveSuccess,
@@ -605,9 +624,9 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
             formData.ui?.useCustomColors !== undefined ||
             formData.ui?.selectedThemePreset ||
             formData.ui?.colorMode) {
-          console.log('Settings overlay: Preparing to notify theme change');
-          console.log('formData.ui:', formData.ui);
-          console.log('Current theme context:', { customColors, useCustomColors, selectedThemePreset, colorMode });
+          safeDebugLog('info', 'SETTINGSOVERLAY', 'Settings overlay: Preparing to notify theme change');
+          safeDebugLog('info', 'SETTINGSOVERLAY', 'formData.ui:', formData.ui);
+          safeDebugLog('info', 'SETTINGSOVERLAY', 'Current theme context:', { customColors, useCustomColors, selectedThemePreset, colorMode });
 
           if (typeof window !== 'undefined' && window.electronAPI) {
             // Determine the actual colors to apply based on the current mode
@@ -620,25 +639,25 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
               const preset = themePresets.find(p => p.id === currentPreset);
               if (preset) {
                 colorsToApply = preset.colors;
-                console.log('Settings overlay: Using preset colors for:', currentPreset);
+                safeDebugLog('info', 'SETTINGSOVERLAY', 'Settings overlay: Using preset colors for:', currentPreset);
               }
             } else {
               // Use custom colors
               colorsToApply = formData.ui.customColors || customColors;
-              console.log('Settings overlay: Using custom colors');
+              safeDebugLog('info', 'SETTINGSOVERLAY', 'Settings overlay: Using custom colors');
             }
 
             const themeData = {
               customColors: colorsToApply,
               useCustomColors: currentMode === 'custom'
             };
-            console.log('Settings overlay: Sending theme change notification:', themeData);
+            safeDebugLog('info', 'SETTINGSOVERLAY', 'Settings overlay: Sending theme change notification:', themeData);
             window.electronAPI.notifyThemeChange(themeData);
           } else {
-            console.error('Settings overlay: electronAPI not available');
+            safeDebugLog('error', 'SETTINGSOVERLAY', 'Settings overlay: electronAPI not available');
           }
         } else {
-          console.log('Settings overlay: No theme changes detected');
+          safeDebugLog('info', 'SETTINGSOVERLAY', 'Settings overlay: No theme changes detected');
         }
 
         // Update internal commands configuration if it exists
@@ -646,13 +665,13 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
           try {
             const { internalCommandService } = await import('../services/internalCommandService');
             await internalCommandService.updateConfiguration(formData.internalCommands);
-            console.log('🔧 Internal commands configuration updated');
+            safeDebugLog('info', 'SETTINGSOVERLAY', '🔧 Internal commands configuration updated');
           } catch (error) {
-            console.error('Failed to update internal commands configuration:', error);
+            safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to update internal commands configuration:', error);
           }
         }
 
-        console.log('Settings saved successfully');
+        safeDebugLog('info', 'SETTINGSOVERLAY', 'Settings saved successfully');
         setSaveSuccess(true);
 
         // Clear success message after 3 seconds
@@ -662,12 +681,12 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
           ? 'Failed to save general settings'
           : apiKeyError || 'Failed to save API keys';
         setSaveError(errorMessage);
-        console.error('Failed to save settings:', errorMessage);
+        safeDebugLog('error', 'SETTINGSOVERLAY', 'Failed to save settings:', errorMessage);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred while saving settings';
       setSaveError(errorMessage);
-      console.error('Error saving settings:', error);
+      safeDebugLog('error', 'SETTINGSOVERLAY', 'Error saving settings:', error);
     } finally {
       setIsLoading(false);
     }
@@ -775,7 +794,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
 
     // Subscribe to settings changes to keep the overlay in sync
     const unsubscribe = settingsService.subscribe((newSettings) => {
-      console.log('🔍 SettingsOverlay: Settings changed via subscription:', newSettings);
+      safeDebugLog('info', 'SETTINGSOVERLAY', '🔍 SettingsOverlay: Settings changed via subscription:', newSettings);
       setSettings(newSettings);
       // Only update form data if we don't have unsaved changes
       if (!hasChanges) {
@@ -991,7 +1010,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
                   <PromptsContent
                     onPromptSelect={(prompt) => {
                       // Handle prompt selection if needed
-                      console.log('Prompt selected:', prompt);
+                      safeDebugLog('info', 'SETTINGSOVERLAY', 'Prompt selected:', prompt);
                     }}
                   />
                 </div>

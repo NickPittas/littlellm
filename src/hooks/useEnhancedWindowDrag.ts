@@ -1,8 +1,26 @@
 'use client';
 
 import { useEffect } from 'react';
-import { debugLogger } from '../services/debugLogger';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 /**
  * Simple window dragging hook using Electron's built-in web API
  * This avoids high DPI scaling issues by using CSS -webkit-app-region
@@ -30,7 +48,7 @@ export function useEnhancedWindowDrag() {
           (cs as unknown as Record<string, string>)['-webkit-app-region'] ||
           (cs.getPropertyValue && cs.getPropertyValue('-webkit-app-region')) ||
           'unset';
-        debugLogger.debug(`EnhancedWindowDrag: ${label} app-region=${region}`);
+        safeDebugLog('info', `EnhancedWindowDrag: ${label} app-region=${region}`);
       };
       logRegion('html', document.documentElement);
       logRegion('body', document.body);

@@ -6,6 +6,25 @@ import ICAL from 'ical.js';
 import { parseString as parseXml } from 'xml2js';
 import rtfParser from 'rtf-parser';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export interface ParsedDocument {
   text: string;
   metadata?: {
@@ -71,8 +90,8 @@ export class DocumentParserService {
     const mimeType = file.type;
 
     this.stats.totalAttempts++;
-    console.log(`📄 Parsing document: ${file.name} (${fileExtension}, ${mimeType})`);
-    console.log(`📄 File size: ${Math.round(file.size / 1024)}KB, Last modified: ${file.lastModified ? new Date(file.lastModified).toISOString() : 'Unknown'}`);
+    safeDebugLog('info', 'DOCUMENTPARSERSERVICE', `📄 Parsing document: ${file.name} (${fileExtension}, ${mimeType})`);
+    safeDebugLog('info', 'DOCUMENTPARSERSERVICE', `📄 File size: ${Math.round(file.size / 1024)}KB, Last modified: ${file.lastModified ? new Date(file.lastModified).toISOString() : 'Unknown'}`);
 
     try {
       let result: ParsedDocument;
@@ -133,7 +152,7 @@ export class DocumentParserService {
 
         default:
           // Create a fallback document for unsupported formats
-          console.log('📄 Unsupported format, creating fallback document...');
+          safeDebugLog('info', 'DOCUMENTPARSERSERVICE', '📄 Unsupported format, creating fallback document...');
           result = await this.createFallbackDocument(file, 'Unsupported file format');
           this.stats.fallbacksUsed++;
           break;
@@ -150,7 +169,7 @@ export class DocumentParserService {
         processingTime
       };
 
-      console.log(`✅ Successfully parsed ${file.name} in ${processingTime}ms`);
+      safeDebugLog('info', 'DOCUMENTPARSERSERVICE', `✅ Successfully parsed ${file.name} in ${processingTime}ms`);
       return result;
 
     } catch (error) {
@@ -163,11 +182,11 @@ export class DocumentParserService {
 
       this.stats.errorsByType[errorType] = (this.stats.errorsByType[errorType] || 0) + 1;
 
-      console.error(`❌ Error parsing document ${file.name}:`, error);
+      safeDebugLog('error', 'DOCUMENTPARSERSERVICE', `❌ Error parsing document ${file.name}:`, error);
 
       // Try fallback approach
       try {
-        console.log(`🔄 Attempting fallback parsing for ${file.name}...`);
+        safeDebugLog('info', 'DOCUMENTPARSERSERVICE', `🔄 Attempting fallback parsing for ${file.name}...`);
         const fallbackResult = await this.createFallbackDocument(file, errorMessage);
         this.stats.fallbacksUsed++;
 
@@ -179,10 +198,10 @@ export class DocumentParserService {
           processingTime
         };
 
-        console.log(`⚠️ Fallback parsing completed for ${file.name}`);
+        safeDebugLog('info', 'DOCUMENTPARSERSERVICE', `⚠️ Fallback parsing completed for ${file.name}`);
         return fallbackResult;
       } catch (fallbackError) {
-        console.error(`❌ Fallback parsing also failed for ${file.name}:`, fallbackError);
+        safeDebugLog('error', 'DOCUMENTPARSERSERVICE', `❌ Fallback parsing also failed for ${file.name}:`, fallbackError);
         throw new Error(`Failed to parse document: ${errorMessage}. Fallback also failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`);
       }
     }
@@ -206,7 +225,7 @@ export class DocumentParserService {
         }
       };
     } catch (error) {
-      console.log('📄 Mammoth failed with ArrayBuffer, trying Buffer approach...', error);
+      safeDebugLog('info', 'DOCUMENTPARSERSERVICE', '📄 Mammoth failed with ArrayBuffer, trying Buffer approach...', error);
 
       try {
         // Fallback: try with Buffer
@@ -222,7 +241,7 @@ export class DocumentParserService {
           }
         };
       } catch (bufferError) {
-        console.log('📄 Mammoth failed with Buffer approach too...', bufferError);
+        safeDebugLog('info', 'DOCUMENTPARSERSERVICE', '📄 Mammoth failed with Buffer approach too...', bufferError);
 
         // Final fallback: create a fallback document with detailed error info
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -266,7 +285,7 @@ export class DocumentParserService {
         }
       };
     } catch {
-      console.log('📊 XLSX failed, creating fallback document...');
+      safeDebugLog('info', 'DOCUMENTPARSERSERVICE', '📊 XLSX failed, creating fallback document...');
       return await this.createFallbackDocument(file, 'Spreadsheet parsing failed - file may be corrupted or in an unsupported format');
     }
   }
@@ -502,7 +521,7 @@ export class DocumentParserService {
    */
   private async parsePowerPoint(file: File): Promise<ParsedDocument> {
     // PowerPoint parsing is not currently supported in browser environment
-    console.log('📊 PowerPoint parsing not available, creating fallback document...');
+    safeDebugLog('info', 'DOCUMENTPARSERSERVICE', '📊 PowerPoint parsing not available, creating fallback document...');
     return await this.createFallbackDocument(file, 'PowerPoint parsing is not currently supported in browser environment. Please convert to PDF or extract text manually.');
   }
 
@@ -511,20 +530,20 @@ export class DocumentParserService {
    */
   private async parsePdf(file: File): Promise<ParsedDocument> {
     try {
-      console.log('📄 Parsing PDF file using Electron main process:', file.name);
+      safeDebugLog('info', 'DOCUMENTPARSERSERVICE', '📄 Parsing PDF file using Electron main process:', file.name);
 
       // Check if we're in a browser environment with Electron API access
       if (typeof window !== 'undefined' && (window as unknown as { electronAPI?: { parsePdfFile?: (buffer: ArrayBuffer, name: string) => Promise<{ success: boolean; text?: string; metadata?: { pages?: number; [key: string]: unknown }; error?: string }> } }).electronAPI?.parsePdfFile) {
         const fileBuffer = await file.arrayBuffer();
         const result = await (window as unknown as { electronAPI: { parsePdfFile: (buffer: ArrayBuffer, name: string) => Promise<{ success: boolean; text?: string; metadata?: { pages?: number; [key: string]: unknown }; error?: string }> } }).electronAPI.parsePdfFile(fileBuffer, file.name);
 
-        console.log('📄 PDF parsing result from Electron:', { success: result.success, textLength: result.text?.length });
+        safeDebugLog('info', 'DOCUMENTPARSERSERVICE', '📄 PDF parsing result from Electron:', { success: result.success, textLength: result.text?.length });
 
         if (result.success && result.text) {
           // Check if this is actually the fallback error message
           if (result.text.includes('PDF parsing module could not be loaded') ||
               result.text.includes('PDF text extraction is not available')) {
-            console.error('📄 PDF parsing failed - received fallback message');
+            safeDebugLog('error', 'DOCUMENTPARSERSERVICE', '📄 PDF parsing failed - received fallback message');
             return await this.createFallbackDocument(file, 'PDF parsing module not available in Electron environment');
           }
 
@@ -539,16 +558,16 @@ export class DocumentParserService {
             }
           };
         } else {
-          console.error('📄 PDF parsing failed:', result.error);
+          safeDebugLog('error', 'DOCUMENTPARSERSERVICE', '📄 PDF parsing failed:', result.error);
           return await this.createFallbackDocument(file, `PDF parsing failed: ${result.error || 'Unknown error'}`);
         }
       } else {
         // Fallback if electronAPI is not available
-        console.log('📄 ElectronAPI not available for PDF parsing');
+        safeDebugLog('info', 'DOCUMENTPARSERSERVICE', '📄 ElectronAPI not available for PDF parsing');
         return await this.createFallbackDocument(file, 'PDF parsing not available in this environment. Please use the Electron app for PDF support.');
       }
     } catch (error) {
-      console.error('📄 PDF parsing error:', error);
+      safeDebugLog('error', 'DOCUMENTPARSERSERVICE', '📄 PDF parsing error:', error);
       return await this.createFallbackDocument(file, `PDF parsing error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -678,7 +697,7 @@ export class DocumentParserService {
           }
         }
       } catch (textError) {
-        console.log(`Could not read ${file.name} as text:`, textError);
+        safeDebugLog('info', 'DOCUMENTPARSERSERVICE', `Could not read ${file.name} as text:`, textError);
       }
     }
 

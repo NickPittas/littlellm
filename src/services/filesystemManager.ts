@@ -7,6 +7,26 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { FileInfo } from '../types/internalCommands';
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 // internalCommandService import removed - validation handled in main process
 
 export class FilesystemManager {
@@ -326,7 +346,7 @@ export class FilesystemManager {
       }
     } catch (error) {
       // Ignore permission errors and continue
-      console.warn(`Search warning for ${dirPath}:`, error);
+      safeDebugLog('warn', 'FILESYSTEMMANAGER', `Search warning for ${dirPath}:`, error);
     }
   }
 

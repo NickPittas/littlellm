@@ -16,6 +16,25 @@ import { MISTRAL_SYSTEM_PROMPT } from './prompts/mistral';
 import { PricingService } from '../pricingService';
 import { MistralFileService } from '../mistralFileService';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export class MistralProvider extends BaseProvider {
   readonly id = 'mistral';
   readonly name = 'Mistral AI';
@@ -33,26 +52,26 @@ export class MistralProvider extends BaseProvider {
   // Mistral-specific tool calling methods
   private async getMistralTools(settings: LLMSettings): Promise<unknown[]> {
     try {
-      console.log(`🔍 Getting tools for Mistral provider`);
-      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
+      safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Getting tools for Mistral provider`);
+      safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
 
       // Check if tool calling is disabled
       if (settings?.toolCallingEnabled === false) {
-        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `🚫 Tool calling is disabled, returning empty tools array`);
         return [];
       }
 
       // Get raw tools from the centralized service (temporarily)
       const rawTools = await this.getMCPToolsForProvider('mistral', settings);
-      console.log(`📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{name?: string, function?: {name?: string}}>).map(t => t.name || t.function?.name));
+      safeDebugLog('info', 'MISTRALPROVIDER', `📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{name?: string, function?: {name?: string}}>).map(t => t.name || t.function?.name));
 
       // Format tools specifically for Mistral (uses OpenAI format)
       const formattedTools = this.formatToolsForMistral(rawTools);
-      console.log(`🔧 Formatted ${formattedTools.length} tools for Mistral`);
+      safeDebugLog('info', 'MISTRALPROVIDER', `🔧 Formatted ${formattedTools.length} tools for Mistral`);
 
       return formattedTools;
     } catch (error) {
-      console.error('❌ Failed to get Mistral tools:', error);
+      safeDebugLog('error', 'MISTRALPROVIDER', '❌ Failed to get Mistral tools:', error);
       return [];
     }
   }
@@ -93,7 +112,7 @@ export class MistralProvider extends BaseProvider {
         };
       }
 
-      console.warn(`⚠️ Skipping invalid tool:`, tool);
+      safeDebugLog('warn', 'MISTRALPROVIDER', `⚠️ Skipping invalid tool:`, tool);
       return null;
     }).filter(tool => tool !== null);
   }
@@ -129,7 +148,7 @@ export class MistralProvider extends BaseProvider {
 
     const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
 
-    console.log(`🔍 Mistral system prompt source:`, {
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Mistral system prompt source:`, {
       hasCustom: hasCustomSystemPrompt,
       usingCustom: hasCustomSystemPrompt,
       promptLength: systemPrompt?.length || 0,
@@ -205,7 +224,7 @@ export class MistralProvider extends BaseProvider {
               const preparedFile = await this.fileService.prepareFileForVision(file);
               return preparedFile;
             } catch (error) {
-              console.error('❌ Error processing document with Mistral:', error);
+              safeDebugLog('error', 'MISTRALPROVIDER', '❌ Error processing document with Mistral:', error);
               return {
                 type: 'text',
                 text: `[Document: ${item.document?.name || 'document'} - Processing failed: ${error}]`
@@ -249,17 +268,17 @@ export class MistralProvider extends BaseProvider {
     if (mistralTools.length > 0) {
       requestBody.tools = mistralTools;
       requestBody.tool_choice = 'auto';
-      console.log(`🚀 Mistral API call with ${mistralTools.length} tools:`, {
+      safeDebugLog('info', 'MISTRALPROVIDER', `🚀 Mistral API call with ${mistralTools.length} tools:`, {
         model: settings.model,
         toolCount: mistralTools.length,
         tools: mistralTools
       });
     } else {
-      console.log(`🚀 Mistral API call without tools (no tools available)`);
+      safeDebugLog('info', 'MISTRALPROVIDER', `🚀 Mistral API call without tools (no tools available)`);
     }
 
     // Log the full request for debugging
-    console.log(`🔍 Mistral API request:`, {
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Mistral API request:`, {
       url: `${provider.baseUrl}/chat/completions`,
       model: settings.model,
       messageCount: messages.length,
@@ -280,8 +299,8 @@ export class MistralProvider extends BaseProvider {
 
     if (!response.ok) {
       const error = await response.text();
-      console.error(`❌ Mistral API error (${response.status} ${response.statusText}):`, error);
-      console.error(`❌ Request details:`, {
+      safeDebugLog('error', 'MISTRALPROVIDER', `❌ Mistral API error (${response.status} ${response.statusText}):`, error);
+      safeDebugLog('error', 'MISTRALPROVIDER', `❌ Request details:`, {
         url: `${provider.baseUrl}/chat/completions`,
         model: settings.model,
         messageCount: messages.length,
@@ -325,13 +344,13 @@ export class MistralProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.error('❌ No Mistral API key provided - cannot fetch models');
+      safeDebugLog('error', 'MISTRALPROVIDER', '❌ No Mistral API key provided - cannot fetch models');
       throw new Error('Mistral API key is required to fetch available models. Please add your API key in settings.');
     }
 
     try {
       // Test API connectivity first
-      console.log('🔍 Testing Mistral API connectivity...');
+      safeDebugLog('info', 'MISTRALPROVIDER', '🔍 Testing Mistral API connectivity...');
 
       // Mistral AI models endpoint - correct API endpoint from their documentation
       const response = await fetch('https://api.mistral.ai/v1/models', {
@@ -342,32 +361,32 @@ export class MistralProvider extends BaseProvider {
         }
       });
 
-      console.log(`🔍 Mistral models API response: ${response.status} ${response.statusText}`);
+      safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Mistral models API response: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Mistral API error: ${response.status} ${response.statusText}`, errorText);
+        safeDebugLog('error', 'MISTRALPROVIDER', `❌ Mistral API error: ${response.status} ${response.statusText}`, errorText);
 
         // Try to parse error for better debugging
         let errorDetails = errorText;
         try {
           const errorObj = JSON.parse(errorText);
-          console.error('Mistral API error details:', errorObj);
+          safeDebugLog('error', 'MISTRALPROVIDER', 'Mistral API error details:', errorObj);
           errorDetails = errorObj.message || errorObj.error || errorText;
         } catch {
-          console.error('Mistral API raw error:', errorText);
+          safeDebugLog('error', 'MISTRALPROVIDER', 'Mistral API raw error:', errorText);
         }
 
         throw new Error(`Failed to fetch Mistral models: ${response.status} ${response.statusText} - ${errorDetails}`);
       }
 
       const data = await response.json() as APIResponseData;
-      console.log('✅ Mistral API models response:', data);
+      safeDebugLog('info', 'MISTRALPROVIDER', '✅ Mistral API models response:', data);
 
       // Mistral API returns models in data array with id field
       const models = data.data?.map((model) => model.id)?.sort() || [];
 
-      console.log(`✅ Fetched ${models.length} Mistral models:`, models);
+      safeDebugLog('info', 'MISTRALPROVIDER', `✅ Fetched ${models.length} Mistral models:`, models);
 
       if (models.length === 0) {
         throw new Error('No Mistral models returned from API. This may indicate an API issue or insufficient permissions.');
@@ -375,7 +394,7 @@ export class MistralProvider extends BaseProvider {
 
       return models;
     } catch (error) {
-      console.error('❌ Failed to fetch Mistral models:', error);
+      safeDebugLog('error', 'MISTRALPROVIDER', '❌ Failed to fetch Mistral models:', error);
       throw error instanceof Error ? error : new Error(`Failed to fetch Mistral models: ${String(error)}`);
     }
   }
@@ -407,14 +426,14 @@ export class MistralProvider extends BaseProvider {
 
     // Mistral uses structured tool calling with tools parameter and tool_choice
     // Don't add XML tool instructions as they conflict with native function calling
-    console.log(`🔧 Mistral using structured tools, skipping XML tool instructions`);
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔧 Mistral using structured tools, skipping XML tool instructions`);
     return basePrompt;
   }
 
   // Test method to help debug API connectivity
   async testConnection(apiKey: string, baseUrl = 'https://api.mistral.ai/v1'): Promise<{ success: boolean; error?: string; details?: unknown }> {
     try {
-      console.log('🧪 Testing Mistral API connection...');
+      safeDebugLog('info', 'MISTRALPROVIDER', '🧪 Testing Mistral API connection...');
 
       // Simple test request
       const testResponse = await fetch(`${baseUrl}/chat/completions`, {
@@ -434,10 +453,10 @@ export class MistralProvider extends BaseProvider {
       const responseText = await testResponse.text();
 
       if (testResponse.ok) {
-        console.log('✅ Mistral API connection test successful');
+        safeDebugLog('info', 'MISTRALPROVIDER', '✅ Mistral API connection test successful');
         return { success: true, details: { status: testResponse.status, response: responseText } };
       } else {
-        console.error(`❌ Mistral API connection test failed: ${testResponse.status} ${testResponse.statusText}`);
+        safeDebugLog('error', 'MISTRALPROVIDER', `❌ Mistral API connection test failed: ${testResponse.status} ${testResponse.statusText}`);
         return {
           success: false,
           error: `${testResponse.status} ${testResponse.statusText}`,
@@ -445,7 +464,7 @@ export class MistralProvider extends BaseProvider {
         };
       }
     } catch (error) {
-      console.error('❌ Mistral API connection test error:', error);
+      safeDebugLog('error', 'MISTRALPROVIDER', '❌ Mistral API connection test error:', error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -511,7 +530,7 @@ export class MistralProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
-    console.log(`🔧 Mistral streaming detected ${toolCalls.length} tool calls, executing...`);
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔧 Mistral streaming detected ${toolCalls.length} tool calls, executing...`);
 
     // Execute all tool calls and ensure exact matching
     /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -519,7 +538,7 @@ export class MistralProvider extends BaseProvider {
     for (let i = 0; i < toolCalls.length; i++) {
       const toolCall = toolCalls[i];
       try {
-        console.log(`🔧 Executing Mistral tool call: ${toolCall.function?.name} with ID: ${toolCall.id}`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `🔧 Executing Mistral tool call: ${toolCall.function?.name} with ID: ${toolCall.id}`);
         const toolName = toolCall.function?.name || '';
         const toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
         const toolResult = await this.executeMCPTool(toolName, toolArgs);
@@ -553,12 +572,12 @@ export class MistralProvider extends BaseProvider {
           content: contentString
         });
 
-        console.log(`✅ Mistral tool result created for ID: ${toolCallId}`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `✅ Mistral tool result created for ID: ${toolCallId}`);
       } catch (error) {
-        console.error(`❌ Mistral tool execution failed:`, error);
+        safeDebugLog('error', 'MISTRALPROVIDER', `❌ Mistral tool execution failed:`, error);
         const toolCallId = toolCall.id;
         if (!toolCallId) {
-          console.error(`❌ Tool call missing ID during error handling: ${JSON.stringify(toolCall)}`);
+          safeDebugLog('error', 'MISTRALPROVIDER', `❌ Tool call missing ID during error handling: ${JSON.stringify(toolCall)}`);
           continue; // Skip this tool call if no ID
         }
 
@@ -569,15 +588,15 @@ export class MistralProvider extends BaseProvider {
           content: JSON.stringify({ error: error instanceof Error ? error.message : String(error) })
         });
 
-        console.log(`❌ Mistral error result created for ID: ${toolCallId}`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `❌ Mistral error result created for ID: ${toolCallId}`);
       }
     }
 
-    console.log(`🔧 Mistral tool execution completed: ${toolCalls.length} calls, ${toolResults.length} results`);
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔧 Mistral tool execution completed: ${toolCalls.length} calls, ${toolResults.length} results`);
 
     // Verify we have matching counts
     if (toolCalls.length !== toolResults.length) {
-      console.error(`❌ Mistral tool call/result count mismatch: ${toolCalls.length} calls vs ${toolResults.length} results`);
+      safeDebugLog('error', 'MISTRALPROVIDER', `❌ Mistral tool call/result count mismatch: ${toolCalls.length} calls vs ${toolResults.length} results`);
       throw new Error(`Tool call/result count mismatch: ${toolCalls.length} calls vs ${toolResults.length} results`);
     }
 
@@ -600,7 +619,7 @@ export class MistralProvider extends BaseProvider {
     // Build the follow-up messages using the original conversation + assistant response + tool results
     const followUpMessages = [];
 
-    console.log(`🔍 Mistral conversation history debug:`, {
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Mistral conversation history debug:`, {
       historyLength: conversationHistory.length,
       roles: conversationHistory.map(msg => msg.role),
       userMessageCount: conversationHistory.filter(msg => msg.role === 'user').length
@@ -610,7 +629,7 @@ export class MistralProvider extends BaseProvider {
     const systemMessage = conversationHistory.find(msg => msg.role === 'system');
     if (systemMessage) {
       followUpMessages.push(systemMessage);
-      console.log(`✅ Added system message`);
+      safeDebugLog('info', 'MISTRALPROVIDER', `✅ Added system message`);
     }
 
     // Add the user message that triggered the tool call (the most recent user message)
@@ -618,15 +637,15 @@ export class MistralProvider extends BaseProvider {
     if (userMessages.length > 0) {
       const lastUserMessage = userMessages[userMessages.length - 1];
       followUpMessages.push(lastUserMessage);
-      console.log(`✅ Added user message: "${typeof lastUserMessage.content === 'string' ? lastUserMessage.content.substring(0, 50) : 'complex content'}..."`);
+      safeDebugLog('info', 'MISTRALPROVIDER', `✅ Added user message: "${typeof lastUserMessage.content === 'string' ? lastUserMessage.content.substring(0, 50) : 'complex content'}..."`);
     } else {
-      console.log(`❌ No user messages found in conversation history!`);
+      safeDebugLog('info', 'MISTRALPROVIDER', `❌ No user messages found in conversation history!`);
       // Add a fallback user message if none found
       followUpMessages.push({
         role: 'user',
         content: 'Please provide a response based on the tool results.'
       });
-      console.log(`✅ Added fallback user message`);
+      safeDebugLog('info', 'MISTRALPROVIDER', `✅ Added fallback user message`);
     }
 
     // Add the assistant message with tool calls (this is the response from step 2)
@@ -639,8 +658,8 @@ export class MistralProvider extends BaseProvider {
     // Add all tool results (step 3)
     followUpMessages.push(...toolResults);
 
-    console.log(`🔄 Making Mistral follow-up call to process tool results...`);
-    console.log(`🔧 Mistral follow-up message structure:`, {
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔄 Making Mistral follow-up call to process tool results...`);
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔧 Mistral follow-up message structure:`, {
       totalMessages: followUpMessages.length,
       toolCallsCount: mistralToolCalls.length,
       toolResultsCount: toolResults.length,
@@ -656,13 +675,13 @@ export class MistralProvider extends BaseProvider {
     });
 
     // Verify exact ID matching and log detailed comparison
-    console.log(`🔍 Mistral ID matching verification:`);
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Mistral ID matching verification:`);
     for (const toolCall of mistralToolCalls) {
       const matchingResult = toolResults.find(tr => tr.tool_call_id === toolCall.id);
-      console.log(`Tool call ID: "${toolCall.id}" -> Match found: ${!!matchingResult}`);
+      safeDebugLog('info', 'MISTRALPROVIDER', `Tool call ID: "${toolCall.id}" -> Match found: ${!!matchingResult}`);
       if (!matchingResult) {
-        console.error(`❌ Mistral: No matching tool result for tool call ID: "${toolCall.id}"`);
-        console.error(`Available tool result IDs:`, toolResults.map(tr => `"${tr.tool_call_id}"`));
+        safeDebugLog('error', 'MISTRALPROVIDER', `❌ Mistral: No matching tool result for tool call ID: "${toolCall.id}"`);
+        safeDebugLog('error', 'MISTRALPROVIDER', `Available tool result IDs:`, toolResults.map(tr => `"${tr.tool_call_id}"`));
         throw new Error(`Tool call/result ID mismatch: "${toolCall.id}" not found in results`);
       }
     }
@@ -672,11 +691,11 @@ export class MistralProvider extends BaseProvider {
       throw new Error(`Count mismatch: ${mistralToolCalls.length} tool calls vs ${toolResults.length} results`);
     }
 
-    console.log(`✅ Mistral: All ${mistralToolCalls.length} tool calls have matching results`);
+    safeDebugLog('info', 'MISTRALPROVIDER', `✅ Mistral: All ${mistralToolCalls.length} tool calls have matching results`);
 
     // Get tools for continued agentic behavior in follow-up call
     const followUpTools = await this.getMistralTools(settings);
-    console.log(`🔄 Making Mistral follow-up call with ${followUpTools.length} tools available for continued agentic behavior`);
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔄 Making Mistral follow-up call with ${followUpTools.length} tools available for continued agentic behavior`);
 
     const followUpRequestBody = {
       model: settings.model,
@@ -691,39 +710,39 @@ export class MistralProvider extends BaseProvider {
       })
     };
 
-    console.log(`🔧 Mistral follow-up request body:`, JSON.stringify(followUpRequestBody, null, 2));
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔧 Mistral follow-up request body:`, JSON.stringify(followUpRequestBody, null, 2));
 
     // Detailed validation of the exact structure Mistral expects
-    console.log(`🔍 Mistral follow-up validation:`);
-    console.log(`- Messages array length: ${followUpMessages.length}`);
-    console.log(`- Message roles: [${followUpMessages.map(m => m.role).join(', ')}]`);
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Mistral follow-up validation:`);
+    safeDebugLog('info', 'MISTRALPROVIDER', `- Messages array length: ${followUpMessages.length}`);
+    safeDebugLog('info', 'MISTRALPROVIDER', `- Message roles: [${followUpMessages.map(m => m.role).join(', ')}]`);
 
     // Validate each message
     followUpMessages.forEach((msg, index) => {
-      console.log(`Message ${index + 1} (${msg.role}):`);
+      safeDebugLog('info', 'MISTRALPROVIDER', `Message ${index + 1} (${msg.role}):`);
       if (msg.role === 'assistant' && msg.tool_calls) {
-        console.log(`  - Has ${msg.tool_calls.length} tool calls`);
-        console.log(`  - Content: "${msg.content}"`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `  - Has ${msg.tool_calls.length} tool calls`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `  - Content: "${msg.content}"`);
         msg.tool_calls.forEach((tc: any, tcIndex: number) => {
-          console.log(`  - Tool call ${tcIndex + 1}: ID="${tc.id}", name="${tc.function.name}"`);
+          safeDebugLog('info', 'MISTRALPROVIDER', `  - Tool call ${tcIndex + 1}: ID="${tc.id}", name="${tc.function.name}"`);
         });
       } else if (msg.role === 'tool') {
-        console.log(`  - tool_call_id: "${(msg as any).tool_call_id}"`);
-        console.log(`  - name: "${(msg as any).name}"`);
-        console.log(`  - content length: ${(msg as any).content?.length || 0} chars`);
-        console.log(`  - content preview: ${typeof (msg as any).content === 'string' ? (msg as any).content.substring(0, 100) : ''}...`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `  - tool_call_id: "${(msg as any).tool_call_id}"`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `  - name: "${(msg as any).name}"`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `  - content length: ${(msg as any).content?.length || 0} chars`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `  - content preview: ${typeof (msg as any).content === 'string' ? (msg as any).content.substring(0, 100) : ''}...`);
 
         // Validate content is valid JSON
         try {
           const content = (msg as any).content;
           if (typeof content === 'string') {
             JSON.parse(content);
-            console.log(`  - ✅ Content is valid JSON`);
+            safeDebugLog('info', 'MISTRALPROVIDER', `  - ✅ Content is valid JSON`);
           } else {
-            console.log(`  - ⚠️ Content is not a string`);
+            safeDebugLog('info', 'MISTRALPROVIDER', `  - ⚠️ Content is not a string`);
           }
         } catch (e) {
-          console.log(`  - ❌ Content is NOT valid JSON: ${e}`);
+          safeDebugLog('info', 'MISTRALPROVIDER', `  - ❌ Content is NOT valid JSON: ${e}`);
         }
       }
     });
@@ -752,7 +771,7 @@ export class MistralProvider extends BaseProvider {
       if (followUpMessage?.content && typeof followUpMessage.content === 'string') {
         onStream(followUpMessage.content);
       } else if (followUpMessage?.content) {
-        console.warn('⚠️ Mistral follow-up content is not a string:', typeof followUpMessage.content, followUpMessage.content);
+        safeDebugLog('warn', 'MISTRALPROVIDER', '⚠️ Mistral follow-up content is not a string:', typeof followUpMessage.content, followUpMessage.content);
       }
 
       return {
@@ -768,7 +787,7 @@ export class MistralProvider extends BaseProvider {
       };
     } else {
       const errorText = await followUpResponse.text();
-      console.error(`❌ Mistral follow-up call failed (${followUpResponse.status}):`, errorText);
+      safeDebugLog('error', 'MISTRALPROVIDER', `❌ Mistral follow-up call failed (${followUpResponse.status}):`, errorText);
 
       // Return original response with tool calls
       return {
@@ -800,7 +819,7 @@ export class MistralProvider extends BaseProvider {
     signal?: AbortSignal
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
-    console.log(`🔍 Starting Mistral stream response handling...`);
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Starting Mistral stream response handling...`);
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('No response body');
@@ -821,7 +840,7 @@ export class MistralProvider extends BaseProvider {
         const chunk = decoder.decode(value);
         chunkCount++;
         if (chunkCount <= 3) {
-          console.log(`🔍 Mistral stream chunk ${chunkCount}:`, chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''));
+          safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Mistral stream chunk ${chunkCount}:`, chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''));
         }
         const lines = chunk.split('\n');
 
@@ -833,7 +852,7 @@ export class MistralProvider extends BaseProvider {
             try {
               const parsed = JSON.parse(data);
               if (chunkCount <= 5) {
-                console.log(`🔍 Mistral parsed chunk ${chunkCount}:`, JSON.stringify(parsed, null, 2));
+                safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Mistral parsed chunk ${chunkCount}:`, JSON.stringify(parsed, null, 2));
               }
 
               const choice = parsed.choices?.[0];
@@ -843,14 +862,14 @@ export class MistralProvider extends BaseProvider {
               if (content && typeof content === 'string') {
                 fullContent += content;
                 onStream(content);
-                console.log(`📝 Mistral content chunk: "${content}"`);
+                safeDebugLog('info', 'MISTRALPROVIDER', `📝 Mistral content chunk: "${content}"`);
               } else if (content) {
-                console.warn(`⚠️ Mistral content chunk is not a string:`, typeof content, content);
+                safeDebugLog('warn', 'MISTRALPROVIDER', `⚠️ Mistral content chunk is not a string:`, typeof content, content);
               }
 
               // Check for tool calls and assemble them
               if (delta?.tool_calls) {
-                console.log(`🔧 Mistral tool calls detected:`, delta.tool_calls);
+                safeDebugLog('info', 'MISTRALPROVIDER', `🔧 Mistral tool calls detected:`, delta.tool_calls);
 
                 for (const toolCall of delta.tool_calls) {
                   const index = toolCall.index;
@@ -889,7 +908,7 @@ export class MistralProvider extends BaseProvider {
                 usage = parsed.usage;
               }
             } catch (error) {
-              console.error(`❌ Mistral error parsing chunk:`, error, `Data: ${data.substring(0, 100)}...`);
+              safeDebugLog('error', 'MISTRALPROVIDER', `❌ Mistral error parsing chunk:`, error, `Data: ${data.substring(0, 100)}...`);
             }
           }
         }
@@ -901,7 +920,7 @@ export class MistralProvider extends BaseProvider {
     // Filter out empty tool calls and log final state
     const validToolCalls = toolCalls.filter(tc => tc && tc.function?.name);
 
-    console.log('🔍 Mistral stream response completed:', {
+    safeDebugLog('info', 'MISTRALPROVIDER', '🔍 Mistral stream response completed:', {
       contentLength: fullContent.length,
       hasUsage: !!usage,
       usage: usage,
@@ -909,7 +928,7 @@ export class MistralProvider extends BaseProvider {
     });
 
     if (validToolCalls.length > 0) {
-      console.log(`🔧 Mistral assembled ${validToolCalls.length} tool calls:`, validToolCalls.map(tc => ({
+      safeDebugLog('info', 'MISTRALPROVIDER', `🔧 Mistral assembled ${validToolCalls.length} tool calls:`, validToolCalls.map(tc => ({
         name: tc.function?.name,
         arguments: tc.function?.arguments
       })));
@@ -944,19 +963,19 @@ export class MistralProvider extends BaseProvider {
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
-    console.log(`🔍 Mistral raw response:`, JSON.stringify(data, null, 2));
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Mistral raw response:`, JSON.stringify(data, null, 2));
     const choice = data.choices[0];
     const message = choice.message;
-    console.log(`🔍 Mistral message:`, message);
+    safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Mistral message:`, message);
 
     // Handle tool calls if present - execute immediately like Anthropic
     if (message.tool_calls && message.tool_calls.length > 0) {
-      console.log(`🔧 Mistral response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
+      safeDebugLog('info', 'MISTRALPROVIDER', `🔧 Mistral response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
       // Check if we have the parallel execution method injected
       /* eslint-disable @typescript-eslint/no-explicit-any */
       if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
-        console.log(`🚀 Executing ${message.tool_calls.length} Mistral tools immediately`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `🚀 Executing ${message.tool_calls.length} Mistral tools immediately`);
         
         // Format tool calls for execution
         const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
@@ -971,7 +990,7 @@ export class MistralProvider extends BaseProvider {
         
         try {
           const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'mistral');
-          console.log(`✅ Mistral tool execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
+          safeDebugLog('info', 'MISTRALPROVIDER', `✅ Mistral tool execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
           
           // Get tool results summary for the model
           const toolSummary = summarizeToolResultsForModel(parallelResults);
@@ -986,7 +1005,7 @@ export class MistralProvider extends BaseProvider {
             } : undefined
           };
         } catch (error) {
-          console.error(`❌ Mistral tool execution failed:`, error);
+          safeDebugLog('error', 'MISTRALPROVIDER', `❌ Mistral tool execution failed:`, error);
           // Fall back to returning tool calls for external handling
           return {
             content: message.content || '',
@@ -1000,7 +1019,7 @@ export class MistralProvider extends BaseProvider {
         }
         /* eslint-enable @typescript-eslint/no-explicit-any */
       } else {
-        console.warn(`⚠️ Mistral provider missing tool execution methods - falling back to external handling`);
+        safeDebugLog('warn', 'MISTRALPROVIDER', `⚠️ Mistral provider missing tool execution methods - falling back to external handling`);
         // Fall back to external handling if methods not injected
         return {
           content: message.content || '',
@@ -1031,7 +1050,7 @@ export class MistralProvider extends BaseProvider {
    * Focus on local processing for vision models, no server uploads needed
    */
   async processFiles(files: File[], settings: LLMSettings, provider: LLMProvider): Promise<Array<ContentItem>> {
-    console.log('🔍 MistralProvider.processFiles called with:', {
+    safeDebugLog('info', 'MISTRALPROVIDER', '🔍 MistralProvider.processFiles called with:', {
       filesCount: files.length,
       fileNames: files.map(f => f.name),
       fileTypes: files.map(f => f.type),
@@ -1041,20 +1060,20 @@ export class MistralProvider extends BaseProvider {
 
     // Initialize file service for local processing (no API key needed for local operations)
     if (!this.fileService) {
-      console.log('🔧 Initializing Mistral file service for local processing...');
+      safeDebugLog('info', 'MISTRALPROVIDER', '🔧 Initializing Mistral file service for local processing...');
       this.fileService = new MistralFileService(settings.apiKey || 'local', provider.baseUrl);
     }
 
-    console.log('✅ Mistral file service ready, processing files locally...');
+    safeDebugLog('info', 'MISTRALPROVIDER', '✅ Mistral file service ready, processing files locally...');
     const contentItems: Array<ContentItem> = [];
 
     for (const file of files) {
-      console.log(`🔍 Processing file with Mistral: ${file.name} (${file.type}, ${Math.round(file.size/1024)}KB)`);
+      safeDebugLog('info', 'MISTRALPROVIDER', `🔍 Processing file with Mistral: ${file.name} (${file.type}, ${Math.round(file.size/1024)}KB)`);
 
       // Validate file support
       const validation = MistralFileService.isFileSupported(file);
       if (!validation.supported) {
-        console.warn(`❌ File not supported: ${validation.reason}`);
+        safeDebugLog('warn', 'MISTRALPROVIDER', `❌ File not supported: ${validation.reason}`);
         contentItems.push({
           type: 'text',
           text: `[File: ${file.name} - ${validation.reason}]`
@@ -1066,10 +1085,10 @@ export class MistralProvider extends BaseProvider {
         // Use the unified file preparation method for all file types
         const preparedFile = await this.fileService.prepareFileForVision(file);
         contentItems.push(preparedFile as ContentItem);
-        console.log(`✅ File processed: ${file.name} (${preparedFile.type})`);
+        safeDebugLog('info', 'MISTRALPROVIDER', `✅ File processed: ${file.name} (${preparedFile.type})`);
 
       } catch (error) {
-        console.error(`❌ Error processing file ${file.name}:`, error);
+        safeDebugLog('error', 'MISTRALPROVIDER', `❌ Error processing file ${file.name}:`, error);
         contentItems.push({
           type: 'text',
           text: `[File: ${file.name} - Processing failed: ${error instanceof Error ? error.message : String(error)}]`
@@ -1077,7 +1096,7 @@ export class MistralProvider extends BaseProvider {
       }
     }
 
-    console.log(`✅ Mistral file processing complete. Processed ${contentItems.length} items:`,
+    safeDebugLog('info', 'MISTRALPROVIDER', `✅ Mistral file processing complete. Processed ${contentItems.length} items:`,
       contentItems.map(item => ({ type: item.type, hasContent: !!(item.text || item.image_url) }))
     );
 

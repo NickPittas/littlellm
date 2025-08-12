@@ -1,4 +1,5 @@
 import { KnowledgeBaseService } from './KnowledgeBaseService';
+import { debugLogger } from './debugLogger';
 
 /**
  * A service to handle Retrieval-Augmented Generation (RAG).

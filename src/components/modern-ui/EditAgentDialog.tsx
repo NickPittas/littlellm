@@ -25,6 +25,25 @@ import { llmService } from '../../services/llmService';
 import { chatService } from '../../services/chatService';
 import { secureApiKeyService } from '../../services/secureApiKeyService';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface EditAgentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -89,7 +108,7 @@ export function EditAgentDialog({
         await loadModelsForProvider(agent.defaultProvider);
       }
     } catch (error) {
-      console.error('Failed to load data:', error);
+      safeDebugLog('error', 'EDITAGENTDIALOG', 'Failed to load data:', error);
     }
   };
 
@@ -108,23 +127,23 @@ export function EditAgentDialog({
         apiKey = apiKeyData?.apiKey || '';
         baseUrl = apiKeyData?.baseUrl || '';
       } catch (error) {
-        console.warn(`Failed to get API key data for ${providerId}:`, error);
+        safeDebugLog('warn', 'EDITAGENTDIALOG', `Failed to get API key data for ${providerId}:`, error);
       }
 
       // Skip model loading for remote providers without API keys
       if (!apiKey && providerId !== 'ollama' && providerId !== 'lmstudio' && providerId !== 'n8n') {
-        console.warn(`No API key found for ${providerId}, skipping model loading`);
+        safeDebugLog('warn', 'EDITAGENTDIALOG', `No API key found for ${providerId}, skipping model loading`);
         setAvailableModels([]);
         return;
       }
 
       // Fetch models using the chat service
       const models = await chatService.fetchModels(providerId, apiKey, baseUrl);
-      console.log(`Loaded ${models.length} models for ${providerId}:`, models);
+      safeDebugLog('info', 'EDITAGENTDIALOG', `Loaded ${models.length} models for ${providerId}:`, models);
 
       setAvailableModels(models);
     } catch (error) {
-      console.error('Failed to load models for provider:', providerId, error);
+      safeDebugLog('error', 'EDITAGENTDIALOG', 'Failed to load models for provider:', providerId, error);
       setAvailableModels([]);
     } finally {
       setLoadingModels(false);
@@ -180,7 +199,7 @@ export function EditAgentDialog({
         alert(`Failed to regenerate prompt: ${response.error}`);
       }
     } catch (error) {
-      console.error('Failed to regenerate prompt:', error);
+      safeDebugLog('error', 'EDITAGENTDIALOG', 'Failed to regenerate prompt:', error);
       alert('Failed to regenerate prompt. Please try again.');
     } finally {
       setIsRegeneratingPrompt(false);
@@ -220,7 +239,7 @@ export function EditAgentDialog({
         alert('Failed to update agent. Please try again.');
       }
     } catch (error) {
-      console.error('Failed to update agent:', error);
+      safeDebugLog('error', 'EDITAGENTDIALOG', 'Failed to update agent:', error);
       alert('Failed to update agent. Please try again.');
     } finally {
       setIsSaving(false);

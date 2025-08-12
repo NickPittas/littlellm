@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import React, { useRef } from "react";
+import { debugLogger } from '../../services/debugLogger';
 
 export interface DockProps extends React.HTMLAttributes<HTMLDivElement> {
   className?: string;

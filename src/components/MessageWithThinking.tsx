@@ -6,9 +6,29 @@ import { Button } from './ui/button';
 import { parseTextWithContent } from '../lib/contentParser';
 import { SourceAttribution } from './SourceAttribution';
 import type { Source } from '../services/chatService';
-import { debugLogger } from '../services/debugLogger';
 import { getTTSService } from '../services/textToSpeechService';
 import { settingsService } from '../services/settingsService';
+import { ToolCall } from '../services/providers/types';
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 
 interface MessageWithThinkingProps {
   content: string;
@@ -32,13 +52,7 @@ interface MessageWithThinkingProps {
     duration: number;
     tokensPerSecond?: number;
   };
-  toolCalls?: Array<{
-    id: string;
-    name: string;
-    arguments: Record<string, unknown>;
-    result?: string;
-    error?: boolean;
-  }>;
+  toolCalls?: ToolCall[];
   sources?: Source[];
 }
 
@@ -59,11 +73,11 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
   // Debug tool calls - now handled in useEffect to prevent spam
   useEffect(() => {
     if (toolCalls && toolCalls.length > 0) {
-      console.log(`🔧 MessageWithThinking received ${toolCalls.length} tool calls:`, toolCalls);
+      safeDebugLog('info', 'MESSAGEWITHTHINKING', `🔧 MessageWithThinking received ${toolCalls.length} tool calls:`, toolCalls);
       toolCalls.forEach((tc, index) => {
-        console.log(`🔧 Tool ${index}: ${tc.name}, has result: ${!!tc.result}, result length: ${tc.result?.length || 0}, error: ${tc.error}`);
+        safeDebugLog('info', 'MESSAGEWITHTHINKING', `🔧 Tool ${index}: ${tc.name}, has result: ${!!tc.result}, result length: ${tc.result?.length || 0}, error: ${tc.error}`);
         if (tc.result) {
-          console.log(`🔧 Tool ${index} result preview:`, tc.result.substring(0, 100) + '...');
+          safeDebugLog('info', 'MESSAGEWITHTHINKING', `🔧 Tool ${index} result preview:`, tc.result.substring(0, 100) + '...');
         }
       });
     }
@@ -222,8 +236,8 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
   };
 
   // Extract tool calls from content if not provided via props
-  const extractToolCallsFromContent = (text: string): Array<{id: string, name: string, arguments: Record<string, unknown>}> => {
-    const toolCalls: Array<{id: string, name: string, arguments: Record<string, unknown>}> = [];
+  const extractToolCallsFromContent = (text: string): ToolCall[] => {
+    const toolCalls: ToolCall[] = [];
 
     // Pattern 1: JSON-wrapped tool calls (```json wrapper)
     const jsonMatches = text.match(/```json\s*([\s\S]*?)\s*```/gi);
@@ -239,11 +253,13 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
             toolCalls.push({
               id: `extracted_json_${contentHash}`,
               name: parsed.tool_call.name,
-              arguments: parsed.tool_call.arguments || {}
+              arguments: parsed.tool_call.arguments || {},
+              result: undefined,
+              error: false
             });
           }
         } catch (error) {
-          console.warn('Failed to parse JSON-wrapped tool call:', error);
+          safeDebugLog('warn', 'MESSAGEWITHTHINKING', 'Failed to parse JSON-wrapped tool call:', error);
         }
       }
     }
@@ -266,12 +282,14 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
             toolCalls.push({
               id: `extracted_direct_${contentHash}`,
               name: parsed.tool_call.name,
-              arguments: parsed.tool_call.arguments || {}
+              arguments: parsed.tool_call.arguments || {},
+              result: undefined,
+              error: false
             });
           }
         }
       } catch (error) {
-        console.warn('Failed to parse direct tool call:', error);
+        safeDebugLog('warn', 'MESSAGEWITHTHINKING', 'Failed to parse direct tool call:', error);
       }
     }
 
@@ -290,7 +308,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
                   ? JSON.parse(tc.function.arguments)
                   : tc.function.arguments;
               } catch (error) {
-                console.warn('Failed to parse native tool call arguments:', error);
+                safeDebugLog('warn', 'MESSAGEWITHTHINKING', 'Failed to parse native tool call arguments:', error);
               }
             }
 
@@ -299,12 +317,14 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
             toolCalls.push({
               id: tc.id || `extracted_native_${contentHash}`,
               name: tc.function.name,
-              arguments: args
+              arguments: args,
+              result: undefined,
+              error: false
             });
           }
         }
       } catch (error) {
-        console.warn('Failed to parse native tool calls:', error);
+        safeDebugLog('warn', 'MESSAGEWITHTHINKING', 'Failed to parse native tool calls:', error);
       }
     }
 
@@ -322,7 +342,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
       const ttsSettings = settings.ui?.textToSpeech;
 
       if (!ttsSettings?.enabled) {
-        console.log('🔊 TTS is disabled in settings');
+        safeDebugLog('info', 'MESSAGEWITHTHINKING', '🔊 TTS is disabled in settings');
         return;
       }
 
@@ -331,7 +351,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
         const ttsService = getTTSService(ttsSettings);
         ttsService.stop();
         setIsSpeaking(false);
-        console.log('🔊 TTS stopped');
+        safeDebugLog('info', 'MESSAGEWITHTHINKING', '🔊 TTS stopped');
       } else {
         // Start speaking
         const ttsService = getTTSService(ttsSettings);
@@ -340,11 +360,11 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
         const textToSpeak = parsed.response || content;
 
         if (!textToSpeak || textToSpeak.trim().length === 0) {
-          console.log('🔊 No text to speak');
+          safeDebugLog('info', 'MESSAGEWITHTHINKING', '🔊 No text to speak');
           return;
         }
 
-        console.log('🔊 Starting TTS for text:', textToSpeak.substring(0, 100) + '...');
+        safeDebugLog('info', 'MESSAGEWITHTHINKING', '🔊 Starting TTS for text:', textToSpeak.substring(0, 100) + '...');
         setIsSpeaking(true);
         ttsService.speak(textToSpeak);
 
@@ -352,7 +372,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
         const checkSpeechStatus = () => {
           if (!ttsService.isSpeaking()) {
             setIsSpeaking(false);
-            console.log('🔊 TTS finished');
+            safeDebugLog('info', 'MESSAGEWITHTHINKING', '🔊 TTS finished');
           } else {
             setTimeout(checkSpeechStatus, 100);
           }
@@ -360,7 +380,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
         setTimeout(checkSpeechStatus, 100);
       }
     } catch (error) {
-      console.error('🔊 Failed to speak text:', error);
+      safeDebugLog('error', 'MESSAGEWITHTHINKING', '🔊 Failed to speak text:', error);
       setIsSpeaking(false);
     }
   }, [content, parsed.response, isSpeaking]);
@@ -388,7 +408,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
         parsed.response &&
         parsed.response.trim().length > 0) {
 
-      console.log('🔊 Auto-play TTS triggered for new AI message');
+      safeDebugLog('info', 'MESSAGEWITHTHINKING', '🔊 Auto-play TTS triggered for new AI message');
       autoPlayTriggeredRef.current = true;
 
       // Small delay to ensure the message is fully rendered
@@ -426,7 +446,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
 
   useEffect(() => {
     if (toolCallsKey && toolCallsKey !== loggedToolCallsKey && allToolCalls.length > 0) {
-      debugLogger.info('MESSAGE', 'MessageWithThinking received toolCalls:', allToolCalls);
+      safeDebugLog('info', 'MESSAGE', 'MessageWithThinking received toolCalls:', allToolCalls);
       setLoggedToolCallsKey(toolCallsKey);
     }
   }, [toolCallsKey, loggedToolCallsKey, allToolCalls]);
@@ -439,7 +459,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
-      console.error('Failed to copy text:', error);
+      safeDebugLog('error', 'MESSAGEWITHTHINKING', 'Failed to copy text:', error);
       // Fallback for older browsers
       try {
         const textArea = document.createElement('textarea');
@@ -451,7 +471,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch (fallbackError) {
-        console.error('Fallback copy also failed:', fallbackError);
+        safeDebugLog('error', 'MESSAGEWITHTHINKING', 'Fallback copy also failed:', fallbackError);
       }
     }
   };

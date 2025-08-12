@@ -14,6 +14,25 @@ import type { SessionStats } from '../services/sessionService';
 
 import './ChatOverlay.css';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface ChatOverlayProps {
   onClose?: () => void;
 }
@@ -64,14 +83,14 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
           // Request current messages from main window
           window.electronAPI.requestCurrentMessages?.();
         } catch (error) {
-          console.error('Failed to load initial messages:', error);
+          safeDebugLog('error', 'CHATOVERLAY', 'Failed to load initial messages:', error);
         }
       };
 
       // Listen for message updates from main window
       const handleMessagesUpdate = (newMessages: unknown[]) => {
         const messages = newMessages as Message[];
-        console.log('📨 ChatOverlay received messages:', messages.map(m => ({
+        safeDebugLog('info', 'CHATOVERLAY', '📨 ChatOverlay received messages:', messages.map(m => ({
           id: m.id,
           role: m.role,
           hasContent: !!m.content,

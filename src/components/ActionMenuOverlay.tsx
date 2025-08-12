@@ -21,6 +21,25 @@ import {
 } from 'lucide-react';
 import { promptsService, type Prompt } from '../services/promptsService';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface ActionItem {
   id: string;
   title: string;
@@ -44,7 +63,7 @@ export function ActionMenuOverlay() {
         const allPrompts = await promptsService.getAllPrompts();
         setPrompts(allPrompts || []);
       } catch (error) {
-        console.error('Failed to load prompts:', error);
+        safeDebugLog('error', 'ACTIONMENUOVERLAY', 'Failed to load prompts:', error);
         setPrompts([]);
       }
     };
@@ -141,7 +160,7 @@ export function ActionMenuOverlay() {
   const handlePromptSelect = (promptText: string) => {
     // Send the prompt back to the main window and close overlay
     if (typeof window !== 'undefined' && window.electronAPI) {
-      console.log('Selected prompt:', promptText);
+      safeDebugLog('info', 'ACTIONMENUOVERLAY', 'Selected prompt:', promptText);
       // Send the prompt to the main window
       window.electronAPI.sendPromptToMain(promptText);
     }

@@ -3,6 +3,28 @@
 
 // Type helper for accessing Electron API methods that might not be in the interface
 type ElectronAPIWithStateFiles = {
+
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
   getStateFile: (filename: string) => Promise<unknown>;
   saveStateFile: (filename: string, data: unknown) => Promise<boolean>;
 };
@@ -54,13 +76,13 @@ class StateService {
         }
 
         this.initialized = true;
-        console.log('State service initialized:', {
+        safeDebugLog('info', 'STATESERVICE', 'State service initialized:', {
           provider: this.providerState,
           mcp: this.mcpState
         });
       }
     } catch (error) {
-      console.error('Failed to load state files:', error);
+      safeDebugLog('error', 'STATESERVICE', 'Failed to load state files:', error);
       this.initialized = true; // Continue with defaults
     }
   }
@@ -106,7 +128,7 @@ class StateService {
         await (window.electronAPI as unknown as ElectronAPIWithStateFiles).saveStateFile('provider-state.json', this.providerState);
       }
     } catch (error) {
-      console.error('Failed to save provider state:', error);
+      safeDebugLog('error', 'STATESERVICE', 'Failed to save provider state:', error);
     }
   }
 
@@ -145,7 +167,7 @@ class StateService {
         await (window.electronAPI as unknown as ElectronAPIWithStateFiles).saveStateFile('mcp-state.json', this.mcpState);
       }
     } catch (error) {
-      console.error('Failed to save MCP state:', error);
+      safeDebugLog('error', 'STATESERVICE', 'Failed to save MCP state:', error);
     }
   }
 

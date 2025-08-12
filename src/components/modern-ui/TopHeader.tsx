@@ -15,6 +15,25 @@ import { cn } from '@/lib/utils';
 import { settingsService } from '../../services/settingsService';
 import { useState, useEffect } from 'react';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface TopHeaderProps {
   className?: string;
   onHistoryClick?: () => void;
@@ -80,7 +99,7 @@ export function TopHeader({
     const loadTtsSettings = () => {
       const settings = settingsService.getSettings();
       const enabled = settings.ui?.textToSpeech?.enabled || false;
-      console.log('🔊 TopHeader: Loading TTS settings, enabled:', enabled);
+      safeDebugLog('info', 'TOPHEADER', '🔊 TopHeader: Loading TTS settings, enabled:', enabled);
       setTtsEnabled(enabled);
     };
 
@@ -88,7 +107,7 @@ export function TopHeader({
 
     // Listen for settings changes
     const handleSettingsChange = () => {
-      console.log('🔊 TopHeader: Settings changed, reloading TTS settings...');
+      safeDebugLog('info', 'TOPHEADER', '🔊 TopHeader: Settings changed, reloading TTS settings...');
       loadTtsSettings();
     };
 
@@ -123,9 +142,9 @@ export function TopHeader({
       await settingsService.updateSettings(updatedSettings);
       setTtsEnabled(newTtsEnabled);
 
-      console.log('🔊 TTS toggled:', newTtsEnabled);
+      safeDebugLog('info', 'TOPHEADER', '🔊 TTS toggled:', newTtsEnabled);
     } catch (error) {
-      console.error('Failed to toggle TTS:', error);
+      safeDebugLog('error', 'TOPHEADER', 'Failed to toggle TTS:', error);
     }
   };
 

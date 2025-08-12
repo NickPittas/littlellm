@@ -1,5 +1,24 @@
 import { getStorageItem, setStorageItem } from '../utils/storage';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export interface SessionStats {
   totalTokens: number;
   promptTokens: number;
@@ -43,7 +62,7 @@ class SessionService {
         this.initialized = true;
       }
     } catch (error) {
-      console.warn('Failed to load session stats:', error);
+      safeDebugLog('warn', 'SESSIONSERVICE', 'Failed to load session stats:', error);
       this.sessionStats = this.getDefaultStats();
     }
     this.initialized = true;
@@ -54,7 +73,7 @@ class SessionService {
       this.sessionStats.lastUpdated = Date.now();
       await setStorageItem(this.STORAGE_KEY, JSON.stringify(this.sessionStats));
     } catch (error) {
-      console.error('Failed to save session stats:', error);
+      safeDebugLog('error', 'SESSIONSERVICE', 'Failed to save session stats:', error);
     }
   }
 
@@ -85,7 +104,7 @@ class SessionService {
       this.sessionStats.currency = cost.currency;
     }
 
-    console.log('📊 Session stats updated:', {
+    safeDebugLog('info', 'SESSIONSERVICE', '📊 Session stats updated:', {
       added: {
         promptTokens: safePromptTokens,
         completionTokens: safeCompletionTokens,

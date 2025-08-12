@@ -4,6 +4,25 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './button';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface DraggableDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -81,7 +100,7 @@ export function DraggableDialog({
 
   if (!isOpen) return null;
 
-  console.log('DraggableDialog rendering with title:', title);
+  safeDebugLog('info', 'DRAGGABLE_DIALOG', 'DraggableDialog rendering with title:', title);
 
   return (
     <>

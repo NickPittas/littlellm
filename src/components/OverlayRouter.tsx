@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { ActionMenuOverlay } from './ActionMenuOverlay';
-import { SettingsOverlay } from './SettingsOverlay';
-import { ChatOverlay } from './ChatOverlay';
+import { useEffect, useState, Suspense, lazy } from 'react';
+import { debugLogger } from '../services/debugLogger';
+
+// Lazy load heavy components for better performance
+const ActionMenuOverlay = lazy(() => import('./ActionMenuOverlay').then(module => ({ default: module.ActionMenuOverlay })));
+const SettingsOverlay = lazy(() => import('./SettingsOverlay').then(module => ({ default: module.SettingsOverlay })));
+const ChatOverlay = lazy(() => import('./ChatOverlay').then(module => ({ default: module.ChatOverlay })));
 
 export function OverlayRouter() {
   const [overlayType, setOverlayType] = useState<string | null>(null);

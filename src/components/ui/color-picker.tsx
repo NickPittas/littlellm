@@ -2,8 +2,25 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 
-
-
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface ColorPickerProps {
   value: string;
   onChange: (color: string) => void;
@@ -62,7 +79,7 @@ export function ColorPicker({ value, onChange, label, className, supportAlpha = 
 
   const handleNativeColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newColor = e.target.value;
-    console.log('🎨 Native color picker changed to:', newColor);
+    safeDebugLog('info', 'COLOR_PICKER', '🎨 Native color picker changed to:', newColor);
     handleColorChange(newColor);
     setIsOpen(false);
   };
@@ -367,7 +384,7 @@ export function ColorPicker({ value, onChange, label, className, supportAlpha = 
               <button
                 type="button"
                 onClick={() => {
-                  console.log('🎨 System color picker button clicked');
+                  safeDebugLog('info', 'COLOR_PICKER', '🎨 System color picker button clicked');
                   if (colorInputRef.current) {
                     colorInputRef.current.click();
                   }

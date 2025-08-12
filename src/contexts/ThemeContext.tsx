@@ -7,6 +7,25 @@ import { getDefaultHexColors, applyColorsToDOM } from '../config/colors';
 import { THEME_PRESETS, getThemePreset, type ThemePreset } from '../config/themes';
 import type { ColorSettings } from '../types/settings';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export interface Theme {
   id: string;
   name: string;
@@ -117,10 +136,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         }
 
         // NO FALLBACK - app requires valid theme settings
-        console.error('❌ CRITICAL: No theme data from main process - app requires valid theme settings');
+        safeDebugLog('error', 'THEMECONTEXT', '❌ CRITICAL: No theme data from main process - app requires valid theme settings');
       } catch (error) {
-        console.error('❌ CRITICAL: Error loading theme:', error);
-        console.error('❌ App requires valid theme settings - no fallback to defaults');
+        safeDebugLog('error', 'THEMECONTEXT', '❌ CRITICAL: Error loading theme:', error);
+        safeDebugLog('error', 'THEMECONTEXT', '❌ App requires valid theme settings - no fallback to defaults');
       }
     };
 
@@ -146,7 +165,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         // Applied theme change to DOM
       } else {
         // NO FALLBACK - log error but don't apply defaults
-        console.error('❌ CRITICAL: No colors received in theme change - cannot apply theme');
+        safeDebugLog('error', 'THEMECONTEXT', '❌ CRITICAL: No colors received in theme change - cannot apply theme');
       }
     };
 
@@ -176,7 +195,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // Apply preset colors immediately - NO FALLBACK
     const preset = getThemePreset(presetId);
     if (!preset) {
-      console.error(`❌ CRITICAL: Theme preset '${presetId}' not found - cannot apply theme`);
+      safeDebugLog('error', 'THEMECONTEXT', `❌ CRITICAL: Theme preset '${presetId}' not found - cannot apply theme`);
       return;
     }
     setCustomColors(preset.colors);
@@ -220,7 +239,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           ui: { ...currentSettings.ui, colorMode: mode }
         });
       } catch (error) {
-        console.error('Error saving color mode:', error);
+        safeDebugLog('error', 'THEMECONTEXT', 'Error saving color mode:', error);
       }
 
       // Broadcast theme change
@@ -242,13 +261,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (currentMode === 'preset') {
       const preset = getThemePreset(selectedThemePreset);
       if (!preset) {
-        console.error(`❌ CRITICAL: Theme preset '${selectedThemePreset}' not found - cannot get colors`);
+        safeDebugLog('error', 'THEMECONTEXT', `❌ CRITICAL: Theme preset '${selectedThemePreset}' not found - cannot get colors`);
         return {} as ColorSettings;
       }
       return preset.colors;
     } else {
       if (!useCustomColors || !customColors) {
-        console.error('❌ CRITICAL: Custom colors mode but no custom colors available');
+        safeDebugLog('error', 'THEMECONTEXT', '❌ CRITICAL: Custom colors mode but no custom colors available');
         return {} as ColorSettings;
       }
       return customColors;
@@ -270,7 +289,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           ui: { ...currentSettings.ui, customColors: colors }
         });
       } catch (error) {
-        console.error('Error saving custom colors:', error);
+        safeDebugLog('error', 'THEMECONTEXT', 'Error saving custom colors:', error);
       }
 
       // Broadcast theme change to all windows via sync service
@@ -303,7 +322,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           ui: { ...currentSettings.ui, useCustomColors: use }
         });
       } catch (error) {
-        console.error('Error saving useCustomColors setting:', error);
+        safeDebugLog('error', 'THEMECONTEXT', 'Error saving useCustomColors setting:', error);
       }
 
       // Broadcast theme change to all windows via sync service
@@ -321,8 +340,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetToDefaults = () => {
-    console.error('❌ resetToDefaults is disabled - no default themes available');
-    console.log('💡 Use theme presets instead of resetting to defaults');
+    safeDebugLog('error', 'THEMECONTEXT', '❌ resetToDefaults is disabled - no default themes available');
+    safeDebugLog('info', 'THEMECONTEXT', '💡 Use theme presets instead of resetting to defaults');
   };
 
   const value = {

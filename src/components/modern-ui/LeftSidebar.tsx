@@ -19,6 +19,25 @@ import { DEFAULT_PROVIDERS } from '../../services/providers/constants';
 import { ProviderLogo } from '../ui/provider-logo';
 import { settingsService } from '../../services/settingsService';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface SidebarItem {
   id: string;
   label: string;
@@ -79,7 +98,7 @@ export function LeftSidebar({
       await settingsService.updateSettings(updatedSettings);
       setTtsEnabled(newTtsEnabled);
     } catch (err) {
-      console.error('Failed to toggle TTS:', err);
+      safeDebugLog('error', 'LEFTSIDEBAR', 'Failed to toggle TTS:', err);
     }
   };
 

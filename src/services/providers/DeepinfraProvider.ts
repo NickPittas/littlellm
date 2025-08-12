@@ -15,6 +15,25 @@ import {
 import { DEEPINFRA_SYSTEM_PROMPT } from './prompts/deepinfra';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export class DeepinfraProvider extends BaseProvider {
   readonly id = 'deepinfra';
   readonly name = 'Deepinfra';
@@ -48,7 +67,7 @@ export class DeepinfraProvider extends BaseProvider {
 
     const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
 
-    console.log(`🔍 Deepinfra system prompt source:`, {
+    safeDebugLog('info', 'DEEPINFRAPROVIDER', `🔍 Deepinfra system prompt source:`, {
       hasCustom: hasCustomSystemPrompt,
       usingCustom: hasCustomSystemPrompt,
       promptLength: systemPrompt?.length || 0,
@@ -94,16 +113,16 @@ export class DeepinfraProvider extends BaseProvider {
     if (mcpTools.length > 0) {
       requestBody.tools = mcpTools;
       requestBody.tool_choice = 'auto';
-      console.log(`🚀 Deepinfra API call with ${mcpTools.length} tools:`, {
+      safeDebugLog('info', 'DEEPINFRAPROVIDER', `🚀 Deepinfra API call with ${mcpTools.length} tools:`, {
         model: settings.model,
         toolCount: mcpTools.length,
         conversationId: conversationId || 'none'
       });
     } else {
-      console.log(`🚀 Deepinfra API call without tools`);
+      safeDebugLog('info', 'DEEPINFRAPROVIDER', `🚀 Deepinfra API call without tools`);
     }
 
-    console.log('🔍 Deepinfra request body:', JSON.stringify(requestBody, null, 2));
+    safeDebugLog('info', 'DEEPINFRAPROVIDER', '🔍 Deepinfra request body:', JSON.stringify(requestBody, null, 2));
 
     const response = await fetch(`${provider.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -115,11 +134,11 @@ export class DeepinfraProvider extends BaseProvider {
       signal
     });
 
-    console.log('🔍 Deepinfra response status:', response.status, response.statusText);
+    safeDebugLog('info', 'DEEPINFRAPROVIDER', '🔍 Deepinfra response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('❌ Deepinfra API error response:', error);
+      safeDebugLog('error', 'DEEPINFRAPROVIDER', '❌ Deepinfra API error response:', error);
 
       if (response.status === 401) {
         throw new Error(`Deepinfra API authentication failed. Please check your API key in Settings. Error: ${error}`);
@@ -149,7 +168,7 @@ export class DeepinfraProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>
   ): Promise<LLMResponse> {
     const data = await response.json();
-    console.log('🔍 Deepinfra non-stream response:', JSON.stringify(data, null, 2));
+    safeDebugLog('info', 'DEEPINFRAPROVIDER', '🔍 Deepinfra non-stream response:', JSON.stringify(data, null, 2));
 
     const choice = data.choices?.[0];
     if (!choice) {
@@ -162,7 +181,7 @@ export class DeepinfraProvider extends BaseProvider {
 
     // Handle tool calls if present
     if (toolCalls.length > 0) {
-      console.log(`🔧 Deepinfra response contains ${toolCalls.length} tool calls`);
+      safeDebugLog('info', 'DEEPINFRAPROVIDER', `🔧 Deepinfra response contains ${toolCalls.length} tool calls`);
       return this.executeToolsAndFollowUp(
         toolCalls,
         content,
@@ -186,7 +205,7 @@ export class DeepinfraProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.log('❌ No Deepinfra API key provided - cannot fetch models');
+      safeDebugLog('info', 'DEEPINFRAPROVIDER', '❌ No Deepinfra API key provided - cannot fetch models');
       throw new Error('Deepinfra API key is required to fetch models');
     }
 
@@ -199,7 +218,7 @@ export class DeepinfraProvider extends BaseProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Deepinfra API error: ${response.status}`, errorText);
+        safeDebugLog('error', 'DEEPINFRAPROVIDER', `❌ Deepinfra API error: ${response.status}`, errorText);
         throw new Error(`Failed to fetch Deepinfra models: ${response.status} - ${errorText}`);
       }
 
@@ -210,10 +229,10 @@ export class DeepinfraProvider extends BaseProvider {
         throw new Error('No Deepinfra models returned from API. This may indicate an API issue or insufficient permissions.');
       }
 
-      console.log(`✅ Fetched ${models.length} Deepinfra models (sorted alphabetically)`);
+      safeDebugLog('info', 'DEEPINFRAPROVIDER', `✅ Fetched ${models.length} Deepinfra models (sorted alphabetically)`);
       return models;
     } catch (error) {
-      console.error('❌ Failed to fetch Deepinfra models:', error);
+      safeDebugLog('error', 'DEEPINFRAPROVIDER', '❌ Failed to fetch Deepinfra models:', error);
       throw error instanceof Error ? error : new Error(`Failed to fetch Deepinfra models: ${String(error)}`);
     }
   }

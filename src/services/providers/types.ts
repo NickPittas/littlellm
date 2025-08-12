@@ -1,6 +1,7 @@
 // Shared types and interfaces for LLM providers
 
 import { MemoryContext } from '../memoryContextService';
+import { debugLogger } from '../debugLogger';
 
 export interface LLMProvider {
   id: string;
@@ -48,6 +49,15 @@ export type MessageContent = string | Array<ContentItem> | { text: string; image
 
 // Type for tool call arguments
 export type ToolCallArguments = Record<string, unknown>;
+
+// Type for tool call with execution results
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: ToolCallArguments;
+  result?: string;
+  error?: boolean;
+}
 
 // Type for tool objects
 export interface ToolObject {
@@ -99,13 +109,7 @@ export interface LLMResponse {
     provider: string;
     model: string;
   };
-  toolCalls?: Array<{
-    id: string;
-    name: string;
-    arguments: ToolCallArguments;
-    result?: string;
-    error?: boolean;
-  }>;
+  toolCalls?: ToolCall[];
 }
 
 // Type guards for tool types

@@ -4,6 +4,26 @@
  */
 
 import { memoryService } from './memoryService';
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 import {
   MemoryStoreRequest,
   MemorySearchRequest,
@@ -160,7 +180,7 @@ export const memoryMCPTools = [
 
 // Tool execution functions
 export async function executeMemoryTool(toolName: string, args: unknown): Promise<MemoryToolResponse<unknown>> {
-  console.log(`🧠 Executing memory tool: ${toolName} with args:`, args);
+  safeDebugLog('info', 'MEMORYMCPTOOLS', `🧠 Executing memory tool: ${toolName} with args:`, args);
 
   try {
     switch (toolName) {
@@ -186,7 +206,7 @@ export async function executeMemoryTool(toolName: string, args: unknown): Promis
         };
     }
   } catch (error) {
-    console.error(`❌ Memory tool ${toolName} failed:`, error);
+    safeDebugLog('error', 'MEMORYMCPTOOLS', `❌ Memory tool ${toolName} failed:`, error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred'

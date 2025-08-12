@@ -3,6 +3,28 @@
 // Removed unused import: ToolCallArguments
 
 // Response parser utility for cleaning up structured responses
+
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 export class ResponseParser {
   // Parse XML-like tags (e.g., <Simple>content</Simple>)
   static parseXMLTags(text: string): string {
@@ -108,7 +130,7 @@ export class TokenEstimator {
     const completionTokens = this.estimateTokens(responseText);
     const totalTokens = promptTokens + completionTokens;
 
-    console.log(`📊 ${label} token usage:`, {
+    safeDebugLog('info', 'UTILS', `📊 ${label} token usage:`, {
       promptTokens,
       completionTokens,
       totalTokens,
@@ -124,7 +146,7 @@ export class TokenEstimator {
 export class JSONUtils {
   static extractArgumentsFromMalformedJson(jsonString: string): Record<string, unknown> {
     try {
-      console.log(`🔧 Attempting to extract arguments from malformed JSON:`, jsonString);
+      safeDebugLog('info', 'UTILS', `🔧 Attempting to extract arguments from malformed JSON:`, jsonString);
 
       // Try to fix common JSON issues
       let fixedJson = jsonString;
@@ -146,7 +168,7 @@ export class JSONUtils {
       try {
         return JSON.parse(fixedJson);
       } catch {
-        console.warn('Failed to parse fixed JSON, trying regex extraction');
+        safeDebugLog('warn', 'UTILS', 'Failed to parse fixed JSON, trying regex extraction');
       }
 
       // Fallback: extract key-value pairs using regex
@@ -167,11 +189,11 @@ export class JSONUtils {
         }
       }
 
-      console.log(`🔧 Extracted arguments from malformed JSON:`, args);
+      safeDebugLog('info', 'UTILS', `🔧 Extracted arguments from malformed JSON:`, args);
       return args;
 
     } catch (error) {
-      console.error('Failed to extract arguments from malformed JSON:', error);
+      safeDebugLog('error', 'UTILS', 'Failed to extract arguments from malformed JSON:', error);
       return {};
     }
   }

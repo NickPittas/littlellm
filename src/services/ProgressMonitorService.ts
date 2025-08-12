@@ -4,6 +4,28 @@
  */
 
 export interface ProgressEntry {
+
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
   id: string;
   timestamp: Date;
   level: 'info' | 'warning' | 'error' | 'success';
@@ -183,7 +205,7 @@ class ProgressMonitorService {
       try {
         callback(entry);
       } catch (error) {
-        console.error('Error in progress callback:', error);
+        safeDebugLog('error', 'PROGRESSMONITORSERVICE', 'Error in progress callback:', error);
       }
     });
   }

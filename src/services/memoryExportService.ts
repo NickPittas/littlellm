@@ -6,6 +6,25 @@
 import { memoryService } from './memoryService';
 import { MemoryEntry, MemoryIndex, MemoryStats, MemoryType } from '../types/memory';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface ElectronSaveResult {
   success: boolean;
   filename?: string;
@@ -139,7 +158,7 @@ class MemoryExportService {
         data: exportData
       };
     } catch (error) {
-      console.error('Error exporting memories:', error);
+      safeDebugLog('error', 'MEMORYEXPORTSERVICE', 'Error exporting memories:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -281,7 +300,7 @@ class MemoryExportService {
         };
       }
     } catch (error) {
-      console.error('Error saving export file:', error);
+      safeDebugLog('error', 'MEMORYEXPORTSERVICE', 'Error saving export file:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -315,7 +334,7 @@ class MemoryExportService {
         };
       }
     } catch (error) {
-      console.error('Error loading export file:', error);
+      safeDebugLog('error', 'MEMORYEXPORTSERVICE', 'Error loading export file:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'

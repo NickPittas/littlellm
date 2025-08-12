@@ -3,6 +3,26 @@
  * falls back to localStorage, and provides a no-op implementation when neither is available
  */
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 interface StorageAPI {
   getItem(key: string): Promise<string | null>;
   setItem(key: string, value: string): Promise<void>;
@@ -18,7 +38,7 @@ class ElectronStorage implements StorageAPI {
       }
       return null;
     } catch (error) {
-      console.error('Electron storage getItem failed:', error);
+      safeDebugLog('error', 'STORAGE', 'Electron storage getItem failed:', error);
       return null;
     }
   }
@@ -30,7 +50,7 @@ class ElectronStorage implements StorageAPI {
         await window.electronAPI.setStorageItem(key, parsedValue);
       }
     } catch (error) {
-      console.error('Electron storage setItem failed:', error);
+      safeDebugLog('error', 'STORAGE', 'Electron storage setItem failed:', error);
     }
   }
 
@@ -38,9 +58,9 @@ class ElectronStorage implements StorageAPI {
     try {
       // Note: Electron API doesn't have removeStorageItem method
       // This is a no-op for Electron storage
-      console.warn('Electron storage removeItem not implemented:', key);
+      safeDebugLog('warn', 'STORAGE', 'Electron storage removeItem not implemented:', key);
     } catch (error) {
-      console.error('Electron storage removeItem failed:', error);
+      safeDebugLog('error', 'STORAGE', 'Electron storage removeItem failed:', error);
     }
   }
 }
@@ -53,7 +73,7 @@ class LocalStorage implements StorageAPI {
       }
       return null;
     } catch (error) {
-      console.warn('localStorage getItem failed:', error);
+      safeDebugLog('warn', 'STORAGE', 'localStorage getItem failed:', error);
       return null;
     }
   }
@@ -64,7 +84,7 @@ class LocalStorage implements StorageAPI {
         window.localStorage.setItem(key, value);
       }
     } catch (error) {
-      console.warn('localStorage setItem failed:', error);
+      safeDebugLog('warn', 'STORAGE', 'localStorage setItem failed:', error);
     }
   }
 
@@ -74,24 +94,24 @@ class LocalStorage implements StorageAPI {
         window.localStorage.removeItem(key);
       }
     } catch (error) {
-      console.warn('localStorage removeItem failed:', error);
+      safeDebugLog('warn', 'STORAGE', 'localStorage removeItem failed:', error);
     }
   }
 }
 
 class NoOpStorage implements StorageAPI {
   async getItem(key: string): Promise<string | null> {
-    console.warn('No storage available for getItem:', key);
+    safeDebugLog('warn', 'STORAGE', 'No storage available for getItem:', key);
     return null;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async setItem(key: string, _value: string): Promise<void> {
-    console.warn('No storage available for setItem:', key);
+    safeDebugLog('warn', 'STORAGE', 'No storage available for setItem:', key);
   }
 
   async removeItem(key: string): Promise<void> {
-    console.warn('No storage available for removeItem:', key);
+    safeDebugLog('warn', 'STORAGE', 'No storage available for removeItem:', key);
   }
 }
 
@@ -104,7 +124,7 @@ function createStorage(): StorageAPI {
 
   // Check if we're in Electron environment
   if (window.electronAPI && typeof window.electronAPI.getStorageItem === 'function') {
-    console.log('Using Electron storage');
+    safeDebugLog('info', 'STORAGE', 'Using Electron storage');
     return new ElectronStorage();
   }
 
@@ -113,13 +133,13 @@ function createStorage(): StorageAPI {
     const testKey = '__storage_test__';
     window.localStorage.setItem(testKey, 'test');
     window.localStorage.removeItem(testKey);
-    console.log('Using localStorage');
+    safeDebugLog('info', 'STORAGE', 'Using localStorage');
     return new LocalStorage();
   } catch (error) {
-    console.warn('localStorage not available:', error);
+    safeDebugLog('warn', 'STORAGE', 'localStorage not available:', error);
   }
 
-  console.warn('No storage available, using no-op storage');
+  safeDebugLog('warn', 'STORAGE', 'No storage available, using no-op storage');
   return new NoOpStorage();
 }
 

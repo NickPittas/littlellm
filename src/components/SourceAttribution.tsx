@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ExternalLink, FileText, Database, ChevronDown, ChevronRight, Globe } from 'lucide-react';
 import { Button } from './ui/button';
+import { debugLogger } from '../services/debugLogger';
 
 interface Source {
   type: 'knowledge_base' | 'web' | 'document';

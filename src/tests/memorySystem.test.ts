@@ -7,6 +7,25 @@ import { memoryService } from '../services/memoryService';
 import { executeMemoryTool } from '../services/memoryMCPTools';
 import { MemoryType, MemoryEntry, SearchResponse } from '../types/memory';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 // Mock Electron API for testing
 const mockElectronAPI = {
   loadMemoryIndex: jest.fn(),
@@ -203,7 +222,7 @@ describe('Memory System', () => {
 // Example usage for manual testing
 export const memorySystemExample = {
   async demonstrateMemorySystem() {
-    console.log('🧠 Memory System Demonstration');
+    safeDebugLog('info', 'MEMORYSYSTEM_TEST', '🧠 Memory System Demonstration');
 
     // Store user preference
     const preference = await executeMemoryTool('memory-store', {
@@ -212,7 +231,7 @@ export const memorySystemExample = {
       content: 'User prefers Claude 3.5 Sonnet for coding tasks',
       tags: ['ai', 'model', 'preference', 'coding']
     });
-    console.log('Stored preference:', preference);
+    safeDebugLog('info', 'MEMORYSYSTEM_TEST', 'Stored preference:', preference);
 
     // Store project knowledge
     const knowledge = await executeMemoryTool('memory-store', {
@@ -222,14 +241,14 @@ export const memorySystemExample = {
       tags: ['implementation', 'memory', 'mcp', 'json'],
       projectId: 'littlellm-memory'
     });
-    console.log('Stored knowledge:', knowledge);
+    safeDebugLog('info', 'MEMORYSYSTEM_TEST', 'Stored knowledge:', knowledge);
 
     // Search memories
     const searchResult = await executeMemoryTool('memory-search', {
       text: 'memory',
       limit: 5
     });
-    console.log('Search results:', searchResult);
+    safeDebugLog('info', 'MEMORYSYSTEM_TEST', 'Search results:', searchResult);
 
     return { preference, knowledge, searchResult };
   }

@@ -4,7 +4,28 @@
  * This is the ONLY place where colors should be defined
  */
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 export interface ColorDefinition {
+
   hex: string;
   hsl: string;
   description: string;
@@ -147,7 +168,7 @@ export function getDefaultHexColors() {
  */
 export function applyColorsToDOM(customColors: Record<string, string>) {
   if (!customColors) {
-    console.error('❌ CRITICAL: applyColorsToDOM called without colors - cannot apply theme');
+    safeDebugLog('error', 'COLORS', '❌ CRITICAL: applyColorsToDOM called without colors - cannot apply theme');
     return;
   }
 
@@ -171,7 +192,7 @@ export function applyColorsToDOM(customColors: Record<string, string>) {
   // Also update the Electron window background color
   if (typeof window !== 'undefined' && window.electronAPI && completeColors.background) {
     window.electronAPI.setWindowBackgroundColor(completeColors.background).catch((error: Error) => {
-      console.error('Failed to set window background color:', error);
+      safeDebugLog('error', 'COLORS', 'Failed to set window background color:', error);
     });
   }
 }

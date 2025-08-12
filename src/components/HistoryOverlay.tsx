@@ -3,6 +3,25 @@
 import { useState, useEffect } from 'react';
 import { conversationHistoryService, type Conversation } from '../services/conversationHistoryService';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 // Removed redundant HistoryOverlay component - only keeping the hook
 
 // Hook to use the history overlay
@@ -18,7 +37,7 @@ export function useHistoryOverlay(onLoadConversation: (conversation: Conversatio
         await window.electronAPI.openHistory(allConversations);
       }
     } catch (error) {
-      console.error('Failed to open history:', error);
+      safeDebugLog('error', 'HISTORYOVERLAY', 'Failed to open history:', error);
     } finally {
       setLoading(false);
     }
@@ -34,7 +53,7 @@ export function useHistoryOverlay(onLoadConversation: (conversation: Conversatio
         await window.electronAPI.openHistory(allConversations);
       }
     } catch (error) {
-      console.error('Failed to delete conversation:', error);
+      safeDebugLog('error', 'HISTORYOVERLAY', 'Failed to delete conversation:', error);
     }
   };
 
@@ -47,7 +66,7 @@ export function useHistoryOverlay(onLoadConversation: (conversation: Conversatio
         await window.electronAPI.closeHistory();
       }
     } catch (error) {
-      console.error('Failed to clear history:', error);
+      safeDebugLog('error', 'HISTORYOVERLAY', 'Failed to clear history:', error);
     }
   };
 
@@ -58,7 +77,7 @@ export function useHistoryOverlay(onLoadConversation: (conversation: Conversatio
         await onLoadConversation(conversation);
       }
     } catch (error) {
-      console.error('Failed to load conversation:', error);
+      safeDebugLog('error', 'HISTORYOVERLAY', 'Failed to load conversation:', error);
     }
   };
 

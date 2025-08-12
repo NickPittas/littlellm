@@ -15,6 +15,25 @@ import {
 import { REQUESTY_SYSTEM_PROMPT } from './prompts/requesty';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export class RequestyProvider extends BaseProvider {
   readonly id = 'requesty';
   readonly name = 'Requesty';
@@ -96,7 +115,7 @@ export class RequestyProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.log('❌ No Requesty API key provided - cannot fetch models');
+      safeDebugLog('info', 'REQUESTYPROVIDER', '❌ No Requesty API key provided - cannot fetch models');
       return [];
     }
 
@@ -109,7 +128,7 @@ export class RequestyProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        console.warn(`❌ Requesty API error: ${response.status} - check API key`);
+        safeDebugLog('warn', 'REQUESTYPROVIDER', `❌ Requesty API error: ${response.status} - check API key`);
         return [];
       }
 
@@ -118,7 +137,7 @@ export class RequestyProvider extends BaseProvider {
 
       return models;
     } catch (error) {
-      console.warn('❌ Failed to fetch Requesty models:', error);
+      safeDebugLog('warn', 'REQUESTYPROVIDER', '❌ Failed to fetch Requesty models:', error);
       return [];
     }
   }
@@ -149,7 +168,7 @@ export class RequestyProvider extends BaseProvider {
 
     // Requesty uses structured tool calling with tools parameter and tool_choice
     // Don't add XML tool instructions as they conflict with native function calling
-    console.log(`🔧 Requesty using structured tools, skipping XML tool instructions`);
+    safeDebugLog('info', 'REQUESTYPROVIDER', `🔧 Requesty using structured tools, skipping XML tool instructions`);
     return basePrompt;
   }
 

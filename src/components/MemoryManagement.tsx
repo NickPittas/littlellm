@@ -34,6 +34,25 @@ import { memoryCleanupService } from '../services/memoryCleanupService';
 import { automaticMemoryService } from '../services/automaticMemoryService';
 import { MemoryEntry, MemoryType, SearchQuery, MemoryStats } from '../types/memory';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface MemoryManagementProps {
   className?: string;
 }
@@ -88,7 +107,7 @@ export function MemoryManagement({ className }: MemoryManagementProps) {
         setMemories(result.data.results.map(r => r.entry));
       }
     } catch (error) {
-      console.error('Failed to load memories:', error);
+      safeDebugLog('error', 'MEMORYMANAGEMENT', 'Failed to load memories:', error);
     } finally {
       setLoading(false);
     }
@@ -106,7 +125,7 @@ export function MemoryManagement({ className }: MemoryManagementProps) {
         setStats(result.data);
       }
     } catch (error) {
-      console.error('Failed to load memory stats:', error);
+      safeDebugLog('error', 'MEMORYMANAGEMENT', 'Failed to load memory stats:', error);
     }
   };
 
@@ -135,7 +154,7 @@ export function MemoryManagement({ className }: MemoryManagementProps) {
         loadStats();
       }
     } catch (error) {
-      console.error('Failed to add memory:', error);
+      safeDebugLog('error', 'MEMORYMANAGEMENT', 'Failed to add memory:', error);
     }
   };
 
@@ -158,7 +177,7 @@ export function MemoryManagement({ className }: MemoryManagementProps) {
         loadMemories();
       }
     } catch (error) {
-      console.error('Failed to update memory:', error);
+      safeDebugLog('error', 'MEMORYMANAGEMENT', 'Failed to update memory:', error);
     }
   };
 
@@ -172,7 +191,7 @@ export function MemoryManagement({ className }: MemoryManagementProps) {
         loadStats();
       }
     } catch (error) {
-      console.error('Failed to delete memory:', error);
+      safeDebugLog('error', 'MEMORYMANAGEMENT', 'Failed to delete memory:', error);
     }
   };
 

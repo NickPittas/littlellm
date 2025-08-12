@@ -6,6 +6,25 @@
 import { memoryService } from './memoryService';
 import { MemoryType, SearchQuery, MemoryEntry } from '../types/memory';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export interface ContextMemory {
   id: string;
   type: MemoryType;
@@ -134,7 +153,7 @@ class MemoryContextService {
         totalMemories: uniqueMemories.length
       };
     } catch (error) {
-      console.error('Error getting memory context:', error);
+      safeDebugLog('error', 'MEMORYCONTEXTSERVICE', 'Error getting memory context:', error);
       return {
         relevantMemories: [],
         contextSummary: '',
@@ -174,14 +193,14 @@ class MemoryContextService {
       });
 
       if (storeResult.success) {
-        console.log(`🧠 Auto-created memory: ${memoryTitle} (${analysis.suggestedMemoryType})`);
+        safeDebugLog('info', 'MEMORYCONTEXTSERVICE', `🧠 Auto-created memory: ${memoryTitle} (${analysis.suggestedMemoryType})`);
         return true;
       } else {
-        console.error('Failed to auto-create memory:', storeResult.error);
+        safeDebugLog('error', 'MEMORYCONTEXTSERVICE', 'Failed to auto-create memory:', storeResult.error);
         return false;
       }
     } catch (error) {
-      console.error('Error creating memory from conversation:', error);
+      safeDebugLog('error', 'MEMORYCONTEXTSERVICE', 'Error creating memory from conversation:', error);
       return false;
     }
   }

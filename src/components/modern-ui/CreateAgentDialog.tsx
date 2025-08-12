@@ -21,6 +21,25 @@ import { llmService } from '../../services/llmService';
 import { chatService } from '../../services/chatService';
 import { secureApiKeyService } from '../../services/secureApiKeyService';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface CreateAgentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -79,7 +98,7 @@ export function CreateAgentDialog({
         await loadModelsForProvider(formData.defaultProvider);
       }
     } catch (error) {
-      console.error('Failed to load data:', error);
+      safeDebugLog('error', 'CREATEAGENTDIALOG', 'Failed to load data:', error);
     }
   };
 
@@ -98,19 +117,19 @@ export function CreateAgentDialog({
         apiKey = apiKeyData?.apiKey || '';
         baseUrl = apiKeyData?.baseUrl || '';
       } catch (error) {
-        console.warn(`Failed to get API key data for ${providerId}:`, error);
+        safeDebugLog('warn', 'CREATEAGENTDIALOG', `Failed to get API key data for ${providerId}:`, error);
       }
 
       // Skip model loading for remote providers without API keys
       if (!apiKey && providerId !== 'ollama' && providerId !== 'lmstudio' && providerId !== 'n8n') {
-        console.warn(`No API key found for ${providerId}, skipping model loading`);
+        safeDebugLog('warn', 'CREATEAGENTDIALOG', `No API key found for ${providerId}, skipping model loading`);
         setAvailableModels([]);
         return;
       }
 
       // Fetch models using the chat service
       const models = await chatService.fetchModels(providerId, apiKey, baseUrl);
-      console.log(`Loaded ${models.length} models for ${providerId}:`, models);
+      safeDebugLog('info', 'CREATEAGENTDIALOG', `Loaded ${models.length} models for ${providerId}:`, models);
 
       setAvailableModels(models);
 
@@ -119,7 +138,7 @@ export function CreateAgentDialog({
         setFormData(prev => ({ ...prev, defaultModel: models[0] }));
       }
     } catch (error) {
-      console.error('Failed to load models for provider:', providerId, error);
+      safeDebugLog('error', 'CREATEAGENTDIALOG', 'Failed to load models for provider:', providerId, error);
       setAvailableModels([]);
     } finally {
       setLoadingModels(false);
@@ -194,11 +213,11 @@ export function CreateAgentDialog({
         setStep('review');
       } else {
         const errorMessage = response.error || 'Unknown error occurred';
-        console.error('Prompt generation failed:', errorMessage);
+        safeDebugLog('error', 'CREATEAGENTDIALOG', 'Prompt generation failed:', errorMessage);
         alert(`Failed to generate prompt: ${errorMessage}`);
       }
     } catch (error) {
-      console.error('Failed to generate prompt:', error);
+      safeDebugLog('error', 'CREATEAGENTDIALOG', 'Failed to generate prompt:', error);
       alert('Failed to generate prompt. Please try again.');
     } finally {
       setIsGeneratingPrompt(false);
@@ -256,7 +275,7 @@ export function CreateAgentDialog({
       onSuccess();
       onOpenChange(false);
     } catch (error) {
-      console.error('Failed to create agent:', error);
+      safeDebugLog('error', 'CREATEAGENTDIALOG', 'Failed to create agent:', error);
       alert('Failed to create agent. Please try again.');
     } finally {
       setIsCreating(false);

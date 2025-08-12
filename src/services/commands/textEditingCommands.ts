@@ -10,6 +10,7 @@ import {
 } from '../../types/internalCommands';
 import { filesystemManager } from '../filesystemManager';
 import { internalCommandService } from '../internalCommandService';
+import { debugLogger } from '../debugLogger';
 
 /**
  * Apply surgical text replacements to files

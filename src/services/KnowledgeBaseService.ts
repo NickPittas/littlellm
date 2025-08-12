@@ -4,6 +4,25 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { documentParserService } from './DocumentParserService.js';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface KnowledgeBaseRecord {
   id: string;
   text: string;
@@ -76,10 +95,10 @@ export class KnowledgeBaseService {
         source: 'system' 
       }];
       this.table = await this.db.createTable('vectors', initialData);
-      console.log('Knowledge base table "vectors" created.');
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', 'Knowledge base table "vectors" created.');
     } else {
       this.table = await this.db.openTable('vectors');
-      console.log('Connected to existing knowledge base table "vectors".');
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', 'Connected to existing knowledge base table "vectors".');
     }
   }
 
@@ -88,7 +107,7 @@ export class KnowledgeBaseService {
    */
   public async importPdfParseSafely(): Promise<(buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>> {
     try {
-      console.log('📄 Attempting to import pdf-parse with working directory fix...');
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', '📄 Attempting to import pdf-parse with working directory fix...');
 
       // Change to the pdf-parse module directory to ensure test files are found
       const originalCwd = process.cwd();
@@ -103,7 +122,7 @@ export class KnowledgeBaseService {
         const pdfParseModule = await Promise.race([importPromise, timeoutPromise]) as {
           default?: (buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>;
         } & ((buffer: Buffer) => Promise<{ text: string; numpages: number; info: Record<string, unknown> }>);
-        console.log('✅ pdf-parse module imported successfully');
+        safeDebugLog('info', 'KNOWLEDGEBASESERVICE', '✅ pdf-parse module imported successfully');
 
         // Handle both CommonJS and ES module exports
         const pdfParse = pdfParseModule.default;
@@ -119,11 +138,11 @@ export class KnowledgeBaseService {
         process.chdir(originalCwd);
       }
     } catch (error) {
-      console.error('❌ Failed to import pdf-parse:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESERVICE', '❌ Failed to import pdf-parse:', error);
 
       // Return a fallback function that provides basic PDF info without parsing
       return async (buffer: Buffer) => {
-        console.log('📄 Using fallback PDF handler (no text extraction)');
+        safeDebugLog('info', 'KNOWLEDGEBASESERVICE', '📄 Using fallback PDF handler (no text extraction)');
         return {
           text: `[PDF Document - ${buffer.length} bytes]\nNote: PDF text extraction is not available. The PDF parsing module could not be loaded.`,
           numpages: 1,
@@ -182,11 +201,11 @@ export class KnowledgeBaseService {
         const filePath = filePathOrFile;
         documentSource = path.basename(filePath);
         progressCallback?.({step: 'reading', message: `Reading file: ${documentSource}`});
-        console.log(`Starting to process document from path: ${filePath}`);
+        safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Starting to process document from path: ${filePath}`);
 
         // Check if file exists
         const fileBuffer = await fs.readFile(filePath);
-        console.log(`File read successfully, size: ${fileBuffer.length} bytes`);
+        safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `File read successfully, size: ${fileBuffer.length} bytes`);
 
         // Determine file type and parse accordingly
         const fileExtension = path.extname(filePath).toLowerCase();
@@ -199,10 +218,10 @@ export class KnowledgeBaseService {
             const pdfParse = await this.importPdfParseSafely();
             const pdfData = await pdfParse(fileBuffer);
             text = pdfData.text;
-            console.log(`PDF parsed successfully, text length: ${text.length} characters`);
+            safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `PDF parsed successfully, text length: ${text.length} characters`);
             documentMetadata = { ...documentMetadata, format: 'PDF', pages: pdfData.numpages };
           } catch (pdfError) {
-            console.error('PDF parsing failed:', pdfError);
+            safeDebugLog('error', 'KNOWLEDGEBASESERVICE', 'PDF parsing failed:', pdfError);
             throw new Error(`Failed to parse PDF: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}`);
           }
         } else {
@@ -216,8 +235,8 @@ export class KnowledgeBaseService {
         const file = filePathOrFile;
         documentSource = file.name;
         progressCallback?.({step: 'reading', message: `Reading file: ${documentSource}`});
-        console.log(`Starting to process document from File object: ${file.name}`);
-        console.log(`File size: ${file.size} bytes, type: ${file.type}`);
+        safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Starting to process document from File object: ${file.name}`);
+        safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `File size: ${file.size} bytes, type: ${file.type}`);
 
         progressCallback?.({step: 'parsing', message: `Parsing file: ${documentSource}`});
 
@@ -232,7 +251,7 @@ export class KnowledgeBaseService {
           uploadDate: new Date().toISOString()
         };
 
-        console.log(`Document parsed successfully, text length: ${text.length} characters`);
+        safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Document parsed successfully, text length: ${text.length} characters`);
       }
 
       if (!text || text.trim().length === 0) {
@@ -241,17 +260,17 @@ export class KnowledgeBaseService {
 
       progressCallback?.({step: 'chunking', message: `Chunking text for: ${documentSource}`});
       const chunks = this.chunkText(text);
-      console.log(`Document chunked into ${chunks.length} pieces.`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Document chunked into ${chunks.length} pieces.`);
       progressCallback?.({step: 'chunking', message: `Generated ${chunks.length} chunks for: ${documentSource}`, chunkCount: chunks.length});
 
       const records = [];
-      console.log(`Using document source: ${documentSource}`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Using document source: ${documentSource}`);
 
       progressCallback?.({step: 'embedding', message: `Creating embeddings for: ${documentSource}`, current: 0, total: chunks.length});
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
-        console.log(`Processing chunk ${i + 1}/${chunks.length}`);
+        safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Processing chunk ${i + 1}/${chunks.length}`);
         progressCallback?.({step: 'embedding', message: `Processing chunk ${i + 1}/${chunks.length} for: ${documentSource}`, current: i + 1, total: chunks.length});
 
         const embedding = await this.createEmbedding(chunk);
@@ -265,21 +284,21 @@ export class KnowledgeBaseService {
       }
 
       progressCallback?.({step: 'storing', message: `Storing ${records.length} records for: ${documentSource}`});
-      console.log(`Adding ${records.length} records to the knowledge base...`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Adding ${records.length} records to the knowledge base...`);
       await this.table.add(records);
-      console.log(`Successfully added ${records.length} records to the knowledge base for document: ${documentSource}`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Successfully added ${records.length} records to the knowledge base for document: ${documentSource}`);
 
       // Verify the records were added by checking the count
       const dummyEmbedding = new Array(384).fill(0); // MiniLM-L6-v2 has 384 dimensions
       const allRecords = await this.table.search(dummyEmbedding).limit(10000).execute();
       const documentRecords = allRecords.filter(r => (r as {source: string}).source === documentSource);
-      console.log(`Verification: Found ${documentRecords.length} records for document ${documentSource} in the database`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Verification: Found ${documentRecords.length} records for document ${documentSource} in the database`);
 
       progressCallback?.({step: 'complete', message: `Successfully processed: ${documentSource}`, chunkCount: chunks.length});
 
     } catch (error) {
       const errorMessage = typeof filePathOrFile === 'string' ? filePathOrFile : filePathOrFile.name;
-      console.error(`Error adding document ${errorMessage}:`, error);
+      safeDebugLog('error', 'KNOWLEDGEBASESERVICE', `Error adding document ${errorMessage}:`, error);
       progressCallback?.({step: 'error', message: `Failed to process: ${errorMessage} - ${error instanceof Error ? error.message : 'Unknown error'}`});
       throw error;
     }
@@ -392,7 +411,7 @@ export class KnowledgeBaseService {
           error: errorMessage
         });
 
-        console.error(`Error processing file ${filePath}:`, error);
+        safeDebugLog('error', 'KNOWLEDGEBASESERVICE', `Error processing file ${filePath}:`, error);
       }
     }
 
@@ -426,7 +445,7 @@ export class KnowledgeBaseService {
     }
 
     try {
-      console.log(`Starting to process document from URL: ${url}`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Starting to process document from URL: ${url}`);
 
       // Validate Google Docs URL
       if (!this.isValidGoogleDocsUrl(url)) {
@@ -435,7 +454,7 @@ export class KnowledgeBaseService {
 
       // Convert Google Docs URL to export format (plain text)
       const exportUrl = this.convertToGoogleDocsExportUrl(url);
-      console.log(`Converted to export URL: ${exportUrl}`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Converted to export URL: ${exportUrl}`);
 
       // Fetch the document content
       const response = await fetch(exportUrl);
@@ -444,7 +463,7 @@ export class KnowledgeBaseService {
       }
 
       const text = await response.text();
-      console.log(`Google Docs content fetched successfully, text length: ${text.length} characters`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Google Docs content fetched successfully, text length: ${text.length} characters`);
 
       if (!text || text.trim().length === 0) {
         throw new Error('No text content found in the Google Docs document');
@@ -455,7 +474,7 @@ export class KnowledgeBaseService {
       const documentSource = `${documentTitle}.txt`;
 
       const chunks = this.chunkText(text);
-      console.log(`Document chunked into ${chunks.length} pieces.`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Document chunked into ${chunks.length} pieces.`);
 
       const documentMetadata = {
         ...metadata,
@@ -467,11 +486,11 @@ export class KnowledgeBaseService {
       };
 
       const records = [];
-      console.log(`Using document source: ${documentSource}`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Using document source: ${documentSource}`);
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
-        console.log(`Processing chunk ${i + 1}/${chunks.length}`);
+        safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Processing chunk ${i + 1}/${chunks.length}`);
         const embedding = await this.createEmbedding(chunk);
         records.push({
           vector: embedding,
@@ -482,18 +501,18 @@ export class KnowledgeBaseService {
         });
       }
 
-      console.log(`Adding ${records.length} records to the knowledge base...`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Adding ${records.length} records to the knowledge base...`);
       await this.table.add(records);
-      console.log(`Successfully added ${records.length} records to the knowledge base for document: ${documentSource}`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Successfully added ${records.length} records to the knowledge base for document: ${documentSource}`);
 
       // Verify the records were added by checking the count
       const dummyEmbedding = new Array(384).fill(0); // MiniLM-L6-v2 has 384 dimensions
       const allRecords = await this.table.search(dummyEmbedding).limit(10000).execute();
       const documentRecords = allRecords.filter(r => (r as {source: string}).source === documentSource);
-      console.log(`Verification: Found ${documentRecords.length} records for document ${documentSource} in the database`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Verification: Found ${documentRecords.length} records for document ${documentSource} in the database`);
 
     } catch (error) {
-      console.error(`Error adding document from URL ${url}:`, error);
+      safeDebugLog('error', 'KNOWLEDGEBASESERVICE', `Error adding document from URL ${url}:`, error);
       throw error;
     }
   }
@@ -597,7 +616,7 @@ export class KnowledgeBaseService {
 
     // Remove all chunks that belong to this document
     await this.table.delete(`source = '${documentId}'`);
-    console.log(`Removed document: ${documentId}`);
+    safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Removed document: ${documentId}`);
   }
 
   /**
@@ -618,16 +637,16 @@ export class KnowledgeBaseService {
         .limit(10000)
         .execute();
 
-      console.log(`Retrieved ${results.length} records from knowledge base`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Retrieved ${results.length} records from knowledge base`);
 
       // Extract unique sources and filter out system entries
       const sourceSet = new Set(results.map(r => (r as {source: string}).source as string));
       const uniqueSources = Array.from(sourceSet).filter(source => source !== 'system');
 
-      console.log(`Found ${uniqueSources.length} unique documents:`, uniqueSources);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Found ${uniqueSources.length} unique documents:`, uniqueSources);
       return uniqueSources;
     } catch (error) {
-      console.error('Error getting documents:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESERVICE', 'Error getting documents:', error);
       return [];
     }
   }
@@ -649,7 +668,7 @@ export class KnowledgeBaseService {
         .limit(10000)
         .execute();
 
-      console.log(`Retrieved ${results.length} records from knowledge base`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Retrieved ${results.length} records from knowledge base`);
 
       // Group records by source and extract metadata
       const documentMap = new Map<string, {metadata: Record<string, unknown>, chunks: number}>();
@@ -676,10 +695,10 @@ export class KnowledgeBaseService {
         addedAt: data.metadata.uploadDate as string || new Date().toISOString()
       }));
 
-      console.log(`Found ${documentsWithMetadata.length} unique documents with metadata`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `Found ${documentsWithMetadata.length} unique documents with metadata`);
       return documentsWithMetadata;
     } catch (error) {
-      console.error('Error getting documents with metadata:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESERVICE', 'Error getting documents with metadata:', error);
       return [];
     }
   }
@@ -749,11 +768,11 @@ export class KnowledgeBaseService {
 
       progressCallback?.({step: 'complete', current: 100, total: 100, message: `Export completed: ${stats.totalDocuments} documents, ${stats.totalRecords} chunks`});
 
-      console.log(`✅ Knowledge base exported: ${stats.totalDocuments} documents, ${stats.totalRecords} records, ${Math.round(stats.exportSize / 1024)}KB`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `✅ Knowledge base exported: ${stats.totalDocuments} documents, ${stats.totalRecords} records, ${Math.round(stats.exportSize / 1024)}KB`);
 
       return { data: exportData, stats };
     } catch (error) {
-      console.error('❌ Failed to export knowledge base:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESERVICE', '❌ Failed to export knowledge base:', error);
       throw error;
     }
   }
@@ -829,7 +848,7 @@ export class KnowledgeBaseService {
             validBatch.forEach((record: KnowledgeBaseRecord) => uniqueSources.add(record.source));
           }
         } catch (batchError) {
-          console.error(`❌ Failed to import batch ${Math.floor(i / batchSize) + 1}:`, batchError);
+          safeDebugLog('error', 'KNOWLEDGEBASESERVICE', `❌ Failed to import batch ${Math.floor(i / batchSize) + 1}:`, batchError);
           skippedRecords += batch.length;
         }
       }
@@ -844,11 +863,11 @@ export class KnowledgeBaseService {
 
       progressCallback?.({step: 'complete', current: 100, total: 100, message: `Import completed: ${stats.importedDocuments} documents, ${stats.importedRecords} records imported`});
 
-      console.log(`✅ Knowledge base imported: ${stats.importedDocuments} documents, ${stats.importedRecords} records imported, ${stats.skippedRecords} skipped`);
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', `✅ Knowledge base imported: ${stats.importedDocuments} documents, ${stats.importedRecords} records imported, ${stats.skippedRecords} skipped`);
 
       return { success: true, stats };
     } catch (error) {
-      console.error('❌ Failed to import knowledge base:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESERVICE', '❌ Failed to import knowledge base:', error);
       throw error;
     }
   }
@@ -872,7 +891,7 @@ export class KnowledgeBaseService {
 
     // Check version compatibility
     if (typedData.version !== '1.0.0') {
-      console.warn(`⚠️ Import data version ${typedData.version} may not be fully compatible with current version 1.0.0`);
+      safeDebugLog('warn', 'KNOWLEDGEBASESERVICE', `⚠️ Import data version ${typedData.version} may not be fully compatible with current version 1.0.0`);
     }
 
     // Validate a sample of records
@@ -909,9 +928,9 @@ export class KnowledgeBaseService {
         }
       }
 
-      console.log('✅ Knowledge base cleared successfully');
+      safeDebugLog('info', 'KNOWLEDGEBASESERVICE', '✅ Knowledge base cleared successfully');
     } catch (error) {
-      console.error('❌ Failed to clear knowledge base:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESERVICE', '❌ Failed to clear knowledge base:', error);
       throw error;
     }
   }
@@ -941,7 +960,7 @@ export class KnowledgeBaseService {
         databaseSize: estimatedSize
       };
     } catch (error) {
-      console.error('Error getting knowledge base stats:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESERVICE', 'Error getting knowledge base stats:', error);
       return { totalRecords: 0, totalDocuments: 0, databaseSize: 0 };
     }
   }

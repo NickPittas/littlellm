@@ -8,6 +8,25 @@ import { UserMessage } from '../UserMessage';
 import { cn } from '@/lib/utils';
 import type { Message } from '../../services/chatService';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface MainChatAreaProps {
   className?: string;
   selectedModel?: string;
@@ -31,7 +50,7 @@ export function MainChatArea({
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const handleEditModelInstructions = () => {
-    console.log('Edit Model Instructions clicked');
+    safeDebugLog('info', 'MAINCHATAREA', 'Edit Model Instructions clicked');
     onEditModelInstructions?.();
   };
 

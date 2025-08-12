@@ -22,6 +22,25 @@ import { ThemeSelector } from '../ui/theme-selector';
 import { useTheme } from '../../contexts/ThemeContext';
 import { cn } from '@/lib/utils';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -128,7 +147,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
         setShowMcpJsonEditor(true);
       }
     } catch (error) {
-      console.error('Failed to load MCP JSON:', error);
+      safeDebugLog('error', 'SETTINGSMODAL', 'Failed to load MCP JSON:', error);
     }
   };
 
@@ -143,7 +162,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
         }
       }
     } catch (error) {
-      console.error('Failed to save MCP JSON:', error);
+      safeDebugLog('error', 'SETTINGSMODAL', 'Failed to save MCP JSON:', error);
     }
   };
 
@@ -152,7 +171,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       const servers = await mcpService.getServers();
       setMcpServers(servers);
     } catch (error) {
-      console.error('Failed to load MCP servers:', error);
+      safeDebugLog('error', 'SETTINGSMODAL', 'Failed to load MCP servers:', error);
       setMcpServers([]);
     }
   };
@@ -173,7 +192,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
         await loadMcpServers();
       }
     } catch (error) {
-      console.error('Failed to add MCP server:', error);
+      safeDebugLog('error', 'SETTINGSMODAL', 'Failed to add MCP server:', error);
     }
   };
 
@@ -181,7 +200,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
     if (!editingMcpServer) return;
 
     try {
-      console.log('🔧 Updating MCP server:', editingMcpServer.id, newMcpServer);
+      safeDebugLog('info', 'SETTINGSMODAL', '🔧 Updating MCP server:', editingMcpServer.id, newMcpServer);
       const success = await mcpService.updateServer(editingMcpServer.id, {
         name: newMcpServer.name,
         command: newMcpServer.command,
@@ -192,7 +211,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       });
 
       if (success) {
-        console.log('🔧 MCP server updated successfully');
+        safeDebugLog('info', 'SETTINGSMODAL', '🔧 MCP server updated successfully');
         setEditingMcpServer(null);
         setNewMcpServer({
           name: '',
@@ -205,10 +224,10 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
         setShowAddMcpServer(false);
         await loadMcpServers();
       } else {
-        console.error('🔧 Failed to update MCP server - updateServer returned false');
+        safeDebugLog('error', 'SETTINGSMODAL', '🔧 Failed to update MCP server - updateServer returned false');
       }
     } catch (error) {
-      console.error('🔧 Failed to update MCP server:', error);
+      safeDebugLog('error', 'SETTINGSMODAL', '🔧 Failed to update MCP server:', error);
     }
   };
 
@@ -268,23 +287,23 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
         await loadMcpServers();
       }
     } catch (error) {
-      console.error('Failed to delete MCP server:', error);
+      safeDebugLog('error', 'SETTINGSMODAL', 'Failed to delete MCP server:', error);
     }
   };
 
   const handleToggleMcpServer = async (serverId: string, enabled: boolean) => {
     try {
-      console.log('🔧 Toggling MCP server:', serverId, 'to enabled:', enabled);
+      safeDebugLog('info', 'SETTINGSMODAL', '🔧 Toggling MCP server:', serverId, 'to enabled:', enabled);
       const success = await mcpService.updateServer(serverId, { enabled });
-      console.log('🔧 MCP server toggle result:', success);
+      safeDebugLog('info', 'SETTINGSMODAL', '🔧 MCP server toggle result:', success);
       if (success) {
-        console.log('🔧 Reloading MCP servers after toggle...');
+        safeDebugLog('info', 'SETTINGSMODAL', '🔧 Reloading MCP servers after toggle...');
         await loadMcpServers();
       } else {
-        console.error('🔧 Failed to toggle MCP server - updateServer returned false');
+        safeDebugLog('error', 'SETTINGSMODAL', '🔧 Failed to toggle MCP server - updateServer returned false');
       }
     } catch (error) {
-      console.error('🔧 Failed to toggle MCP server:', error);
+      safeDebugLog('error', 'SETTINGSMODAL', '🔧 Failed to toggle MCP server:', error);
     }
   };
 
@@ -292,7 +311,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
   const loadInternalCommandsSettings = async () => {
     try {
       const currentSettings = settingsService.getSettings();
-      console.log('🔧 Loading internal commands settings:', currentSettings?.internalCommands);
+      safeDebugLog('info', 'SETTINGSMODAL', '🔧 Loading internal commands settings:', currentSettings?.internalCommands);
       if (currentSettings?.internalCommands) {
         const enabled = currentSettings.internalCommands.enabled || false;
         const directories = currentSettings.internalCommands.allowedDirectories || [];
@@ -325,7 +344,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
         } : null);
       }
     } catch (error) {
-      console.error('Failed to load internal commands settings:', error);
+      safeDebugLog('error', 'SETTINGSMODAL', 'Failed to load internal commands settings:', error);
     }
   };
 
@@ -345,9 +364,9 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       };
 
       await settingsService.updateSettings(updatedSettings);
-      console.log('Internal commands settings saved successfully');
+      safeDebugLog('info', 'SETTINGSMODAL', 'Internal commands settings saved successfully');
     } catch (error) {
-      console.error('Failed to save internal commands settings:', error);
+      safeDebugLog('error', 'SETTINGSMODAL', 'Failed to save internal commands settings:', error);
     }
   };
 
@@ -367,9 +386,9 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
       };
 
       await settingsService.updateSettings(updatedSettings);
-      console.log('Internal commands settings with commands saved successfully');
+      safeDebugLog('info', 'SETTINGSMODAL', 'Internal commands settings with commands saved successfully');
     } catch (error) {
-      console.error('Failed to save internal commands settings with commands:', error);
+      safeDebugLog('error', 'SETTINGSMODAL', 'Failed to save internal commands settings with commands:', error);
     }
   };
 
@@ -495,12 +514,12 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
   // Main save function (copied from SettingsOverlay)
   const handleSave = async () => {
     if (!formData) {
-      console.error('🔧 No formData to save');
+      safeDebugLog('error', 'SETTINGSMODAL', '🔧 No formData to save');
       return;
     }
 
-    console.log('🔧 Starting save process with formData:', formData);
-    console.log('🔧 Theme data being saved:', formData.ui);
+    safeDebugLog('info', 'SETTINGSMODAL', '🔧 Starting save process with formData:', formData);
+    safeDebugLog('info', 'SETTINGSMODAL', '🔧 Theme data being saved:', formData.ui);
 
     setIsLoading(true);
     setSaveError(null);
@@ -508,9 +527,9 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
     try {
       // Save general settings
-      console.log('🔧 Calling settingsService.updateSettings...');
+      safeDebugLog('info', 'SETTINGSMODAL', '🔧 Calling settingsService.updateSettings...');
       const success = await settingsService.updateSettings(formData);
-      console.log('🔧 Settings save result:', success);
+      safeDebugLog('info', 'SETTINGSMODAL', '🔧 Settings save result:', success);
 
       // Always save API keys if the save function is available
       let apiKeySaveSuccess = true;
@@ -518,23 +537,23 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
       if (apiKeySaveRef.current) {
         try {
-          console.log('🔐 SettingsModal: Triggering API key save via ref');
+          safeDebugLog('info', 'SETTINGSMODAL', '🔐 SettingsModal: Triggering API key save via ref');
           await apiKeySaveRef.current();
-          console.log('🔐 SettingsModal: API key save completed');
+          safeDebugLog('info', 'SETTINGSMODAL', '🔐 SettingsModal: API key save completed');
         } catch (error) {
-          console.error('🔐 SettingsModal: Failed to save API keys:', error);
+          safeDebugLog('error', 'SETTINGSMODAL', '🔐 SettingsModal: Failed to save API keys:', error);
           apiKeySaveSuccess = false;
           apiKeyError = error instanceof Error ? error.message : 'Unknown API key save error';
         }
       }
 
       if (success && apiKeySaveSuccess) {
-        console.log('🔄 Settings and API keys saved successfully');
+        safeDebugLog('info', 'SETTINGSMODAL', '🔄 Settings and API keys saved successfully');
 
         setHasChanges(false);
 
         // Trigger model refresh for all components by dispatching a custom event
-        console.log('🔄 Settings saved successfully - triggering model refresh');
+        safeDebugLog('info', 'SETTINGSMODAL', '🔄 Settings saved successfully - triggering model refresh');
         window.dispatchEvent(new CustomEvent('settingsSaved', {
           detail: {
             apiKeysSaved: apiKeySaveSuccess,
@@ -547,7 +566,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
             formData.ui?.useCustomColors !== undefined ||
             formData.ui?.selectedThemePreset ||
             formData.ui?.colorMode) {
-          console.log('Settings modal: Preparing to notify theme change');
+          safeDebugLog('info', 'SETTINGSMODAL', 'Settings modal: Preparing to notify theme change');
 
           if (typeof window !== 'undefined' && window.electronAPI) {
             // Determine the actual colors to apply based on the current mode
@@ -563,7 +582,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
               }
             }
 
-            console.log('Notifying theme change with colors:', colorsToApply);
+            safeDebugLog('info', 'SETTINGSMODAL', 'Notifying theme change with colors:', colorsToApply);
             window.electronAPI.notifyThemeChange({
               customColors: colorsToApply,
               useCustomColors: currentMode === 'custom'
@@ -585,7 +604,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
         }
       }
     } catch (error) {
-      console.error('Failed to save settings:', error);
+      safeDebugLog('error', 'SETTINGSMODAL', 'Failed to save settings:', error);
       setSaveError(error instanceof Error ? error.message : 'Unknown error occurred');
     } finally {
       setIsLoading(false);
@@ -601,7 +620,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
 
       } catch (error) {
-        console.error('Failed to load settings:', error);
+        safeDebugLog('error', 'SETTINGSMODAL', 'Failed to load settings:', error);
       }
     };
 
@@ -617,18 +636,18 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
     const loadAvailableTools = async () => {
       try {
         if (typeof window !== 'undefined' && window.electronAPI) {
-          console.log('🔧 SettingsModal: Loading internal command tools...');
-          console.log('🔧 SettingsModal: electronAPI available:', !!window.electronAPI);
-          console.log('🔧 SettingsModal: getInternalCommandsTools method exists:', typeof window.electronAPI.getInternalCommandsTools);
+          safeDebugLog('info', 'SETTINGSMODAL', '🔧 SettingsModal: Loading internal command tools...');
+          safeDebugLog('info', 'SETTINGSMODAL', '🔧 SettingsModal: electronAPI available:', !!window.electronAPI);
+          safeDebugLog('info', 'SETTINGSMODAL', '🔧 SettingsModal: getInternalCommandsTools method exists:', typeof window.electronAPI.getInternalCommandsTools);
 
           // First, ensure configuration is sent to Electron main process
           const currentSettings = settingsService.getSettings();
-          console.log('🔧 SettingsModal: Sending config to Electron:', currentSettings.internalCommands);
+          safeDebugLog('info', 'SETTINGSMODAL', '🔧 SettingsModal: Sending config to Electron:', currentSettings.internalCommands);
           await window.electronAPI.setInternalCommandsConfig(currentSettings.internalCommands);
 
           // Now load the tools
           const internalTools = await window.electronAPI.getInternalCommandsTools();
-          console.log(`🔧 SettingsModal: Received ${(internalTools as any[])?.length || 0} internal command tools:`, internalTools);
+          safeDebugLog('info', 'SETTINGSMODAL', `🔧 SettingsModal: Received ${(internalTools as any[])?.length || 0} internal command tools:`, internalTools);
           setAvailableTools((internalTools as Array<{
             name: string;
             description: string;
@@ -636,10 +655,10 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
             inputSchema: Record<string, unknown>;
           }>) || []);
         } else {
-          console.log('🔧 SettingsModal: No electronAPI available');
+          safeDebugLog('info', 'SETTINGSMODAL', '🔧 SettingsModal: No electronAPI available');
         }
       } catch (error) {
-        console.error('Failed to load available tools:', error);
+        safeDebugLog('error', 'SETTINGSMODAL', 'Failed to load available tools:', error);
       }
     };
 
@@ -684,10 +703,10 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
         // Show all voices sorted by quality (don't filter too strictly)
         const voicesToShow = sortedVoices.length > 0 ? sortedVoices : allVoices;
 
-        console.log('🔊 SettingsModal: Total voices:', allVoices.length);
-        console.log('🔊 SettingsModal: High-quality voices:', highQualityVoices.length);
-        console.log('🔊 SettingsModal: Showing voices (sorted):', voicesToShow.length);
-        console.log('🔊 SettingsModal: Voice details:', voicesToShow.map(v => ({
+        safeDebugLog('info', 'SETTINGSMODAL', '🔊 SettingsModal: Total voices:', allVoices.length);
+        safeDebugLog('info', 'SETTINGSMODAL', '🔊 SettingsModal: High-quality voices:', highQualityVoices.length);
+        safeDebugLog('info', 'SETTINGSMODAL', '🔊 SettingsModal: Showing voices (sorted):', voicesToShow.length);
+        safeDebugLog('info', 'SETTINGSMODAL', '🔊 SettingsModal: Voice details:', voicesToShow.map(v => ({
           name: v.name,
           lang: v.lang,
           localService: v.localService
@@ -702,8 +721,8 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
           const sortedUpdatedVoices = ttsService.getAllVoicesWithQualityInfo();
           const updatedVoicesToShow = sortedUpdatedVoices.length > 0 ? sortedUpdatedVoices : allUpdatedVoices;
 
-          console.log('🔊 SettingsModal: Voices updated - Total:', allUpdatedVoices.length, 'High-quality:', highQualityUpdatedVoices.length);
-          console.log('🔊 SettingsModal: Updated voice details:', updatedVoicesToShow.slice(0, 5).map(v => v.name));
+          safeDebugLog('info', 'SETTINGSMODAL', '🔊 SettingsModal: Voices updated - Total:', allUpdatedVoices.length, 'High-quality:', highQualityUpdatedVoices.length);
+          safeDebugLog('info', 'SETTINGSMODAL', '🔊 SettingsModal: Updated voice details:', updatedVoicesToShow.slice(0, 5).map(v => v.name));
           setAvailableVoices(updatedVoicesToShow);
 
           // If no voice is selected and voices are available, select the first high-quality one
@@ -722,7 +741,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
           }
         });
       } catch (error) {
-        console.error('Failed to initialize TTS service:', error);
+        safeDebugLog('error', 'SETTINGSMODAL', 'Failed to initialize TTS service:', error);
       }
     }
   }, [isOpen, formData?.ui]);
@@ -777,7 +796,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
           )}
           <Button
             onClick={() => {
-              console.log('🔧 Save button clicked - hasChanges:', hasChanges, 'formData:', formData);
+              safeDebugLog('info', 'SETTINGSMODAL', '🔧 Save button clicked - hasChanges:', hasChanges, 'formData:', formData);
               handleSave();
             }}
             disabled={isLoading || !hasChanges}
@@ -1036,7 +1055,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                             size="sm"
                             onClick={() => {
                               try {
-                                console.log('🔊 Manual voice refresh triggered');
+                                safeDebugLog('info', 'SETTINGSMODAL', '🔊 Manual voice refresh triggered');
                                 const ttsService = getTTSService(ttsSettings);
 
                                 // Force voice reload
@@ -1046,16 +1065,16 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
                                   // Trigger voice loading
                                   const voices = window.speechSynthesis.getVoices();
-                                  console.log('🔊 Manual refresh: Found', voices.length, 'voices');
+                                  safeDebugLog('info', 'SETTINGSMODAL', '🔊 Manual refresh: Found', voices.length, 'voices');
 
                                   // Update available voices
                                   const sortedVoices = ttsService.getAllVoicesWithQualityInfo();
                                   setAvailableVoices(sortedVoices);
 
-                                  console.log('🔊 Manual refresh: Updated to', sortedVoices.length, 'voices');
+                                  safeDebugLog('info', 'SETTINGSMODAL', '🔊 Manual refresh: Updated to', sortedVoices.length, 'voices');
                                 }
                               } catch (error) {
-                                console.error('🔊 Failed to refresh voices:', error);
+                                safeDebugLog('error', 'SETTINGSMODAL', '🔊 Failed to refresh voices:', error);
                               }
                             }}
                             className="text-xs"
@@ -1211,7 +1230,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               const ttsService = getTTSService(ttsSettings);
                               ttsService.speak("Hello! This is a test of the text to speech functionality. How does it sound?");
                             } catch (error) {
-                              console.error('Failed to test TTS:', error);
+                              safeDebugLog('error', 'SETTINGSMODAL', 'Failed to test TTS:', error);
                             }
                           }}
                           className="w-full"
@@ -1437,7 +1456,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               size="sm"
                               enabled={server.enabled}
                               onToggle={(enabled) => {
-                                console.log('🔧 MCP Server toggle clicked:', server.name, 'id:', server.id, 'enabled:', enabled);
+                                safeDebugLog('info', 'SETTINGSMODAL', '🔧 MCP Server toggle clicked:', server.name, 'id:', server.id, 'enabled:', enabled);
                                 handleToggleMcpServer(server.id, enabled);
                               }}
                             />
@@ -1445,7 +1464,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                               variant="ghost"
                               size="sm"
                               onClick={() => {
-                                console.log('🔧 Edit MCP server:', server.name);
+                                safeDebugLog('info', 'SETTINGSMODAL', '🔧 Edit MCP server:', server.name);
                                 if (editingMcpServer?.id === server.id) {
                                   // If already editing this server, close the form
                                   setEditingMcpServer(null);
@@ -1719,7 +1738,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                                     setNewDirectory(selectedPath);
                                   }
                                 } catch (error) {
-                                  console.error('Failed to select directory:', error);
+                                  safeDebugLog('error', 'SETTINGSMODAL', 'Failed to select directory:', error);
                                 }
                               }
                             }}
@@ -1876,7 +1895,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
                         // Apply theme change immediately
                         if (typeof window !== 'undefined' && window.electronAPI) {
-                          console.log('Applying theme preset change immediately:', theme.colors);
+                          safeDebugLog('info', 'SETTINGSMODAL', 'Applying theme preset change immediately:', theme.colors);
                           window.electronAPI.notifyThemeChange({
                             customColors: theme.colors,
                             useCustomColors: false
@@ -1918,7 +1937,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
                         // Apply theme change immediately
                         if (typeof window !== 'undefined' && window.electronAPI) {
-                          console.log('Applying theme change immediately:', colorsToApply);
+                          safeDebugLog('info', 'SETTINGSMODAL', 'Applying theme change immediately:', colorsToApply);
                           window.electronAPI.notifyThemeChange({
                             customColors: colorsToApply,
                             useCustomColors: value === 'custom'
@@ -1961,7 +1980,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
-                                console.log('Applying background color change immediately:', newColors);
+                                safeDebugLog('info', 'SETTINGSMODAL', 'Applying background color change immediately:', newColors);
                                 window.electronAPI.notifyThemeChange({
                                   customColors: newColors,
                                   useCustomColors: true
@@ -1992,7 +2011,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
-                                console.log('Applying foreground color change immediately:', newColors);
+                                safeDebugLog('info', 'SETTINGSMODAL', 'Applying foreground color change immediately:', newColors);
                                 window.electronAPI.notifyThemeChange({
                                   customColors: newColors,
                                   useCustomColors: true
@@ -2023,7 +2042,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
-                                console.log('Applying primary color change immediately:', newColors);
+                                safeDebugLog('info', 'SETTINGSMODAL', 'Applying primary color change immediately:', newColors);
                                 window.electronAPI.notifyThemeChange({
                                   customColors: newColors,
                                   useCustomColors: true
@@ -2054,7 +2073,7 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
 
                               // Apply color change immediately
                               if (typeof window !== 'undefined' && window.electronAPI) {
-                                console.log('Applying secondary color change immediately:', newColors);
+                                safeDebugLog('info', 'SETTINGSMODAL', 'Applying secondary color change immediately:', newColors);
                                 window.electronAPI.notifyThemeChange({
                                   customColors: newColors,
                                   useCustomColors: true

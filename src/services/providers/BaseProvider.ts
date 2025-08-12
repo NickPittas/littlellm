@@ -10,6 +10,7 @@ import {
   ProviderCapabilities
 } from './types';
 import { TokenEstimator } from './utils';
+import { debugLogger } from '../debugLogger';
 
 // Interface that all LLM providers must implement
 export interface ILLMProvider {

@@ -2,6 +2,28 @@
 // EXACT copy from original llmService.ts generateSimpleToolInstructions method
 // This is the complete tool calling prompt used for Ollama
 
+
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 export function generateOllamaToolPrompt(tools: unknown[]): string {
   // Type guard for tool objects - supports both OpenAI format and direct name format
   const isToolObject = (t: unknown): t is {
@@ -17,8 +39,8 @@ export function generateOllamaToolPrompt(tools: unknown[]): string {
     .map(tool => tool.function?.name || tool.name)  // Support both formats
     .filter(Boolean);
 
-  console.log(`🔧 generateOllamaToolPrompt: Extracted ${availableToolNames.length} tool names from ${tools.length} tools:`, availableToolNames);
-  console.log(`🔧 generateOllamaToolPrompt: Sample tool structure:`, tools[0]);
+  safeDebugLog('info', 'OLLAMA', `🔧 generateOllamaToolPrompt: Extracted ${availableToolNames.length} tool names from ${tools.length} tools:`, availableToolNames);
+  safeDebugLog('info', 'OLLAMA', `🔧 generateOllamaToolPrompt: Sample tool structure:`, tools[0]);
 
   const instructions = `
 # Concise Universal AI Assistant System Prompt

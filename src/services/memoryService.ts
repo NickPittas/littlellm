@@ -3,6 +3,28 @@
  * Handles persistent memory storage, retrieval, and search functionality
  */
 
+
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 import { 
   MemoryEntry, 
   MemoryIndex, 
@@ -44,7 +66,7 @@ class MemoryService {
               timestamp: new Date(entry.timestamp)
             }))
           };
-          console.log(`Loaded ${this.memoryIndex?.entries.length || 0} memory entries from disk`);
+          safeDebugLog('info', 'MEMORYSERVICE', `Loaded ${this.memoryIndex?.entries.length || 0} memory entries from disk`);
         } else {
           // Create new index if none exists
           this.memoryIndex = {
@@ -54,7 +76,7 @@ class MemoryService {
             version: this.MEMORY_VERSION
           };
           await this.saveIndex();
-          console.log('Created new memory index');
+          safeDebugLog('info', 'MEMORYSERVICE', 'Created new memory index');
         }
       } else {
         // Fallback for non-Electron environments
@@ -66,7 +88,7 @@ class MemoryService {
         };
       }
     } catch (error) {
-      console.error('Failed to initialize memory service:', error);
+      safeDebugLog('error', 'MEMORYSERVICE', 'Failed to initialize memory service:', error);
       this.memoryIndex = {
         entries: [],
         lastUpdated: new Date(),
@@ -94,14 +116,14 @@ class MemoryService {
 
         const success = await window.electronAPI.saveMemoryIndex(serializedIndex as unknown as MemoryIndex);
         if (success) {
-          console.log('Memory index saved successfully');
+          safeDebugLog('info', 'MEMORYSERVICE', 'Memory index saved successfully');
         } else {
-          console.error('Failed to save memory index');
+          safeDebugLog('error', 'MEMORYSERVICE', 'Failed to save memory index');
         }
         return success;
       }
     } catch (error) {
-      console.error('Error saving memory index:', error);
+      safeDebugLog('error', 'MEMORYSERVICE', 'Error saving memory index:', error);
     }
     return false;
   }
@@ -180,7 +202,7 @@ class MemoryService {
         message: `Memory stored successfully with ID: ${id}`
       };
     } catch (error) {
-      console.error('Error storing memory:', error);
+      safeDebugLog('error', 'MEMORYSERVICE', 'Error storing memory:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -229,7 +251,7 @@ class MemoryService {
         error: 'Memory retrieval not available in this environment'
       };
     } catch (error) {
-      console.error('Error retrieving memory:', error);
+      safeDebugLog('error', 'MEMORYSERVICE', 'Error retrieving memory:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -383,7 +405,7 @@ class MemoryService {
         }
       };
     } catch (error) {
-      console.error('Error searching memories:', error);
+      safeDebugLog('error', 'MEMORYSERVICE', 'Error searching memories:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -508,7 +530,7 @@ class MemoryService {
         error: 'Memory update not available in this environment'
       };
     } catch (error) {
-      console.error('Error updating memory:', error);
+      safeDebugLog('error', 'MEMORYSERVICE', 'Error updating memory:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -550,7 +572,7 @@ class MemoryService {
         error: 'Memory deletion not available in this environment'
       };
     } catch (error) {
-      console.error('Error deleting memory:', error);
+      safeDebugLog('error', 'MEMORYSERVICE', 'Error deleting memory:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'
@@ -614,7 +636,7 @@ class MemoryService {
         data: memoryStats
       };
     } catch (error) {
-      console.error('Error getting memory stats:', error);
+      safeDebugLog('error', 'MEMORYSERVICE', 'Error getting memory stats:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred'

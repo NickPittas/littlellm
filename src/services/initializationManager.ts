@@ -1,11 +1,32 @@
 /**
  * Initialization Manager
- * 
+ *
  * Centralized service to manage initialization state and prevent duplicate initialization
  * across all services in the application.
  */
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 export interface InitializationState {
+
   isInitialized: boolean;
   isInitializing: boolean;
   initializationPromise: Promise<void> | null;
@@ -90,14 +111,14 @@ class InitializationManager {
         state.isInitialized = true;
         state.isInitializing = false;
         state.initializationPromise = null;
-        console.log(`✅ ${serviceName} initialized successfully`);
+        safeDebugLog('info', 'INITIALIZATIONMANAGER', `✅ ${serviceName} initialized successfully`);
         return result;
       } catch (error) {
         state.isInitialized = false;
         state.isInitializing = false;
         state.initializationPromise = null;
         state.error = error instanceof Error ? error : new Error(String(error));
-        console.error(`❌ ${serviceName} initialization failed:`, error);
+        safeDebugLog('error', 'INITIALIZATIONMANAGER', `❌ ${serviceName} initialization failed:`, error);
         throw error;
       }
     })();
@@ -170,7 +191,7 @@ class InitializationManager {
    */
   setGlobalInitialized(): void {
     this.globalInitialized = true;
-    console.log('🎯 Global application initialization complete');
+    safeDebugLog('info', 'INITIALIZATIONMANAGER', '🎯 Global application initialization complete');
   }
 
   /**
@@ -191,7 +212,7 @@ class InitializationManager {
       await Promise.all(promises);
       this.setGlobalInitialized();
     } catch (error) {
-      console.error('❌ Not all services initialized successfully:', error);
+      safeDebugLog('error', 'INITIALIZATIONMANAGER', '❌ Not all services initialized successfully:', error);
       throw error;
     }
   }

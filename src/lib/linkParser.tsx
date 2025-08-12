@@ -1,5 +1,24 @@
 import React from 'react';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 /**
  * Regular expression to detect HTTP and HTTPS URLs in text
  * Matches URLs with or without www, with various TLDs, paths, query parameters, and fragments
@@ -133,7 +152,7 @@ function handleLinkClick(url: string) {
     window.electronAPI.openExternalLink(url);
   } else {
     // Fallback for non-Electron environments (development)
-    console.log('Would open URL:', url);
+    safeDebugLog('info', 'LINKPARSER', 'Would open URL:', url);
     // In a web environment, we could use window.open
     // window.open(url, '_blank', 'noopener,noreferrer');
   }

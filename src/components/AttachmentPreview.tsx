@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { X, File, Image, FileText, FileSpreadsheet, Presentation, Calendar, Code, Zap, FileSearch } from 'lucide-react';
 import { PROVIDER_CAPABILITIES } from '../services/providers/constants';
 import { ImageViewer } from './ImageViewer';
+import { debugLogger } from '../services/debugLogger';
 
 interface AttachmentPreviewProps {
   files: File[];

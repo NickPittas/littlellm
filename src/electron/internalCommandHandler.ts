@@ -8,6 +8,26 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 import {
   CommandResult,
   InternalCommandConfig,
@@ -44,25 +64,25 @@ export class ElectronInternalCommandHandler {
    */
   private setupIpcHandlers(): void {
     // IPC handlers moved to main.ts setupIPC() function to prevent duplicate registration
-    console.log('🔧 Internal command handler initialized (IPC handlers in main.ts)');
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', '🔧 Internal command handler initialized (IPC handlers in main.ts)');
   }
 
   /**
    * Public methods for main process integration
    */
   public async setConfig(config: InternalCommandConfig): Promise<boolean> {
-    console.log(`🔧 ElectronInternalCommandHandler.setConfig() called with enabled: ${config.enabled}`);
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 ElectronInternalCommandHandler.setConfig() called with enabled: ${config.enabled}`);
     this.config = config;
-    console.log(`🔧 Config updated - enabled: ${this.config?.enabled}, has enabledCommands: ${!!this.config?.enabledCommands}`);
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Config updated - enabled: ${this.config?.enabled}, has enabledCommands: ${!!this.config?.enabledCommands}`);
     return true;
   }
 
   public async getTools(): Promise<Array<{name: string; description: string; category: string; inputSchema: unknown}>> {
     const tools = this.getAvailableTools();
-    console.log(`🔧 InternalCommandHandler.getTools() called - returning ${tools.length} tools`);
-    console.log(`🔧 Config enabled: ${this.config?.enabled}, has config: ${!!this.config}`);
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 InternalCommandHandler.getTools() called - returning ${tools.length} tools`);
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Config enabled: ${this.config?.enabled}, has config: ${!!this.config}`);
     if (tools.length > 0) {
-      console.log(`🔧 Sample tools:`, tools.slice(0, 3).map(t => ({ name: t.name, category: t.category })));
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Sample tools:`, tools.slice(0, 3).map(t => ({ name: t.name, category: t.category })));
     }
     return tools;
   }
@@ -97,7 +117,7 @@ export class ElectronInternalCommandHandler {
       return result;
 
     } catch (error) {
-      console.error(`❌ Internal command failed: ${toolName}`, error);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `❌ Internal command failed: ${toolName}`, error);
       
       return {
         success: false,
@@ -117,7 +137,7 @@ export class ElectronInternalCommandHandler {
    * Execute specific command based on tool name
    */
   private async executeSpecificCommand(toolName: string, args: unknown): Promise<CommandResult> {
-    console.log(`🔧 Executing internal command: ${toolName}`, args);
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Executing internal command: ${toolName}`, args);
 
     // Terminal commands
     if (toolName === 'start_process') {
@@ -176,22 +196,22 @@ export class ElectronInternalCommandHandler {
    */
   private validateFilePath(filePath: string): void {
     if (!this.config) {
-      console.error('🚨 validateFilePath: Configuration not initialized');
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', '🚨 validateFilePath: Configuration not initialized');
       throw new Error('Configuration not initialized');
     }
 
     const allowedDirs = this.config.allowedDirectories;
-    console.log(`🔧 validateFilePath: Checking path "${filePath}" against allowed directories:`, allowedDirs);
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 validateFilePath: Checking path "${filePath}" against allowed directories:`, allowedDirs);
 
     // If no allowed directories configured, deny all access
     if (allowedDirs.length === 0) {
-      console.error('🚨 validateFilePath: No allowed directories configured - blocking all file operations');
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', '🚨 validateFilePath: No allowed directories configured - blocking all file operations');
       throw new Error('No allowed directories configured. Please configure allowed directories in settings.');
     }
 
     // Resolve the absolute path
     const absolutePath = path.resolve(filePath);
-    console.log(`🔧 validateFilePath: Resolved absolute path: "${absolutePath}"`);
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 validateFilePath: Resolved absolute path: "${absolutePath}"`);
 
     // Check if path is within any allowed directory
     const isAllowed = allowedDirs.some(allowedDir => {
@@ -203,7 +223,7 @@ export class ElectronInternalCommandHandler {
 
       // Check if paths are exactly equal (for accessing the directory itself)
       if (normalizedPath === normalizedAllowedDir) {
-        console.log(`🔧 validateFilePath: Exact match "${absolutePath}" === "${absoluteAllowedDir}" -> true`);
+        safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 validateFilePath: Exact match "${absolutePath}" === "${absoluteAllowedDir}" -> true`);
         return true;
       }
 
@@ -211,18 +231,18 @@ export class ElectronInternalCommandHandler {
       const allowedDirWithSlash = normalizedAllowedDir.endsWith('/') ? normalizedAllowedDir : normalizedAllowedDir + '/';
       const isWithinDir = normalizedPath.startsWith(allowedDirWithSlash);
 
-      console.log(`🔧 validateFilePath: Checking "${normalizedPath}" against "${allowedDirWithSlash}" -> ${isWithinDir}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 validateFilePath: Checking "${normalizedPath}" against "${allowedDirWithSlash}" -> ${isWithinDir}`);
       return isWithinDir;
     });
 
     if (!isAllowed) {
-      console.error(`🚨 validateFilePath: Access denied for path "${filePath}" (resolved: "${absolutePath}")`);
-      console.error(`🚨 validateFilePath: Allowed directories:`, allowedDirs.map(dir => path.resolve(dir)));
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `🚨 validateFilePath: Access denied for path "${filePath}" (resolved: "${absolutePath}")`);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `🚨 validateFilePath: Allowed directories:`, allowedDirs.map(dir => path.resolve(dir)));
 
       throw new Error(`Access denied: Path '${filePath}' is not within allowed directories`);
     }
 
-    console.log(`✅ validateFilePath: Path "${filePath}" is allowed`);
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `✅ validateFilePath: Path "${filePath}" is allowed`);
   }
 
   /**
@@ -297,7 +317,7 @@ export class ElectronInternalCommandHandler {
         }, args.timeout_ms);
       }
 
-      console.log(`🚀 Started process ${pid}: ${args.command}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🚀 Started process ${pid}: ${args.command}`);
 
       return this.createSuccessResponse(
         `Process started successfully:\nPID: ${pid}\nCommand: ${args.command}\nStatus: running\nStarted: ${startTime.toISOString()}`
@@ -422,13 +442,13 @@ export class ElectronInternalCommandHandler {
         command = 'ps aux --sort=-%cpu | head -21';
       }
 
-      console.log(`🔧 Executing system command: ${command}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Executing system command: ${command}`);
       const { stdout } = await execAsync(command);
-      console.log(`🔧 Command output length: ${stdout.length} characters`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Command output length: ${stdout.length} characters`);
 
       return this.createSuccessResponse(stdout);
     } catch (error) {
-      console.error(`🔧 listProcesses error:`, error);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `🔧 listProcesses error:`, error);
       return this.createErrorResponse(error instanceof Error ? error.message : String(error));
     }
   }
@@ -452,13 +472,13 @@ export class ElectronInternalCommandHandler {
         command = 'top -bn1 | grep "Cpu(s)" | head -1';
       }
 
-      console.log(`🔧 Executing CPU usage command: ${command}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Executing CPU usage command: ${command}`);
       const { stdout } = await execAsync(command);
-      console.log(`🔧 CPU usage output: ${stdout}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 CPU usage output: ${stdout}`);
 
       return this.createSuccessResponse(`Current CPU Usage:\n${stdout}`);
     } catch (error) {
-      console.error(`🔧 getCpuUsage error:`, error);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `🔧 getCpuUsage error:`, error);
       return this.createErrorResponse(`Failed to get CPU usage: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -482,13 +502,13 @@ export class ElectronInternalCommandHandler {
         command = 'free -h';
       }
 
-      console.log(`🔧 Executing memory usage command: ${command}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Executing memory usage command: ${command}`);
       const { stdout } = await execAsync(command);
-      console.log(`🔧 Memory usage output length: ${stdout.length} characters`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Memory usage output length: ${stdout.length} characters`);
 
       return this.createSuccessResponse(`Current Memory Usage:\n${stdout}`);
     } catch (error) {
-      console.error(`🔧 getMemoryUsage error:`, error);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `🔧 getMemoryUsage error:`, error);
       return this.createErrorResponse(`Failed to get memory usage: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -520,13 +540,13 @@ export class ElectronInternalCommandHandler {
         ];
       }
 
-      console.log(`🔧 Executing system info commands for ${process.platform}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Executing system info commands for ${process.platform}`);
       const results = await Promise.all(commands.map(cmd => execAsync(cmd)));
       const output = results.map((result, index) => `Command ${index + 1}:\n${result.stdout}`).join('\n\n---\n\n');
 
       return this.createSuccessResponse(`System Information:\n${output}`);
     } catch (error) {
-      console.error(`🔧 getSystemInfo error:`, error);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `🔧 getSystemInfo error:`, error);
       return this.createErrorResponse(`Failed to get system info: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -554,7 +574,7 @@ export class ElectronInternalCommandHandler {
       const actualArgs = 'path' in args ? args : args.input;
       const { path: filePath, isUrl, offset, length } = actualArgs;
 
-      console.log(`🔧 readFile called with path: ${filePath}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 readFile called with path: ${filePath}`);
 
       if (isUrl) {
         return this.readFromUrl(filePath);
@@ -594,17 +614,17 @@ export class ElectronInternalCommandHandler {
    */
   private async writeFile(args: { path: string; content: string; append?: boolean } | { path: string; content: string; mode?: 'rewrite' | 'append' }): Promise<CommandResult> {
     try {
-      console.log(`🔧 writeFile called with:`, { path: args.path, contentLength: args.content?.length, args });
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 writeFile called with:`, { path: args.path, contentLength: args.content?.length, args });
       this.validateFilePath(args.path);
 
       // Handle both parameter formats: append boolean or mode string
       const shouldAppend = 'append' in args ? args.append : ('mode' in args && args.mode === 'append');
 
       if (shouldAppend) {
-        console.log(`🔧 writeFile: Appending to ${args.path}`);
+        safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 writeFile: Appending to ${args.path}`);
         await fs.appendFile(args.path, args.content);
       } else {
-        console.log(`🔧 writeFile: Writing to ${args.path}`);
+        safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 writeFile: Writing to ${args.path}`);
         await fs.writeFile(args.path, args.content, 'utf8');
       }
 
@@ -612,11 +632,11 @@ export class ElectronInternalCommandHandler {
       const lineCount = lines.length;
       const modeMessage = shouldAppend ? 'appended to' : 'wrote to';
 
-      console.log(`✅ writeFile: Successfully ${modeMessage} ${args.path} (${lineCount} lines)`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `✅ writeFile: Successfully ${modeMessage} ${args.path} (${lineCount} lines)`);
       return this.createSuccessResponse(`Successfully ${modeMessage} ${args.path} (${lineCount} lines)`);
 
     } catch (error) {
-      console.error(`❌ writeFile error:`, error);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `❌ writeFile error:`, error);
       return this.createErrorResponse(error instanceof Error ? error.message : String(error));
     }
   }
@@ -626,13 +646,13 @@ export class ElectronInternalCommandHandler {
    */
   private async createDirectory(args: { path: string }): Promise<CommandResult> {
     try {
-      console.log(`🔧 createDirectory called with path: ${args.path}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 createDirectory called with path: ${args.path}`);
       this.validateFilePath(args.path);
       await fs.mkdir(args.path, { recursive: true });
-      console.log(`✅ createDirectory: Successfully created directory ${args.path}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `✅ createDirectory: Successfully created directory ${args.path}`);
       return this.createSuccessResponse(`Successfully created directory ${args.path}`);
     } catch (error) {
-      console.error(`❌ createDirectory error:`, error);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `❌ createDirectory error:`, error);
       return this.createErrorResponse(error instanceof Error ? error.message : String(error));
     }
   }
@@ -645,17 +665,17 @@ export class ElectronInternalCommandHandler {
       // Handle both direct path and nested input format
       const path = 'path' in args ? args.path : args.input.path;
 
-      console.log(`🔧 listDirectory called with path: ${path}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 listDirectory called with path: ${path}`);
       this.validateFilePath(path);
       const entries = await fs.readdir(path, { withFileTypes: true });
       const result = entries.map(entry => {
         const prefix = entry.isDirectory() ? '[DIR]' : '[FILE]';
         return `${prefix} ${entry.name}`;
       }).join('\n');
-      console.log(`🔧 listDirectory result: ${entries.length} entries found`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 listDirectory result: ${entries.length} entries found`);
       return this.createSuccessResponse(result);
     } catch (error) {
-      console.error(`🔧 listDirectory error:`, error);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `🔧 listDirectory error:`, error);
       return this.createErrorResponse(error instanceof Error ? error.message : String(error));
     }
   }
@@ -737,7 +757,7 @@ export class ElectronInternalCommandHandler {
    */
   private async deleteFile(args: { path: string; useRecycleBin?: boolean }): Promise<CommandResult> {
     try {
-      console.log(`🔧 deleteFile called with:`, args);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 deleteFile called with:`, args);
       this.validateFilePath(args.path);
 
       const useRecycleBin = args.useRecycleBin !== false; // Default to true
@@ -751,9 +771,9 @@ export class ElectronInternalCommandHandler {
           const escapedPath = args.path.replace(/'/g, "''");
           const command = `powershell -Command "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile('${escapedPath}', 'OnlyErrorDialogs', 'SendToRecycleBin')"`;
 
-          console.log(`🔧 deleteFile: Moving to Recycle Bin: ${args.path}`);
+          safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 deleteFile: Moving to Recycle Bin: ${args.path}`);
           await execAsync(command);
-          console.log(`✅ deleteFile: Successfully moved to Recycle Bin: ${args.path}`);
+          safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `✅ deleteFile: Successfully moved to Recycle Bin: ${args.path}`);
 
           return this.createSuccessResponse(`Successfully moved to Recycle Bin: ${args.path}`);
         } else {
@@ -783,18 +803,18 @@ export class ElectronInternalCommandHandler {
         }
       } else {
         // Permanent deletion
-        console.log(`🔧 deleteFile: Permanently deleting: ${args.path}`);
+        safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 deleteFile: Permanently deleting: ${args.path}`);
         const stats = await fs.stat(args.path);
         if (stats.isDirectory()) {
           await fs.rmdir(args.path, { recursive: true });
         } else {
           await fs.unlink(args.path);
         }
-        console.log(`✅ deleteFile: Successfully permanently deleted: ${args.path}`);
+        safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `✅ deleteFile: Successfully permanently deleted: ${args.path}`);
         return this.createSuccessResponse(`Successfully permanently deleted: ${args.path}`);
       }
     } catch (error) {
-      console.error(`❌ deleteFile error:`, error);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `❌ deleteFile error:`, error);
       return this.createErrorResponse(error instanceof Error ? error.message : String(error));
     }
   }
@@ -859,11 +879,11 @@ export class ElectronInternalCommandHandler {
    * Get available tools based on configuration
    */
   private getAvailableTools(): Array<{name: string; description: string; category: string; inputSchema: unknown}> {
-    console.log(`🔧 ElectronInternalCommandHandler.getAvailableTools() called`);
-    console.log(`🔧 Config exists: ${!!this.config}, enabled: ${this.config?.enabled}`);
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 ElectronInternalCommandHandler.getAvailableTools() called`);
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Config exists: ${!!this.config}, enabled: ${this.config?.enabled}`);
 
     if (!this.config?.enabled) {
-      console.log(`🔧 Internal commands disabled or no config, returning empty array`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Internal commands disabled or no config, returning empty array`);
       return [];
     }
 
@@ -893,13 +913,13 @@ export class ElectronInternalCommandHandler {
     // Add system commands if enabled
     if (this.config.enabledCommands.system) {
       const systemTools = this.getSystemCommandDefinitions();
-      console.log(`🔧 Adding ${systemTools.length} system tools`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Adding ${systemTools.length} system tools`);
       tools.push(...systemTools);
     }
 
-    console.log(`🔧 Total tools generated: ${tools.length}`);
+    safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Total tools generated: ${tools.length}`);
     if (tools.length > 0) {
-      console.log(`🔧 Sample tools:`, tools.slice(0, 3).map(t => ({ name: t.name, category: t.category })));
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🔧 Sample tools:`, tools.slice(0, 3).map(t => ({ name: t.name, category: t.category })));
     }
 
     return tools;
@@ -1296,12 +1316,12 @@ export class ElectronInternalCommandHandler {
   private setupProcessHandlers(session: ElectronProcessSession, childProcess: ChildProcess): void {
     childProcess.on('close', (code) => {
       session.status = code === 0 ? 'finished' : 'error';
-      console.log(`📋 Process ${session.pid} closed with code ${code}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `📋 Process ${session.pid} closed with code ${code}`);
     });
 
     childProcess.on('error', (error) => {
       session.status = 'error';
-      console.error(`❌ Process ${session.pid} error:`, error);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `❌ Process ${session.pid} error:`, error);
     });
 
     // Detect if process is blocked (waiting for input)
@@ -1400,11 +1420,11 @@ export class ElectronInternalCommandHandler {
       session.status = 'finished';
       this.sessions.delete(pid);
 
-      console.log(`🛑 Terminated process ${pid}`);
+      safeDebugLog('info', 'INTERNALCOMMANDHANDLER', `🛑 Terminated process ${pid}`);
       return true;
 
     } catch (error) {
-      console.error(`❌ Failed to terminate process ${pid}:`, error);
+      safeDebugLog('error', 'INTERNALCOMMANDHANDLER', `❌ Failed to terminate process ${pid}:`, error);
       return false;
     }
   }
@@ -1502,7 +1522,7 @@ export class ElectronInternalCommandHandler {
       }
     } catch (error) {
       // Ignore permission errors and continue
-      console.warn(`Search warning for ${dirPath}:`, error);
+      safeDebugLog('warn', 'INTERNALCOMMANDHANDLER', `Search warning for ${dirPath}:`, error);
     }
 
     return results;

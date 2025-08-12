@@ -7,6 +7,25 @@ import { spawn, ChildProcess } from 'child_process';
 import { ProcessSession, ProcessInfo } from '../types/internalCommands';
 import { EventEmitter } from 'events';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 class ProcessManager extends EventEmitter {
   private sessions: Map<number, ProcessSession> = new Map();
   private nextPid = 1000; // Start with a high number to avoid conflicts
@@ -64,7 +83,7 @@ class ProcessManager extends EventEmitter {
         }, timeout);
       }
 
-      console.log(`🚀 Started process ${pid}: ${command}`);
+      safeDebugLog('info', 'PROCESSMANAGER', `🚀 Started process ${pid}: ${command}`);
 
       return {
         pid,
@@ -76,7 +95,7 @@ class ProcessManager extends EventEmitter {
       };
 
     } catch (error) {
-      console.error(`❌ Failed to start process: ${command}`, error);
+      safeDebugLog('error', 'PROCESSMANAGER', `❌ Failed to start process: ${command}`, error);
       throw new Error(`Failed to start process: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -197,11 +216,11 @@ class ProcessManager extends EventEmitter {
       session.status = 'finished';
       this.sessions.delete(pid);
       
-      console.log(`🛑 Terminated process ${pid}`);
+      safeDebugLog('info', 'PROCESSMANAGER', `🛑 Terminated process ${pid}`);
       return true;
 
     } catch (error) {
-      console.error(`❌ Failed to terminate process ${pid}:`, error);
+      safeDebugLog('error', 'PROCESSMANAGER', `❌ Failed to terminate process ${pid}:`, error);
       return false;
     }
   }
@@ -228,7 +247,7 @@ class ProcessManager extends EventEmitter {
       process.kill(pid, 'SIGTERM');
       return true;
     } catch (error) {
-      console.error(`❌ Failed to kill process ${pid}:`, error);
+      safeDebugLog('error', 'PROCESSMANAGER', `❌ Failed to kill process ${pid}:`, error);
       return false;
     }
   }
@@ -270,12 +289,12 @@ class ProcessManager extends EventEmitter {
   private setupProcessHandlers(session: ProcessSession, childProcess: ChildProcess): void {
     childProcess.on('close', (code) => {
       session.status = code === 0 ? 'finished' : 'error';
-      console.log(`📋 Process ${session.pid} closed with code ${code}`);
+      safeDebugLog('info', 'PROCESSMANAGER', `📋 Process ${session.pid} closed with code ${code}`);
     });
 
     childProcess.on('error', (error) => {
       session.status = 'error';
-      console.error(`❌ Process ${session.pid} error:`, error);
+      safeDebugLog('error', 'PROCESSMANAGER', `❌ Process ${session.pid} error:`, error);
     });
 
     // Detect if process is blocked (waiting for input)
@@ -302,7 +321,7 @@ class ProcessManager extends EventEmitter {
    */
   private setupCleanup(): void {
     const cleanup = () => {
-      console.log('🧹 Cleaning up process manager...');
+      safeDebugLog('info', 'PROCESSMANAGER', '🧹 Cleaning up process manager...');
       for (const [pid] of this.sessions) {
         this.forceTerminate(pid);
       }

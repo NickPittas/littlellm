@@ -15,6 +15,26 @@ import {
 import { OPENAI_SYSTEM_PROMPT } from './prompts/openai';
 import { OpenAIFileService } from '../OpenAIFileService';
 import { PricingService } from '../pricingService';
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 // import { RAGService } from '../RAGService'; // Moved to Electron main process, accessed via IPC
 
 export class OpenAIProvider extends BaseProvider {
@@ -51,16 +71,16 @@ export class OpenAIProvider extends BaseProvider {
     const hasFileUploads = this.hasDocumentUploads(message);
 
     if (hasFileUploads) {
-      console.log('🔧 OpenAI: Using Assistants API for file upload handling');
+      safeDebugLog('info', 'OPENAIPROVIDER', '🔧 OpenAI: Using Assistants API for file upload handling');
       return this.sendMessageWithAssistants(message, settings, provider, conversationHistory, onStream, signal, conversationId);
     } else {
-      console.log('🔧 OpenAI: Using Chat Completions API for fast tool calling');
+      safeDebugLog('info', 'OPENAIPROVIDER', '🔧 OpenAI: Using Chat Completions API for fast tool calling');
       return this.sendMessageWithChatCompletions(message, settings, provider, conversationHistory, onStream, signal, conversationId);
     }
   }
 
   private hasDocumentUploads(message: MessageContent): boolean {
-    console.log(`🔍 OpenAI checking for file uploads in message:`, {
+    safeDebugLog('info', 'OPENAIPROVIDER', `🔍 OpenAI checking for file uploads in message:`, {
       isArray: Array.isArray(message),
       messageType: typeof message,
       messageContent: Array.isArray(message) ? message.map(item => {
@@ -86,13 +106,13 @@ export class OpenAIProvider extends BaseProvider {
                !!extendedItem.attachment;
       });
 
-      console.log(`🔍 OpenAI file detection result:`, { hasFiles });
+      safeDebugLog('info', 'OPENAIPROVIDER', `🔍 OpenAI file detection result:`, { hasFiles });
       return hasFiles;
     }
 
     // Check if message has file properties (legacy format)
     const hasLegacyFiles = !!(message as {files?: unknown, attachments?: unknown}).files || !!(message as {files?: unknown, attachments?: unknown}).attachments;
-    console.log(`🔍 OpenAI legacy file detection result:`, { hasLegacyFiles });
+    safeDebugLog('info', 'OPENAIPROVIDER', `🔍 OpenAI legacy file detection result:`, { hasLegacyFiles });
     return hasLegacyFiles;
   }
 
@@ -145,7 +165,7 @@ export class OpenAIProvider extends BaseProvider {
             await this.addFileToVectorStore(this.vectorStoreId!, uploadedFile.id, settings);
             attachments.push({ file_id: uploadedFile.id, tools: [{ type: 'file_search' }] });
           } catch (error) {
-            console.error('Error uploading document to OpenAI:', error);
+            safeDebugLog('error', 'OPENAIPROVIDER', 'Error uploading document to OpenAI:', error);
             textContent += `\n[Error uploading document: ${item.document.name}]`;
           }
         }
@@ -196,7 +216,7 @@ export class OpenAIProvider extends BaseProvider {
     const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
     const cachingEnabled = settings.promptCachingEnabled ?? true;
 
-    console.log(`🔍 OpenAI Chat Completions system prompt source:`, {
+    safeDebugLog('info', 'OPENAIPROVIDER', `🔍 OpenAI Chat Completions system prompt source:`, {
       hasCustom: hasCustomSystemPrompt,
       usingCustom: hasCustomSystemPrompt,
       promptLength: systemPrompt?.length || 0,
@@ -208,7 +228,7 @@ export class OpenAIProvider extends BaseProvider {
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
       if (cachingEnabled && systemPrompt.length > 4096) {
-        console.log(`🔧 OpenAI: System prompt eligible for automatic caching (${systemPrompt.length} chars, ≥1024 tokens)`);
+        safeDebugLog('info', 'OPENAIPROVIDER', `🔧 OpenAI: System prompt eligible for automatic caching (${systemPrompt.length} chars, ≥1024 tokens)`);
       }
     }
 
@@ -219,7 +239,7 @@ export class OpenAIProvider extends BaseProvider {
     if (typeof message === 'string') {
       messages.push({ role: 'user', content: message });
       if (cachingEnabled && message.length > 4096) {
-        console.log(`🔧 OpenAI: User message eligible for automatic caching (${message.length} chars, ≥1024 tokens)`);
+        safeDebugLog('info', 'OPENAIPROVIDER', `🔧 OpenAI: User message eligible for automatic caching (${message.length} chars, ≥1024 tokens)`);
       }
     } else if (Array.isArray(message)) {
       // Handle ContentItem array format (images, text)
@@ -227,7 +247,7 @@ export class OpenAIProvider extends BaseProvider {
       if (cachingEnabled) {
         const totalTextLength = message.filter(item => item.type === 'text').reduce((sum, item) => sum + (item.text?.length || 0), 0);
         if (totalTextLength > 4096) {
-          console.log(`🔧 OpenAI: User message content eligible for automatic caching (${totalTextLength} chars total text, ≥1024 tokens)`);
+          safeDebugLog('info', 'OPENAIPROVIDER', `🔧 OpenAI: User message content eligible for automatic caching (${totalTextLength} chars total text, ≥1024 tokens)`);
         }
       }
     } else {
@@ -256,16 +276,16 @@ export class OpenAIProvider extends BaseProvider {
     if (mcpTools.length > 0) {
       requestBody.tools = mcpTools;
       requestBody.tool_choice = 'auto';
-      console.log(`🚀 OpenAI Chat Completions API call with ${mcpTools.length} tools:`, {
+      safeDebugLog('info', 'OPENAIPROVIDER', `🚀 OpenAI Chat Completions API call with ${mcpTools.length} tools:`, {
         model: settings.model,
         toolCount: mcpTools.length,
         conversationId: conversationId || 'none'
       });
     } else {
-      console.log(`🚀 OpenAI Chat Completions API call without tools`);
+      safeDebugLog('info', 'OPENAIPROVIDER', `🚀 OpenAI Chat Completions API call without tools`);
     }
 
-    console.log('🔍 OpenAI Chat Completions request body:', JSON.stringify(requestBody, null, 2));
+    safeDebugLog('info', 'OPENAIPROVIDER', '🔍 OpenAI Chat Completions request body:', JSON.stringify(requestBody, null, 2));
 
     const response = await fetch(`${provider.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -277,11 +297,11 @@ export class OpenAIProvider extends BaseProvider {
       signal
     });
 
-    console.log('🔍 OpenAI Chat Completions response status:', response.status, response.statusText);
+    safeDebugLog('info', 'OPENAIPROVIDER', '🔍 OpenAI Chat Completions response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('❌ OpenAI Chat Completions API error response:', error);
+      safeDebugLog('error', 'OPENAIPROVIDER', '❌ OpenAI Chat Completions API error response:', error);
 
       if (response.status === 401) {
         throw new Error(`OpenAI API authentication failed. Please check your API key in Settings. Error: ${error}`);
@@ -289,7 +309,7 @@ export class OpenAIProvider extends BaseProvider {
 
       // Check if it's a token limit error - fallback to Assistants API
       if (response.status === 429 && error.includes('Request too large')) {
-        console.log('🔄 OpenAI Chat Completions request too large, falling back to Assistants API');
+        safeDebugLog('info', 'OPENAIPROVIDER', '🔄 OpenAI Chat Completions request too large, falling back to Assistants API');
         return this.sendMessageWithAssistants(message, settings, provider, conversationHistory, onStream, signal, conversationId);
       }
 
@@ -381,7 +401,7 @@ export class OpenAIProvider extends BaseProvider {
 
     // Handle tool calls if present
     if (toolCalls.length > 0) {
-      console.log(`🔧 OpenAI Chat Completions detected ${toolCalls.length} tool calls`);
+      safeDebugLog('info', 'OPENAIPROVIDER', `🔧 OpenAI Chat Completions detected ${toolCalls.length} tool calls`);
 
       // Execute tools and make follow-up call
       return this.executeToolsAndFollowUpChatCompletions(
@@ -412,7 +432,7 @@ export class OpenAIProvider extends BaseProvider {
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
-    console.log('🔍 OpenAI Chat Completions raw response:', JSON.stringify(data, null, 2));
+    safeDebugLog('info', 'OPENAIPROVIDER', '🔍 OpenAI Chat Completions raw response:', JSON.stringify(data, null, 2));
 
     const message = data.choices?.[0]?.message;
     const content = message?.content || '';
@@ -420,7 +440,7 @@ export class OpenAIProvider extends BaseProvider {
 
     // Handle tool calls if present
     if (message?.tool_calls && message.tool_calls.length > 0) {
-      console.log(`🔧 OpenAI Chat Completions detected ${message.tool_calls.length} tool calls`);
+      safeDebugLog('info', 'OPENAIPROVIDER', `🔧 OpenAI Chat Completions detected ${message.tool_calls.length} tool calls`);
       // For non-streaming, we would need to implement tool execution here
       // For now, return the response as-is
     }
@@ -450,11 +470,11 @@ export class OpenAIProvider extends BaseProvider {
     onStream: (chunk: string) => void,
     signal?: AbortSignal
   ): Promise<LLMResponse> {
-    console.log(`🚀 Executing ${toolCalls.length} OpenAI Chat Completions tools in parallel`);
+    safeDebugLog('info', 'OPENAIPROVIDER', `🚀 Executing ${toolCalls.length} OpenAI Chat Completions tools in parallel`);
 
     // Check if parallel execution methods are available
     if (!(this as any).executeMultipleToolsParallel) {
-      console.error('❌ executeMultipleToolsParallel method not available');
+      safeDebugLog('error', 'OPENAIPROVIDER', '❌ executeMultipleToolsParallel method not available');
       throw new Error('Tool execution method not available');
     }
 
@@ -469,7 +489,7 @@ export class OpenAIProvider extends BaseProvider {
       'openai'
     );
 
-    console.log(`🏁 OpenAI Chat Completions tool execution completed: ${parallelResults.filter((r: {success: boolean}) => r.success).length}/${parallelResults.length} successful`);
+    safeDebugLog('info', 'OPENAIPROVIDER', `🏁 OpenAI Chat Completions tool execution completed: ${parallelResults.filter((r: {success: boolean}) => r.success).length}/${parallelResults.length} successful`);
 
     // Build messages for follow-up call
     const userMessages = conversationHistory.filter(msg => msg.role !== 'system');
@@ -511,7 +531,7 @@ export class OpenAIProvider extends BaseProvider {
       ...toolResults
     ];
 
-    console.log(`🔍 OpenAI Chat Completions follow-up messages:`, {
+    safeDebugLog('info', 'OPENAIPROVIDER', `🔍 OpenAI Chat Completions follow-up messages:`, {
       messageCount: followUpMessages.length,
       systemPromptLength: followUpSystemPrompt.length,
       assistantContent: assistantContent.substring(0, 100) + '...',
@@ -525,7 +545,7 @@ export class OpenAIProvider extends BaseProvider {
 
     // Get tools for continued agentic behavior in follow-up call
     const followUpTools = await this.getMCPToolsForProvider('openai', settings);
-    console.log(`🔄 Making OpenAI Chat Completions follow-up call with ${followUpTools.length} tools available for continued agentic behavior`);
+    safeDebugLog('info', 'OPENAIPROVIDER', `🔄 Making OpenAI Chat Completions follow-up call with ${followUpTools.length} tools available for continued agentic behavior`);
 
     const followUpRequestBody = {
       model: settings.model,
@@ -550,10 +570,10 @@ export class OpenAIProvider extends BaseProvider {
       signal
     });
 
-    console.log(`🔍 OpenAI Chat Completions follow-up response status:`, followUpResponse.status, followUpResponse.statusText);
+    safeDebugLog('info', 'OPENAIPROVIDER', `🔍 OpenAI Chat Completions follow-up response status:`, followUpResponse.status, followUpResponse.statusText);
 
     if (followUpResponse.ok) {
-      console.log(`✅ Starting OpenAI Chat Completions follow-up streaming response`);
+      safeDebugLog('info', 'OPENAIPROVIDER', `✅ Starting OpenAI Chat Completions follow-up streaming response`);
 
       try {
         // Stream the follow-up response with updated conversation history for agentic behavior
@@ -566,7 +586,7 @@ export class OpenAIProvider extends BaseProvider {
           signal
         );
 
-        console.log(`✅ OpenAI Chat Completions follow-up streaming completed:`, {
+        safeDebugLog('info', 'OPENAIPROVIDER', `✅ OpenAI Chat Completions follow-up streaming completed:`, {
           contentLength: followUpResult.content?.length || 0,
           hasUsage: !!followUpResult.usage,
           hasToolCalls: !!followUpResult.toolCalls,
@@ -585,7 +605,7 @@ export class OpenAIProvider extends BaseProvider {
         const followUpToolCalls = followUpResult.toolCalls || [];
         const allToolCalls = [...initialToolCalls, ...followUpToolCalls];
 
-        console.log(`🔧 Combined OpenAI Chat Completions tool calls: ${initialToolCalls.length} initial + ${followUpToolCalls.length} follow-up = ${allToolCalls.length} total`);
+        safeDebugLog('info', 'OPENAIPROVIDER', `🔧 Combined OpenAI Chat Completions tool calls: ${initialToolCalls.length} initial + ${followUpToolCalls.length} follow-up = ${allToolCalls.length} total`);
 
         return {
           content: initialContent + followUpResult.content,
@@ -601,18 +621,18 @@ export class OpenAIProvider extends BaseProvider {
           toolCalls: allToolCalls
         };
       } catch (error) {
-        console.error(`❌ OpenAI Chat Completions follow-up streaming failed:`, error);
-        console.error(`❌ Falling back to original response without tool results`);
+        safeDebugLog('error', 'OPENAIPROVIDER', `❌ OpenAI Chat Completions follow-up streaming failed:`, error);
+        safeDebugLog('error', 'OPENAIPROVIDER', `❌ Falling back to original response without tool results`);
         // Fall through to return original response
       }
     } else {
       const errorText = await followUpResponse.text();
-      console.error(`❌ OpenAI Chat Completions follow-up call failed (${followUpResponse.status}):`, errorText);
-      console.error(`❌ Falling back to original response without tool results`);
+      safeDebugLog('error', 'OPENAIPROVIDER', `❌ OpenAI Chat Completions follow-up call failed (${followUpResponse.status}):`, errorText);
+      safeDebugLog('error', 'OPENAIPROVIDER', `❌ Falling back to original response without tool results`);
     }
 
     // Return original response with tool calls if follow-up failed
-    console.log(`⚠️ OpenAI Chat Completions returning original response without tool results:`, {
+    safeDebugLog('info', 'OPENAIPROVIDER', `⚠️ OpenAI Chat Completions returning original response without tool results:`, {
       contentLength: initialContent?.length || 0,
       toolCallsCount: toolCalls.length,
       content: initialContent?.substring(0, 100) + '...'
@@ -638,26 +658,26 @@ export class OpenAIProvider extends BaseProvider {
   // OpenAI-specific tool calling methods
   private async getOpenAITools(settings: LLMSettings): Promise<unknown[]> {
     try {
-      console.log(`🔍 Getting tools for OpenAI provider`);
-      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
+      safeDebugLog('info', 'OPENAIPROVIDER', `🔍 Getting tools for OpenAI provider`);
+      safeDebugLog('info', 'OPENAIPROVIDER', `🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
 
       // Check if tool calling is disabled
       if (settings?.toolCallingEnabled === false) {
-        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
+        safeDebugLog('info', 'OPENAIPROVIDER', `🚫 Tool calling is disabled, returning empty tools array`);
         return [];
       }
 
       // Get raw tools from the centralized service (temporarily)
       const rawTools = await this.getMCPToolsForProvider('openai', settings);
-      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: any) => t.name || t.function?.name));
+      safeDebugLog('info', 'OPENAIPROVIDER', `📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: any) => t.name || t.function?.name));
 
       // Format tools specifically for OpenAI Assistants API
       const formattedTools = this.formatToolsForOpenAI(rawTools);
-      console.log(`🔧 Formatted ${formattedTools.length} tools for OpenAI Assistants API`);
+      safeDebugLog('info', 'OPENAIPROVIDER', `🔧 Formatted ${formattedTools.length} tools for OpenAI Assistants API`);
 
       return formattedTools;
     } catch (error) {
-      console.error('❌ Failed to get OpenAI tools:', error);
+      safeDebugLog('error', 'OPENAIPROVIDER', '❌ Failed to get OpenAI tools:', error);
       return [];
     }
   }
@@ -682,7 +702,7 @@ export class OpenAIProvider extends BaseProvider {
         };
       }
       
-      console.warn(`⚠️ Skipping invalid tool (not in unified format):`, tool);
+      safeDebugLog('warn', 'OPENAIPROVIDER', `⚠️ Skipping invalid tool (not in unified format):`, tool);
       return null;
     }).filter(tool => tool !== null);
   }
@@ -695,12 +715,12 @@ export class OpenAIProvider extends BaseProvider {
     let assistantModel = settings.model;
     const compatibleModels = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'];
     if (!compatibleModels.some(model => assistantModel.includes(model))) {
-      console.warn(`⚠️ Model ${assistantModel} may not be compatible with Assistants API, using gpt-4o-mini as fallback`);
+      safeDebugLog('warn', 'OPENAIPROVIDER', `⚠️ Model ${assistantModel} may not be compatible with Assistants API, using gpt-4o-mini as fallback`);
       assistantModel = 'gpt-4o-mini';
     }
     
     // Create a vector store
-    console.log('Creating a new vector store...');
+    safeDebugLog('info', 'OPENAIPROVIDER', 'Creating a new vector store...');
     const vectorStoreResponse = await fetch('https://api.openai.com/v1/vector_stores', {
       method: 'POST',
       headers: {
@@ -712,24 +732,24 @@ export class OpenAIProvider extends BaseProvider {
     });
     if (!vectorStoreResponse.ok) {
       const errorText = await vectorStoreResponse.text();
-      console.error('❌ Vector store creation failed:', errorText);
+      safeDebugLog('error', 'OPENAIPROVIDER', '❌ Vector store creation failed:', errorText);
       throw new Error(`Failed to create vector store: ${vectorStoreResponse.status} - ${errorText}`);
     }
     const vectorStore = await vectorStoreResponse.json();
-    console.log(`Vector store created with ID: ${vectorStore.id}`);
+    safeDebugLog('info', 'OPENAIPROVIDER', `Vector store created with ID: ${vectorStore.id}`);
 
     // Prepare tools array - start with file_search
     const tools: Array<{ type: string; function?: { name: string; description: string; parameters: any } }> = [{ type: 'file_search' }];
     
     // Add formatted OpenAI tools
     if (openAITools.length > 0) {
-      console.log(`🔧 Adding ${openAITools.length} formatted tools to OpenAI assistant`);
+      safeDebugLog('info', 'OPENAIPROVIDER', `🔧 Adding ${openAITools.length} formatted tools to OpenAI assistant`);
       tools.push(...openAITools as any[]);
     }
 
     // Create an assistant linked to the vector store with OpenAI tools
-    console.log(`Creating a new assistant with file search and ${tools.length - 1} OpenAI tools...`);
-    console.log('🔧 Tools being sent to OpenAI:', JSON.stringify(tools, null, 2));
+    safeDebugLog('info', 'OPENAIPROVIDER', `Creating a new assistant with file search and ${tools.length - 1} OpenAI tools...`);
+    safeDebugLog('info', 'OPENAIPROVIDER', '🔧 Tools being sent to OpenAI:', JSON.stringify(tools, null, 2));
     
     const assistantPayload = {
       name: 'AI Assistant with MCP Tools',
@@ -739,7 +759,7 @@ export class OpenAIProvider extends BaseProvider {
       model: assistantModel
     };
     
-    console.log('🔧 Assistant payload:', JSON.stringify(assistantPayload, null, 2));
+    safeDebugLog('info', 'OPENAIPROVIDER', '🔧 Assistant payload:', JSON.stringify(assistantPayload, null, 2));
     
     const assistantResponse = await fetch('https://api.openai.com/v1/assistants', {
       method: 'POST',
@@ -753,7 +773,7 @@ export class OpenAIProvider extends BaseProvider {
     
     if (!assistantResponse.ok) {
       const errorText = await assistantResponse.text();
-      console.error('❌ OpenAI API Error:', {
+      safeDebugLog('error', 'OPENAIPROVIDER', '❌ OpenAI API Error:', {
         status: assistantResponse.status,
         statusText: assistantResponse.statusText,
         body: errorText,
@@ -763,7 +783,7 @@ export class OpenAIProvider extends BaseProvider {
       throw new Error(`Failed to create assistant: ${assistantResponse.status} ${assistantResponse.statusText} - ${errorText}`);
     }
     const assistant = await assistantResponse.json();
-    console.log(`Assistant created with ID: ${assistant.id}`);
+    safeDebugLog('info', 'OPENAIPROVIDER', `Assistant created with ID: ${assistant.id}`);
 
     return { assistantId: assistant.id, vectorStoreId: vectorStore.id };
   }
@@ -810,7 +830,7 @@ export class OpenAIProvider extends BaseProvider {
       },
       body: JSON.stringify({ file_id: fileId })
     });
-    console.log(`File ${fileId} added to vector store ${vectorStoreId}`);
+    safeDebugLog('info', 'OPENAIPROVIDER', `File ${fileId} added to vector store ${vectorStoreId}`);
   }
 
   private async createAndPollRun(threadId: string, assistantId: string, settings: LLMSettings): Promise<any> {
@@ -829,7 +849,7 @@ export class OpenAIProvider extends BaseProvider {
 
     while (['queued', 'in_progress', 'requires_action'].includes(run.status)) {
       if (run.status === 'requires_action') {
-        console.log('🔧 OpenAI run requires action - executing tools...');
+        safeDebugLog('info', 'OPENAIPROVIDER', '🔧 OpenAI run requires action - executing tools...');
         await this.handleRequiredAction(threadId, run, settings);
       }
       
@@ -847,21 +867,21 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   private async handleRequiredAction(threadId: string, run: any, settings: LLMSettings): Promise<void> {
-    console.log('🔧 Handling required action for OpenAI run:', run.id);
+    safeDebugLog('info', 'OPENAIPROVIDER', '🔧 Handling required action for OpenAI run:', run.id);
     
     if (!run.required_action || !run.required_action.submit_tool_outputs) {
-      console.warn('⚠️ No tool outputs required in required action');
+      safeDebugLog('warn', 'OPENAIPROVIDER', '⚠️ No tool outputs required in required action');
       return;
     }
 
     const toolCalls = run.required_action.submit_tool_outputs.tool_calls;
-    console.log(`🔧 Executing ${toolCalls.length} tool calls:`, toolCalls.map((tc: any) => tc.function.name));
+    safeDebugLog('info', 'OPENAIPROVIDER', `🔧 Executing ${toolCalls.length} tool calls:`, toolCalls.map((tc: any) => tc.function.name));
 
     const toolOutputs = [];
     
     for (const toolCall of toolCalls) {
       try {
-        console.log(`🔧 Executing tool: ${toolCall.function.name}`);
+        safeDebugLog('info', 'OPENAIPROVIDER', `🔧 Executing tool: ${toolCall.function.name}`);
         const args = JSON.parse(toolCall.function.arguments);
         const result = await this.executeMCPTool!(toolCall.function.name, args);
         
@@ -870,9 +890,9 @@ export class OpenAIProvider extends BaseProvider {
           output: result
         });
         
-        console.log(`✅ Tool ${toolCall.function.name} executed successfully`);
+        safeDebugLog('info', 'OPENAIPROVIDER', `✅ Tool ${toolCall.function.name} executed successfully`);
       } catch (error) {
-        console.error(`❌ Tool ${toolCall.function.name} failed:`, error);
+        safeDebugLog('error', 'OPENAIPROVIDER', `❌ Tool ${toolCall.function.name} failed:`, error);
         toolOutputs.push({
           tool_call_id: toolCall.id,
           output: `Error executing tool: ${error}`
@@ -881,7 +901,7 @@ export class OpenAIProvider extends BaseProvider {
     }
 
     // Submit tool outputs back to OpenAI
-    console.log('🔧 Submitting tool outputs to OpenAI...');
+    safeDebugLog('info', 'OPENAIPROVIDER', '🔧 Submitting tool outputs to OpenAI...');
     const submitResponse = await fetch(`https://api.openai.com/v1/threads/${threadId}/runs/${run.id}/submit_tool_outputs`, {
       method: 'POST',
       headers: {
@@ -894,11 +914,11 @@ export class OpenAIProvider extends BaseProvider {
 
     if (!submitResponse.ok) {
       const errorText = await submitResponse.text();
-      console.error('❌ Failed to submit tool outputs:', errorText);
+      safeDebugLog('error', 'OPENAIPROVIDER', '❌ Failed to submit tool outputs:', errorText);
       throw new Error(`Failed to submit tool outputs: ${submitResponse.status} - ${errorText}`);
     }
     
-    console.log('✅ Tool outputs submitted successfully');
+    safeDebugLog('info', 'OPENAIPROVIDER', '✅ Tool outputs submitted successfully');
   }
 
   private async getAssistantResponse(threadId: string, settings: LLMSettings): Promise<string> {
@@ -915,7 +935,7 @@ export class OpenAIProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.log('❌ No OpenAI API key provided - cannot fetch models');
+      safeDebugLog('info', 'OPENAIPROVIDER', '❌ No OpenAI API key provided - cannot fetch models');
       return [];
     }
 
@@ -928,7 +948,7 @@ export class OpenAIProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        console.warn(`❌ OpenAI API error: ${response.status} - check API key`);
+        safeDebugLog('warn', 'OPENAIPROVIDER', `❌ OpenAI API error: ${response.status} - check API key`);
         return [];
       }
 
@@ -940,7 +960,7 @@ export class OpenAIProvider extends BaseProvider {
 
       return models;
     } catch (error) {
-      console.warn('❌ Failed to fetch OpenAI models:', error);
+      safeDebugLog('warn', 'OPENAIPROVIDER', '❌ Failed to fetch OpenAI models:', error);
       return [];
     }
   }
@@ -972,7 +992,7 @@ export class OpenAIProvider extends BaseProvider {
 
     // OpenAI uses structured tool calling with tools parameter and tool_choice
     // Don't add XML tool instructions as they conflict with native function calling
-    console.log(`🔧 OpenAI using structured tools, skipping XML tool instructions`);
+    safeDebugLog('info', 'OPENAIPROVIDER', `🔧 OpenAI using structured tools, skipping XML tool instructions`);
     return basePrompt;
   }
 
@@ -1037,7 +1057,7 @@ export class OpenAIProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     conversationId?: string
   ): Promise<LLMResponse> {
-    console.log(`🔍 Starting OpenAI stream response handling...`);
+    safeDebugLog('info', 'OPENAIPROVIDER', `🔍 Starting OpenAI stream response handling...`);
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('No response body');
@@ -1058,7 +1078,7 @@ export class OpenAIProvider extends BaseProvider {
         const chunk = decoder.decode(value);
         chunkCount++;
         if (chunkCount <= 3) {
-          console.log(`🔍 OpenAI stream chunk ${chunkCount}:`, chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''));
+          safeDebugLog('info', 'OPENAIPROVIDER', `🔍 OpenAI stream chunk ${chunkCount}:`, chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''));
         }
         const lines = chunk.split('\n');
 
@@ -1070,7 +1090,7 @@ export class OpenAIProvider extends BaseProvider {
             try {
               const parsed = JSON.parse(data);
               if (chunkCount <= 5) {
-                console.log(`🔍 OpenAI parsed chunk ${chunkCount}:`, JSON.stringify(parsed, null, 2));
+                safeDebugLog('info', 'OPENAIPROVIDER', `🔍 OpenAI parsed chunk ${chunkCount}:`, JSON.stringify(parsed, null, 2));
               }
 
               const choice = parsed.choices?.[0];
@@ -1080,12 +1100,12 @@ export class OpenAIProvider extends BaseProvider {
               if (content) {
                 fullContent += content;
                 onStream(content);
-                console.log(`📝 OpenAI content chunk: "${content}"`);
+                safeDebugLog('info', 'OPENAIPROVIDER', `📝 OpenAI content chunk: "${content}"`);
               }
 
               // Check for tool calls and assemble them
               if (delta?.tool_calls) {
-                console.log(`🔧 OpenAI tool calls detected:`, delta.tool_calls);
+                safeDebugLog('info', 'OPENAIPROVIDER', `🔧 OpenAI tool calls detected:`, delta.tool_calls);
 
                 for (const toolCall of delta.tool_calls) {
                   const index = toolCall.index;
@@ -1124,7 +1144,7 @@ export class OpenAIProvider extends BaseProvider {
                 usage = parsed.usage;
               }
             } catch (error) {
-              console.error(`❌ OpenAI error parsing chunk:`, error, `Data: ${data.substring(0, 100)}...`);
+              safeDebugLog('error', 'OPENAIPROVIDER', `❌ OpenAI error parsing chunk:`, error, `Data: ${data.substring(0, 100)}...`);
             }
           }
         }
@@ -1136,7 +1156,7 @@ export class OpenAIProvider extends BaseProvider {
     // Filter out empty tool calls and log final state
     const validToolCalls = toolCalls.filter(tc => tc && tc.function?.name);
 
-    console.log('🔍 OpenAI stream response completed:', {
+    safeDebugLog('info', 'OPENAIPROVIDER', '🔍 OpenAI stream response completed:', {
       contentLength: fullContent.length,
       hasUsage: !!usage,
       usage: usage,
@@ -1144,7 +1164,7 @@ export class OpenAIProvider extends BaseProvider {
     });
 
     if (validToolCalls.length > 0) {
-      console.log(`🔧 OpenAI assembled ${validToolCalls.length} tool calls:`, validToolCalls.map(tc => ({
+      safeDebugLog('info', 'OPENAIPROVIDER', `🔧 OpenAI assembled ${validToolCalls.length} tool calls:`, validToolCalls.map(tc => ({
         name: tc.function?.name,
         arguments: tc.function?.arguments
       })));
@@ -1180,11 +1200,11 @@ export class OpenAIProvider extends BaseProvider {
     conversationId?: string
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
-    console.log(`🔧 OpenAI streaming detected ${toolCalls.length} tool calls, executing...`);
+    safeDebugLog('info', 'OPENAIPROVIDER', `🔧 OpenAI streaming detected ${toolCalls.length} tool calls, executing...`);
 
     // Check if we have parallel execution method injected (like Anthropic/Mistral)
     if ((this as any).executeMultipleToolsParallel && (this as any).summarizeToolResultsForModel) {
-      console.log(`🚀 Using parallel execution for ${toolCalls.length} OpenAI tools`);
+      safeDebugLog('info', 'OPENAIPROVIDER', `🚀 Using parallel execution for ${toolCalls.length} OpenAI tools`);
       
       // Format tool calls for parallel execution
       const toolCallsForExecution = toolCalls.map(tc => ({
@@ -1199,7 +1219,7 @@ export class OpenAIProvider extends BaseProvider {
         const summarizeToolResultsForModel = (this as any).summarizeToolResultsForModel;
         
         const parallelResults = await executeMultipleToolsParallel(toolCallsForExecution, 'openai');
-        console.log(`✅ OpenAI parallel execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
+        safeDebugLog('info', 'OPENAIPROVIDER', `✅ OpenAI parallel execution completed: ${parallelResults.filter((r: any) => r.success).length}/${parallelResults.length} successful`);
         
         // Get tool results summary for the model
         const toolSummary = summarizeToolResultsForModel(parallelResults);
@@ -1217,17 +1237,17 @@ export class OpenAIProvider extends BaseProvider {
           } : undefined
         };
       } catch (error) {
-        console.error(`❌ OpenAI parallel tool execution failed, falling back to sequential:`, error);
+        safeDebugLog('error', 'OPENAIPROVIDER', `❌ OpenAI parallel tool execution failed, falling back to sequential:`, error);
         // Fall back to sequential execution below
       }
     }
 
     // Fallback: Execute all tool calls sequentially (old method)
-    console.log(`⚠️ Using sequential execution for ${toolCalls.length} OpenAI tools`);
+    safeDebugLog('info', 'OPENAIPROVIDER', `⚠️ Using sequential execution for ${toolCalls.length} OpenAI tools`);
     const toolResults = [];
     for (const toolCall of toolCalls) {
       try {
-        console.log(`🔧 Executing OpenAI tool call: ${toolCall.function?.name}`);
+        safeDebugLog('info', 'OPENAIPROVIDER', `🔧 Executing OpenAI tool call: ${toolCall.function?.name}`);
         const toolName = toolCall.function?.name || '';
         const toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
         const toolResult = await (this as any).executeMCPTool(toolName, toolArgs);
@@ -1237,7 +1257,7 @@ export class OpenAIProvider extends BaseProvider {
           content: JSON.stringify(toolResult)
         });
       } catch (error) {
-        console.error(`❌ OpenAI tool execution failed:`, error);
+        safeDebugLog('error', 'OPENAIPROVIDER', `❌ OpenAI tool execution failed:`, error);
         toolResults.push({
           role: 'tool',
           tool_call_id: toolCall.id,
@@ -1277,7 +1297,7 @@ export class OpenAIProvider extends BaseProvider {
 
     // Get tools for continued agentic behavior in follow-up call
     const followUpTools = await this.getMCPToolsForProvider('openai', settings);
-    console.log(`🔄 Making OpenAI follow-up call with ${followUpTools.length} tools available for continued agentic behavior`);
+    safeDebugLog('info', 'OPENAIPROVIDER', `🔄 Making OpenAI follow-up call with ${followUpTools.length} tools available for continued agentic behavior`);
 
     const followUpRequestBody = {
       model: settings.model,
@@ -1330,7 +1350,7 @@ export class OpenAIProvider extends BaseProvider {
       };
     } else {
       const errorText = await followUpResponse.text();
-      console.error(`❌ OpenAI follow-up call failed (${followUpResponse.status}):`, errorText);
+      safeDebugLog('error', 'OPENAIPROVIDER', `❌ OpenAI follow-up call failed (${followUpResponse.status}):`, errorText);
 
       // Return original response with tool calls
       return {
@@ -1365,7 +1385,7 @@ export class OpenAIProvider extends BaseProvider {
 
     // Handle tool calls if present
     if (message.tool_calls && message.tool_calls.length > 0) {
-      console.log(`🔧 OpenAI response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
+      safeDebugLog('info', 'OPENAIPROVIDER', `🔧 OpenAI response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
       const content = message.content || '';
 
       // Tool execution will be handled by the main service

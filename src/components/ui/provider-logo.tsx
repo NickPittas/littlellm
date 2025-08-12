@@ -1,4 +1,26 @@
+
+
 "use client"
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 
 import * as React from "react"
 import type { LLMProvider } from "../../services/llmService"
@@ -52,7 +74,7 @@ export function ProviderLogo({ provider, className = "", size = 20 }: ProviderLo
       style={{ width: size, height: size }}
       title={provider.name}
       onError={(e) => {
-        console.log('Provider logo failed to load:', logoSrc, 'for provider:', provider.name);
+        safeDebugLog('info', 'PROVIDER_LOGO', 'Provider logo failed to load:', logoSrc, 'for provider:', provider.name);
         // Fallback to first letter if image fails to load
         const target = e.currentTarget;
         target.style.display = 'none';

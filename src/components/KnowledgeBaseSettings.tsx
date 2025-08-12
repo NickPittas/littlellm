@@ -2,11 +2,40 @@ import React, { useState, useEffect } from 'react';
 import { ProgressLogPanel } from './ProgressLogPanel';
 import { Button } from './ui/button';
 
-interface UploadProgress {
-  fileName: string;
-  status: 'pending' | 'processing' | 'success' | 'error';
-  error?: string;
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
 }
+import {
+  createProgressEntry,
+  handleSingleDocumentUpload,
+  handleBatchDocumentUpload,
+  handleGoogleDocsImport,
+  handleKnowledgeBaseExport,
+  handleKnowledgeBaseImport,
+  handleDocumentRemoval,
+  formatFileSize,
+  getFileTypeIcon,
+  type ProgressEntry,
+  type UploadProgress
+} from '../utils/knowledgeBaseUtils';
+
+
 
 interface DocumentWithMetadata {
   source: string;
@@ -51,11 +80,11 @@ const KnowledgeBaseSettings = () => {
       if (result.success) {
         setDocuments(result.documents);
       } else {
-        console.error('Failed to load documents:', result.error);
+        safeDebugLog('error', 'KNOWLEDGEBASESETTINGS', 'Failed to load documents:', result.error);
         setDocuments([]);
       }
     } catch (error) {
-      console.error('Error loading documents:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESETTINGS', 'Error loading documents:', error);
       setDocuments([]);
     } finally {
       setIsLoading(false);
@@ -69,7 +98,7 @@ const KnowledgeBaseSettings = () => {
         setKbStats(result.stats);
       }
     } catch (error) {
-      console.error('Error loading knowledge base stats:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESETTINGS', 'Error loading knowledge base stats:', error);
     }
   };
 
@@ -158,19 +187,7 @@ const KnowledgeBaseSettings = () => {
     progress?: { current: number; total: number },
     metadata?: Record<string, unknown>
   ) => {
-    const entry = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: new Date(),
-      level,
-      operation,
-      message,
-      progress: progress ? {
-        current: progress.current,
-        total: progress.total,
-        percentage: Math.round((progress.current / progress.total) * 100)
-      } : undefined,
-      metadata
-    };
+    const entry = createProgressEntry(level, operation, message);
 
     setProgressEntries(prev => {
       const newEntries = [...prev, entry];
@@ -187,33 +204,11 @@ const KnowledgeBaseSettings = () => {
   const handleAddDocument = async () => {
     try {
       setIsLoading(true);
-      const filePath = await window.electronAPI.openFileDialog();
-      if (filePath) {
-        const operationId = `single-upload-${Date.now()}`;
-        const fileName = filePath.split(/[\\/]/).pop() || filePath;
-
-        addProgressEntry('info', operationId, `Starting upload: ${fileName}`);
-        setMessage(`Adding document: ${filePath}...`);
-
-        const result = await window.electronAPI.addDocument(filePath);
-        if (result.success) {
-          setMessage(`Successfully added document: ${filePath}`);
-          addProgressEntry('success', operationId, `Successfully uploaded: ${fileName}`);
-          await loadDocuments(); // Refresh document list
-          await loadKnowledgeBaseStats(); // Refresh stats
-        } else {
-          setMessage(`Failed to add document: ${result.error}`);
-          addProgressEntry('error', operationId, `Failed to upload ${fileName}: ${result.error}`);
-        }
-      } else {
-        setMessage('No file selected.');
-        addProgressEntry('info', 'single-upload', 'Upload cancelled: No file selected');
+      const result = await handleSingleDocumentUpload(addProgressEntry, setMessage);
+      if (result.success) {
+        await loadDocuments(); // Refresh document list
+        await loadKnowledgeBaseStats(); // Refresh stats
       }
-    } catch (error) {
-      console.error('Error adding document:', error);
-      const errorMessage = `Error adding document: ${error instanceof Error ? error.message : 'Unknown error'}`;
-      setMessage(errorMessage);
-      addProgressEntry('error', 'single-upload', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -222,77 +217,11 @@ const KnowledgeBaseSettings = () => {
   const handleAddDocumentsBatch = async () => {
     try {
       setIsLoading(true);
-      setUploadProgress([]);
-      const filePaths = await window.electronAPI.openKnowledgebaseFileDialog();
-
-      if (filePaths && filePaths.length > 0) {
-        const operationId = `batch-upload-${Date.now()}`;
-        addProgressEntry('info', operationId, `Starting batch upload of ${filePaths.length} documents`);
-
-        setMessage(`Adding ${filePaths.length} documents...`);
-
-        // Initialize progress tracking
-        const initialProgress = filePaths.map(path => ({
-          fileName: path.split(/[\\/]/).pop() || path,
-          status: 'pending' as const
-        }));
-        setUploadProgress(initialProgress);
-
-        if (filePaths.length > 5) {
-          setMessage(`Processing ${filePaths.length} documents. This may take several minutes for large documents...`);
-          addProgressEntry('warning', operationId, `Large batch detected: ${filePaths.length} files may take several minutes to process`);
-        }
-
-        // The real-time progress updates will be handled by the batch progress listener
-        const result = await window.electronAPI.addDocumentsBatch(filePaths);
-
-        if (result.success) {
-          setMessage(result.summary || `Successfully added ${filePaths.length} documents`);
-          addProgressEntry('success', operationId, result.summary || `Batch upload completed: ${filePaths.length} documents processed`);
-
-          // Log summary statistics
-          if (result.results) {
-            const successCount = result.results.filter(r => r.success).length;
-            const errorCount = result.results.length - successCount;
-            const totalChunks = result.results.reduce((sum, r) => sum + ((r as any).chunkCount || 0), 0);
-
-            addProgressEntry('info', operationId, `Final statistics: ${successCount} successful, ${errorCount} failed, ${totalChunks} total chunks generated`, undefined, {
-              successCount,
-              errorCount,
-              totalFiles: result.results.length,
-              totalChunks
-            });
-
-            if (errorCount > 0) {
-              addProgressEntry('warning', operationId, `${errorCount} files failed to process`, undefined, {
-                successCount,
-                errorCount,
-                totalFiles: result.results.length
-              });
-            }
-          }
-
-          await loadDocuments(); // Refresh document list
-          await loadKnowledgeBaseStats(); // Refresh stats
-        } else {
-          setMessage(`Failed to add documents: ${result.error}`);
-          addProgressEntry('error', operationId, `Batch upload failed: ${result.error}`);
-        }
-      } else {
-        setMessage('No files selected.');
-        addProgressEntry('info', 'batch-upload', 'Upload cancelled: No files selected');
+      const result = await handleBatchDocumentUpload(addProgressEntry, setMessage, setUploadProgress);
+      if (result.success) {
+        await loadDocuments(); // Refresh document list
+        await loadKnowledgeBaseStats(); // Refresh stats
       }
-    } catch (error) {
-      console.error('Error adding documents:', error);
-      setMessage(`Error adding documents: ${error instanceof Error ? error.message : 'Unknown error'}`);
-
-      // Update progress to show error
-      const errorProgress = uploadProgress.map(p => ({
-        ...p,
-        status: 'error' as const,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      }));
-      setUploadProgress(errorProgress);
     } finally {
       setIsLoading(false);
     }
@@ -325,7 +254,7 @@ const KnowledgeBaseSettings = () => {
         addProgressEntry('error', operationId, `Google Docs import failed: ${result.error}`);
       }
     } catch (error) {
-      console.error('Error importing from Google Docs:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESETTINGS', 'Error importing from Google Docs:', error);
       const errorMessage = `Error importing from Google Docs: ${error instanceof Error ? error.message : 'Unknown error'}`;
       setMessage(errorMessage);
       addProgressEntry('error', 'google-docs-import', errorMessage);
@@ -366,7 +295,7 @@ const KnowledgeBaseSettings = () => {
         addProgressEntry('error', operationId, errorMessage);
       }
     } catch (error) {
-      console.error('Error exporting knowledge base:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESETTINGS', 'Error exporting knowledge base:', error);
       const errorMessage = `Export error: ${error instanceof Error ? error.message : 'Unknown error'}`;
       setMessage(`❌ ${errorMessage}`);
       addProgressEntry('error', 'export', errorMessage);
@@ -413,7 +342,7 @@ const KnowledgeBaseSettings = () => {
         addProgressEntry('error', operationId, errorMessage);
       }
     } catch (error) {
-      console.error('Error importing knowledge base:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESETTINGS', 'Error importing knowledge base:', error);
       const errorMessage = `Import error: ${error instanceof Error ? error.message : 'Unknown error'}`;
       setMessage(`❌ ${errorMessage}`);
       addProgressEntry('error', 'import', errorMessage);
@@ -435,7 +364,7 @@ const KnowledgeBaseSettings = () => {
         setMessage(`Failed to remove document: ${result.error}`);
       }
     } catch (error) {
-      console.error('Error removing document:', error);
+      safeDebugLog('error', 'KNOWLEDGEBASESETTINGS', 'Error removing document:', error);
       setMessage(`Error removing document: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLoading(false);

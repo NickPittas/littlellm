@@ -6,6 +6,25 @@ import { Button } from '../ui/button';
 import { mcpService, type MCPServer } from '../../services/mcpService';
 import { cn } from '@/lib/utils';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface RightPanelProps {
   className?: string;
   isOpen?: boolean;
@@ -40,7 +59,7 @@ export function RightPanel({
       const connectedIds = await mcpService.getConnectedServerIds();
       setConnectedServers(new Set(connectedIds));
     } catch (error) {
-      console.error('Failed to load MCP servers:', error);
+      safeDebugLog('error', 'RIGHTPANEL', 'Failed to load MCP servers:', error);
     } finally {
       setIsLoading(false);
     }
@@ -55,7 +74,7 @@ export function RightPanel({
         await loadMCPServers();
       }
     } catch (error) {
-      console.error('Failed to toggle MCP server:', error);
+      safeDebugLog('error', 'RIGHTPANEL', 'Failed to toggle MCP server:', error);
     }
   };
 

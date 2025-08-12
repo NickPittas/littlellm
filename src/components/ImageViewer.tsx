@@ -4,6 +4,25 @@ import React, { useState, useEffect } from 'react';
 import { X, Download, ExternalLink, ZoomIn, ZoomOut, RotateCw } from 'lucide-react';
 import { Button } from './ui/button';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface ImageViewerProps {
   src: string;
   alt?: string;
@@ -111,7 +130,7 @@ export function ImageViewer({ src, alt = 'Image', isOpen, onClose }: ImageViewer
         URL.revokeObjectURL(url);
       }
     } catch (error) {
-      console.error('Failed to download image:', error);
+      safeDebugLog('error', 'IMAGEVIEWER', 'Failed to download image:', error);
       // Fallback: open in new tab
       window.open(src, '_blank');
     }

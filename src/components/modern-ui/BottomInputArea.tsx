@@ -14,6 +14,7 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { cn } from '@/lib/utils';
+import { debugLogger } from '../../services/debugLogger';
 
 interface BottomInputAreaProps {
   className?: string;

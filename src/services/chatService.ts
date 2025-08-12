@@ -1,8 +1,6 @@
 import { llmService, type LLMSettings } from './llmService';
 import { sessionService } from './sessionService';
 import { settingsService } from './settingsService';
-import { debugLogger } from './debugLogger';
-
 // Conditionally import services only in browser environment
 let secureApiKeyService: {
   getApiKey: (provider: string) => string | null;
@@ -19,13 +17,13 @@ if (typeof window !== 'undefined') {
   import('./secureApiKeyService').then(module => {
     secureApiKeyService = module.secureApiKeyService;
   }).catch(() => {
-    console.warn('secureApiKeyService not available');
+    safeDebugLog('warn', 'CHATSERVICE', 'secureApiKeyService not available');
   });
 
   import('./DocumentParserService').then(module => {
     documentParserService = module.documentParserService;
   }).catch(error => {
-    console.warn('DocumentParserService not available in browser environment:', error);
+    safeDebugLog('warn', 'CHATSERVICE', 'DocumentParserService not available in browser environment:', error);
   });
 }
 
@@ -92,6 +90,26 @@ export interface Message {
 // Import shared types
 import type { ProviderSettings, ChatSettings, ProvidersConfig } from '../types/settings';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 // Re-export for convenience
 export type { ProviderSettings, ChatSettings, ProvidersConfig };
 
@@ -115,7 +133,7 @@ export const chatService = {
     // Let the individual APIs return errors if they don't support vision
     // This is more robust and future-proof than maintaining model lists
 
-    console.log(`Vision support check - Provider: ${provider}, Model: ${model}, Supported: true (assumed)`);
+    safeDebugLog('info', 'CHATSERVICE', `Vision support check - Provider: ${provider}, Model: ${model}, Supported: true (assumed)`);
     return true;
   },
 
@@ -124,16 +142,16 @@ export const chatService = {
   // Helper function to convert file to base64 (no processing needed)
   fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
-      console.log('Reading file as base64:', file.name, file.type, file.size);
+      safeDebugLog('info', 'CHATSERVICE', 'Reading file as base64:', file.name, file.type, file.size);
 
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        console.log('File converted to base64, length:', result.length);
+        safeDebugLog('info', 'CHATSERVICE', 'File converted to base64, length:', result.length);
         resolve(result);
       };
       reader.onerror = error => {
-        console.error('FileReader error:', error);
+        safeDebugLog('error', 'CHATSERVICE', 'FileReader error:', error);
         reject(error);
       };
       reader.readAsDataURL(file);
@@ -158,38 +176,38 @@ export const chatService = {
     } else if (file.type === 'application/pdf') {
       // Parse PDF using Electron main process (same working method as knowledge base)
       try {
-        console.log('📄 Parsing PDF file using Electron main process:', file.name);
+        safeDebugLog('info', 'CHATSERVICE', '📄 Parsing PDF file using Electron main process:', file.name);
 
         // Check if we're in Electron environment with API access
         if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.parsePdfFile) {
           const fileBuffer = await file.arrayBuffer();
           const result = await window.electronAPI.parsePdfFile(fileBuffer, file.name);
 
-          console.log('📄 PDF parsing result:', { success: result.success, textLength: result.text?.length, error: result.error });
+          safeDebugLog('info', 'CHATSERVICE', '📄 PDF parsing result:', { success: result.success, textLength: result.text?.length, error: result.error });
 
           if (result.success && result.text) {
-            console.log(`📄 PDF content preview: "${result.text.substring(0, 200)}"`);
+            safeDebugLog('info', 'CHATSERVICE', `📄 PDF content preview: "${result.text.substring(0, 200)}"`);
 
             // Check if this is actually the fallback error message
             if (result.text.includes('PDF parsing module could not be loaded') ||
                 result.text.includes('PDF text extraction is not available')) {
-              console.error('📄 PDF parsing failed - received fallback message');
+              safeDebugLog('error', 'CHATSERVICE', '📄 PDF parsing failed - received fallback message');
               return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n❌ Parsing Status: Failed\nError: PDF parsing module not available\n\nThe PDF file was uploaded but text extraction failed. You can:\n• Describe the content you'd like me to analyze\n• Copy and paste text from the PDF\n• Convert the PDF to a text file and upload that instead`;
             }
 
             // Return the actual parsed text content
             return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n✅ Parsing Status: Success\nPages: ${result.metadata?.pages || 1}\n\nContent:\n${result.text}`;
           } else {
-            console.error('📄 PDF parsing failed:', result.error);
+            safeDebugLog('error', 'CHATSERVICE', '📄 PDF parsing failed:', result.error);
             return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n❌ Parsing Status: Failed\nError: ${result.error || 'Unknown error'}\n\nThe PDF file was uploaded but text extraction failed. You can:\n• Describe the content you'd like me to analyze\n• Copy and paste text from the PDF\n• Convert the PDF to a text file and upload that instead`;
           }
         } else {
           // Fallback if electronAPI is not available
-          console.log('📄 ElectronAPI not available, using fallback for PDF:', file.name);
+          safeDebugLog('info', 'CHATSERVICE', '📄 ElectronAPI not available, using fallback for PDF:', file.name);
           return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\nNote: PDF parsing not available in this environment.\n\nPlease describe what you'd like me to analyze about this PDF.`;
         }
       } catch (error) {
-        console.error('📄 PDF parsing error:', error);
+        safeDebugLog('error', 'CHATSERVICE', '📄 PDF parsing error:', error);
         return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n❌ Parsing Status: Error\nError: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease describe what you'd like me to analyze about this PDF.`;
       }
     } else if (supportedFormats.includes(fileExtension)) {
@@ -198,7 +216,7 @@ export const chatService = {
         if (!documentParserService) {
           throw new Error('DocumentParserService not available in this environment');
         }
-        console.log(`📄 Using DocumentParserService to parse: ${file.name}`);
+        safeDebugLog('info', 'CHATSERVICE', `📄 Using DocumentParserService to parse: ${file.name}`);
         const parsedDocument = await documentParserService.parseDocument(file);
 
         // Return formatted text with metadata
@@ -232,7 +250,7 @@ export const chatService = {
 
         return result;
       } catch (error) {
-        console.error(`❌ Failed to parse document ${file.name}:`, error);
+        safeDebugLog('error', 'CHATSERVICE', `❌ Failed to parse document ${file.name}:`, error);
         return `[${file.name} - ${Math.round(file.size / 1024)}KB]\nError: Failed to parse document - ${error instanceof Error ? error.message : 'Unknown error'}\nPlease describe the content you'd like me to analyze.`;
       }
     } else {
@@ -265,7 +283,7 @@ export const chatService = {
     conversationId?: string, // Add conversation ID for tool optimization
     onKnowledgeBaseSearch?: (isSearching: boolean, query?: string) => void
   ): Promise<Message> {
-    debugLogger.info('CHAT', 'sendMessage called', {
+    safeDebugLog('info', 'CHAT', 'sendMessage called', {
       message: message.substring(0, 100) + '...',
       provider: settings.provider,
       model: settings.model,
@@ -291,7 +309,7 @@ export const chatService = {
 
       if (settings.ragEnabled && typeof window !== 'undefined' && window.electronAPI) {
         try {
-          console.log('🧠 RAG enabled, searching knowledge base for:', message.substring(0, 100));
+          safeDebugLog('info', 'CHATSERVICE', '🧠 RAG enabled, searching knowledge base for:', message.substring(0, 100));
 
           // Notify UI that knowledge base search is starting
           onKnowledgeBaseSearch?.(true, message);
@@ -303,7 +321,7 @@ export const chatService = {
           const ragResult = await window.electronAPI.searchKnowledgeBase(message, searchLimit);
           
           if (ragResult.success && ragResult.results && ragResult.results.length > 0) {
-            console.log(`🧠 Found ${ragResult.results.length} relevant knowledge base chunks (comprehensive: ${isComprehensiveQuery})`);
+            safeDebugLog('info', 'CHATSERVICE', `🧠 Found ${ragResult.results.length} relevant knowledge base chunks (comprehensive: ${isComprehensiveQuery})`);
             
             let selectedChunks;
             
@@ -326,7 +344,7 @@ export const chatService = {
                 if (selectedChunks.length >= 8) break;
               }
               
-              console.log(`🧠 Selected chunks from ${chunksBySource.size} different documents`);
+              safeDebugLog('info', 'CHATSERVICE', `🧠 Selected chunks from ${chunksBySource.size} different documents`);
             } else {
               // For specific queries, use top 3 most relevant chunks
               selectedChunks = ragResult.results.slice(0, 3);
@@ -354,20 +372,20 @@ export const chatService = {
               snippet: result.text.substring(0, 150) + (result.text.length > 150 ? '...' : '')
             }));
 
-            console.log('🧠 Message augmented with RAG context:', {
+            safeDebugLog('info', 'CHATSERVICE', '🧠 Message augmented with RAG context:', {
               originalLength: message.length,
               augmentedLength: augmentedMessage.length,
               contextChunks: ragResult.results.length,
               sources: sources.length
             });
           } else {
-            console.log('🧠 No relevant context found in knowledge base');
+            safeDebugLog('info', 'CHATSERVICE', '🧠 No relevant context found in knowledge base');
           }
 
           // Notify UI that knowledge base search is complete
           onKnowledgeBaseSearch?.(false);
         } catch (ragError) {
-          console.error('🧠 RAG search failed:', ragError);
+          safeDebugLog('error', 'CHATSERVICE', '🧠 RAG search failed:', ragError);
           // Notify UI that knowledge base search is complete (even on error)
           onKnowledgeBaseSearch?.(false);
           // Continue with original message if RAG fails
@@ -378,24 +396,24 @@ export const chatService = {
       let messageContent: string | Array<ContentItem> | { text: string; images: string[] } = augmentedMessage;
 
       if (files && files.length > 0) {
-        console.log('Processing files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
+        safeDebugLog('info', 'CHATSERVICE', 'Processing files:', files.map(f => ({ name: f.name, type: f.type, size: f.size })));
 
         const provider = settings.provider;
-        console.log('Processing files for provider:', provider, 'Files:', files.map(f => ({ name: f.name, type: f.type })));
+        safeDebugLog('info', 'CHATSERVICE', 'Processing files for provider:', provider, 'Files:', files.map(f => ({ name: f.name, type: f.type })));
 
         // Send files directly to providers in their expected format
-        console.log('Sending files directly to provider:', provider);
+        safeDebugLog('info', 'CHATSERVICE', 'Sending files directly to provider:', provider);
 
         if (provider === 'mistral') {
           // Use Mistral's native file processing capabilities
-          console.log('🔍 Using Mistral native file processing');
+          safeDebugLog('info', 'CHATSERVICE', '🔍 Using Mistral native file processing');
           const mistralProvider = this.getProviderInstance('mistral');
-          console.log('🔍 Mistral provider instance:', mistralProvider);
-          console.log('🔍 Has processFiles method:', mistralProvider && 'processFiles' in mistralProvider);
+          safeDebugLog('info', 'CHATSERVICE', '🔍 Mistral provider instance:', mistralProvider);
+          safeDebugLog('info', 'CHATSERVICE', '🔍 Has processFiles method:', mistralProvider && 'processFiles' in mistralProvider);
 
           if (mistralProvider && 'processFiles' in mistralProvider) {
             try {
-              console.log('🔍 Calling Mistral processFiles with:', {
+              safeDebugLog('info', 'CHATSERVICE', '🔍 Calling Mistral processFiles with:', {
                 filesCount: files.length,
                 fileNames: Array.from(files).map(f => f.name),
                 provider: this.getProviderConfig(provider)
@@ -416,26 +434,26 @@ export const chatService = {
               ];
 
               messageContent = contentArray;
-              console.log('✅ Mistral files processed successfully:', {
+              safeDebugLog('info', 'CHATSERVICE', '✅ Mistral files processed successfully:', {
                 processedCount: processedFiles.length,
                 contentTypes: processedFiles.map((f: unknown) => (f as {type: string}).type)
               });
             } catch (error) {
-              console.error('❌ Mistral file processing failed:', error);
+              safeDebugLog('error', 'CHATSERVICE', '❌ Mistral file processing failed:', error);
               // Fallback to generic processing
-              console.log('🔄 Falling back to generic processing');
+              safeDebugLog('info', 'CHATSERVICE', '🔄 Falling back to generic processing');
               messageContent = await this.processFilesGeneric(files, augmentedMessage, provider);
             }
           } else {
             // Fallback to generic processing
-            console.log('🔄 No Mistral provider or processFiles method, using generic processing');
+            safeDebugLog('info', 'CHATSERVICE', '🔄 No Mistral provider or processFiles method, using generic processing');
             messageContent = await this.processFilesGeneric(files, augmentedMessage, provider);
           }
         } else if (provider === 'openai' || provider === 'anthropic' || provider === 'gemini' || provider === 'deepseek' || provider === 'openrouter' || provider === 'replicate' || provider === 'requesty' || provider === 'n8n') {
           messageContent = await this.processFilesGeneric(files, augmentedMessage, provider);
         } else if (provider === 'ollama') {
           // Ollama uses a different format with separate images array
-          console.log('Using Ollama format');
+          safeDebugLog('info', 'CHATSERVICE', 'Using Ollama format');
 
           let textContent = augmentedMessage || 'Please analyze the attached content.';
           const images: string[] = [];
@@ -443,18 +461,18 @@ export const chatService = {
           for (const file of files) {
             if (file.type.startsWith('image/')) {
               // Convert image to base64 for Ollama
-              console.log('Converting image for Ollama:', file.name);
+              safeDebugLog('info', 'CHATSERVICE', 'Converting image for Ollama:', file.name);
               const base64 = await this.fileToBase64(file);
               // Extract just the base64 data without the data URL prefix
               const base64Data = base64.split(',')[1];
               images.push(base64Data);
-              console.log('Added image to Ollama format, base64 length:', base64Data.length);
+              safeDebugLog('info', 'CHATSERVICE', 'Added image to Ollama format, base64 length:', base64Data.length);
             } else {
               // For all other files (PDF, TXT, CSV, etc.), extract text content
-              console.log('Extracting text for Ollama:', file.name);
+              safeDebugLog('info', 'CHATSERVICE', 'Extracting text for Ollama:', file.name);
               const extractedText = await this.extractTextFromFile(file);
               textContent += `\n\n[File: ${file.name}]\n${extractedText}`;
-              console.log('Added text content, total length:', textContent.length);
+              safeDebugLog('info', 'CHATSERVICE', 'Added text content, total length:', textContent.length);
             }
           }
 
@@ -463,27 +481,27 @@ export const chatService = {
             text: textContent,
             images: images
           };
-          console.log('Final Ollama message format:', { textLength: textContent.length, imageCount: images.length });
+          safeDebugLog('info', 'CHATSERVICE', 'Final Ollama message format:', { textLength: textContent.length, imageCount: images.length });
         } else {
           // For all other providers, use simple text format
-          console.log('Using simple text format for provider:', provider);
+          safeDebugLog('info', 'CHATSERVICE', 'Using simple text format for provider:', provider);
 
           let combinedText = augmentedMessage || 'Please analyze the attached content.';
 
           for (const file of files) {
             if (file.type.startsWith('image/')) {
-              console.log('Adding image placeholder for text-only provider:', file.name);
+              safeDebugLog('info', 'CHATSERVICE', 'Adding image placeholder for text-only provider:', file.name);
               combinedText += `\n\n[Image attached: ${file.name} - Please describe what you'd like me to analyze about this image.]`;
             } else {
               // Extract text from all other files
-              console.log('Extracting text from file:', file.name);
+              safeDebugLog('info', 'CHATSERVICE', 'Extracting text from file:', file.name);
               const textContent = await this.extractTextFromFile(file);
               combinedText += `\n\n[File: ${file.name}]\n${textContent}`;
             }
           }
 
           messageContent = combinedText;
-          console.log('Final text message content length:', combinedText.length);
+          safeDebugLog('info', 'CHATSERVICE', 'Final text message content length:', combinedText.length);
         }
       }
 
@@ -496,7 +514,7 @@ export const chatService = {
       const baseUrl = apiKeyData?.baseUrl || providerSettings.baseUrl || '';
 
       // Debug provider settings
-      console.log('🔍 ChatService provider settings debug:', {
+      safeDebugLog('info', 'CHATSERVICE', '🔍 ChatService provider settings debug:', {
         provider: settings.provider,
         hasProviderSettings: !!providerSettings,
         hasApiKey: !!apiKey,
@@ -525,7 +543,7 @@ export const chatService = {
         toolCallingEnabled: settings.toolCallingEnabled,
       };
 
-      console.log('🔍 ChatService: Final LLMSettings for', settings.provider, ':', {
+      safeDebugLog('info', 'CHATSERVICE', '🔍 ChatService: Final LLMSettings for', settings.provider, ':', {
         model: settings.model,
         hasApiKey: !!apiKey,
         baseUrl: baseUrl,
@@ -538,7 +556,7 @@ export const chatService = {
 
       // Limit conversation history to the specified number of messages
       const limitedHistory = conversationHistory.slice(-historyLength);
-      console.log(`🧠 Conversation history limited to ${historyLength} messages (${conversationHistory.length} → ${limitedHistory.length})`);
+      safeDebugLog('info', 'CHATSERVICE', `🧠 Conversation history limited to ${historyLength} messages (${conversationHistory.length} → ${limitedHistory.length})`);
 
       // Convert conversation history to LLM format
       const llmHistory = limitedHistory.map(msg => ({
@@ -547,7 +565,7 @@ export const chatService = {
       }));
 
       // Send to LLM service with conversation history
-      console.log('🔄 Calling llmService.sendMessage with settings:', {
+      safeDebugLog('info', 'CHATSERVICE', '🔄 Calling llmService.sendMessage with settings:', {
         provider: llmSettings.provider,
         model: llmSettings.model,
         hasApiKey: !!llmSettings.apiKey,
@@ -566,9 +584,9 @@ export const chatService = {
         settings.provider !== 'deepseek' &&
         !(settings.provider === 'gemini' && hasTools);
 
-      console.log(`🔄 Calling LLM with streaming: ${useStreaming}, hasTools: ${hasTools}, toolCallingEnabled: ${settings.toolCallingEnabled}, provider: ${settings.provider}`);
+      safeDebugLog('info', 'CHATSERVICE', `🔄 Calling LLM with streaming: ${useStreaming}, hasTools: ${hasTools}, toolCallingEnabled: ${settings.toolCallingEnabled}, provider: ${settings.provider}`);
       if (settings.provider === 'lmstudio' && hasTools) {
-        console.log(`✅ LM Studio will use streaming WITH tool support`);
+        safeDebugLog('info', 'CHATSERVICE', `✅ LM Studio will use streaming WITH tool support`);
       }
 
       const response = await llmService.sendMessage(
@@ -582,13 +600,13 @@ export const chatService = {
 
       // Extract sources from tool execution content if any web search tools were used
       if (response.toolCalls && response.toolCalls.length > 0) {
-        console.log('🔧 Extracting sources from tool calls:', response.toolCalls.map(tc => tc.name));
+        safeDebugLog('info', 'CHATSERVICE', '🔧 Extracting sources from tool calls:', response.toolCalls.map(tc => tc.name));
         const webSearchSources = this.extractSourcesFromResponseContent(response.content, response.toolCalls);
-        console.log('📚 Extracted web search sources:', webSearchSources);
+        safeDebugLog('info', 'CHATSERVICE', '📚 Extracted web search sources:', webSearchSources);
         sources = [...sources, ...webSearchSources];
       }
 
-      console.log('📊 Final sources collected:', sources);
+      safeDebugLog('info', 'CHATSERVICE', '📊 Final sources collected:', sources);
 
       const endTime = performance.now();
       const duration = endTime - startTime;
@@ -599,7 +617,7 @@ export const chatService = {
         tokensPerSecond = (response.usage.completionTokens / duration) * 1000; // Convert to tokens per second
       }
 
-      console.log('✅ LLM response received:', {
+      safeDebugLog('info', 'CHATSERVICE', '✅ LLM response received:', {
         contentLength: response.content?.length || 0,
         hasUsage: !!response.usage,
         usage: response.usage,
@@ -622,7 +640,7 @@ export const chatService = {
           currency: response.cost.currency
         } : undefined;
 
-        console.log('📊 Adding token usage to session:', {
+        safeDebugLog('info', 'CHATSERVICE', '📊 Adding token usage to session:', {
           original: response.usage,
           normalized: normalizedUsage,
           cost: costInfo
@@ -637,7 +655,7 @@ export const chatService = {
           };
         }
       } else {
-        console.warn('⚠️ No usage data in response');
+        safeDebugLog('warn', 'CHATSERVICE', '⚠️ No usage data in response');
 
         // Also log to window for debugging
         if (typeof window !== 'undefined') {
@@ -666,7 +684,7 @@ export const chatService = {
         sources: sources // Always include sources array, even if empty
       };
 
-      console.log('📋 Created message with toolCalls:', {
+      safeDebugLog('info', 'CHATSERVICE', '📋 Created message with toolCalls:', {
         hasToolCalls: !!response.toolCalls,
         toolCallsCount: response.toolCalls?.length || 0,
         toolNames: response.toolCalls?.map(tc => tc.name) || []
@@ -674,7 +692,7 @@ export const chatService = {
 
       return assistantMessage;
     } catch (error) {
-      console.error('❌ Chat service error:', error);
+      safeDebugLog('error', 'CHATSERVICE', '❌ Chat service error:', error);
       throw new Error(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   },
@@ -699,7 +717,7 @@ export const chatService = {
         const toolSources = this.extractSourcesFromToolContent(content, toolCall);
         sources.push(...toolSources);
       } catch (error) {
-        console.warn(`Failed to extract sources from tool content ${toolCall.name}:`, error);
+        safeDebugLog('warn', 'CHATSERVICE', `Failed to extract sources from tool content ${toolCall.name}:`, error);
       }
     }
 
@@ -847,7 +865,7 @@ export const chatService = {
         }
       }
     } catch (error) {
-      console.warn('Failed to parse web search sources:', error);
+      safeDebugLog('warn', 'CHATSERVICE', 'Failed to parse web search sources:', error);
     }
 
     return sources;
@@ -871,7 +889,7 @@ export const chatService = {
 
       return await llmService.testConnection(llmSettings);
     } catch (error) {
-      console.error('Connection test failed:', error);
+      safeDebugLog('error', 'CHATSERVICE', 'Connection test failed:', error);
       return false;
     }
   },
@@ -894,7 +912,7 @@ export const chatService = {
 
   // Force refresh API keys and clear any cached data
   async forceRefreshApiKeys(): Promise<void> {
-    console.log('🔄 ChatService: Force refreshing API keys...');
+    safeDebugLog('info', 'CHATSERVICE', '🔄 ChatService: Force refreshing API keys...');
     try {
       // Force reload API keys from secure storage
       if (secureApiKeyService) {
@@ -904,9 +922,9 @@ export const chatService = {
       // Clear model cache to force fresh fetch with new API keys
       this.clearModelCache();
 
-      console.log('✅ ChatService: API keys and cache refreshed successfully');
+      safeDebugLog('info', 'CHATSERVICE', '✅ ChatService: API keys and cache refreshed successfully');
     } catch (error) {
-      console.error('❌ ChatService: Failed to refresh API keys:', error);
+      safeDebugLog('error', 'CHATSERVICE', '❌ ChatService: Failed to refresh API keys:', error);
     }
   },
 
@@ -933,13 +951,13 @@ export const chatService = {
 
     // Process each file
     for (const file of files) {
-      console.log('Processing file:', file.name, file.type);
+      safeDebugLog('info', 'CHATSERVICE', 'Processing file:', file.name, file.type);
 
       if (file.type.startsWith('image/')) {
         // Convert image to base64 data URL
-        console.log('Converting image to base64...');
+        safeDebugLog('info', 'CHATSERVICE', 'Converting image to base64...');
         const base64 = await this.fileToBase64(file);
-        console.log('Image converted, base64 length:', base64.length);
+        safeDebugLog('info', 'CHATSERVICE', 'Image converted, base64 length:', base64.length);
 
         contentArray.push({
           type: 'image_url',
@@ -953,7 +971,7 @@ export const chatService = {
         // Check if provider supports this file type natively
         if (nativelySupported && provider === 'anthropic') {
           // Anthropic supports native document handling for PDFs and text files
-          console.log('Sending document to Anthropic:', file.name);
+          safeDebugLog('info', 'CHATSERVICE', 'Sending document to Anthropic:', file.name);
           const base64 = await this.fileToBase64(file);
           const base64Data = base64.split(',')[1]; // Remove data URL prefix
 
@@ -967,9 +985,9 @@ export const chatService = {
           } as ContentItem);
         } else {
           // For all other cases, extract text content using DocumentParserService
-          console.log('Extracting text content for provider:', provider, file.name);
+          safeDebugLog('info', 'CHATSERVICE', 'Extracting text content for provider:', provider, file.name);
           const textContent = await this.extractTextFromFile(file);
-          console.log('Text extracted, length:', textContent.length);
+          safeDebugLog('info', 'CHATSERVICE', 'Text extracted, length:', textContent.length);
           contentArray[0].text += `\n\n[File: ${file.name}]\n${textContent}`;
         }
       }

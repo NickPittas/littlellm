@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Brain } from 'lucide-react';
+import { debugLogger } from '../services/debugLogger';
 
 interface ThinkingIndicatorProps {
   className?: string;

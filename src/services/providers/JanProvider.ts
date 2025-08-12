@@ -14,6 +14,25 @@ import {
 import { JAN_SYSTEM_PROMPT } from './prompts/jan';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export class JanProvider extends BaseProvider {
   readonly id = 'jan';
   readonly name = 'Jan AI';
@@ -57,11 +76,11 @@ export class JanProvider extends BaseProvider {
     try {
       // Jan AI uses OpenAI-compatible API at /chat/completions
       const endpoint = `${baseUrl}/chat/completions`;
-      console.log(`🔍 Jan AI: Using API URL: ${endpoint}`);
+      safeDebugLog('info', 'JANPROVIDER', `🔍 Jan AI: Using API URL: ${endpoint}`);
 
       // Get tools if tool calling is enabled
       const tools = settings.toolCallingEnabled ? await this.getJanTools(settings) : [];
-      console.log(`🔧 Jan AI: ${tools.length} tools available for model ${settings.model}`);
+      safeDebugLog('info', 'JANPROVIDER', `🔧 Jan AI: ${tools.length} tools available for model ${settings.model}`);
 
       // Build messages array
       const messages = this.buildMessagesArray(message, conversationHistory, settings);
@@ -75,7 +94,7 @@ export class JanProvider extends BaseProvider {
         ...(tools.length > 0 && { tools })
       };
 
-      console.log(`📤 Jan AI: Sending request to ${endpoint}`, {
+      safeDebugLog('info', 'JANPROVIDER', `📤 Jan AI: Sending request to ${endpoint}`, {
         model: settings.model,
         messageCount: messages.length,
         toolCount: tools.length,
@@ -94,7 +113,7 @@ export class JanProvider extends BaseProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Jan AI API error: ${response.status}`, errorText);
+        safeDebugLog('error', 'JANPROVIDER', `❌ Jan AI API error: ${response.status}`, errorText);
         throw new Error(`Jan AI API error: ${response.status} - ${errorText}`);
       }
 
@@ -104,7 +123,7 @@ export class JanProvider extends BaseProvider {
         return this.handleNonStreamResponse(response, settings, provider, conversationHistory);
       }
     } catch (error) {
-      console.error('❌ Jan AI request failed:', error);
+      safeDebugLog('error', 'JANPROVIDER', '❌ Jan AI request failed:', error);
       if (error instanceof Error && error.name === 'AbortError') {
         throw error;
       }
@@ -114,19 +133,19 @@ export class JanProvider extends BaseProvider {
 
   private async getJanTools(settings: LLMSettings): Promise<unknown[]> {
     try {
-      console.log(`🔧 Jan AI: Getting tools for provider 'jan'`);
+      safeDebugLog('info', 'JANPROVIDER', `🔧 Jan AI: Getting tools for provider 'jan'`);
 
       // Get raw tools from the centralized service
       const rawTools = await this.getMCPToolsForProvider('jan', settings);
-      console.log(`📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{name?: string, function?: {name?: string}}>).map(t => t.name || t.function?.name));
+      safeDebugLog('info', 'JANPROVIDER', `📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{name?: string, function?: {name?: string}}>).map(t => t.name || t.function?.name));
 
       // Format tools for Jan AI (uses OpenAI format)
       const formattedTools = this.formatToolsForJan(rawTools);
-      console.log(`🔧 Formatted ${formattedTools.length} tools for Jan AI`);
+      safeDebugLog('info', 'JANPROVIDER', `🔧 Formatted ${formattedTools.length} tools for Jan AI`);
 
       return formattedTools;
     } catch (error) {
-      console.error('❌ Failed to get Jan AI tools:', error);
+      safeDebugLog('error', 'JANPROVIDER', '❌ Failed to get Jan AI tools:', error);
       return [];
     }
   }
@@ -177,7 +196,7 @@ export class JanProvider extends BaseProvider {
       const messageWithImages = message as { text: string; images: string[] };
       const content: ContentItem[] = [{ type: 'text', text: messageWithImages.text }];
 
-      console.log(`🖼️ Jan AI: Processing ${messageWithImages.images.length} images`);
+      safeDebugLog('info', 'JANPROVIDER', `🖼️ Jan AI: Processing ${messageWithImages.images.length} images`);
 
       for (const imageUrl of messageWithImages.images) {
         // Extract base64 data if it's a data URL, otherwise assume it's raw base64
@@ -198,7 +217,7 @@ export class JanProvider extends BaseProvider {
       }
 
       messages.push({ role: 'user', content });
-      console.log(`🖼️ Jan AI: Created message with ${content.length} content items`);
+      safeDebugLog('info', 'JANPROVIDER', `🖼️ Jan AI: Created message with ${content.length} content items`);
     }
 
     return messages;
@@ -213,8 +232,8 @@ export class JanProvider extends BaseProvider {
       janBaseUrl = janBaseUrl.replace(/\/$/, '') + '/v1';
     }
 
-    console.log(`🔍 Jan AI: Using base URL: ${janBaseUrl}`);
-    console.log(`🔍 Jan AI: Using API key: ${apiKey ? `${apiKey.substring(0, 8)}...` : 'none'}`);
+    safeDebugLog('info', 'JANPROVIDER', `🔍 Jan AI: Using base URL: ${janBaseUrl}`);
+    safeDebugLog('info', 'JANPROVIDER', `🔍 Jan AI: Using API key: ${apiKey ? `${apiKey.substring(0, 8)}...` : 'none'}`);
 
     // Validate API key
     if (!apiKey || apiKey.trim() === '') {
@@ -232,7 +251,7 @@ export class JanProvider extends BaseProvider {
 
     for (const hostUrl of hostsToTry) {
       try {
-        console.log(`🔍 Jan AI: Trying host: ${hostUrl}`);
+        safeDebugLog('info', 'JANPROVIDER', `🔍 Jan AI: Trying host: ${hostUrl}`);
 
         // Jan AI models endpoint (OpenAI-compatible: GET /v1/models)
         const response = await fetch(`${hostUrl}/models`, {
@@ -244,7 +263,7 @@ export class JanProvider extends BaseProvider {
 
         if (!response.ok) {
           const errorText = await response.text();
-          console.error(`❌ Jan AI API error at ${hostUrl}: ${response.status}`, errorText);
+          safeDebugLog('error', 'JANPROVIDER', `❌ Jan AI API error at ${hostUrl}: ${response.status}`, errorText);
 
           if (response.status === 404) {
             lastError = new Error(`Jan AI API not found at ${hostUrl}. Please check:\n1. Jan AI is installed and running\n2. Local API Server is started in Jan AI settings\n3. Server is running on the correct port (default: 1337)\n4. API prefix is set to /v1 in Jan AI settings`);
@@ -264,20 +283,20 @@ export class JanProvider extends BaseProvider {
 
         // Success! Parse the response
         const data = await response.json();
-        console.log(`✅ Jan AI: Successfully connected to ${hostUrl}`);
-        console.log('🔍 Jan AI models response:', data);
+        safeDebugLog('info', 'JANPROVIDER', `✅ Jan AI: Successfully connected to ${hostUrl}`);
+        safeDebugLog('info', 'JANPROVIDER', '🔍 Jan AI models response:', data);
 
         if (!data.data || !Array.isArray(data.data)) {
-          console.warn('⚠️ Jan AI: Unexpected response format:', data);
+          safeDebugLog('warn', 'JANPROVIDER', '⚠️ Jan AI: Unexpected response format:', data);
           return [];
         }
 
         const models = data.data.map((model: any) => model.id || model.name).filter(Boolean);
-        console.log(`✅ Jan AI: Found ${models.length} models:`, models);
+        safeDebugLog('info', 'JANPROVIDER', `✅ Jan AI: Found ${models.length} models:`, models);
         return models;
 
       } catch (error) {
-        console.error(`❌ Jan AI: Error connecting to ${hostUrl}:`, error);
+        safeDebugLog('error', 'JANPROVIDER', `❌ Jan AI: Error connecting to ${hostUrl}:`, error);
         lastError = error as Error;
 
         // If this is not the last host to try, continue to next host
@@ -288,7 +307,7 @@ export class JanProvider extends BaseProvider {
     }
 
     // If we get here, all hosts failed
-    console.error(`❌ Failed to connect to Jan AI on any host:`, hostsToTry);
+    safeDebugLog('error', 'JANPROVIDER', `❌ Failed to connect to Jan AI on any host:`, hostsToTry);
     throw lastError || new Error(`Failed to connect to Jan AI. Tried hosts: ${hostsToTry.join(', ')}`);
   }
 
@@ -365,7 +384,7 @@ Use these tools when appropriate to help answer the user's questions or complete
 
     // Handle tool calls if present
     if (message.tool_calls && message.tool_calls.length > 0) {
-      console.log(`🔧 Jan AI: Processing ${message.tool_calls.length} tool calls`);
+      safeDebugLog('info', 'JANPROVIDER', `🔧 Jan AI: Processing ${message.tool_calls.length} tool calls`);
       return this.executeToolsAndFollowUp(
         message.tool_calls,
         message.content || '',

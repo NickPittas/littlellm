@@ -1,3 +1,25 @@
+
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 "use client"
 
 import * as React from "react"
@@ -37,13 +59,13 @@ export function MCPDropdown({
   const loadServers = React.useCallback(async () => {
     // Prevent concurrent loads
     if (isLoading) {
-      console.log('🔄 MCP Dropdown: Load already in progress, skipping')
+      safeDebugLog('info', 'MCP_DROPDOWN', '🔄 MCP Dropdown: Load already in progress, skipping')
       return
     }
 
     try {
       setIsLoading(true)
-      console.log('🔄 MCP Dropdown: Loading servers...')
+      safeDebugLog('info', 'MCP_DROPDOWN', '🔄 MCP Dropdown: Loading servers...')
 
       const mcpServers = await mcpService.getServers()
       setServers(mcpServers)
@@ -93,7 +115,7 @@ export function MCPDropdown({
 
       // MCP Status loaded
     } catch (error) {
-      console.error('Failed to load MCP servers:', error)
+      safeDebugLog('error', 'MCP_DROPDOWN', 'Failed to load MCP servers:', error)
     } finally {
       // Clear loading state after a short delay to prevent rapid successive calls
       if (loadingTimeoutRef.current) {
@@ -120,8 +142,8 @@ export function MCPDropdown({
 
   const toggleServer = React.useCallback(async (serverId: string, currentlyEnabled: boolean) => {
     try {
-      console.log(`🔄 MCP Dropdown: toggleServer called for ${serverId}: ${currentlyEnabled} -> ${!currentlyEnabled}`)
-      console.log('🔄 MCP Dropdown: mcpService available:', !!mcpService)
+      safeDebugLog('info', 'MCP_DROPDOWN', `🔄 MCP Dropdown: toggleServer called for ${serverId}: ${currentlyEnabled} -> ${!currentlyEnabled}`)
+      safeDebugLog('info', 'MCP_DROPDOWN', '🔄 MCP Dropdown: mcpService available:', !!mcpService)
 
       // Use the exact same logic as SettingsOverlay.tsx handleUpdateMcpServer
       const wasEnabled = currentlyEnabled
@@ -134,18 +156,18 @@ export function MCPDropdown({
       // Handle connection changes - same logic as settings page
       if (wasEnabled !== willBeEnabled) {
         if (willBeEnabled) {
-          console.log('🔌 Connecting MCP server after enable:', serverId)
+          safeDebugLog('info', 'MCP_DROPDOWN', '🔌 Connecting MCP server after enable:', serverId)
           try {
             await mcpService.connectServer(serverId)
           } catch (connectError) {
-            console.warn('⚠️ Failed to connect server after enable:', connectError)
+            safeDebugLog('warn', 'MCP_DROPDOWN', '⚠️ Failed to connect server after enable:', connectError)
           }
         } else {
-          console.log('🔌 Disconnecting MCP server after disable:', serverId)
+          safeDebugLog('info', 'MCP_DROPDOWN', '🔌 Disconnecting MCP server after disable:', serverId)
           try {
             await mcpService.disconnectServer(serverId)
           } catch (disconnectError) {
-            console.warn('⚠️ Failed to disconnect server after disable:', disconnectError)
+            safeDebugLog('warn', 'MCP_DROPDOWN', '⚠️ Failed to disconnect server after disable:', disconnectError)
           }
         }
       }
@@ -165,20 +187,20 @@ export function MCPDropdown({
       setEnabledServers(newEnabledServers)
       setConnectedServers(newConnectedServers)
 
-      console.log('🔄 Updated local state - enabledServers:', Array.from(newEnabledServers))
-      console.log('🔄 Updated local state - connectedServers:', Array.from(newConnectedServers))
+      safeDebugLog('info', 'MCP_DROPDOWN', '🔄 Updated local state - enabledServers:', Array.from(newEnabledServers))
+      safeDebugLog('info', 'MCP_DROPDOWN', '🔄 Updated local state - connectedServers:', Array.from(newConnectedServers))
 
       // Trigger settings reload for MCP server change (explicit requirement) - same as settings page
       const { settingsService } = await import('../../services/settingsService')
       await settingsService.reloadForMCPChange()
 
       // Force reload servers to ensure UI is in sync with backend state
-      console.log('🔄 Reloading servers to sync UI state...')
+      safeDebugLog('info', 'MCP_DROPDOWN', '🔄 Reloading servers to sync UI state...')
       await loadServers()
 
-      console.log('✅ MCP server update completed')
+      safeDebugLog('info', 'MCP_DROPDOWN', '✅ MCP server update completed')
     } catch (error) {
-      console.error('❌ Failed to update MCP server:', error)
+      safeDebugLog('error', 'MCP_DROPDOWN', '❌ Failed to update MCP server:', error)
       // Only reload if not already loading to prevent loops
       if (!isLoading) {
         setTimeout(() => loadServers(), 1000) // Delayed reload to prevent loops
@@ -188,7 +210,7 @@ export function MCPDropdown({
 
   const restartServer = async (serverId: string) => {
     try {
-      console.log(`🔄 Restarting MCP server ${serverId}`)
+      safeDebugLog('info', 'MCP_DROPDOWN', `🔄 Restarting MCP server ${serverId}`)
 
       // Disconnect first
       await mcpService.disconnectServer(serverId)
@@ -198,16 +220,16 @@ export function MCPDropdown({
 
       // Reconnect
       const connected = await mcpService.connectServer(serverId)
-      console.log(`🔌 MCP server ${serverId} restart result:`, connected)
+      safeDebugLog('info', 'MCP_DROPDOWN', `🔌 MCP server ${serverId} restart result:`, connected)
 
       // Update local state instead of full reload
       if (connected) {
         setConnectedServers(prev => new Set([...prev, serverId]))
       }
 
-      console.log(`✅ MCP server ${serverId} restart completed`)
+      safeDebugLog('info', 'MCP_DROPDOWN', `✅ MCP server ${serverId} restart completed`)
     } catch (error) {
-      console.error('❌ Failed to restart MCP server:', error)
+      safeDebugLog('error', 'MCP_DROPDOWN', '❌ Failed to restart MCP server:', error)
       // Only reload if not already loading to prevent loops
       if (!isLoading) {
         setTimeout(() => loadServers(), 1000) // Delayed reload to prevent loops
@@ -220,7 +242,7 @@ export function MCPDropdown({
       try {
         await window.electronAPI.closeDropdown()
       } catch (error) {
-        console.error('Failed to close floating dropdown:', error)
+        safeDebugLog('error', 'MCP_DROPDOWN', 'Failed to close floating dropdown:', error)
       }
     }
     setOpen(false)
@@ -231,30 +253,30 @@ export function MCPDropdown({
     if (!isElectron) return;
 
     const handleSelection = (selectedValue: string) => {
-      console.log('🔥 MCP DROPDOWN: handleSelection called with:', selectedValue);
-      console.log('🔥 MCP DROPDOWN: typeof selectedValue:', typeof selectedValue);
+      safeDebugLog('info', 'MCP_DROPDOWN', '🔥 MCP DROPDOWN: handleSelection called with:', selectedValue);
+      safeDebugLog('info', 'MCP_DROPDOWN', '🔥 MCP DROPDOWN: typeof selectedValue:', typeof selectedValue);
 
       // ONLY handle MCP-related selections to avoid conflicts with other dropdowns
       const isMCPToggle = selectedValue.startsWith('mcp-toggle:');
       const isMCPServer = servers.some(s => s.id === selectedValue);
 
       if (!isMCPToggle && !isMCPServer) {
-        console.log('🔥 MCP DROPDOWN: Ignoring non-MCP selection:', selectedValue);
+        safeDebugLog('info', 'MCP_DROPDOWN', '🔥 MCP DROPDOWN: Ignoring non-MCP selection:', selectedValue);
         return;
       }
 
       // Handle new toggle format: "mcp-toggle:serverId:currentlyEnabled"
       if (selectedValue.startsWith('mcp-toggle:')) {
         const parts = selectedValue.split(':');
-        console.log('🔥 MCP DROPDOWN: Toggle format detected, parts:', parts);
+        safeDebugLog('info', 'MCP_DROPDOWN', '🔥 MCP DROPDOWN: Toggle format detected, parts:', parts);
         if (parts.length === 3) {
           const serverId = parts[1];
           const currentlyEnabled = parts[2] === 'true';
-          console.log('🔥 MCP DROPDOWN: Calling toggleServer with:', serverId, currentlyEnabled);
+          safeDebugLog('info', 'MCP_DROPDOWN', '🔥 MCP DROPDOWN: Calling toggleServer with:', serverId, currentlyEnabled);
           toggleServer(serverId, currentlyEnabled);
           return; // Don't close dropdown for toggle switches
         } else {
-          console.log('🔥 MCP DROPDOWN: Invalid toggle format, expected 3 parts, got:', parts.length);
+          safeDebugLog('info', 'MCP_DROPDOWN', '🔥 MCP DROPDOWN: Invalid toggle format, expected 3 parts, got:', parts.length);
         }
       }
 
@@ -262,7 +284,7 @@ export function MCPDropdown({
       try {
         const parsed = JSON.parse(selectedValue);
         if (parsed.type === 'mcp-toggle') {
-          console.log('🔥 MCP DROPDOWN: Legacy toggle switch clicked:', parsed.serverId);
+          safeDebugLog('info', 'MCP_DROPDOWN', '🔥 MCP DROPDOWN: Legacy toggle switch clicked:', parsed.serverId);
           toggleServer(parsed.serverId, parsed.currentlyEnabled);
           return; // Don't close dropdown for toggle switches
         }
@@ -276,11 +298,11 @@ export function MCPDropdown({
         // This prevents intercepting provider/model selections
         const server = servers.find(s => s.id === selectedValue);
         if (!server) {
-          console.log('🔥 MCP DROPDOWN: Ignoring selection not in our servers:', selectedValue);
+          safeDebugLog('info', 'MCP_DROPDOWN', '🔥 MCP DROPDOWN: Ignoring selection not in our servers:', selectedValue);
           return;
         }
 
-        console.log('🔥 MCP DROPDOWN: Toggling server:', server.name);
+        safeDebugLog('info', 'MCP_DROPDOWN', '🔥 MCP DROPDOWN: Toggling server:', server.name);
         const currentlyEnabled = enabledServers.has(server.id);
         toggleServer(server.id, currentlyEnabled);
         setOpen(false);
@@ -289,11 +311,11 @@ export function MCPDropdown({
 
     // Register MCP dropdown listener
     if (window.electronAPI?.onDropdownItemSelected) {
-      console.log('🔥 MCP DROPDOWN: Registering listener');
+      safeDebugLog('info', 'MCP_DROPDOWN', '🔥 MCP DROPDOWN: Registering listener');
       window.electronAPI.onDropdownItemSelected(handleSelection);
 
       return () => {
-        console.log('🔥 MCP DROPDOWN: Cleanup (not removing listeners)');
+        safeDebugLog('info', 'MCP_DROPDOWN', '🔥 MCP DROPDOWN: Cleanup (not removing listeners)');
       };
     }
   }, [servers, enabledServers, isElectron, toggleServer]);
@@ -333,7 +355,7 @@ export function MCPDropdown({
                  data-value="mcp-toggle:${server.id}:${isEnabled}"
                  data-server-id="${server.id}"
                  data-enabled="${isEnabled}"
-                 onclick="console.log('🔥 HTML Toggle clicked:', '${server.id}', ${isEnabled}); console.log('🔥 electronAPI available:', !!window.electronAPI); console.log('🔥 selectDropdownItem available:', !!window.electronAPI?.selectDropdownItem); window.electronAPI?.selectDropdownItem?.('mcp-toggle:${server.id}:${isEnabled}');">
+                 onclick="safeDebugLog('info', 'MCP_DROPDOWN', '🔥 HTML Toggle clicked:', '${server.id}', ${isEnabled}); safeDebugLog('info', 'MCP_DROPDOWN', '🔥 electronAPI available:', !!window.electronAPI); safeDebugLog('info', 'MCP_DROPDOWN', '🔥 selectDropdownItem available:', !!window.electronAPI?.selectDropdownItem); window.electronAPI?.selectDropdownItem?.('mcp-toggle:${server.id}:${isEnabled}');">
               <div class="toggle-track">
                 <div class="toggle-thumb"></div>
               </div>
@@ -540,7 +562,7 @@ export function MCPDropdown({
       const x = rect.left
       const y = rect.bottom + 4 // 4px gap below trigger
 
-      console.log('🔍 MCP Dropdown positioning:', {
+      safeDebugLog('info', 'MCP_DROPDOWN', '🔍 MCP Dropdown positioning:', {
         buttonRect: rect,
         calculatedPosition: { x, y },
         dropdownSize: { width: dropdownWidth, height: dropdownHeight }
@@ -553,7 +575,7 @@ export function MCPDropdown({
       await window.electronAPI.openDropdown(x, y, dropdownWidth, dropdownHeight, content)
       setOpen(true)
     } catch (error) {
-      console.error('Failed to open floating dropdown:', error)
+      safeDebugLog('error', 'MCP_DROPDOWN', 'Failed to open floating dropdown:', error)
       setOpen(true) // Fallback to regular dropdown
     }
   }
@@ -721,7 +743,7 @@ export function MCPDropdown({
                             {/* iPhone-style toggle switch */}
                             <div
                               onMouseDown={(e) => {
-                                console.log('🔄 MCP Toggle switch mousedown:', server.id);
+                                safeDebugLog('info', 'MCP_DROPDOWN', '🔄 MCP Toggle switch mousedown:', server.id);
                                 // Prevent dropdown from closing
                                 e.stopPropagation();
                               }}
@@ -729,7 +751,7 @@ export function MCPDropdown({
                               <ToggleSwitch
                                 enabled={isEnabled}
                                 onToggle={async (newEnabledState) => {
-                                  console.log('🔄 MCP Toggle switch clicked:', server.id, 'currently enabled:', isEnabled, 'new state requested:', newEnabledState);
+                                  safeDebugLog('info', 'MCP_DROPDOWN', '🔄 MCP Toggle switch clicked:', server.id, 'currently enabled:', isEnabled, 'new state requested:', newEnabledState);
                                   // The toggleServer function expects the CURRENT state, not the new state
                                   // This is because it calculates willBeEnabled = !currentlyEnabled
                                   await toggleServer(server.id, isEnabled);

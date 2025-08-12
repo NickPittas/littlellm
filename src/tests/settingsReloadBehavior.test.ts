@@ -1,5 +1,6 @@
 import { settingsService } from '../services/settingsService';
 import { mcpService } from '../services/mcpService';
+import { debugLogger } from '../services/debugLogger';
 
 // Mock window.electronAPI
 const mockElectronAPI = {
@@ -98,6 +99,7 @@ describe('Settings Reload Behavior', () => {
             deepseek: { lastSelectedModel: '' },
             deepinfra: { lastSelectedModel: '' },
             lmstudio: { baseUrl: '', lastSelectedModel: '' },
+            jan: { baseUrl: '', lastSelectedModel: '' },
             ollama: { baseUrl: '', lastSelectedModel: '' },
             openrouter: { lastSelectedModel: '' },
             requesty: { lastSelectedModel: '' },

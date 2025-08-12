@@ -6,6 +6,25 @@
 import { memoryService } from './memoryService';
 import { MemoryEntry } from '../types/memory';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export interface CleanupConfig {
   maxMemories: number;
   maxAge: number; // days
@@ -71,7 +90,7 @@ class MemoryCleanupService {
       }
 
       const memories = searchResult.data.results.map(r => r.entry);
-      console.log(`🧹 Starting cleanup of ${memories.length} memories`);
+      safeDebugLog('info', 'MEMORYCLEANUPSERVICE', `🧹 Starting cleanup of ${memories.length} memories`);
 
       // 1. Remove old memories
       if (finalConfig.maxAge > 0) {
@@ -147,7 +166,7 @@ class MemoryCleanupService {
         result.sizeAfter = finalStatsResult.data.totalSize;
       }
 
-      console.log(`🧹 Cleanup completed: ${result.deleted} deleted, ${result.archived} archived, ${result.consolidated} consolidated`);
+      safeDebugLog('info', 'MEMORYCLEANUPSERVICE', `🧹 Cleanup completed: ${result.deleted} deleted, ${result.archived} archived, ${result.consolidated} consolidated`);
 
     } catch (error) {
       result.success = false;
@@ -329,7 +348,7 @@ class MemoryCleanupService {
 
       return updateResult.success;
     } catch (error) {
-      console.error('Failed to archive memory:', error);
+      safeDebugLog('error', 'MEMORYCLEANUPSERVICE', 'Failed to archive memory:', error);
       return false;
     }
   }

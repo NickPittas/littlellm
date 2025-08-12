@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import React from "react";
+import { debugLogger } from '../../services/debugLogger';
 
 interface BlurFadeProps {
   children: React.ReactNode;

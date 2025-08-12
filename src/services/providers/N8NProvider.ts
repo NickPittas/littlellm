@@ -13,6 +13,25 @@ import {
 
 import { N8N_SYSTEM_PROMPT, generateN8NToolPrompt } from './prompts/n8n';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export class N8NProvider extends BaseProvider {
   readonly id = 'n8n';
   readonly name = 'n8n Workflow';
@@ -35,7 +54,7 @@ export class N8NProvider extends BaseProvider {
     conversationId?: string
   ): Promise<LLMResponse> {
     // N8N workflow integration
-    console.log(`🔍 N8N sendMessage called with:`, {
+    safeDebugLog('info', 'N8NPROVIDER', `🔍 N8N sendMessage called with:`, {
       settingsBaseUrl: settings.baseUrl,
       providerBaseUrl: provider.baseUrl,
       messageType: typeof message
@@ -44,7 +63,7 @@ export class N8NProvider extends BaseProvider {
     const baseUrl = settings.baseUrl || provider.baseUrl;
 
     if (!baseUrl) {
-      console.error('🚨 N8N webhook URL is missing:', {
+      safeDebugLog('error', 'N8NPROVIDER', '🚨 N8N webhook URL is missing:', {
         settingsBaseUrl: settings.baseUrl,
         providerBaseUrl: provider.baseUrl,
         hasSettings: !!settings,
@@ -53,7 +72,7 @@ export class N8NProvider extends BaseProvider {
       throw new Error('N8N webhook URL is required. Please configure the webhook URL in Settings → API Keys → N8N Base URL.');
     }
 
-    console.log(`🔍 N8N: Using webhook URL: ${baseUrl}`);
+    safeDebugLog('info', 'N8NPROVIDER', `🔍 N8N: Using webhook URL: ${baseUrl}`);
 
     // Prepare the payload for the N8N workflow
     const payload = {
@@ -71,7 +90,7 @@ export class N8NProvider extends BaseProvider {
       conversationId: conversationId || undefined
     };
 
-    console.log('🔗 N8N webhook payload:', JSON.stringify(payload, null, 2));
+    safeDebugLog('info', 'N8NPROVIDER', '🔗 N8N webhook payload:', JSON.stringify(payload, null, 2));
 
     const response = await fetch(baseUrl, {
       method: 'POST',
@@ -82,7 +101,7 @@ export class N8NProvider extends BaseProvider {
       signal
     });
 
-    console.log('🔗 N8N response status:', {
+    safeDebugLog('info', 'N8NPROVIDER', '🔗 N8N response status:', {
       status: response.status,
       statusText: response.statusText,
       ok: response.ok,
@@ -91,7 +110,7 @@ export class N8NProvider extends BaseProvider {
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('🚨 N8N workflow error response:', error);
+      safeDebugLog('error', 'N8NPROVIDER', '🚨 N8N workflow error response:', error);
       throw new Error(`N8N workflow error (${response.status}): ${error}`);
     }
 
@@ -104,7 +123,7 @@ export class N8NProvider extends BaseProvider {
 
   async fetchModels(apiKey: string, baseUrl?: string): Promise<string[]> {
     if (!baseUrl) {
-      console.error('❌ No N8N workflow URL provided - cannot fetch models');
+      safeDebugLog('error', 'N8NPROVIDER', '❌ No N8N workflow URL provided - cannot fetch models');
       throw new Error('N8N workflow URL is required. Please add the workflow URL in settings.');
     }
 
@@ -117,7 +136,7 @@ export class N8NProvider extends BaseProvider {
       }
       return [workflowName];
     } catch (error) {
-      console.error('❌ Failed to process N8N workflow URL:', error);
+      safeDebugLog('error', 'N8NPROVIDER', '❌ Failed to process N8N workflow URL:', error);
       throw error instanceof Error ? error : new Error(`Failed to process N8N workflow URL: ${String(error)}`);
     }
   }
@@ -188,7 +207,7 @@ export class N8NProvider extends BaseProvider {
     try {
       // First check if response has content
       const responseText = await response.text();
-      console.log('🔗 N8N raw response:', {
+      safeDebugLog('info', 'N8NPROVIDER', '🔗 N8N raw response:', {
         status: response.status,
         statusText: response.statusText,
         headers: Object.fromEntries(response.headers.entries()),
@@ -204,11 +223,11 @@ export class N8NProvider extends BaseProvider {
       try {
         data = JSON.parse(responseText);
       } catch (parseError) {
-        console.error('🚨 N8N JSON parse error:', parseError);
+        safeDebugLog('error', 'N8NPROVIDER', '🚨 N8N JSON parse error:', parseError);
         throw new Error(`N8N webhook returned invalid JSON: ${responseText.substring(0, 100)}...`);
       }
 
-      console.log('🔗 N8N workflow response:', JSON.stringify(data, null, 2));
+      safeDebugLog('info', 'N8NPROVIDER', '🔗 N8N workflow response:', JSON.stringify(data, null, 2));
 
       // Handle different possible response formats from N8N workflows
       let content = '';
@@ -246,7 +265,7 @@ export class N8NProvider extends BaseProvider {
         usage
       };
     } catch (error) {
-      console.error('❌ Failed to parse N8N workflow response:', error);
+      safeDebugLog('error', 'N8NPROVIDER', '❌ Failed to parse N8N workflow response:', error);
       throw new Error(`Failed to parse N8N workflow response: ${error instanceof Error ? error.message : String(error)}`);
     }
   }

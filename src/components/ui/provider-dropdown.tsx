@@ -1,3 +1,25 @@
+
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 "use client"
 
 import * as React from "react"
@@ -42,17 +64,17 @@ export function ProviderDropdown({
       try {
         await window.electronAPI.closeDropdown()
       } catch (error) {
-        console.error('Failed to close floating dropdown:', error)
+        safeDebugLog('error', 'PROVIDER_DROPDOWN', 'Failed to close floating dropdown:', error)
       }
     }
     setOpen(false)
   }, [isElectron])
 
   const handleSelect = (selectedProvider: LLMProvider) => {
-    console.log('ProviderDropdown handleSelect called with:', selectedProvider.name);
+    safeDebugLog('info', 'PROVIDER_DROPDOWN', 'ProviderDropdown handleSelect called with:', selectedProvider.name);
     onValueChange?.(selectedProvider.name);
     handleClose();
-    console.log('ProviderDropdown selection completed');
+    safeDebugLog('info', 'PROVIDER_DROPDOWN', 'ProviderDropdown selection completed');
   }
 
   const openDropdown = async () => {
@@ -90,7 +112,7 @@ export function ProviderDropdown({
       await window.electronAPI.openDropdown(x, y, dropdownWidth, dropdownHeight, content)
       setOpen(true)
     } catch (error) {
-      console.error('Failed to open floating dropdown:', error)
+      safeDebugLog('error', 'PROVIDER_DROPDOWN', 'Failed to open floating dropdown:', error)
       setOpen(true) // Fallback to regular dropdown
     }
   }
@@ -109,21 +131,21 @@ export function ProviderDropdown({
   React.useEffect(() => {
     if (isElectron && window.electronAPI?.onDropdownItemSelected) {
       const handleSelection = (value: string) => {
-        console.log('🚀 ELECTRON DROPDOWN: Provider selected:', value);
-        console.log('🚀 ELECTRON DROPDOWN: Available providers:', providers);
+        safeDebugLog('info', 'PROVIDER_DROPDOWN', '🚀 ELECTRON DROPDOWN: Provider selected:', value);
+        safeDebugLog('info', 'PROVIDER_DROPDOWN', '🚀 ELECTRON DROPDOWN: Available providers:', providers);
 
         // Check if the selected value is a valid provider ID
         const isValidProvider = providers.some(provider => provider.id === value);
-        console.log('🚀 ELECTRON DROPDOWN: Is selected value a valid provider?', isValidProvider);
+        safeDebugLog('info', 'PROVIDER_DROPDOWN', '🚀 ELECTRON DROPDOWN: Is selected value a valid provider?', isValidProvider);
 
         // ONLY handle selections that are actually valid providers
         // This prevents cross-dropdown contamination from MCP servers
         if (!isValidProvider) {
-          console.log('🚀 ELECTRON DROPDOWN: Ignoring selection not in our providers:', value);
+          safeDebugLog('info', 'PROVIDER_DROPDOWN', '🚀 ELECTRON DROPDOWN: Ignoring selection not in our providers:', value);
           return;
         }
 
-        console.log('🚀 ELECTRON DROPDOWN: Calling onValueChange with:', value);
+        safeDebugLog('info', 'PROVIDER_DROPDOWN', '🚀 ELECTRON DROPDOWN: Calling onValueChange with:', value);
         onValueChange?.(value);
         setOpen(false);
       };
@@ -132,7 +154,7 @@ export function ProviderDropdown({
 
       return () => {
         // Don't remove all listeners - other dropdowns need them too
-        console.log('🚀 PROVIDER DROPDOWN: Cleanup (not removing listeners)');
+        safeDebugLog('info', 'PROVIDER_DROPDOWN', '🚀 PROVIDER DROPDOWN: Cleanup (not removing listeners)');
       };
     }
   }, [isElectron, onValueChange, providers]);
@@ -232,7 +254,7 @@ export function ProviderDropdown({
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            console.log('Provider item clicked:', provider.name);
+                            safeDebugLog('info', 'PROVIDER_DROPDOWN', 'Provider item clicked:', provider.name);
                             handleSelect(provider);
                           }}
                           className={cn(

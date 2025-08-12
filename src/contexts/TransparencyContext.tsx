@@ -2,6 +2,25 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface TransparencyConfig {
   opacity: number;
   vibrancyType: string;
@@ -61,7 +80,7 @@ export function TransparencyProvider({ children }: TransparencyProviderProps) {
 
       setCapabilities(platformCapabilities);
       setIsInitialized(true);
-      console.log('Platform capabilities:', platformCapabilities);
+      safeDebugLog('info', 'TRANSPARENCYCONTEXT', 'Platform capabilities:', platformCapabilities);
     };
 
     detectCapabilities();

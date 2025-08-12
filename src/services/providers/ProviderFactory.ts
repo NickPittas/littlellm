@@ -1,7 +1,6 @@
 // Provider factory for managing LLM providers
 
 import { ILLMProvider } from './BaseProvider';
-import { debugLogger } from '../debugLogger';
 import { OpenAIProvider } from './OpenAIProvider';
 import { AnthropicProvider } from './AnthropicProvider';
 import { GeminiProvider } from './GeminiProvider';
@@ -23,6 +22,26 @@ import { N8NProvider } from './N8NProvider';
 // import { RequestyProvider } from './RequestyProvider';
 // import { ReplicateProvider } from './ReplicateProvider';
 // import { N8NProvider } from './N8NProvider';
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 
 export class ProviderFactory {
   private static providers: Map<string, ILLMProvider> = new Map();
@@ -54,13 +73,13 @@ export class ProviderFactory {
 
   private static registerProvider(provider: ILLMProvider): void {
     this.providers.set(provider.id, provider);
-    debugLogger.info('PROVIDER', `Registered provider: ${provider.id} (${provider.name})`);
+    safeDebugLog('info', 'PROVIDER', `Registered provider: ${provider.id} (${provider.name})`);
   }
 
   static getProvider(providerId: string): ILLMProvider | null {
     const provider = this.providers.get(providerId);
     if (!provider) {
-      console.warn(`⚠️ Provider not found: ${providerId}`);
+      safeDebugLog('warn', 'PROVIDERFACTORY', `⚠️ Provider not found: ${providerId}`);
       return null;
     }
     return provider;

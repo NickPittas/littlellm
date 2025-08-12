@@ -1,6 +1,27 @@
 // Removed unused import: APIResponseData
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 export interface OpenAIFileUpload {
+
   id: string;
   object: 'file';
   bytes: number;
@@ -28,7 +49,7 @@ export class OpenAIFileService {
     formData.append('purpose', purpose);
     formData.append('file', file);
 
-    console.log(`Uploading file to OpenAI: ${file.name} for purpose ${purpose}`);
+    safeDebugLog('info', 'OPENAIFILESERVICE', `Uploading file to OpenAI: ${file.name} for purpose ${purpose}`);
 
     const response = await fetch(`${this.baseUrl}/files`, {
       method: 'POST',
@@ -40,12 +61,12 @@ export class OpenAIFileService {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenAI file upload failed:', errorText);
+      safeDebugLog('error', 'OPENAIFILESERVICE', 'OpenAI file upload failed:', errorText);
       throw new Error(`OpenAI file upload failed: ${response.statusText} - ${errorText}`);
     }
 
     const responseData: OpenAIFileUpload = await response.json();
-    console.log('OpenAI file upload successful:', responseData);
+    safeDebugLog('info', 'OPENAIFILESERVICE', 'OpenAI file upload successful:', responseData);
     return responseData;
   }
 }

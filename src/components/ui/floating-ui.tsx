@@ -3,6 +3,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { useTransparencyAwareStyles } from '@/contexts/TransparencyContext';
+import { debugLogger } from '../../services/debugLogger';
 
 interface FloatingContainerProps extends React.HTMLAttributes<HTMLDivElement> {
   level?: 1 | 2 | 3 | 4 | 'modal';

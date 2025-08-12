@@ -15,6 +15,25 @@ import {
 import { DEEPSEEK_SYSTEM_PROMPT } from './prompts/deepseek';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export class DeepSeekProvider extends BaseProvider {
   readonly id = 'deepseek';
   readonly name = 'DeepSeek';
@@ -83,13 +102,13 @@ export class DeepSeekProvider extends BaseProvider {
     if (mcpTools.length > 0) {
       requestBody.tools = mcpTools;
       requestBody.tool_choice = 'auto';
-      console.log(`🚀 DeepSeek API call with ${mcpTools.length} tools:`, {
+      safeDebugLog('info', 'DEEPSEEKPROVIDER', `🚀 DeepSeek API call with ${mcpTools.length} tools:`, {
         model: settings.model,
         toolCount: mcpTools.length,
         tools: mcpTools
       });
     } else {
-      console.log(`🚀 DeepSeek API call without tools (no MCP tools available)`);
+      safeDebugLog('info', 'DEEPSEEKPROVIDER', `🚀 DeepSeek API call without tools (no MCP tools available)`);
     }
 
     const response = await fetch(`${provider.baseUrl}/chat/completions`, {
@@ -116,7 +135,7 @@ export class DeepSeekProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.error('❌ No DeepSeek API key provided - cannot fetch models');
+      safeDebugLog('error', 'DEEPSEEKPROVIDER', '❌ No DeepSeek API key provided - cannot fetch models');
       throw new Error('DeepSeek API key is required to fetch available models. Please add your API key in settings.');
     }
 
@@ -131,7 +150,7 @@ export class DeepSeekProvider extends BaseProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ DeepSeek API error: ${response.status}`, errorText);
+        safeDebugLog('error', 'DEEPSEEKPROVIDER', `❌ DeepSeek API error: ${response.status}`, errorText);
         throw new Error(`Failed to fetch DeepSeek models: ${response.status} - ${errorText}`);
       }
 
@@ -144,7 +163,7 @@ export class DeepSeekProvider extends BaseProvider {
 
       return models;
     } catch (error) {
-      console.error('❌ Failed to fetch DeepSeek models:', error);
+      safeDebugLog('error', 'DEEPSEEKPROVIDER', '❌ Failed to fetch DeepSeek models:', error);
       throw error instanceof Error ? error : new Error(`Failed to fetch DeepSeek models: ${String(error)}`);
     }
   }
@@ -176,7 +195,7 @@ export class DeepSeekProvider extends BaseProvider {
 
     // DeepSeek uses structured tool calling with tools parameter and tool_choice
     // Don't add XML tool instructions as they conflict with native function calling
-    console.log(`🔧 DeepSeek using structured tools, skipping XML tool instructions`);
+    safeDebugLog('info', 'DEEPSEEKPROVIDER', `🔧 DeepSeek using structured tools, skipping XML tool instructions`);
     return basePrompt;
   }
 
@@ -289,7 +308,7 @@ export class DeepSeekProvider extends BaseProvider {
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
-    console.log('🔍 DeepSeek non-streaming response:', {
+    safeDebugLog('info', 'DEEPSEEKPROVIDER', '🔍 DeepSeek non-streaming response:', {
       hasUsage: !!data.usage,
       usage: data.usage,
       responseKeys: Object.keys(data)
@@ -300,11 +319,11 @@ export class DeepSeekProvider extends BaseProvider {
 
     // Handle tool calls (same as OpenAI format) - execute immediately like Anthropic
     if (message.tool_calls && message.tool_calls.length > 0) {
-      console.log(`🔧 DeepSeek response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
+      safeDebugLog('info', 'DEEPSEEKPROVIDER', `🔧 DeepSeek response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
       // Check if we have the parallel execution method injected
       if ((this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).executeMultipleToolsParallel && (this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).summarizeToolResultsForModel) {
-        console.log(`🚀 Executing ${message.tool_calls.length} DeepSeek tools immediately`);
+        safeDebugLog('info', 'DEEPSEEKPROVIDER', `🚀 Executing ${message.tool_calls.length} DeepSeek tools immediately`);
 
         // Format tool calls for execution
         const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
@@ -319,7 +338,7 @@ export class DeepSeekProvider extends BaseProvider {
         
         try {
           const parallelResults = await (executeMultipleToolsParallel as (calls: unknown[], provider: string) => Promise<Array<{success: boolean}>>)(toolCallsForExecution, 'deepseek');
-          console.log(`✅ DeepSeek tool execution completed: ${parallelResults.filter(r => r.success).length}/${parallelResults.length} successful`);
+          safeDebugLog('info', 'DEEPSEEKPROVIDER', `✅ DeepSeek tool execution completed: ${parallelResults.filter(r => r.success).length}/${parallelResults.length} successful`);
 
           // Get tool results summary for the model
           const toolSummary = (summarizeToolResultsForModel as (results: unknown[]) => string)(parallelResults);
@@ -334,7 +353,7 @@ export class DeepSeekProvider extends BaseProvider {
             } : undefined
           };
         } catch (error) {
-          console.error(`❌ DeepSeek tool execution failed:`, error);
+          safeDebugLog('error', 'DEEPSEEKPROVIDER', `❌ DeepSeek tool execution failed:`, error);
           // Fall back to returning tool calls for external handling
           return {
             content: message.content || '',
@@ -347,7 +366,7 @@ export class DeepSeekProvider extends BaseProvider {
           };
         }
       } else {
-        console.warn(`⚠️ DeepSeek provider missing tool execution methods - falling back to external handling`);
+        safeDebugLog('warn', 'DEEPSEEKPROVIDER', `⚠️ DeepSeek provider missing tool execution methods - falling back to external handling`);
         // Fall back to external handling if methods not injected
         return {
           content: message.content || '',

@@ -9,7 +9,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Plus, Edit, Trash2, Download, Upload } from 'lucide-react';
 import { promptsService, type Prompt } from '../services/promptsService';
 
-
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface PromptsContentProps {
   onPromptSelect: (processedPrompt: string) => void;
   clipboardContent?: string;
@@ -48,7 +66,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
           currentClipboardContent = (await navigator.clipboard.readText()).trim();
         }
       } catch (error) {
-        console.warn('Failed to read clipboard:', error);
+        safeDebugLog('warn', 'PROMPTSCONTENT', 'Failed to read clipboard:', error);
         currentClipboardContent = '';
       }
     }
@@ -154,7 +172,7 @@ export function PromptsContent({ onPromptSelect, clipboardContent = '' }: Prompt
               });
             }
           } catch (error) {
-            console.error('Failed to import prompts:', error);
+            safeDebugLog('error', 'PROMPTSCONTENT', 'Failed to import prompts:', error);
           }
         };
         reader.readAsText(file);

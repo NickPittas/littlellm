@@ -1,6 +1,7 @@
 // Tests for the Agent Service
 import { agentService } from '../services/agentService';
 import { CreateAgentRequest } from '../types/agent';
+import { debugLogger } from '../services/debugLogger';
 
 // Mock the dependencies
 jest.mock('../services/mcpService', () => ({

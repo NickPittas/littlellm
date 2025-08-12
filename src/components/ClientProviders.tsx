@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { TransparencyProvider } from '@/contexts/TransparencyContext';
+import { debugLogger } from '../services/debugLogger';
 
 export default function ClientProviders({
   children,

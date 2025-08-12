@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { debugLogger } from '../../services/debugLogger';
 
 interface BorderBeamProps {
   className?: string;

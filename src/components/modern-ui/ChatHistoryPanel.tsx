@@ -7,6 +7,26 @@ import { Input } from '../ui/input';
 import { conversationHistoryService, type Conversation } from '../../services/conversationHistoryService';
 import { cn } from '@/lib/utils';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('../../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 // Use the existing Conversation type from the service
 
 interface ChatHistoryPanelProps {
@@ -38,10 +58,10 @@ export function ChatHistoryPanel({
     try {
       // Load real conversation history from the service
       const conversations = await conversationHistoryService.getAllConversations();
-      console.log('Loaded conversations:', conversations.length);
+      safeDebugLog('info', 'CHATHISTORYPANEL', 'Loaded conversations:', conversations.length);
       setChatHistory(conversations);
     } catch (error) {
-      console.error('Failed to load chat history:', error);
+      safeDebugLog('error', 'CHATHISTORYPANEL', 'Failed to load chat history:', error);
       setChatHistory([]);
     } finally {
       setIsLoading(false);
@@ -87,9 +107,9 @@ export function ChatHistoryPanel({
       await conversationHistoryService.deleteConversation(chatId);
       // Reload the chat history
       await loadChatHistory();
-      console.log('Chat deleted successfully:', chatId);
+      safeDebugLog('info', 'CHATHISTORYPANEL', 'Chat deleted successfully:', chatId);
     } catch (error) {
-      console.error('Failed to delete chat:', error);
+      safeDebugLog('error', 'CHATHISTORYPANEL', 'Failed to delete chat:', error);
     }
   };
 
@@ -99,9 +119,9 @@ export function ChatHistoryPanel({
         await conversationHistoryService.clearAllHistory();
         // Reload the chat history (should be empty now)
         await loadChatHistory();
-        console.log('All chat history cleared');
+        safeDebugLog('info', 'CHATHISTORYPANEL', 'All chat history cleared');
       } catch (error) {
-        console.error('Failed to clear chat history:', error);
+        safeDebugLog('error', 'CHATHISTORYPANEL', 'Failed to clear chat history:', error);
       }
     }
   };

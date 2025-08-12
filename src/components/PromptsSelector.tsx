@@ -13,6 +13,25 @@ import { promptsService, type Prompt } from '../services/promptsService';
 
 import { renderIcon } from '../utils/iconMapping';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 interface PromptsSelectorProps {
   onPromptSelect: (processedPrompt: string) => void;
   clipboardContent?: string;
@@ -52,7 +71,7 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
           currentClipboardContent = (await navigator.clipboard.readText()).trim();
         }
       } catch (error) {
-        console.error('Failed to read clipboard:', error);
+        safeDebugLog('error', 'PROMPTSSELECTOR', 'Failed to read clipboard:', error);
         // Continue without clipboard content
       }
     }
@@ -147,7 +166,7 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
             alert('Failed to import prompts. Please check the file format.');
           }
         } catch (error) {
-          console.error('Failed to import prompts:', error);
+          safeDebugLog('error', 'PROMPTSSELECTOR', 'Failed to import prompts:', error);
           alert('Failed to import prompts. Please check the file format.');
         }
       };
@@ -162,7 +181,7 @@ export function PromptsSelector({ onPromptSelect, clipboardContent = '' }: Promp
         size="sm"
         title="Use pre-made prompt"
         onClick={() => {
-          console.log('Button clicked, setting showDialog to true');
+          safeDebugLog('info', 'PROMPTSSELECTOR', 'Button clicked, setting showDialog to true');
           setShowDialog(true);
         }}
       >

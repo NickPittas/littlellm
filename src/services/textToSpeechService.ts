@@ -1,5 +1,24 @@
 import { TextToSpeechSettings } from '../types/settings';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export interface TTSVoice {
   name: string;
   lang: string;
@@ -23,14 +42,14 @@ export class TextToSpeechService {
 
     // Listen for voices changed event (voices load asynchronously)
     this.synthesis.addEventListener('voiceschanged', () => {
-      console.log('🔊 TTS: voiceschanged event fired');
+      safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: voiceschanged event fired');
       this.loadVoices();
       this.onVoicesChangedCallback?.();
     });
   }
 
   private forceVoiceLoading(): void {
-    console.log('🔊 TTS: Forcing voice loading...');
+    safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Forcing voice loading...');
 
     // Multiple attempts to trigger voice loading
     this.loadVoices();
@@ -58,13 +77,13 @@ export class TextToSpeechService {
     const checkVoices = () => {
       attempts++;
       const currentVoices = this.synthesis.getVoices();
-      console.log(`🔊 TTS: Voice loading attempt ${attempts}, found ${currentVoices.length} voices`);
+      safeDebugLog('info', 'TEXTTOSPEECHSERVICE', `🔊 TTS: Voice loading attempt ${attempts}, found ${currentVoices.length} voices`);
 
       if (currentVoices.length > this.voices.length || attempts >= 10) {
         this.loadVoices();
         this.onVoicesChangedCallback?.();
         if (attempts < 10) {
-          console.log('🔊 TTS: Voice loading completed');
+          safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Voice loading completed');
         }
       } else {
         setTimeout(checkVoices, 100);
@@ -75,18 +94,18 @@ export class TextToSpeechService {
 
   private loadVoices(): void {
     this.voices = this.synthesis.getVoices();
-    console.log('🔊 TTS: Loaded voices:', this.voices.length);
+    safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Loaded voices:', this.voices.length);
 
     // Detect browser for voice availability info
     const isChrome = /Chrome/.test(navigator.userAgent) && /Google Inc/.test(navigator.vendor);
     const isEdge = /Edg/.test(navigator.userAgent);
     const isElectron = /Electron/.test(navigator.userAgent);
 
-    console.log('🔊 TTS: Browser detection - Chrome:', isChrome, 'Edge:', isEdge, 'Electron:', isElectron);
+    safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Browser detection - Chrome:', isChrome, 'Edge:', isEdge, 'Electron:', isElectron);
 
     // Log voice details for debugging
     if (this.voices.length > 0) {
-      console.log('🔊 TTS: Available voices:', this.voices.map(v => ({
+      safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Available voices:', this.voices.map(v => ({
         name: v.name,
         lang: v.lang,
         localService: v.localService,
@@ -102,14 +121,14 @@ export class TextToSpeechService {
       const remoteVoices = this.voices.filter(v => !v.localService);
       const microsoftVoices = this.voices.filter(v => v.name.toLowerCase().includes('microsoft'));
 
-      console.log('🔊 TTS: Voice breakdown:');
-      console.log('  - Google voices:', googleVoices.length);
-      console.log('  - Remote voices:', remoteVoices.length);
-      console.log('  - Microsoft voices:', microsoftVoices.length);
-      console.log('  - Total voices:', this.voices.length);
+      safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Voice breakdown:');
+      safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '  - Google voices:', googleVoices.length);
+      safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '  - Remote voices:', remoteVoices.length);
+      safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '  - Microsoft voices:', microsoftVoices.length);
+      safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '  - Total voices:', this.voices.length);
 
       if (googleVoices.length === 0 && isElectron) {
-        console.log('🔊 TTS: No Google voices found in Electron. Consider using Chrome browser for Google voices.');
+        safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: No Google voices found in Electron. Consider using Chrome browser for Google voices.');
       }
     }
 
@@ -126,7 +145,7 @@ export class TextToSpeechService {
       // Otherwise use the first available voice
       const selectedVoice = googleVoice || remoteVoice || this.voices[0];
       this.settings.voice = selectedVoice.name;
-      console.log('🔊 TTS: Auto-selected voice:', selectedVoice.name);
+      safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Auto-selected voice:', selectedVoice.name);
     }
   }
 
@@ -154,7 +173,7 @@ export class TextToSpeechService {
 
   public getHighQualityVoices(): TTSVoice[] {
     const allVoices = this.getAvailableVoices();
-    console.log('🔊 TTS: Filtering high-quality voices from', allVoices.length, 'total voices');
+    safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Filtering high-quality voices from', allVoices.length, 'total voices');
 
     // More inclusive filtering - include more voice types
     const highQuality = allVoices.filter(voice => {
@@ -184,13 +203,13 @@ export class TextToSpeechService {
         ));
 
       if (isHighQuality) {
-        console.log('🔊 TTS: High-quality voice found:', voice.name, '(local:', voice.localService, ')');
+        safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: High-quality voice found:', voice.name, '(local:', voice.localService, ')');
       }
 
       return isHighQuality;
     });
 
-    console.log('🔊 TTS: Found', highQuality.length, 'high-quality voices');
+    safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Found', highQuality.length, 'high-quality voices');
 
     return highQuality.sort((a, b) => {
       // Sort by quality preference
@@ -268,16 +287,16 @@ export class TextToSpeechService {
 
     // Event handlers
     utterance.onstart = () => {
-      console.log('🔊 TTS: Started speaking');
+      safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Started speaking');
     };
 
     utterance.onend = () => {
-      console.log('🔊 TTS: Finished speaking');
+      safeDebugLog('info', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Finished speaking');
       this.currentUtterance = null;
     };
 
     utterance.onerror = (event) => {
-      console.error('🔊 TTS: Error occurred:', event.error);
+      safeDebugLog('error', 'TEXTTOSPEECHSERVICE', '🔊 TTS: Error occurred:', event.error);
       this.currentUtterance = null;
     };
 

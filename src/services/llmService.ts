@@ -34,7 +34,26 @@ import { memoryContextService, MemoryContext } from './memoryContextService';
 import { internalCommandService } from './internalCommandService';
 import { settingsService } from './settingsService';
 import { ProviderAdapter } from './providers/ProviderAdapter';
-import { debugLogger } from './debugLogger';
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 import {
   ToolObject,
   MessageContent,
@@ -237,12 +256,12 @@ class LLMService {
       // Only initialize once - service handles duplicate initialization prevention
       await internalCommandService.initialize();
     } catch (error) {
-      console.error('❌ Failed to initialize internal command service:', error);
+      safeDebugLog('error', 'LLMSERVICE', '❌ Failed to initialize internal command service:', error);
     }
   }
 
   private setupProviderAdapter() {
-    console.log(`🔧 LLMService: Setting up ProviderAdapter with dependency injection`);
+    safeDebugLog('info', 'LLMSERVICE', `🔧 LLMService: Setting up ProviderAdapter with dependency injection`);
 
     // Inject dependencies into the provider adapter
     this.providerAdapter.setMCPToolsGetter(this.getMCPToolsForProvider.bind(this));
@@ -256,7 +275,7 @@ class LLMService {
     this.providerAdapter.setToolResultsAggregator(this.aggregateToolResults.bind(this));
     this.providerAdapter.setToolResultFormatter(this.formatToolResult.bind(this));
 
-    console.log(`✅ LLMService: ProviderAdapter setup complete with all dependencies injected`);
+    safeDebugLog('info', 'LLMSERVICE', `✅ LLMService: ProviderAdapter setup complete with all dependencies injected`);
   }
 
   getProviders(): LLMProvider[] {
@@ -285,7 +304,7 @@ class LLMService {
       this.modelCache.set(cacheKey, { models, timestamp: Date.now() });
       return models;
     } catch (error) {
-      console.warn(`Failed to fetch models for ${providerId}:`, error);
+      safeDebugLog('warn', 'LLMSERVICE', `Failed to fetch models for ${providerId}:`, error);
       // Don't return fallback models - let the UI handle the empty state
       return [];
     }
@@ -302,11 +321,11 @@ class LLMService {
       // Clear cache for specific provider
       const keysToDelete = Array.from(this.modelCache.keys()).filter(key => key.startsWith(`${providerId}-`));
       keysToDelete.forEach(key => this.modelCache.delete(key));
-      console.log(`🗑️ Cleared model cache for provider: ${providerId}`);
+      safeDebugLog('info', 'LLMSERVICE', `🗑️ Cleared model cache for provider: ${providerId}`);
     } else {
       // Clear all cache
       this.modelCache.clear();
-      console.log('🗑️ Cleared all model cache');
+      safeDebugLog('info', 'LLMSERVICE', '🗑️ Cleared all model cache');
     }
   }
 
@@ -323,7 +342,7 @@ class LLMService {
       throw new Error(`Provider ${settings.provider} not found`);
     }
 
-    console.log(`🚀 LLMService: Sending message via ${provider.name}`);
+    safeDebugLog('info', 'LLMSERVICE', `🚀 LLMService: Sending message via ${provider.name}`);
 
     try {
       // Use the new ProviderAdapter for all providers
@@ -338,10 +357,10 @@ class LLMService {
         conversationId
       );
 
-      console.log(`✅ LLMService: Message sent successfully via ${provider.name}`);
+      safeDebugLog('info', 'LLMSERVICE', `✅ LLMService: Message sent successfully via ${provider.name}`);
       return response;
     } catch (error) {
-      console.error(`❌ LLMService: Error sending message via ${provider.name}:`, error);
+      safeDebugLog('error', 'LLMSERVICE', `❌ LLMService: Error sending message via ${provider.name}:`, error);
       throw error;
     }
   }
@@ -364,7 +383,7 @@ class LLMService {
       await this.sendMessage(testMessage, testSettings, [], undefined, undefined);
       return true;
     } catch (error) {
-      console.error('Connection test failed:', error);
+      safeDebugLog('error', 'LLMSERVICE', 'Connection test failed:', error);
       return false;
     }
   }
@@ -377,34 +396,34 @@ class LLMService {
 
   public async getMCPToolsForProvider(provider: string, settings?: LLMSettings): Promise<unknown[]> {
     try {
-      console.log(`🔍 Getting MCP tools for provider: ${provider}`);
-      console.log(`🔍 MCP Service available:`, !!mcpService);
-      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
+      safeDebugLog('info', 'LLMSERVICE', `🔍 Getting MCP tools for provider: ${provider}`);
+      safeDebugLog('info', 'LLMSERVICE', `🔍 MCP Service available:`, !!mcpService);
+      safeDebugLog('info', 'LLMSERVICE', `🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
 
       // Check if tool calling is disabled
       if (settings?.toolCallingEnabled === false) {
-        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
+        safeDebugLog('info', 'LLMSERVICE', `🚫 Tool calling is disabled, returning empty tools array`);
         return [];
       }
 
       // Get tools directly from enabled servers in JSON
-      console.log(`🔍 Reading MCP servers directly from JSON file...`);
+      safeDebugLog('info', 'LLMSERVICE', `🔍 Reading MCP servers directly from JSON file...`);
       const mcpTools = await this.getToolsFromEnabledServers();
-      console.log(`📋 Tools from enabled servers (${mcpTools.length} tools):`, mcpTools);
+      safeDebugLog('info', 'LLMSERVICE', `📋 Tools from enabled servers (${mcpTools.length} tools):`, mcpTools);
 
       // Add memory tools to the available tools
       const memoryTools = getMemoryMCPTools();
-      console.log(`🧠 Memory tools available (${memoryTools.length} tools):`, memoryTools.map(t => t.function.name));
+      safeDebugLog('info', 'LLMSERVICE', `🧠 Memory tools available (${memoryTools.length} tools):`, memoryTools.map(t => t.function.name));
 
       // Get internal command tools if enabled (ensure service is initialized first)
-      console.log(`🔧 Ensuring settings are fully loaded before checking internal commands...`);
+      safeDebugLog('info', 'LLMSERVICE', `🔧 Ensuring settings are fully loaded before checking internal commands...`);
       await settingsService.waitForInitialization();
-      console.log(`🔧 Settings initialization complete, now initializing internal command service...`);
+      safeDebugLog('info', 'LLMSERVICE', `🔧 Settings initialization complete, now initializing internal command service...`);
       await internalCommandService.initialize();
 
       // Debug settings loading
       const currentSettings = settingsService.getSettings();
-      console.log(`🔧 Current settings for internal commands:`, {
+      safeDebugLog('info', 'LLMSERVICE', `🔧 Current settings for internal commands:`, {
         enabled: currentSettings.internalCommands?.enabled,
         enabledCommands: currentSettings.internalCommands?.enabledCommands,
         hasInternalCommands: !!currentSettings.internalCommands,
@@ -412,12 +431,12 @@ class LLMService {
       });
 
       const isInternalEnabled = internalCommandService.isEnabled();
-      console.log(`🔧 Internal commands enabled: ${isInternalEnabled}`);
+      safeDebugLog('info', 'LLMSERVICE', `🔧 Internal commands enabled: ${isInternalEnabled}`);
       if (!isInternalEnabled) {
-        console.log(`💡 To enable internal commands: Go to Settings > Internal Commands > Enable Internal Commands`);
+        safeDebugLog('info', 'LLMSERVICE', `💡 To enable internal commands: Go to Settings > Internal Commands > Enable Internal Commands`);
       }
       const internalTools = isInternalEnabled ? internalCommandService.getAvailableTools() : [];
-      console.log(`🔧 Internal command tools available (${internalTools.length} tools):`, internalTools.map(t => t.name));
+      safeDebugLog('info', 'LLMSERVICE', `🔧 Internal command tools available (${internalTools.length} tools):`, internalTools.map(t => t.name));
 
       // Convert all tools to a unified format that providers can handle
       const unifiedTools: Array<{type: string, function: {name: string, description: string, parameters: unknown}, serverId?: string}> = [];
@@ -440,7 +459,7 @@ class LLMService {
             serverId: 'internal-commands' // Mark as internal command
           });
           toolNames.add(tool.name);
-          console.log(`🔧 Added internal command tool: ${tool.name}`);
+          safeDebugLog('info', 'LLMSERVICE', `🔧 Added internal command tool: ${tool.name}`);
         }
       }
 
@@ -450,9 +469,9 @@ class LLMService {
         if (!toolNames.has(toolName)) {
           unifiedTools.push(tool);
           toolNames.add(toolName);
-          console.log(`🧠 Added memory tool: ${toolName}`);
+          safeDebugLog('info', 'LLMSERVICE', `🧠 Added memory tool: ${toolName}`);
         } else {
-          console.log(`⚠️ Skipped duplicate memory tool: ${toolName} (already exists)`);
+          safeDebugLog('info', 'LLMSERVICE', `⚠️ Skipped duplicate memory tool: ${toolName} (already exists)`);
         }
       }
 
@@ -473,24 +492,24 @@ class LLMService {
             serverId: tool.serverId // Keep server ID for execution routing
           });
           toolNames.add(tool.name);
-          console.log(`📋 Added MCP tool: ${tool.name} from server ${tool.serverId}`);
+          safeDebugLog('info', 'LLMSERVICE', `📋 Added MCP tool: ${tool.name} from server ${tool.serverId}`);
         } else {
-          console.log(`⚠️ Skipped duplicate MCP tool: ${tool.name} from server ${tool.serverId} (conflicts with higher priority tool)`);
+          safeDebugLog('info', 'LLMSERVICE', `⚠️ Skipped duplicate MCP tool: ${tool.name} from server ${tool.serverId} (conflicts with higher priority tool)`);
         }
       }
 
-      console.log(`📋 Total unified tools available (${unifiedTools.length} tools):`, unifiedTools.map(t => t.function.name));
+      safeDebugLog('info', 'LLMSERVICE', `📋 Total unified tools available (${unifiedTools.length} tools):`, unifiedTools.map(t => t.function.name));
 
       if (!unifiedTools || unifiedTools.length === 0) {
-        console.log(`⚠️ No tools available for provider: ${provider}`);
+        safeDebugLog('info', 'LLMSERVICE', `⚠️ No tools available for provider: ${provider}`);
         return [];
       }
 
       // Return unified tools - all in the same format for consistent provider handling
-      console.log(`✅ Returning ${unifiedTools.length} unified tools for ${provider} to format`);
+      safeDebugLog('info', 'LLMSERVICE', `✅ Returning ${unifiedTools.length} unified tools for ${provider} to format`);
       return unifiedTools;
     } catch (error) {
-      console.error('❌ Failed to get MCP tools:', error);
+      safeDebugLog('error', 'LLMSERVICE', '❌ Failed to get MCP tools:', error);
       return [];
     }
   }
@@ -503,22 +522,22 @@ class LLMService {
         try {
           parsedArgs = JSON.parse(args);
         } catch {
-          console.warn(`⚠️ Failed to parse tool arguments as JSON, using as-is:`, args);
+          safeDebugLog('warn', 'LLMSERVICE', `⚠️ Failed to parse tool arguments as JSON, using as-is:`, args);
         }
       }
 
-      console.log(`🔧 Executing tool: ${toolName} with args:`, parsedArgs);
+      safeDebugLog('info', 'LLMSERVICE', `🔧 Executing tool: ${toolName} with args:`, parsedArgs);
 
       // Check if this is a memory tool
       if (isMemoryTool(toolName)) {
-        console.log(`🧠 Executing memory tool: ${toolName}`);
+        safeDebugLog('info', 'LLMSERVICE', `🧠 Executing memory tool: ${toolName}`);
         const result = await executeMemoryTool(toolName, parsedArgs);
-        console.log(`✅ Memory tool ${toolName} executed successfully:`, result);
+        safeDebugLog('info', 'LLMSERVICE', `✅ Memory tool ${toolName} executed successfully:`, result);
         return JSON.stringify(result);
       }
       // Check if this is an internal command
       else if (isInternalCommand(toolName)) {
-        console.log(`🔧 Executing internal command: ${toolName}`);
+        safeDebugLog('info', 'LLMSERVICE', `🔧 Executing internal command: ${toolName}`);
 
         // Trigger thinking indicator for tool execution
         if (typeof window !== 'undefined' && window.triggerToolThinking) {
@@ -529,42 +548,42 @@ class LLMService {
         const result = await internalCommandService.executeCommand(toolName, parsedArgs);
         const duration = Date.now() - startTime;
 
-        console.log(`✅ Internal command ${toolName} executed successfully:`, result);
+        safeDebugLog('info', 'LLMSERVICE', `✅ Internal command ${toolName} executed successfully:`, result);
 
         // Automatically log tool execution for debugging
-        debugLogger.logToolExecution(toolName, parsedArgs, result, duration);
+        safeDebugLog('info', 'TOOL_EXECUTION', toolName, parsedArgs, result, duration);
 
         // Format result for LLM consumption
         if (result.success) {
-          console.log(`🔧 Internal command result structure:`, result);
+          safeDebugLog('info', 'LLMSERVICE', `🔧 Internal command result structure:`, result);
           const textContent = result.content
             .filter(item => item.type === 'text')
             .map(item => item.text)
             .join('\n');
-          console.log(`🔧 Extracted text content:`, textContent);
+          safeDebugLog('info', 'LLMSERVICE', `🔧 Extracted text content:`, textContent);
 
           // Ensure we have meaningful content to return to the LLM
           if (!textContent || textContent.trim() === '') {
             const fallbackResult = `The ${toolName} command executed successfully but returned no output.`;
-            console.log(`🔧 No text content, using fallback:`, fallbackResult);
+            safeDebugLog('info', 'LLMSERVICE', `🔧 No text content, using fallback:`, fallbackResult);
             return fallbackResult;
           }
 
-          console.log(`🔧 Final result being returned:`, textContent);
+          safeDebugLog('info', 'LLMSERVICE', `🔧 Final result being returned:`, textContent);
           return textContent;
         } else {
-          console.log(`🔧 Internal command failed:`, result);
+          safeDebugLog('info', 'LLMSERVICE', `🔧 Internal command failed:`, result);
 
           // Format error in a user-friendly way for the LLM
           const errorMessage = result.error || 'Command failed';
           const friendlyError = `The ${toolName} command failed. ${this.formatErrorForLLM(errorMessage, toolName)}`;
-          console.log(`🔧 Formatted error for LLM:`, friendlyError);
+          safeDebugLog('info', 'LLMSERVICE', `🔧 Formatted error for LLM:`, friendlyError);
           return friendlyError;
         }
       }
       else {
         // Execute as MCP tool
-        console.log(`🔧 Executing MCP tool: ${toolName}`);
+        safeDebugLog('info', 'LLMSERVICE', `🔧 Executing MCP tool: ${toolName}`);
 
         // Trigger thinking indicator for tool execution
         if (typeof window !== 'undefined' && window.triggerToolThinking) {
@@ -575,10 +594,10 @@ class LLMService {
         const result = await mcpService.callTool(toolName, parsedArgs);
         const duration = Date.now() - startTime;
 
-        console.log(`✅ MCP tool ${toolName} executed successfully:`, result);
+        safeDebugLog('info', 'LLMSERVICE', `✅ MCP tool ${toolName} executed successfully:`, result);
 
         // Automatically log MCP tool execution for debugging
-        debugLogger.logToolExecution(toolName, parsedArgs, result, duration);
+        safeDebugLog('info', 'TOOL_EXECUTION', toolName, parsedArgs, result, duration);
 
         // Format MCP tool results consistently
         if (result && typeof result === 'object') {
@@ -596,7 +615,7 @@ class LLMService {
               .join('\n');
 
             if (textContent) {
-              console.log(`🔧 Extracted MCP text content:`, textContent);
+              safeDebugLog('info', 'LLMSERVICE', `🔧 Extracted MCP text content:`, textContent);
               return textContent;
             }
           }
@@ -609,7 +628,7 @@ class LLMService {
           // If result has error information
           if (resultObj.error) {
             const friendlyError = `The ${toolName} tool failed. ${this.formatErrorForLLM(String(resultObj.error), toolName)}`;
-            console.log(`🔧 Formatted MCP error for LLM:`, friendlyError);
+            safeDebugLog('info', 'LLMSERVICE', `🔧 Formatted MCP error for LLM:`, friendlyError);
             return friendlyError;
           }
         }
@@ -618,7 +637,7 @@ class LLMService {
         return JSON.stringify(result);
       }
     } catch (error) {
-      console.error(`❌ Failed to execute tool ${toolName}:`, error);
+      safeDebugLog('error', 'LLMSERVICE', `❌ Failed to execute tool ${toolName}:`, error);
 
       // Categorize and provide user-friendly error messages
       const errorMessage = this.categorizeToolError(toolName, error, args);
@@ -711,14 +730,14 @@ class LLMService {
       if (shouldSend) {
         // Update stored hash for this conversation
         await conversationHistoryService.setToolsHashForConversation(conversationId, currentToolsHash);
-        console.log(`🔧 Sending tools to ${conversationId}: ${tools.length} tools (hash: ${currentToolsHash})`);
+        safeDebugLog('info', 'LLMSERVICE', `🔧 Sending tools to ${conversationId}: ${tools.length} tools (hash: ${currentToolsHash})`);
       } else {
-        console.log(`🔧 Skipping tools for ${conversationId}: no changes (hash: ${currentToolsHash})`);
+        safeDebugLog('info', 'LLMSERVICE', `🔧 Skipping tools for ${conversationId}: no changes (hash: ${currentToolsHash})`);
       }
 
       return shouldSend;
     } catch (error) {
-      console.error('Error checking tool state:', error);
+      safeDebugLog('error', 'LLMSERVICE', 'Error checking tool state:', error);
       return tools.length > 0; // Fallback to always send tools
     }
   }
@@ -727,37 +746,37 @@ class LLMService {
 
   private async getToolsFromEnabledServers(): Promise<MCPTool[]> {
     try {
-      console.log(`🔍 Attempting to get MCP tools from enabled servers...`);
+      safeDebugLog('info', 'LLMSERVICE', `🔍 Attempting to get MCP tools from enabled servers...`);
       
       // First, check if we can get the server list
       const servers = await mcpService.getServers();
-      console.log(`📊 MCP servers found: ${servers.length}`);
+      safeDebugLog('info', 'LLMSERVICE', `📊 MCP servers found: ${servers.length}`);
       const enabledServers = servers.filter(s => s.enabled);
-      console.log(`✅ Enabled MCP servers: ${enabledServers.length}`, enabledServers.map(s => s.name));
+      safeDebugLog('info', 'LLMSERVICE', `✅ Enabled MCP servers: ${enabledServers.length}`, enabledServers.map(s => s.name));
       
       // Check if servers need to be connected first
-      console.log(`🔗 Attempting to connect to enabled MCP servers...`);
+      safeDebugLog('info', 'LLMSERVICE', `🔗 Attempting to connect to enabled MCP servers...`);
       for (const server of enabledServers) {
         try {
           const connected = await mcpService.connectServer(server.id);
-          console.log(`🔗 Server ${server.name} (${server.id}) connection result:`, connected);
+          safeDebugLog('info', 'LLMSERVICE', `🔗 Server ${server.name} (${server.id}) connection result:`, connected);
         } catch (connectError) {
-          console.error(`❌ Failed to connect server ${server.name}:`, connectError);
+          safeDebugLog('error', 'LLMSERVICE', `❌ Failed to connect server ${server.name}:`, connectError);
         }
       }
       
       // Now try to get tools
       const mcpTools = await mcpService.getAvailableTools();
-      console.log(`📋 Raw MCP tools from service (${mcpTools.length} tools):`, mcpTools);
+      safeDebugLog('info', 'LLMSERVICE', `📋 Raw MCP tools from service (${mcpTools.length} tools):`, mcpTools);
       
       if (mcpTools.length === 0) {
-        console.warn(`⚠️ No MCP tools retrieved despite enabled servers. This indicates an MCP connectivity issue.`);
-        console.warn(`⚠️ Possible causes: 1) Servers not connected, 2) Tool extraction failing, 3) IPC communication broken`);
+        safeDebugLog('warn', 'LLMSERVICE', `⚠️ No MCP tools retrieved despite enabled servers. This indicates an MCP connectivity issue.`);
+        safeDebugLog('warn', 'LLMSERVICE', `⚠️ Possible causes: 1) Servers not connected, 2) Tool extraction failing, 3) IPC communication broken`);
       }
       
       return mcpTools;
     } catch (error) {
-      console.error(`❌ Failed to get tools from enabled servers:`, error);
+      safeDebugLog('error', 'LLMSERVICE', `❌ Failed to get tools from enabled servers:`, error);
       return [];
     }
   }
@@ -851,11 +870,11 @@ class LLMService {
         );
 
         if (success) {
-          console.log(`🧠 Auto-created memory from conversation (type: ${analysis.suggestedMemoryType})`);
+          safeDebugLog('info', 'LLMSERVICE', `🧠 Auto-created memory from conversation (type: ${analysis.suggestedMemoryType})`);
         }
       }
     } catch (error) {
-      console.error('Error creating memory from conversation:', error);
+      safeDebugLog('error', 'LLMSERVICE', 'Error creating memory from conversation:', error);
     }
   }
 
@@ -878,7 +897,7 @@ class LLMService {
     success: boolean;
     executionTime: number;
   }>> {
-    console.log(`🚀 Executing ${toolCalls.length} tools in parallel (optimized) for ${provider}:`, toolCalls.map(tc => tc.name));
+    safeDebugLog('info', 'LLMSERVICE', `🚀 Executing ${toolCalls.length} tools in parallel (optimized) for ${provider}:`, toolCalls.map(tc => tc.name));
 
     const startTime = Date.now();
 
@@ -887,12 +906,12 @@ class LLMService {
     const toolPromises = toolCalls.map(async (toolCall, index) => {
       const toolStartTime = Date.now();
       try {
-        console.log(`🔧 [${index}] Starting parallel execution of ${toolCall.name} with proper routing`);
+        safeDebugLog('info', 'LLMSERVICE', `🔧 [${index}] Starting parallel execution of ${toolCall.name} with proper routing`);
 
         // Use executeMCPTool which has the correct routing logic for internal commands
         const result = await this.executeMCPTool(toolCall.name, toolCall.arguments);
         const executionTime = Date.now() - toolStartTime;
-        console.log(`✅ [${index}] Tool ${toolCall.name} completed in ${executionTime}ms`);
+        safeDebugLog('info', 'LLMSERVICE', `✅ [${index}] Tool ${toolCall.name} completed in ${executionTime}ms`);
 
         return {
           id: toolCall.id,
@@ -903,7 +922,7 @@ class LLMService {
         };
       } catch (error) {
         const executionTime = Date.now() - toolStartTime;
-        console.error(`❌ [${index}] Tool ${toolCall.name} failed in ${executionTime}ms:`, error);
+        safeDebugLog('error', 'LLMSERVICE', `❌ [${index}] Tool ${toolCall.name} failed in ${executionTime}ms:`, error);
 
         return {
           id: toolCall.id,
@@ -937,7 +956,7 @@ class LLMService {
     const successCount = processedResults.filter(r => r.success).length;
     const failureCount = processedResults.length - successCount;
 
-    console.log(`🏁 Optimized parallel execution completed in ${totalTime}ms: ${successCount} successful, ${failureCount} failed`);
+    safeDebugLog('info', 'LLMSERVICE', `🏁 Optimized parallel execution completed in ${totalTime}ms: ${successCount} successful, ${failureCount} failed`);
 
     return processedResults;
   }
@@ -956,7 +975,7 @@ class LLMService {
     success: boolean;
     executionTime: number;
   }>> {
-    console.log(`🔄 Using legacy parallel execution for ${toolCalls.length} tools`);
+    safeDebugLog('info', 'LLMSERVICE', `🔄 Using legacy parallel execution for ${toolCalls.length} tools`);
 
     const startTime = Date.now();
 
@@ -964,11 +983,11 @@ class LLMService {
     const toolPromises = toolCalls.map(async (toolCall, index) => {
       const toolStartTime = Date.now();
       try {
-        console.log(`🔧 [${index}] Starting legacy parallel execution of ${toolCall.name}`);
+        safeDebugLog('info', 'LLMSERVICE', `🔧 [${index}] Starting legacy parallel execution of ${toolCall.name}`);
 
         const result = await this.executeMCPTool(toolCall.name, toolCall.arguments);
         const executionTime = Date.now() - toolStartTime;
-        console.log(`✅ [${index}] Tool ${toolCall.name} completed in ${executionTime}ms`);
+        safeDebugLog('info', 'LLMSERVICE', `✅ [${index}] Tool ${toolCall.name} completed in ${executionTime}ms`);
 
         return {
           id: toolCall.id,
@@ -979,7 +998,7 @@ class LLMService {
         };
       } catch (error) {
         const executionTime = Date.now() - toolStartTime;
-        console.error(`❌ [${index}] Tool ${toolCall.name} failed after ${executionTime}ms:`, error);
+        safeDebugLog('error', 'LLMSERVICE', `❌ [${index}] Tool ${toolCall.name} failed after ${executionTime}ms:`, error);
 
         return {
           id: toolCall.id,
@@ -1004,7 +1023,7 @@ class LLMService {
       if (result.status === 'fulfilled') {
         return result.value;
       } else {
-        console.error(`❌ Promise rejected for tool ${toolCalls[index].name}:`, result.reason);
+        safeDebugLog('error', 'LLMSERVICE', `❌ Promise rejected for tool ${toolCalls[index].name}:`, result.reason);
         return {
           id: toolCalls[index].id,
           name: toolCalls[index].name,
@@ -1022,7 +1041,7 @@ class LLMService {
     const successCount = processedResults.filter(r => r.success).length;
     const failureCount = processedResults.length - successCount;
 
-    console.log(`🏁 Legacy parallel execution completed in ${totalTime}ms: ${successCount} successful, ${failureCount} failed`);
+    safeDebugLog('info', 'LLMSERVICE', `🏁 Legacy parallel execution completed in ${totalTime}ms: ${successCount} successful, ${failureCount} failed`);
 
     return processedResults;
   }

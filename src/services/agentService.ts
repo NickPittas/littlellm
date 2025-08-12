@@ -18,6 +18,25 @@ import { llmService } from './llmService';
 import { secureApiKeyService } from './secureApiKeyService';
 import { v4 as uuidv4 } from 'uuid';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 class AgentService {
   private agents: AgentConfiguration[] = [];
   private templates: AgentTemplate[] = [...DEFAULT_AGENT_TEMPLATES];
@@ -34,9 +53,9 @@ class AgentService {
     try {
       await this.loadAgents();
       this.initialized = true;
-      console.log('✅ Agent service initialized');
+      safeDebugLog('info', 'AGENTSERVICE', '✅ Agent service initialized');
     } catch (error) {
-      console.error('❌ Failed to initialize agent service:', error);
+      safeDebugLog('error', 'AGENTSERVICE', '❌ Failed to initialize agent service:', error);
       this.agents = [];
       this.initialized = true;
     }
@@ -60,13 +79,13 @@ class AgentService {
             this.templates = [...DEFAULT_AGENT_TEMPLATES, ...agentData.templates];
           }
           
-          console.log(`📋 Loaded ${this.agents.length} agents from storage`);
+          safeDebugLog('info', 'AGENTSERVICE', `📋 Loaded ${this.agents.length} agents from storage`);
         } else {
-          console.log('📋 No existing agents found, starting fresh');
+          safeDebugLog('info', 'AGENTSERVICE', '📋 No existing agents found, starting fresh');
         }
       }
     } catch (error) {
-      console.error('❌ Failed to load agents:', error);
+      safeDebugLog('error', 'AGENTSERVICE', '❌ Failed to load agents:', error);
       throw error;
     }
   }
@@ -88,16 +107,16 @@ class AgentService {
 
         const success = await window.electronAPI.saveStateFile('agents.json', agentData);
         if (success) {
-          console.log('✅ Agents saved successfully');
+          safeDebugLog('info', 'AGENTSERVICE', '✅ Agents saved successfully');
           this.notifyListeners();
         } else {
-          console.error('❌ Failed to save agents');
+          safeDebugLog('error', 'AGENTSERVICE', '❌ Failed to save agents');
         }
         return success;
       }
       return false;
     } catch (error) {
-      console.error('❌ Error saving agents:', error);
+      safeDebugLog('error', 'AGENTSERVICE', '❌ Error saving agents:', error);
       return false;
     }
   }
@@ -173,7 +192,7 @@ class AgentService {
       });
 
     } catch (error) {
-      console.error('❌ Failed to get available tools:', error);
+      safeDebugLog('error', 'AGENTSERVICE', '❌ Failed to get available tools:', error);
     }
 
     return tools;
@@ -189,7 +208,7 @@ class AgentService {
       const apiKey = apiKeyData?.apiKey || '';
       const baseUrl = apiKeyData?.baseUrl || '';
 
-      console.log(`🤖 Agent prompt generation for ${request.provider}:`, {
+      safeDebugLog('info', 'AGENTSERVICE', `🤖 Agent prompt generation for ${request.provider}:`, {
         hasApiKey: !!apiKey,
         keyLength: apiKey?.length || 0,
         model: request.model
@@ -231,7 +250,7 @@ class AgentService {
         };
       }
     } catch (error) {
-      console.error('❌ Error generating prompt:', error);
+      safeDebugLog('error', 'AGENTSERVICE', '❌ Error generating prompt:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -302,7 +321,7 @@ Provide only the system prompt text, without any additional commentary or format
     this.agents.push(agent);
     await this.saveAgents();
 
-    console.log(`✅ Created agent: ${agent.name} (${agentId})`);
+    safeDebugLog('info', 'AGENTSERVICE', `✅ Created agent: ${agent.name} (${agentId})`);
     return agentId;
   }
 
@@ -312,7 +331,7 @@ Provide only the system prompt text, without any additional commentary or format
 
     const agentIndex = this.agents.findIndex(agent => agent.id === request.id);
     if (agentIndex === -1) {
-      console.error(`❌ Agent not found: ${request.id}`);
+      safeDebugLog('error', 'AGENTSERVICE', `❌ Agent not found: ${request.id}`);
       return false;
     }
 
@@ -346,7 +365,7 @@ Provide only the system prompt text, without any additional commentary or format
     this.agents[agentIndex] = { ...agent, ...updates };
     await this.saveAgents();
 
-    console.log(`✅ Updated agent: ${agent.name} (${request.id})`);
+    safeDebugLog('info', 'AGENTSERVICE', `✅ Updated agent: ${agent.name} (${request.id})`);
     return true;
   }
 
@@ -356,7 +375,7 @@ Provide only the system prompt text, without any additional commentary or format
 
     const agentIndex = this.agents.findIndex(agent => agent.id === id);
     if (agentIndex === -1) {
-      console.error(`❌ Agent not found: ${id}`);
+      safeDebugLog('error', 'AGENTSERVICE', `❌ Agent not found: ${id}`);
       return false;
     }
 
@@ -364,7 +383,7 @@ Provide only the system prompt text, without any additional commentary or format
     this.agents.splice(agentIndex, 1);
     await this.saveAgents();
 
-    console.log(`✅ Deleted agent: ${agent.name} (${id})`);
+    safeDebugLog('info', 'AGENTSERVICE', `✅ Deleted agent: ${agent.name} (${id})`);
     return true;
   }
 
@@ -374,7 +393,7 @@ Provide only the system prompt text, without any additional commentary or format
 
     const originalAgent = this.agents.find(agent => agent.id === id);
     if (!originalAgent) {
-      console.error(`❌ Agent not found: ${id}`);
+      safeDebugLog('error', 'AGENTSERVICE', `❌ Agent not found: ${id}`);
       return null;
     }
 
@@ -402,7 +421,7 @@ Provide only the system prompt text, without any additional commentary or format
       });
     }
 
-    console.log(`✅ Duplicated agent: ${originalAgent.name} -> ${duplicateRequest.name}`);
+    safeDebugLog('info', 'AGENTSERVICE', `✅ Duplicated agent: ${originalAgent.name} -> ${duplicateRequest.name}`);
     return newAgentId;
   }
 
@@ -412,7 +431,7 @@ Provide only the system prompt text, without any additional commentary or format
 
     const agent = this.agents.find(a => a.id === id);
     if (!agent) {
-      console.error(`❌ Agent not found: ${id}`);
+      safeDebugLog('error', 'AGENTSERVICE', `❌ Agent not found: ${id}`);
       return null;
     }
 
@@ -441,7 +460,7 @@ Provide only the system prompt text, without any additional commentary or format
       requiredMCPServers: agent.enabledMCPServers
     };
 
-    console.log(`✅ Exported agent: ${agent.name}`);
+    safeDebugLog('info', 'AGENTSERVICE', `✅ Exported agent: ${agent.name}`);
     return exportData;
   }
 
@@ -503,7 +522,7 @@ Provide only the system prompt text, without any additional commentary or format
         warnings.push(`Some MCP servers are not configured: ${missingMCPServers.join(', ')}`);
       }
 
-      console.log(`✅ Imported agent: ${importRequest.name} (${agentId})`);
+      safeDebugLog('info', 'AGENTSERVICE', `✅ Imported agent: ${importRequest.name} (${agentId})`);
       return {
         success: true,
         agentId,
@@ -513,7 +532,7 @@ Provide only the system prompt text, without any additional commentary or format
       };
 
     } catch (error) {
-      console.error('❌ Error importing agent:', error);
+      safeDebugLog('error', 'AGENTSERVICE', '❌ Error importing agent:', error);
       return {
         success: false,
         errors: [error instanceof Error ? error.message : 'Unknown error']

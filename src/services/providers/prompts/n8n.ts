@@ -3,6 +3,7 @@
 // This is the complete tool calling prompt used for N8N
 
 import { generateComplexToolPrompt } from './shared-complex-prompt';
+import { debugLogger } from '../../debugLogger';
 
 export function generateN8NToolPrompt(tools: unknown[]): string {
   return generateComplexToolPrompt(tools);

@@ -1,6 +1,25 @@
 import promptsData from '../data/prompts.json';
 import { getStorageItem, setStorageItem } from '../utils/storage';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 export interface Prompt {
   id: string;
   name: string;
@@ -32,7 +51,7 @@ class PromptsService {
     if (!this.initialized && typeof window !== 'undefined') {
       // Load custom prompts asynchronously but don't block
       this.loadCustomPrompts().catch(error => {
-        console.error('Failed to load custom prompts:', error);
+        safeDebugLog('error', 'PROMPTSSERVICE', 'Failed to load custom prompts:', error);
       });
       this.initialized = true;
     }
@@ -49,7 +68,7 @@ class PromptsService {
         this.customPrompts = JSON.parse(stored);
       }
     } catch (error) {
-      console.error('Failed to load custom prompts:', error);
+      safeDebugLog('error', 'PROMPTSSERVICE', 'Failed to load custom prompts:', error);
       this.customPrompts = [];
     }
   }
@@ -58,7 +77,7 @@ class PromptsService {
     try {
       await setStorageItem('custom-prompts', JSON.stringify(this.customPrompts));
     } catch (error) {
-      console.error('Failed to save custom prompts:', error);
+      safeDebugLog('error', 'PROMPTSSERVICE', 'Failed to save custom prompts:', error);
     }
   }
 
@@ -211,7 +230,7 @@ class PromptsService {
       }
       return false;
     } catch (error) {
-      console.error('Failed to import prompts:', error);
+      safeDebugLog('error', 'PROMPTSSERVICE', 'Failed to import prompts:', error);
       return false;
     }
   }

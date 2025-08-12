@@ -3,7 +3,28 @@
  * Ensures all windows stay synchronized with theme changes
  */
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 export interface ThemeData {
+
   customColors: Record<string, string>;
   useCustomColors: boolean;
 }
@@ -26,7 +47,7 @@ class ThemeSyncService {
     if (typeof window !== 'undefined' && window.electronAPI) {
       // Listen for theme changes from other windows
       window.electronAPI.onThemeChange((themeData: { customColors: unknown; useCustomColors: boolean }) => {
-        console.log('ThemeSyncService: Received theme change:', themeData);
+        safeDebugLog('info', 'THEMESYNCSERVICE', 'ThemeSyncService: Received theme change:', themeData);
         this.notifyListeners(themeData as ThemeData);
       });
     }
@@ -47,7 +68,7 @@ class ThemeSyncService {
         await window.electronAPI.notifyThemeChange(themeData);
         // Successfully broadcasted theme change
       } catch (error) {
-        console.error('ThemeSyncService: Failed to broadcast theme change:', error);
+        safeDebugLog('error', 'THEMESYNCSERVICE', 'ThemeSyncService: Failed to broadcast theme change:', error);
       }
     }
   }
@@ -75,7 +96,7 @@ class ThemeSyncService {
       try {
         listener(themeData);
       } catch (error) {
-        console.error('ThemeSyncService: Error in listener:', error);
+        safeDebugLog('error', 'THEMESYNCSERVICE', 'ThemeSyncService: Error in listener:', error);
       }
     });
   }
@@ -87,10 +108,10 @@ class ThemeSyncService {
     if (typeof window !== 'undefined' && window.electronAPI) {
       try {
         const themeData = await window.electronAPI.getCurrentTheme();
-        console.log('ThemeSyncService: Got current theme from main process:', themeData);
+        safeDebugLog('info', 'THEMESYNCSERVICE', 'ThemeSyncService: Got current theme from main process:', themeData);
         return themeData;
       } catch (error) {
-        console.error('ThemeSyncService: Failed to get current theme:', error);
+        safeDebugLog('error', 'THEMESYNCSERVICE', 'ThemeSyncService: Failed to get current theme:', error);
       }
     }
     return null;

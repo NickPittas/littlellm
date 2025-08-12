@@ -7,6 +7,26 @@
 
 import { serviceRegistry, SERVICE_NAMES, SettingsServiceInterface } from './serviceRegistry';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+
+  try {
+    const { debugLogger } = require('./debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
+
 export class DebugLogger {
   private static instance: DebugLogger;
   private isDebugEnabled = false;
@@ -106,7 +126,7 @@ export class DebugLogger {
   public debug(...args: unknown[]): void {
     this.ensureInitialized();
     if (this.isDebugEnabled) {
-      console.log('🐛 [DEBUG]', ...args);
+      safeDebugLog('info', 'DEBUGLOGGER', '🐛 [DEBUG]', ...args);
     }
   }
 
@@ -116,7 +136,7 @@ export class DebugLogger {
   public info(prefix: string, ...args: unknown[]): void {
     this.ensureInitialized();
     if (this.isDebugEnabled) {
-      console.log(`ℹ️ [${prefix}]`, ...args);
+      safeDebugLog('info', 'DEBUGLOGGER', `ℹ️ [${prefix}]`, ...args);
     }
   }
 
@@ -126,7 +146,7 @@ export class DebugLogger {
   public warn(prefix: string, ...args: unknown[]): void {
     this.ensureInitialized();
     if (this.isDebugEnabled) {
-      console.warn(`⚠️ [${prefix}]`, ...args);
+      safeDebugLog('warn', 'DEBUGLOGGER', `⚠️ [${prefix}]`, ...args);
     }
   }
 
@@ -136,7 +156,7 @@ export class DebugLogger {
   public error(prefix: string, ...args: unknown[]): void {
     this.ensureInitialized();
     if (this.isDebugEnabled) {
-      console.error(`❌ [${prefix}]`, ...args);
+      safeDebugLog('error', 'DEBUGLOGGER', `❌ [${prefix}]`, ...args);
     }
   }
 
@@ -146,7 +166,7 @@ export class DebugLogger {
   public success(prefix: string, ...args: unknown[]): void {
     this.ensureInitialized();
     if (this.isDebugEnabled) {
-      console.log(`✅ [${prefix}]`, ...args);
+      safeDebugLog('info', 'DEBUGLOGGER', `✅ [${prefix}]`, ...args);
     }
   }
 
@@ -176,7 +196,7 @@ export class DebugLogger {
   public table(data: unknown): void {
     this.ensureInitialized();
     if (this.isDebugEnabled) {
-      console.log('📊 [DEBUG] Table data:');
+      safeDebugLog('info', 'DEBUGLOGGER', '📊 [DEBUG] Table data:');
       console.table(data);
     }
   }
@@ -247,7 +267,7 @@ export class DebugLogger {
           settingsService.removeListener(this.settingsListener);
         }
       } catch (error) {
-        console.error('❌ Failed to clean up debug logger settings listener:', error);
+        safeDebugLog('error', 'DEBUGLOGGER', '❌ Failed to clean up debug logger settings listener:', error);
       }
       this.settingsListener = null;
     }
@@ -259,8 +279,8 @@ export class DebugLogger {
   public logToolExecution(toolName: string, args: unknown, result: unknown, duration: number): void {
     if (this.isDebugEnabled) {
       console.group(`🔧 [TOOL] ${toolName} (${duration}ms)`);
-      console.log('📥 Arguments:', args);
-      console.log('📤 Result:', result);
+      safeDebugLog('info', 'DEBUGLOGGER', '📥 Arguments:', args);
+      safeDebugLog('info', 'DEBUGLOGGER', '📤 Result:', result);
       console.groupEnd();
     }
   }
@@ -273,7 +293,7 @@ export class DebugLogger {
     if (this.isDebugEnabled) {
       const prefix = isFollowUp ? '🔄 [STREAM-FOLLOWUP]' : '📡 [STREAM]';
       const truncatedContent = content.length > 100 ? content.substring(0, 100) + '...' : content;
-      console.log(`${prefix} ${provider}:`, truncatedContent);
+      safeDebugLog('info', 'DEBUGLOGGER', `${prefix} ${provider}:`, truncatedContent);
     }
   }
 }
@@ -282,10 +302,10 @@ export class DebugLogger {
 export const debugLogger = DebugLogger.getInstance();
 
 // Export convenience functions
-export const debug = (...args: unknown[]) => debugLogger.debug(...args);
-export const debugInfo = (prefix: string, ...args: unknown[]) => debugLogger.info(prefix, ...args);
-export const debugWarn = (prefix: string, ...args: unknown[]) => debugLogger.warn(prefix, ...args);
-export const debugError = (prefix: string, ...args: unknown[]) => debugLogger.error(prefix, ...args);
+export const debug = (...args: unknown[]) => safeDebugLog('info', ...args);
+export const debugInfo = (prefix: string, ...args: unknown[]) => safeDebugLog('info', prefix, ...args);
+export const debugWarn = (prefix: string, ...args: unknown[]) => safeDebugLog('warn', prefix, ...args);
+export const debugError = (prefix: string, ...args: unknown[]) => safeDebugLog('error', prefix, ...args);
 export const debugSuccess = (prefix: string, ...args: unknown[]) => debugLogger.success(prefix, ...args);
 export const debugTime = (label: string) => debugLogger.time(label);
 export const debugTimeEnd = (label: string) => debugLogger.timeEnd(label);
@@ -295,13 +315,13 @@ export const debugTable = (data: unknown) => debugLogger.table(data);
 if (typeof window !== 'undefined') {
   (window as any).debugLogger = debugLogger;
   (window as any).testDebugLogging = () => {
-    console.log('🧪 Testing debug logging...');
-    console.log('🧪 Debug enabled:', debugLogger.isEnabled());
-    debugLogger.debug('This is a test debug message');
-    debugLogger.info('TEST', 'This is a test info message');
-    debugLogger.warn('TEST', 'This is a test warning message');
+    safeDebugLog('info', 'DEBUGLOGGER', '🧪 Testing debug logging...');
+    safeDebugLog('info', 'DEBUGLOGGER', '🧪 Debug enabled:', debugLogger.isEnabled());
+    safeDebugLog('info', 'This is a test debug message');
+    safeDebugLog('info', 'TEST', 'This is a test info message');
+    safeDebugLog('warn', 'TEST', 'This is a test warning message');
     debugLogger.success('TEST', 'This is a test success message');
-    console.log('🧪 Test complete');
+    safeDebugLog('info', 'DEBUGLOGGER', '🧪 Test complete');
   };
 }
 export const debugGroup = (label: string) => debugLogger.group(label);

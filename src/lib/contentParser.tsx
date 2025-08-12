@@ -3,6 +3,25 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CodeBlock, InlineCode } from '../components/CodeBlock';
 
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../services/debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 /**
  * Regular expressions for different content types
  */
@@ -31,7 +50,7 @@ function handleLinkClick(url: string) {
   if (typeof window !== 'undefined' && window.electronAPI?.openExternalLink) {
     window.electronAPI.openExternalLink(url);
   } else {
-    console.log('Would open URL:', url);
+    safeDebugLog('info', 'CONTENTPARSER', 'Would open URL:', url);
   }
 }
 

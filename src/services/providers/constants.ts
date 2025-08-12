@@ -1,6 +1,7 @@
 // Shared constants for LLM providers
 
 import { LLMProvider } from './types';
+import { debugLogger } from '../debugLogger';
 
 export const DEFAULT_PROVIDERS: LLMProvider[] = [
   {

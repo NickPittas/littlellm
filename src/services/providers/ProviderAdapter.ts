@@ -2,6 +2,26 @@
 
 import { ILLMProvider } from './BaseProvider';
 import { ProviderFactory } from './ProviderFactory';
+
+// SSR-safe debug logging helper
+function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
+  if (typeof window === 'undefined') {
+    // During SSR, just use console
+    console[level](`[${prefix}]`, ...args);
+    return;
+  }
+  
+  try {
+    const { debugLogger } = require('../debugLogger');
+    if (debugLogger) {
+      debugLogger[level](prefix, ...args);
+    } else {
+      console[level](`[${prefix}]`, ...args);
+    }
+  } catch {
+    console[level](`[${prefix}]`, ...args);
+  }
+}
 import { 
   LLMSettings, 
   LLMResponse, 
@@ -174,14 +194,14 @@ export class ProviderAdapter {
 
   // Private method to inject dependencies into provider instances
   private async injectDependencies(providerInstance: ILLMProvider) {
-    console.log(`🔧 ProviderAdapter: Injecting dependencies into ${providerInstance.id}`);
+    safeDebugLog('info', 'PROVIDERADAPTER', `🔧 ProviderAdapter: Injecting dependencies into ${providerInstance.id}`);
 
     // Inject the MCP tools getter - always inject if available
     if (this.mcpToolsGetter) {
       (providerInstance as unknown as {getMCPToolsForProvider: unknown}).getMCPToolsForProvider = this.mcpToolsGetter;
-      console.log(`✅ ProviderAdapter: Injected getMCPToolsForProvider into ${providerInstance.id}`);
+      safeDebugLog('info', 'PROVIDERADAPTER', `✅ ProviderAdapter: Injected getMCPToolsForProvider into ${providerInstance.id}`);
     } else {
-      console.warn(`⚠️ ProviderAdapter: No mcpToolsGetter available for ${providerInstance.id}`);
+      safeDebugLog('warn', 'PROVIDERADAPTER', `⚠️ ProviderAdapter: No mcpToolsGetter available for ${providerInstance.id}`);
     }
 
     // Inject the tool executor - always inject if available
@@ -234,10 +254,10 @@ export class ProviderAdapter {
           return null;
         }).filter(Boolean) as string[];
 
-        console.log(`🔧 Injecting ${toolNames.length} tool names into ${providerInstance.id}:`, toolNames);
+        safeDebugLog('info', 'PROVIDERADAPTER', `🔧 Injecting ${toolNames.length} tool names into ${providerInstance.id}:`, toolNames);
         (providerInstance as unknown as {setAvailableToolNames: (names: string[]) => void}).setAvailableToolNames(toolNames);
       } catch (error) {
-        console.warn(`⚠️ Failed to inject tool names into ${providerInstance.id}:`, error);
+        safeDebugLog('warn', 'PROVIDERADAPTER', `⚠️ Failed to inject tool names into ${providerInstance.id}:`, error);
       }
     }
 

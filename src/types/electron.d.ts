@@ -1,4 +1,5 @@
 import { MemoryEntry, MemoryIndex } from './memory';
+import { debugLogger } from '../services/debugLogger';
 
 export interface ElectronAPI {
   // Clipboard operations
