@@ -13,7 +13,6 @@ import {
 
 import { ToolNameUtils } from './utils';
 import { ANTHROPIC_SYSTEM_PROMPT } from './prompts/anthropic';
-import { debugLogger } from '../debugLogger';
 import { PricingService } from '../pricingService';
 
 export class AnthropicProvider extends BaseProvider {

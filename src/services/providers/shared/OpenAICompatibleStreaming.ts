@@ -7,7 +7,6 @@ import {
   ContentItem,
   LLMProvider
 } from '../types';
-import { debugLogger } from '../../debugLogger';
 
 export interface OpenAICompatibleToolCall {
   id?: string;
@@ -287,7 +286,7 @@ export class OpenAICompatibleStreaming {
 
       let followUpContent = '';
       let followUpUsage: OpenAICompatibleUsage | undefined = undefined;
-      let followUpToolCalls: OpenAICompatibleToolCall[] = [];
+      const followUpToolCalls: OpenAICompatibleToolCall[] = [];
       const decoder = new TextDecoder();
 
       try {

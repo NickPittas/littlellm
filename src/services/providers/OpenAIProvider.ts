@@ -12,8 +12,8 @@ import {
   ProviderCapabilities
 } from './types';
 
-import { OPENAI_SYSTEM_PROMPT, generateOpenAIToolPrompt } from './prompts/openai';
-import { OpenAIFileService, OpenAIFileUpload } from '../OpenAIFileService';
+import { OPENAI_SYSTEM_PROMPT } from './prompts/openai';
+import { OpenAIFileService } from '../OpenAIFileService';
 import { PricingService } from '../pricingService';
 // import { RAGService } from '../RAGService'; // Moved to Electron main process, accessed via IPC
 

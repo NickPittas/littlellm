@@ -169,7 +169,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleSetSelectedThemePreset = (presetId: string, shouldSave: boolean = true) => {
+  const handleSetSelectedThemePreset = (presetId: string, shouldSave = true) => {
     // Setting theme preset
     setSelectedThemePreset(presetId);
 
@@ -206,7 +206,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleSetColorMode = (mode: 'preset' | 'custom', shouldSave: boolean = true) => {
+  const handleSetColorMode = (mode: 'preset' | 'custom', shouldSave = true) => {
     setColorMode(mode);
 
     // Apply appropriate colors immediately
@@ -255,7 +255,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleSetCustomColors = (colors: ColorSettings, shouldSave: boolean = true) => {
+  const handleSetCustomColors = (colors: ColorSettings, shouldSave = true) => {
     setCustomColors(colors);
 
     // Apply theme immediately
@@ -287,7 +287,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleSetUseCustomColors = (use: boolean, shouldSave: boolean = true) => {
+  const handleSetUseCustomColors = (use: boolean, shouldSave = true) => {
     setUseCustomColors(use);
 
     // Apply theme immediately

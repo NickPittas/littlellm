@@ -68,7 +68,7 @@ export abstract class BaseProvider implements ILLMProvider {
     return TokenEstimator.estimateTokens(text);
   }
 
-  protected createEstimatedUsage(promptText: string, responseText: string, label: string = 'estimated') {
+  protected createEstimatedUsage(promptText: string, responseText: string, label = 'estimated') {
     return TokenEstimator.createEstimatedUsage(promptText, responseText, label);
   }
 

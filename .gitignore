@@ -255,3 +255,23 @@ coverage/
 
 # Llama folder
 llama/
+
+# Analysis and caching directories created during development
+.augment/
+.npm-cache/
+.pnpm-cache/
+.pnpm-store/
+.swc/
+
+# Build and compilation artifacts
+*.tsbuildinfo
+
+# Package manager stores
+.pnpm-store/
+.pnpm-cache/
+
+# Analysis and development tools configuration (keep tracked)
+# .eslintrc.json - ESLint configuration
+# .markdownlint.json - Markdown linting rules  
+# .prettierrc - Code formatting configuration
+# reports/ directory - Analysis results (keep tracked for reference)

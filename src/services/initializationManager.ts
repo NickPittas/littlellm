@@ -109,7 +109,7 @@ class InitializationManager {
   /**
    * Wait for a service to be initialized
    */
-  async waitForService(serviceName: string, timeoutMs: number = 10000): Promise<void> {
+  async waitForService(serviceName: string, timeoutMs = 10000): Promise<void> {
     const state = this.services.get(serviceName);
     
     if (!state) {
@@ -183,7 +183,7 @@ class InitializationManager {
   /**
    * Wait for all registered services to be initialized
    */
-  async waitForAllServices(timeoutMs: number = 30000): Promise<void> {
+  async waitForAllServices(timeoutMs = 30000): Promise<void> {
     const serviceNames = Array.from(this.services.keys());
     const promises = serviceNames.map(name => this.waitForService(name, timeoutMs));
     

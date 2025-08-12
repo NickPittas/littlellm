@@ -7,7 +7,7 @@
     "prettier"
   ],
   "parser": "@typescript-eslint/parser",
-  "plugins": ["@typescript-eslint", "react", "react-hooks"],
+  "plugins": ["@typescript-eslint", "react", "react-hooks", "unused-imports", "sonarjs"],
   "root": true,
   "env": {
     "browser": true,
@@ -20,6 +20,35 @@
     }
   },
   "rules": {
-    "react/react-in-jsx-scope": "off"
+    "react/react-in-jsx-scope": "off",
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": "error",
+    "unused-imports/no-unused-imports": "error",
+    "unused-imports/no-unused-vars": [
+      "error",
+      {
+        "vars": "all",
+        "varsIgnorePattern": "^_",
+        "args": "after-used",
+        "argsIgnorePattern": "^_"
+      }
+    ],
+    "no-console": "warn",
+    "no-debugger": "error",
+    "no-var": "error",
+    "prefer-const": "error",
+    "no-unreachable": "error",
+    "no-empty": "error",
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-inferrable-types": "error",
+    "@typescript-eslint/prefer-as-const": "error",
+    "sonarjs/cognitive-complexity": ["error", 15],
+    "sonarjs/no-duplicate-string": ["error", {"threshold": 3}],
+    "sonarjs/no-identical-functions": "error",
+    "sonarjs/no-duplicated-branches": "error",
+    "sonarjs/prefer-immediate-return": "error",
+    "sonarjs/no-redundant-boolean": "error",
+    "sonarjs/no-useless-catch": "error",
+    "sonarjs/no-nested-template-literals": "error"
   }
 }

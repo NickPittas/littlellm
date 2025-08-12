@@ -268,7 +268,7 @@ export class DebugLogger {
   /**
    * Log streaming content (only if debug logging is enabled)
    */
-  public logStreaming(provider: string, content: string, isFollowUp: boolean = false): void {
+  public logStreaming(provider: string, content: string, isFollowUp = false): void {
     this.ensureInitialized();
     if (this.isDebugEnabled) {
       const prefix = isFollowUp ? '🔄 [STREAM-FOLLOWUP]' : '📡 [STREAM]';

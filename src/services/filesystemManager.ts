@@ -14,7 +14,7 @@ export class FilesystemManager {
   /**
    * Read file contents with optional offset and length
    */
-  async readFile(filePath: string, isUrl: boolean = false, offset: number = 0, length?: number): Promise<{
+  async readFile(filePath: string, isUrl = false, offset = 0, length?: number): Promise<{
     content: string;
     isImage: boolean;
     mimeType?: string;
@@ -333,7 +333,7 @@ export class FilesystemManager {
   /**
    * Delete file or directory
    */
-  async deleteFile(filePath: string, useRecycleBin: boolean = true): Promise<void> {
+  async deleteFile(filePath: string, useRecycleBin = true): Promise<void> {
     // Path validation will be handled in the main process
 
     try {

@@ -1166,7 +1166,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     // Pattern 2: Enhanced tool_call format with ```json wrapper (Option 2)
     // ```json { "tool_call": { "name": "web_search", "arguments": {...} } } ```
     const jsonWrappedToolCallRegex = /```json\s*(\{[\s\S]*?"tool_call"[\s\S]*?\})\s*```/gi;
-    let match = jsonWrappedToolCallRegex.exec(content);
+    const match = jsonWrappedToolCallRegex.exec(content);
     if (match) {
       try {
         const jsonObj = JSON.parse(match[1]);

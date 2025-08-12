@@ -870,7 +870,7 @@ class LLMService {
       name: string;
       arguments: Record<string, unknown>;
     }>,
-    provider: string = 'unknown'
+    provider = 'unknown'
   ): Promise<Array<{
     id?: string;
     name: string;

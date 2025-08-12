@@ -20,8 +20,8 @@ class InternalCommandService {
   static readonly SERVICE_NAME = 'InternalCommandService';
 
   private availableTools: InternalCommandTool[] = [];
-  private isElectron: boolean = false;
-  private initialized: boolean = false;
+  private isElectron = false;
+  private initialized = false;
 
   constructor() {
     // Check if running in Electron

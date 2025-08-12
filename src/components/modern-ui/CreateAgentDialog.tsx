@@ -3,10 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Bot,
-  Wand2,
-  Settings,
   CheckCircle,
-  AlertCircle,
   Loader2,
   Sparkles
 } from 'lucide-react';
@@ -17,11 +14,9 @@ import { Textarea } from '../ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { cn } from '@/lib/utils';
 import { AgentTemplate, AgentTool, CreateAgentRequest } from '../../types/agent';
 import { agentService } from '../../services/agentService';
-import { mcpService } from '../../services/mcpService';
 import { llmService } from '../../services/llmService';
 import { chatService } from '../../services/chatService';
 import { secureApiKeyService } from '../../services/secureApiKeyService';

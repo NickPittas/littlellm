@@ -15,7 +15,7 @@ export class OpenAIFileService {
   private apiKey: string;
   private baseUrl: string;
 
-  constructor(apiKey: string, baseUrl: string = 'https://api.openai.com/v1') {
+  constructor(apiKey: string, baseUrl = 'https://api.openai.com/v1') {
     if (!apiKey) {
       throw new Error('OpenAI API key is required');
     }

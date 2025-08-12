@@ -197,7 +197,7 @@ export class PricingService {
   /**
    * Format cost for display
    */
-  static formatCost(cost: number, currency: string = 'USD'): string {
+  static formatCost(cost: number, currency = 'USD'): string {
     if (cost < 0.000001) {
       return `<$0.000001`;
     }

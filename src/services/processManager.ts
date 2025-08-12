@@ -9,7 +9,7 @@ import { EventEmitter } from 'events';
 
 class ProcessManager extends EventEmitter {
   private sessions: Map<number, ProcessSession> = new Map();
-  private nextPid: number = 1000; // Start with a high number to avoid conflicts
+  private nextPid = 1000; // Start with a high number to avoid conflicts
 
   constructor() {
     super();

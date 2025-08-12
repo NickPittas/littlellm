@@ -133,7 +133,7 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
     }
   }, [hasChanges, onRegisterSaveFunction]); // Re-register when hasChanges updates
 
-  const loadApiKeys = (forceReset: boolean = false) => {
+  const loadApiKeys = (forceReset = false) => {
     console.log('🔍 loadApiKeys called with forceReset:', forceReset);
 
     const loadedKeys: Record<string, ProviderApiKeyData> = {};

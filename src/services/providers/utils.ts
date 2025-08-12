@@ -99,7 +99,7 @@ export class TokenEstimator {
     return Math.ceil(words * 0.75 + chars * 0.25 / 4);
   }
 
-  static createEstimatedUsage(promptText: string, responseText: string, label: string = 'estimated'): {
+  static createEstimatedUsage(promptText: string, responseText: string, label = 'estimated'): {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;

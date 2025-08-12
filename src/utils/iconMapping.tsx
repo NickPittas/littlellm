@@ -207,7 +207,7 @@ export const getIconComponent = (emoji: string): React.ComponentType<React.SVGPr
 };
 
 // Helper function to render icon with consistent props
-export const renderIcon = (emoji: string, className: string = "h-4 w-4") => {
+export const renderIcon = (emoji: string, className = "h-4 w-4") => {
   const IconComponent = getIconComponent(emoji);
   return <IconComponent className={className} />;
 };
@@ -233,7 +233,7 @@ export const getProviderIcon = (providerId: string): React.ComponentType<React.S
 };
 
 // Helper function to render provider icon
-export const renderProviderIcon = (providerId: string, className: string = "h-4 w-4") => {
+export const renderProviderIcon = (providerId: string, className = "h-4 w-4") => {
   const IconComponent = getProviderIcon(providerId);
   return <IconComponent className={className} />;
 };

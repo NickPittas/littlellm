@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ProgressLogPanel } from './ProgressLogPanel';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
 
 interface UploadProgress {
   fileName: string;

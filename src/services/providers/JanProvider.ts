@@ -8,8 +8,7 @@ import {
   ContentItem,
   LLMProvider,
   ToolObject,
-  ProviderCapabilities,
-  APIResponseData
+  ProviderCapabilities
 } from './types';
 
 import { JAN_SYSTEM_PROMPT } from './prompts/jan';

@@ -412,7 +412,7 @@ export class MistralProvider extends BaseProvider {
   }
 
   // Test method to help debug API connectivity
-  async testConnection(apiKey: string, baseUrl: string = 'https://api.mistral.ai/v1'): Promise<{ success: boolean; error?: string; details?: unknown }> {
+  async testConnection(apiKey: string, baseUrl = 'https://api.mistral.ai/v1'): Promise<{ success: boolean; error?: string; details?: unknown }> {
     try {
       console.log('🧪 Testing Mistral API connection...');
 

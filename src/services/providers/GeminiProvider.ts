@@ -13,7 +13,6 @@ import {
 
 import { GEMINI_SYSTEM_PROMPT } from './prompts/gemini';
 import { PricingService } from '../pricingService';
-import { debugLogger } from '../debugLogger';
 
 export class GeminiProvider extends BaseProvider {
   readonly id = 'gemini';

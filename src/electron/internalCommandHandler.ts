@@ -32,7 +32,7 @@ export class ElectronInternalCommandHandler {
   private readonly MAX_COMMANDS_PER_MINUTE = 60;
   private readonly MAX_HISTORY_SIZE = 1000;
   private sessions: Map<number, ElectronProcessSession> = new Map();
-  private nextPid: number = 1000;
+  private nextPid = 1000;
 
   constructor() {
     this.setupIpcHandlers();

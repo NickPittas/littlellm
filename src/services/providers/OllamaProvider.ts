@@ -1045,7 +1045,7 @@ Please provide a natural, helpful response based on the tool results.`;
     messages: Array<{role: string, content: string | Array<ContentItem>}>,
     settings: LLMSettings,
     onStream: (chunk: string) => void,
-    enableTools: boolean = true
+    enableTools = true
   ): Promise<LLMResponse> {
     const baseUrl = settings.baseUrl || 'http://localhost:11434';
     const ollamaUrl = baseUrl.replace('/v1', '');

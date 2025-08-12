@@ -33,7 +33,7 @@ export class MistralFileService {
   private baseUrl: string;
   private apiKey: string;
 
-  constructor(apiKey: string, baseUrl: string = 'https://api.mistral.ai/v1') {
+  constructor(apiKey: string, baseUrl = 'https://api.mistral.ai/v1') {
     this.apiKey = apiKey;
     this.baseUrl = baseUrl;
   }
@@ -108,8 +108,8 @@ export class MistralFileService {
    * List all uploaded files
    */
   async listFiles(
-    page: number = 0,
-    pageSize: number = 100,
+    page = 0,
+    pageSize = 100,
     purpose?: MistralFilePurpose
   ): Promise<MistralFileListResponse> {
     const params = new URLSearchParams({

@@ -544,7 +544,7 @@ export class KnowledgeBaseService {
    * @param overlap - The overlap between consecutive chunks.
    * @returns {string[]} An array of text chunks.
    */
-  private chunkText(text: string, chunkSize: number = 1000, overlap: number = 200): string[] {
+  private chunkText(text: string, chunkSize = 1000, overlap = 200): string[] {
     const chunks: string[] = [];
     for (let i = 0; i < text.length; i += chunkSize - overlap) {
       chunks.push(text.substring(i, i + chunkSize));
@@ -566,7 +566,7 @@ export class KnowledgeBaseService {
    * @param limit - The maximum number of relevant chunks to return.
    * @returns {Promise<Array<{text: string, source: string, score: number}>>} A promise that resolves to an array of relevant document chunks.
    */
-    public async search(queryText: string, limit: number = 5): Promise<Array<{text: string, source: string, score: number}>> {
+    public async search(queryText: string, limit = 5): Promise<Array<{text: string, source: string, score: number}>> {
     if (!this.table) {
       throw new Error('Knowledge base is not initialized.');
     }

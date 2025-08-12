@@ -11,16 +11,12 @@ import {
   Search,
   Filter,
   Bot,
-  Settings,
-  Play,
-  AlertTriangle,
-  CheckCircle
+  Play
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
 import { cn } from '@/lib/utils';
 import { AgentConfiguration, AgentTemplate } from '../../types/agent';
 import { agentService } from '../../services/agentService';

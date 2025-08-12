@@ -687,7 +687,7 @@ export class OpenRouterProvider extends BaseProvider {
     message: MessageContent,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     systemPrompt: string,
-    enableCaching: boolean = false
+    enableCaching = false
   ): Promise<Array<{role: string, content: string | Array<ContentItem>}>> {
     const messages: Array<{role: string, content: string | Array<ContentItem>}> = [];
 
