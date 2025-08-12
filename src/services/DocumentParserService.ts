@@ -260,7 +260,7 @@ export class DocumentParserService {
    */
   private async parseSpreadsheet(file: File): Promise<ParsedDocument> {
     const buffer = await this.fileToBuffer(file);
-    
+
     try {
       const workbook = XLSX.read(buffer, { type: 'buffer' });
       const sheets: string[] = [];
@@ -270,7 +270,7 @@ export class DocumentParserService {
         sheets.push(sheetName);
         const worksheet = workbook.Sheets[sheetName];
         const csvData = XLSX.utils.sheet_to_csv(worksheet);
-        
+
         combinedText += `\n\n=== Sheet: ${sheetName} ===\n`;
         combinedText += csvData;
       });

@@ -225,16 +225,7 @@ export class GeminiProvider extends BaseProvider {
       safeDebugLog('info', 'GEMINIPROVIDER', `🚀 Gemini API call without tools (no MCP tools available)`);
     }
 
-    // Set system instruction (behavioral prompt only - no tool descriptions)
-    if (systemPrompt) {
-      requestBody.system_instruction = {
-        parts: [{ text: systemPrompt }]
-      };
-      safeDebugLog('info', 'GEMINIPROVIDER', `🔧 Gemini system instruction set:`, {
-        length: systemPrompt.length,
-        preview: systemPrompt.substring(0, 100) + '...'
-      });
-    }
+    // System instruction is already set above with proper caching logic
 
     safeDebugLog('info', 'GEMINIPROVIDER', '🔍 Gemini request body:', JSON.stringify(requestBody, null, 2));
 

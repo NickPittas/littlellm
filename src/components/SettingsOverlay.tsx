@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -9,11 +9,15 @@ import { ToggleSwitch } from './ui/toggle-switch';
 import { Textarea } from './ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { settingsService, type AppSettings, type ColorSettings } from '../services/settingsService';
-import { MemoryManagement } from './MemoryManagement';
-import KnowledgeBaseSettings from './KnowledgeBaseSettings';
 import { mcpService, type MCPServer } from '../services/mcpService';
-import { PromptsContent } from './PromptsContent';
+
+// Import critical components normally (ApiKeySettings must load immediately)
 import { ApiKeySettings } from './ApiKeySettings';
+
+// Lazy load heavy settings components for better performance
+const MemoryManagement = lazy(() => import('./MemoryManagement').then(module => ({ default: module.MemoryManagement })));
+const KnowledgeBaseSettings = lazy(() => import('./KnowledgeBaseSettings'));
+const PromptsContent = lazy(() => import('./PromptsContent').then(module => ({ default: module.PromptsContent })));
 import { Plus, Trash2, Server, Zap, Edit, FileText, Palette, RotateCcw } from 'lucide-react';
 import { ColorPicker } from './ui/color-picker';
 import { ThemeSelector } from './ui/theme-selector';
@@ -1007,12 +1011,14 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
               <div className="space-y-6">
                 <div>
                   <h3 className="text-lg font-medium mb-4">Custom Prompts</h3>
-                  <PromptsContent
-                    onPromptSelect={(prompt) => {
-                      // Handle prompt selection if needed
-                      safeDebugLog('info', 'SETTINGSOVERLAY', 'Prompt selected:', prompt);
-                    }}
-                  />
+                  <Suspense fallback={<div className="flex items-center justify-center p-8">Loading Prompts...</div>}>
+                    <PromptsContent
+                      onPromptSelect={(prompt) => {
+                        // Handle prompt selection if needed
+                        safeDebugLog('info', 'SETTINGSOVERLAY', 'Prompt selected:', prompt);
+                      }}
+                    />
+                  </Suspense>
                 </div>
               </div>
             )}
@@ -1345,7 +1351,9 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
               <div className="space-y-6">
                 <div>
                   <h3 className="text-lg font-medium mb-4">Memory System</h3>
-                  <MemoryManagement />
+                  <Suspense fallback={<div className="flex items-center justify-center p-8">Loading Memory Management...</div>}>
+                    <MemoryManagement />
+                  </Suspense>
                 </div>
               </div>
             )}
@@ -1574,7 +1582,11 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
               </div>
             )}
 
-            {activeTab === 'knowledge-base' && <KnowledgeBaseSettings />}
+            {activeTab === 'knowledge-base' && (
+              <Suspense fallback={<div className="flex items-center justify-center p-8">Loading Knowledge Base...</div>}>
+                <KnowledgeBaseSettings />
+              </Suspense>
+            )}
 
 
 

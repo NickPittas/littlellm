@@ -136,9 +136,16 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       let baseUrl = '';
 
       try {
+        // Wait for secureApiKeyService to be initialized
+        if (secureApiKeyService && !secureApiKeyService.isInitialized()) {
+          safeDebugLog('info', 'MODERNCHATINTERFACE', 'Waiting for secureApiKeyService to initialize...');
+          await secureApiKeyService.waitForInitialization();
+        }
+
         const apiKeyData = secureApiKeyService?.getApiKeyData(providerId);
         apiKey = apiKeyData?.apiKey || '';
         baseUrl = apiKeyData?.baseUrl || '';
+        safeDebugLog('info', 'MODERNCHATINTERFACE', `Retrieved API key data for ${providerId}:`, { hasApiKey: !!apiKey, hasBaseUrl: !!baseUrl });
       } catch (error) {
         safeDebugLog('warn', 'MODERNCHATINTERFACE', `Failed to get API key data for ${providerId}:`, error);
       }
@@ -167,6 +174,11 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
       // First, check if there's a saved last selected model for this provider
       try {
+        // Ensure service is initialized before accessing API key data
+        if (secureApiKeyService && !secureApiKeyService.isInitialized()) {
+          await secureApiKeyService.waitForInitialization();
+        }
+
         const apiKeyData = secureApiKeyService?.getApiKeyData(providerId);
         const lastSelectedModel = apiKeyData?.lastSelectedModel;
 
@@ -248,6 +260,11 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         // Try to get the last selected model for this provider
         let modelToUse = savedSettings.model || 'gemma3:gpu';
         try {
+          // Ensure service is initialized before accessing API key data
+          if (secureApiKeyService && !secureApiKeyService.isInitialized()) {
+            await secureApiKeyService.waitForInitialization();
+          }
+
           const apiKeyData = secureApiKeyService?.getApiKeyData(provider);
           const lastSelectedModel = apiKeyData?.lastSelectedModel;
           if (lastSelectedModel) {
@@ -641,6 +658,11 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     // Also save as last selected model for current provider
     try {
       if (selectedProvider) {
+        // Ensure service is initialized before accessing API key data
+        if (secureApiKeyService && !secureApiKeyService.isInitialized()) {
+          await secureApiKeyService.waitForInitialization();
+        }
+
         const currentApiKeyData = secureApiKeyService?.getApiKeyData(selectedProvider);
         if (currentApiKeyData) {
           await secureApiKeyService.setApiKeyData(selectedProvider, {

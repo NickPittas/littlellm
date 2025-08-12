@@ -26,11 +26,23 @@ export function OverlayRouter() {
 
   switch (overlayType) {
     case 'action-menu':
-      return <ActionMenuOverlay />;
+      return (
+        <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+          <ActionMenuOverlay />
+        </Suspense>
+      );
     case 'settings':
-      return <SettingsOverlay />;
+      return (
+        <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+          <SettingsOverlay />
+        </Suspense>
+      );
     case 'chat':
-      return <ChatOverlay />;
+      return (
+        <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+          <ChatOverlay />
+        </Suspense>
+      );
     default:
       return null;
   }

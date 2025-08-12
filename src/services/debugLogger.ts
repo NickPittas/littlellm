@@ -302,7 +302,7 @@ export class DebugLogger {
 export const debugLogger = DebugLogger.getInstance();
 
 // Export convenience functions
-export const debug = (...args: unknown[]) => safeDebugLog('info', ...args);
+export const debug = (prefix: string, ...args: unknown[]) => safeDebugLog('info', prefix, ...args);
 export const debugInfo = (prefix: string, ...args: unknown[]) => safeDebugLog('info', prefix, ...args);
 export const debugWarn = (prefix: string, ...args: unknown[]) => safeDebugLog('warn', prefix, ...args);
 export const debugError = (prefix: string, ...args: unknown[]) => safeDebugLog('error', prefix, ...args);
