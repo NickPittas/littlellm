@@ -36,51 +36,51 @@ export interface OptimalConfiguration {
 class LlamaCppAutoConfig {
   private systemCapabilities: SystemCapabilities | null = null;
 
-  // Model requirements database
-  private modelRequirements: Record<string, ModelRequirements> = {
-    'qwen2.5-0.5b': {
-      minRAM: 1,
-      recommendedRAM: 2,
-      parameters: '0.5B',
-      quantization: 'Q4_K_M',
-      estimatedSize: 0.35
-    },
-    'llama-3.2-1b': {
-      minRAM: 2,
-      recommendedRAM: 3,
-      parameters: '1B',
-      quantization: 'Q4_K_M',
-      estimatedSize: 0.7
-    },
-    'phi-3-mini': {
-      minRAM: 3,
-      recommendedRAM: 4,
-      parameters: '3.8B',
-      quantization: 'Q4_K_M',
-      estimatedSize: 2.3
-    },
-    'llama-3.2-3b': {
-      minRAM: 4,
-      recommendedRAM: 6,
-      parameters: '3B',
-      quantization: 'Q4_K_M',
-      estimatedSize: 1.9
-    },
-    'llama-3.1-7b': {
-      minRAM: 8,
-      recommendedRAM: 12,
-      parameters: '7B',
-      quantization: 'Q4_K_M',
-      estimatedSize: 4.1
-    },
-    'llama-3.1-13b': {
-      minRAM: 16,
-      recommendedRAM: 24,
-      parameters: '13B',
-      quantization: 'Q4_K_M',
-      estimatedSize: 7.3
+  // Model requirements database - dynamically estimated based on model size
+  private modelRequirements: Record<string, ModelRequirements> = {};
+
+  private estimateModelRequirements(modelId: string, sizeInBytes: number): ModelRequirements {
+    const sizeInGB = sizeInBytes / (1024 * 1024 * 1024);
+
+    // Estimate parameters based on file size (rough approximation)
+    let parameters: string;
+    let minRAM: number;
+    let recommendedRAM: number;
+
+    if (sizeInGB < 1) {
+      parameters = '0.5B';
+      minRAM = 1;
+      recommendedRAM = 2;
+    } else if (sizeInGB < 2) {
+      parameters = '1B';
+      minRAM = 2;
+      recommendedRAM = 3;
+    } else if (sizeInGB < 3) {
+      parameters = '3B';
+      minRAM = 4;
+      recommendedRAM = 6;
+    } else if (sizeInGB < 5) {
+      parameters = '7B';
+      minRAM = 8;
+      recommendedRAM = 12;
+    } else if (sizeInGB < 15) {
+      parameters = '13B';
+      minRAM = 16;
+      recommendedRAM = 24;
+    } else {
+      parameters = '20B+';
+      minRAM = 32;
+      recommendedRAM = 48;
     }
-  };
+
+    return {
+      minRAM,
+      recommendedRAM,
+      parameters,
+      quantization: 'Q4_K_M', // Default assumption
+      estimatedSize: sizeInGB
+    };
+  }
 
   async detectSystemCapabilities(): Promise<SystemCapabilities> {
     if (this.systemCapabilities) {

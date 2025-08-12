@@ -128,7 +128,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       }
 
       // Skip model loading for remote providers without API keys
-      if (!apiKey && providerId !== 'ollama' && providerId !== 'lmstudio' && providerId !== 'n8n') {
+      if (!apiKey && providerId !== 'ollama' && providerId !== 'lmstudio' && providerId !== 'n8n' && providerId !== 'llamacpp' && providerId !== 'jan') {
         console.warn(`No API key found for ${providerId}, skipping model loading`);
         setAvailableModels([]);
         return;
@@ -610,6 +610,19 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   const handleModelChange = async (newModel: string) => {
     setSelectedModel(newModel);
     console.log('Model changed to:', newModel);
+
+    // If this is llama.cpp, load the model into the server
+    if (selectedProvider === 'llamacpp') {
+      try {
+        console.log(`🔄 Loading model ${newModel} into llama.cpp server...`);
+        const { llamaCppService } = await import('../../services/llamaCppService');
+        await llamaCppService.startServerWithModel(newModel);
+        console.log(`✅ Model ${newModel} loaded into llama.cpp server`);
+      } catch (error) {
+        console.error(`❌ Failed to load model ${newModel} into llama.cpp:`, error);
+        // Don't throw - still save the setting
+      }
+    }
 
     // Save to general settings
     try {

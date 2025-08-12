@@ -2166,6 +2166,46 @@ export function SettingsModal({ isOpen, onClose, className }: SettingsModalProps
                       </p>
                     </div>
                   </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs">Models Download Folder</Label>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="text"
+                        value={formData.general.modelsFolder || ''}
+                        onChange={(e) => updateFormData({
+                          general: { ...formData.general, modelsFolder: e.target.value || undefined }
+                        })}
+                        placeholder="Default: Browser storage (automatic)"
+                        className="flex-1 px-2 py-1 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                      />
+                      {typeof window !== 'undefined' && window.electronAPI && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const selectedPath = await window.electronAPI.selectDirectory();
+                              if (selectedPath) {
+                                updateFormData({
+                                  general: { ...formData.general, modelsFolder: selectedPath }
+                                });
+                              }
+                            } catch (error) {
+                              console.error('Failed to open directory dialog:', error);
+                            }
+                          }}
+                          className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90"
+                        >
+                          Browse
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {typeof window !== 'undefined' && window.electronAPI
+                        ? 'Custom folder for downloaded models. Leave empty for default location.'
+                        : 'Browser mode: Models are stored automatically in browser storage.'
+                      }
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

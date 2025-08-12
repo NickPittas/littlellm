@@ -182,6 +182,14 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
     logo: '/assets/providers/ollama.png'
   },
   {
+    id: 'llamacpp',
+    name: 'Llama.cpp',
+    baseUrl: 'http://127.0.0.1:8080/v1',
+    requiresApiKey: false,
+    models: [],
+    logo: '/assets/providers/llamacpp.svg'
+  },
+  {
     id: 'openrouter',
     name: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
@@ -220,7 +228,9 @@ const DEFAULT_PROVIDERS: LLMProvider[] = [
 class LLMService {
   private providers: LLMProvider[] = DEFAULT_PROVIDERS;
   private modelCache: Map<string, { models: string[], timestamp: number }> = new Map();
+  private toolsCache: Map<string, { tools: unknown[], timestamp: number }> = new Map();
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private readonly TOOLS_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes - tools change less frequently
   private providerAdapter: ProviderAdapter;
 
   constructor() {
@@ -230,6 +240,9 @@ class LLMService {
 
     // Initialize internal command service
     this.initializeInternalCommands();
+
+    // Listen for MCP server restarts to clear tools cache
+    this.setupMCPRestartListener();
   }
 
   private async initializeInternalCommands() {
@@ -238,6 +251,27 @@ class LLMService {
       await internalCommandService.initialize();
     } catch (error) {
       console.error('❌ Failed to initialize internal command service:', error);
+    }
+  }
+
+  private setupMCPRestartListener() {
+    // Listen for MCP server restart events from main process
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      // Add event listener for MCP server restarts
+      const handleMCPRestart = () => {
+        console.log('🔄 MCP servers restarted, clearing tools cache');
+        this.clearToolsCache();
+      };
+
+      // Check if the event listener method exists
+      if (typeof window.electronAPI.onMCPServersRestarted === 'function') {
+        window.electronAPI.onMCPServersRestarted(handleMCPRestart);
+      } else {
+        // Fallback: listen for the event directly if available
+        if (typeof window.addEventListener === 'function') {
+          window.addEventListener('mcp-servers-restarted', handleMCPRestart);
+        }
+      }
     }
   }
 
@@ -310,6 +344,12 @@ class LLMService {
     }
   }
 
+  // Clear tools cache (useful when MCP servers are restarted)
+  clearToolsCache(): void {
+    this.toolsCache.clear();
+    console.log('🗑️ Cleared all tools cache - MCP servers will be re-queried on next request');
+  }
+
   async sendMessage(
     message: string | MessageContent,
     settings: LLMSettings,
@@ -377,15 +417,20 @@ class LLMService {
 
   public async getMCPToolsForProvider(provider: string, settings?: LLMSettings): Promise<unknown[]> {
     try {
-      console.log(`🔍 Getting MCP tools for provider: ${provider}`);
-      console.log(`🔍 MCP Service available:`, !!mcpService);
-      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
-
       // Check if tool calling is disabled
       if (settings?.toolCallingEnabled === false) {
-        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
         return [];
       }
+
+      // Check cache first
+      const cacheKey = `${provider}-tools`;
+      const cached = this.toolsCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < this.TOOLS_CACHE_DURATION) {
+        console.log(`🔍 Using cached tools for provider: ${provider} (${cached.tools.length} tools)`);
+        return cached.tools;
+      }
+
+      console.log(`🔍 Getting fresh MCP tools for provider: ${provider}`);
 
       // Get tools directly from enabled servers in JSON
       console.log(`🔍 Reading MCP servers directly from JSON file...`);
@@ -458,12 +503,12 @@ class LLMService {
 
       // Finally, add MCP tools (lowest priority - skip if name conflicts)
       for (const tool of mcpTools) {
-        if (!toolNames.has(tool.name)) {
+        if (tool.name && !toolNames.has(tool.name)) {
           unifiedTools.push({
             type: 'function',
             function: {
               name: tool.name,
-              description: tool.description,
+              description: tool.description || 'No description available',
               parameters: tool.inputSchema || {
                 type: 'object',
                 properties: {},
@@ -473,9 +518,6 @@ class LLMService {
             serverId: tool.serverId // Keep server ID for execution routing
           });
           toolNames.add(tool.name);
-          console.log(`📋 Added MCP tool: ${tool.name} from server ${tool.serverId}`);
-        } else {
-          console.log(`⚠️ Skipped duplicate MCP tool: ${tool.name} from server ${tool.serverId} (conflicts with higher priority tool)`);
         }
       }
 
@@ -486,8 +528,11 @@ class LLMService {
         return [];
       }
 
+      // Cache the tools
+      this.toolsCache.set(cacheKey, { tools: unifiedTools, timestamp: Date.now() });
+
       // Return unified tools - all in the same format for consistent provider handling
-      console.log(`✅ Returning ${unifiedTools.length} unified tools for ${provider} to format`);
+      console.log(`✅ Returning ${unifiedTools.length} unified tools for ${provider} (cached for 30 minutes)`);
       return unifiedTools;
     } catch (error) {
       console.error('❌ Failed to get MCP tools:', error);
@@ -1281,3 +1326,8 @@ class LLMService {
 }
 
 export const llmService = new LLMService();
+
+// Export function to clear tools cache when MCP servers restart
+export const clearMCPToolsCache = () => {
+  llmService.clearToolsCache();
+};

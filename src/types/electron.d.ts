@@ -183,9 +183,11 @@ export interface ElectronAPI {
 
   // Llama.cpp operations
   llamaCppGetModels: () => Promise<unknown[]>;
-  llamaCppStartSwap: () => Promise<{ success: boolean; message?: string; error?: string }>;
-  llamaCppStopSwap: () => Promise<{ success: boolean; message?: string; error?: string }>;
-  llamaCppIsSwapRunning: () => Promise<boolean>;
+  // Removed llama-swap methods - using direct server
+  llamaCppStartDirect: (modelId: string) => Promise<{ success: boolean; message?: string; error?: string }>;
+  llamaCppStopDirect: () => Promise<{ success: boolean; message?: string; error?: string }>;
+  llamaCppIsDirectRunning: () => Promise<boolean>;
+  llamaCppTestServer: (modelPath: string) => Promise<{ success: boolean; error?: string; code?: number; stdout?: string; stderr?: string }>;
   llamaCppUpdateModelParameters: (modelId: string, parameters: unknown) => Promise<{ success: boolean; error?: string }>;
   llamaCppDeleteModel: (modelId: string) => Promise<{ success: boolean; error?: string }>;
   llamaCppDownloadModel: (huggingFaceRepo: string, quantization: string) => Promise<{ success: boolean; error?: string; modelId?: string; filePath?: string }>;

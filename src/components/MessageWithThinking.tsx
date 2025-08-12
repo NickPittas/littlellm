@@ -109,11 +109,30 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     const toolExecution: string[] = [];
     let response = text;
 
-    // Find all <think>...</think> blocks (structured thinking)
+    // Find all structured thinking blocks in various formats
+
+    // Format 1: <think>...</think> blocks
     const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
     let thinkMatch;
     while ((thinkMatch = thinkRegex.exec(text)) !== null) {
       thinking.push(thinkMatch[1].trim());
+    }
+
+    // Format 2: <thinking>...</thinking> blocks (common in llama.cpp models)
+    const thinkingRegex = /<thinking>([\s\S]*?)<\/thinking>/gi;
+    let thinkingMatch;
+    while ((thinkingMatch = thinkingRegex.exec(text)) !== null) {
+      thinking.push(thinkingMatch[1].trim());
+    }
+
+    // Format 3: **thinking** or *thinking* blocks
+    const markdownThinkingRegex = /\*{1,2}thinking\*{1,2}:?\s*([\s\S]*?)(?=\n\n|\*{1,2}[^*]|\n\*{1,2}|$)/gi;
+    let markdownMatch;
+    while ((markdownMatch = markdownThinkingRegex.exec(text)) !== null) {
+      const content = markdownMatch[1].trim();
+      if (content.length > 50) { // Only capture substantial thinking content
+        thinking.push(content);
+      }
     }
 
     // Find all <tool_execution>...</tool_execution> blocks
@@ -130,13 +149,28 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     if (beforeToolCallMatch) {
       const potentialThinking = beforeToolCallMatch[1].trim();
 
-      // Very specific thinking indicators - must be explicit reasoning language
+      // Enhanced thinking indicators for llama.cpp models
       const strongThinkingIndicators = [
+        // Standard thinking patterns
         'okay let me think through this', 'let me think through', 'i need to think about',
         'let me analyze this', 'let me break this down', 'thinking through this',
         'let me consider the', 'i should think about', 'let me reason through',
         'okay let me think', 'let me think carefully', 'i need to consider',
-        'commentary', 'commentarythe', 'according to developer instruction'
+
+        // Commentary patterns (common in llama.cpp)
+        'commentary', 'commentarythe', 'according to developer instruction',
+
+        // Step-by-step reasoning patterns
+        'first, i need to', 'step 1:', 'step by step', 'let me start by',
+        'to solve this', 'the user is asking', 'i should first',
+
+        // Analysis patterns
+        'looking at this', 'based on the', 'given that', 'since the user',
+        'the question is', 'this requires', 'i can see that',
+
+        // Planning patterns
+        'my approach will be', 'i will need to', 'the best way to',
+        'to answer this question', 'let me figure out'
       ];
 
       // Check for multiple strong indicators or very explicit thinking language
@@ -159,7 +193,10 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     response = text;
 
     // Remove structured thinking and tool execution blocks
-    response = response.replace(thinkRegex, '').replace(toolRegex, '');
+    response = response.replace(thinkRegex, '').replace(thinkingRegex, '').replace(toolRegex, '');
+
+    // Remove markdown thinking blocks
+    response = response.replace(markdownThinkingRegex, '');
 
     // Remove JSON tool call blocks (these should be in Tools Used section)
     response = response.replace(/```json[\s\S]*?```/gi, '');

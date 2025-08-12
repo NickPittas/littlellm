@@ -22,13 +22,16 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import * as http from 'http';
+import * as https from 'https';
+import * as url from 'url';
+import * as os from 'os';
 import * as mime from 'mime-types';
 import { spawn } from 'child_process';
+// Note: fetch is available globally in Node.js 18+
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
-import * as yaml from 'js-yaml';
 
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -2466,7 +2469,7 @@ function setupIPC() {
     return settings;
   });
 
-  ipcMain.handle('update-app-settings', (_, settings: AppSettings) => {
+  ipcMain.handle('update-app-settings', async (_, settings: AppSettings) => {
     try {
       console.log('update-app-settings called, received:', settings);
 
@@ -2568,7 +2571,24 @@ function setupIPC() {
       }
 
       const success = saveAppSettings(cleanSettings);
-      console.log('App settings updated in store:', cleanSettings);
+
+      // Check if MCP servers were updated and restart them if needed
+      if (cleanSettings.mcpServers) {
+        console.log('🔄 MCP servers updated in settings, restarting all servers...');
+        try {
+          await disconnectAllMCPServers();
+          await connectEnabledMCPServers();
+          console.log('✅ MCP servers restarted after settings update');
+
+          // Notify renderer to clear tools cache
+          if (mainWindow) {
+            mainWindow.webContents.send('mcp-servers-restarted');
+          }
+        } catch (error) {
+          console.error('❌ Failed to restart MCP servers after settings update:', error);
+        }
+      }
+
       return success;
     } catch (error) {
       console.error('Failed to update app settings:', error);
@@ -2749,8 +2769,8 @@ function setupIPC() {
         } else if (!wasConnected && updates.enabled === true) {
           console.log('🔌 Connecting MCP server after enable:', id);
           await connectMCPServer(id);
-        } else if (wasConnected && updates.env) {
-          console.log('🔄 Environment variables changed, restarting MCP server:', id);
+        } else if (wasConnected && (updates.env || updates.command || updates.args)) {
+          console.log('🔄 Server configuration changed, restarting MCP server:', id);
           await disconnectMCPServer(id);
           if (mcpData.servers[serverIndex].enabled) {
             await connectMCPServer(id);
@@ -2819,6 +2839,11 @@ function setupIPC() {
     await disconnectAllMCPServers();
     await connectEnabledMCPServers();
     console.log('✅ All MCP servers restarted');
+
+    // Notify renderer to clear tools cache
+    if (mainWindow) {
+      mainWindow.webContents.send('mcp-servers-restarted');
+    }
   });
 
   ipcMain.handle('call-mcp-tool', async (_, toolName: string, args: Record<string, unknown>) => {
@@ -2834,7 +2859,17 @@ function setupIPC() {
   });
 
   ipcMain.handle('get-all-mcp-tools', () => {
-    return getAllMCPTools();
+    const tools = getAllMCPTools();
+    // Quick debug: check if we have connections and tools
+    const connectionCount = mcpConnections.size;
+    const connectedCount = Array.from(mcpConnections.values()).filter(c => c.connected).length;
+    const totalToolsInConnections = Array.from(mcpConnections.values()).reduce((sum, c) => sum + (c.tools?.length || 0), 0);
+
+    if (tools.length === 0 && connectionCount > 0) {
+      console.warn(`🔍 MCP Debug: ${connectionCount} connections, ${connectedCount} connected, ${totalToolsInConnections} tools in connections, but getAllMCPTools returned 0`);
+    }
+
+    return tools;
   });
 
   ipcMain.handle('get-mcp-connection-status', () => {
@@ -5638,42 +5673,68 @@ console.debug = (...args: unknown[]) => {
     }
   });
 
-  // Llama.cpp and llama-swap IPC handlers
-  let llamaSwapProcess: any = null;
-  const llamaModels: Map<string, any> = new Map();
+  // Llama.cpp direct server IPC handlers
 
   ipcMain.handle('llamacpp:get-models', async () => {
     try {
-      // Check for .gguf files in the models directory
-      const modelsDir = path.join(process.cwd(), 'models');
+      // Get the configured models directory from settings
+      let modelsDir: string;
+      try {
+        const settings = loadAppSettings();
+        modelsDir = settings.general.modelsFolder || path.join(process.cwd(), 'models');
+        console.log(`📁 Using models directory: ${modelsDir}`);
+      } catch (_settingsError) {
+        console.warn('⚠️ Failed to get settings, using default models directory');
+        modelsDir = path.join(process.cwd(), 'models');
+      }
+
       const models: any[] = [];
 
+      // Load saved parameters
+      const parametersFile = path.join(app.getPath('userData'), 'llamacpp-parameters.json');
+      let savedParameters: Record<string, any> = {};
+
+      try {
+        if (fs.existsSync(parametersFile)) {
+          savedParameters = JSON.parse(fs.readFileSync(parametersFile, 'utf8'));
+          console.log(`📖 Loaded saved parameters from ${parametersFile}`);
+        }
+      } catch (error) {
+        console.warn('⚠️ Could not load saved parameters:', error);
+      }
+
       if (fs.existsSync(modelsDir)) {
+        console.log(`📂 Scanning directory: ${modelsDir}`);
         const files = fs.readdirSync(modelsDir);
         const modelFiles = files.filter(file => file.endsWith('.gguf'));
+        console.log(`🔍 Found ${modelFiles.length} .gguf files: ${modelFiles.join(', ')}`);
 
         for (const file of modelFiles) {
           const filePath = path.join(modelsDir, file);
           const stats = fs.statSync(filePath);
           const modelId = path.basename(file, '.gguf');
 
+          // Use saved parameters if available, otherwise use defaults
+          const defaultParameters = {
+            contextSize: 8192,  // Better default context size
+            threads: -1,
+            gpuLayers: 32,      // Default to GPU acceleration
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.9,
+            repeatPenalty: 1.1,
+            batchSize: 512,
+            port: 8080,
+            host: '127.0.0.1'
+          };
+
           const model = {
             id: modelId,
             name: modelId.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+            description: `Local model from ${modelsDir}`,
             filePath,
             size: stats.size,
-            parameters: {
-              contextSize: 4096,
-              threads: -1,
-              gpuLayers: 0,
-              temperature: 0.7,
-              topK: 40,
-              topP: 0.9,
-              repeatPenalty: 1.1,
-              batchSize: 512,
-              port: 8080,
-              host: '127.0.0.1'
-            },
+            parameters: savedParameters[modelId] || defaultParameters,
             isDownloaded: true,
             isRunning: false
           };
@@ -5681,9 +5742,11 @@ console.debug = (...args: unknown[]) => {
           models.push(model);
           llamaModels.set(modelId, model);
         }
+      } else {
+        console.log(`❌ Models directory does not exist: ${modelsDir}`);
       }
 
-      console.log(`🦙 Found ${models.length} Llama.cpp models`);
+      console.log(`🦙 Found ${models.length} Llama.cpp models in ${modelsDir}`);
       return models;
     } catch (error) {
       console.error('❌ Failed to get Llama.cpp models:', error);
@@ -5691,99 +5754,314 @@ console.debug = (...args: unknown[]) => {
     }
   });
 
-  ipcMain.handle('llamacpp:start-swap', async () => {
+  // Direct llama-server handlers (bypass llama-swap)
+  ipcMain.handle('llamacpp:start-direct', async (event, modelId) => {
     try {
-      if (llamaSwapProcess) {
-        console.log('🔄 Llama-swap is already running');
-        return { success: true, message: 'Already running' };
+      if (llamaDirectProcess) {
+        console.log('🔄 Direct llama-server is already running, stopping first...');
+        llamaDirectProcess.kill('SIGTERM');
+        llamaDirectProcess = null;
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      const llamaSwapPath = path.join(process.cwd(), 'llama', 'llama-swap.exe');
-      const configPath = path.join(process.cwd(), 'llama-swap-config.yaml');
-
-      // Create basic config if it doesn't exist
-      if (!fs.existsSync(configPath)) {
-        const config = {
-          startPort: 10001,
-          healthCheckTimeout: 120,
-          logLevel: 'info',
-          models: {}
-        };
-
-        // Add models to config
-        for (const [modelId, model] of llamaModels) {
-          if (model.isDownloaded) {
-            config.models[modelId] = {
-              cmd: `${path.join(process.cwd(), 'llama', 'llama-server.exe')} --model "${model.filePath}" --port \${PORT} --host 127.0.0.1`,
-              proxy: `http://127.0.0.1:8080`,
-              name: model.name,
-              ttl: 300
-            };
-          }
-        }
-
-        fs.writeFileSync(configPath, yaml.dump(config));
+      // Find the model
+      const model = llamaModels.get(modelId);
+      if (!model) {
+        return { success: false, error: `Model ${modelId} not found` };
       }
 
-      console.log('🚀 Starting llama-swap proxy...');
+      const llamaServerPath = path.join(process.cwd(), 'llama', 'llama-server.exe');
 
-      llamaSwapProcess = spawn(llamaSwapPath, [
-        '--config', configPath,
-        '--listen', '127.0.0.1:8080'
-      ], {
+      if (!fs.existsSync(llamaServerPath)) {
+        return { success: false, error: `llama-server.exe not found at: ${llamaServerPath}` };
+      }
+
+      if (!fs.existsSync(model.filePath)) {
+        return { success: false, error: `Model file not found at: ${model.filePath}` };
+      }
+
+      console.log(`🚀 Starting direct llama-server with model: ${modelId}`);
+      console.log(`📁 Model path: ${model.filePath}`);
+
+      // Use model parameters from settings
+      const contextSize = model.parameters?.contextSize || 8192;
+      const threads = model.parameters?.threads || 4;
+      const gpuLayers = model.parameters?.gpuLayers || 32;
+      const port = model.parameters?.port || 8080;
+      const host = model.parameters?.host || '127.0.0.1';
+
+      // Advanced parameters - enable jinja for tool calling support
+      const jinja = model.parameters?.jinja === true;
+      const flashAttention = model.parameters?.flashAttention || false;
+      const kvCacheQuantization = model.parameters?.kvCacheQuantization || 'f16';
+      const batchSize = model.parameters?.batchSize || 512;
+
+      console.log(`🔧 Model parameters loaded:`, model.parameters);
+      console.log(`🔧 Using parameters: ctx=${contextSize}, threads=${threads}, gpu_layers=${gpuLayers}, port=${port}, jinja=${jinja}`);
+
+      // Build command arguments
+      const args = [
+        '--model', model.filePath,
+        '--port', port.toString(),
+        '--host', host,
+        '--ctx-size', contextSize.toString(),
+        '--threads', threads.toString(),
+        '--n-gpu-layers', gpuLayers.toString(),
+        '--batch-size', batchSize.toString(),
+        '--verbose'
+      ];
+
+      // Add conditional flags
+      if (jinja) {
+        args.push('--jinja');
+        console.log(`🔧 Added --jinja flag for tool calling support`);
+      }
+
+      if (flashAttention) {
+        args.push('--flash-attn');
+        console.log(`🔧 Added --flash-attn flag for better performance`);
+      }
+
+      if (kvCacheQuantization && kvCacheQuantization !== 'f16') {
+        args.push('--cache-type-k', kvCacheQuantization);
+        args.push('--cache-type-v', kvCacheQuantization);
+        console.log(`🔧 Added KV cache quantization: ${kvCacheQuantization}`);
+      }
+
+      console.log(`🔧 Full command: "${llamaServerPath}" ${args.join(' ')}`);
+
+      llamaDirectProcess = spawn(llamaServerPath, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd: process.cwd()
       });
 
-      llamaSwapProcess.stdout?.on('data', (data: Buffer) => {
-        console.log(`📡 llama-swap: ${data.toString().trim()}`);
+      console.log(`🔄 Process spawned with PID: ${llamaDirectProcess.pid}`);
+
+      llamaDirectProcess.stdout?.on('data', (data: Buffer) => {
+        const output = data.toString();
+        console.log(`📤 llama-server: ${output.trim()}`);
       });
 
-      llamaSwapProcess.stderr?.on('data', (data: Buffer) => {
-        console.error(`❌ llama-swap error: ${data.toString().trim()}`);
+      llamaDirectProcess.stderr?.on('data', (data: Buffer) => {
+        const output = data.toString();
+        console.log(`📤 llama-server stderr: ${output.trim()}`);
       });
 
-      llamaSwapProcess.on('close', (code: number) => {
-        console.log(`🛑 llama-swap process exited with code ${code}`);
-        llamaSwapProcess = null;
+      llamaDirectProcess.on('close', (code: number, signal: string) => {
+        console.log(`🛑 Direct llama-server exited with code ${code}, signal: ${signal}`);
+        if (code !== 0) {
+          console.error(`❌ llama-server.exe failed with exit code ${code}`);
+        }
+        llamaDirectProcess = null;
       });
 
-      // Wait a moment for the process to start
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      llamaDirectProcess.on('error', (error: Error) => {
+        console.error(`❌ Direct llama-server spawn error:`, error);
+        llamaDirectProcess = null;
+      });
 
-      return { success: true, message: 'Llama-swap started successfully' };
+      llamaDirectProcess.on('spawn', () => {
+        console.log(`✅ llama-server.exe process spawned successfully`);
+      });
+
+      // Wait for server to start
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      return { success: true, message: `Direct llama-server started with model ${modelId}` };
     } catch (error) {
-      console.error('❌ Failed to start llama-swap:', error);
+      console.error('❌ Failed to start direct llama-server:', error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
-  ipcMain.handle('llamacpp:stop-swap', async () => {
+  ipcMain.handle('llamacpp:stop-direct', async () => {
     try {
-      if (llamaSwapProcess) {
-        console.log('🛑 Stopping llama-swap proxy...');
-        llamaSwapProcess.kill('SIGTERM');
-        llamaSwapProcess = null;
-        return { success: true, message: 'Llama-swap stopped successfully' };
+      if (llamaDirectProcess) {
+        console.log('🛑 Stopping direct llama-server...');
+        llamaDirectProcess.kill('SIGTERM');
+        llamaDirectProcess = null;
+        return { success: true, message: 'Direct llama-server stopped successfully' };
       }
-      return { success: true, message: 'Llama-swap was not running' };
+      return { success: true, message: 'Direct llama-server was not running' };
     } catch (error) {
-      console.error('❌ Failed to stop llama-swap:', error);
+      console.error('❌ Failed to stop direct llama-server:', error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
-  ipcMain.handle('llamacpp:is-swap-running', async () => {
-    return llamaSwapProcess !== null && !llamaSwapProcess.killed;
+  ipcMain.handle('llamacpp:is-direct-running', async () => {
+    return llamaDirectProcess !== null && !llamaDirectProcess.killed;
   });
+
+  // Test llama-server.exe directly
+  ipcMain.handle('llamacpp:test-server', async (event, modelPath) => {
+    try {
+      const llamaServerPath = path.join(process.cwd(), 'llama', 'llama-server.exe');
+
+      if (!fs.existsSync(llamaServerPath)) {
+        return { success: false, error: `llama-server.exe not found at: ${llamaServerPath}` };
+      }
+
+      if (!fs.existsSync(modelPath)) {
+        return { success: false, error: `Model file not found at: ${modelPath}` };
+      }
+
+      console.log(`🧪 Testing llama-server.exe with model: ${modelPath}`);
+
+      return new Promise((resolve) => {
+        const testProcess = spawn(llamaServerPath, [
+          '--model', modelPath,
+          '--port', '8081',
+          '--host', '127.0.0.1',
+          '--help'  // Just show help to test if executable works
+        ], {
+          stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        let stdout = '';
+        let stderr = '';
+
+        testProcess.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+
+        testProcess.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+
+        testProcess.on('close', (code) => {
+          console.log(`🧪 Test process exited with code: ${code}`);
+          console.log(`📤 Stdout: ${stdout.substring(0, 500)}`);
+          console.log(`📤 Stderr: ${stderr.substring(0, 500)}`);
+
+          resolve({
+            success: code === 0,
+            code,
+            stdout: stdout.substring(0, 1000),
+            stderr: stderr.substring(0, 1000)
+          });
+        });
+
+        testProcess.on('error', (error) => {
+          console.error(`🧪 Test process error:`, error);
+          resolve({
+            success: false,
+            error: error.message
+          });
+        });
+
+        // Kill after 5 seconds
+        setTimeout(() => {
+          testProcess.kill();
+        }, 5000);
+      });
+    } catch (error) {
+      console.error('Failed to test llama-server:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  // Removed duplicate handler - using the one below with persistence
+
+  ipcMain.handle('llamacpp:delete-model', async (_, modelId: string) => {
+    try {
+      const model = llamaModels.get(modelId);
+      if (model && fs.existsSync(model.filePath)) {
+        fs.unlinkSync(model.filePath);
+        llamaModels.delete(modelId);
+        return { success: true };
+      } else {
+        return { success: false, error: 'Model not found' };
+      }
+    } catch (error) {
+      console.error('Failed to delete model:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  // Removed duplicate handler - using the one below with full implementation
+
+  // End of llama.cpp handlers
+
+}
+
+app.on('window-all-closed', () => {
+  // On Windows/Linux, keep the app running in the background
+  // Only quit when explicitly requested
+});
+
+app.on('before-quit', async () => {
+  isQuitting = true;
+
+  // Close console window
+  if (consoleWindow) {
+    consoleWindow.close();
+    consoleWindow = null;
+  }
+
+  // Disconnect all MCP servers before quitting
+  try {
+    console.log('🔌 Disconnecting all MCP servers before quit...');
+    await disconnectAllMCPServers();
+  } catch (error) {
+    console.error('❌ Failed to disconnect MCP servers on quit:', error);
+  }
+});
+
+app.on('activate', () => {
+  // Only create window if none exists and app is fully initialized
+  if (mainWindow === null) {
+    createWindow().catch(console.error);
+  }
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
+});
+
+app.on('will-quit', () => {
+  // Unregister all shortcuts
+  globalShortcut.unregisterAll();
+});
+
+// Initialization now handled by app.whenReady() above
+
+// Global variables for direct llama.cpp server
+let llamaDirectProcess: any = null;
+const llamaModels: Map<string, any> = new Map();
+
+  // Removed duplicate handlers - using handlers from inside app.whenReady() scope
 
   ipcMain.handle('llamacpp:update-model-parameters', async (_, modelId: string, parameters: any) => {
     try {
       const model = llamaModels.get(modelId);
       if (model) {
+        // Update model parameters
         model.parameters = { ...model.parameters, ...parameters };
         llamaModels.set(modelId, model);
-        console.log(`🔧 Updated parameters for model: ${modelId}`);
+
+        // Save parameters to file for persistence
+        const parametersFile = path.join(app.getPath('userData'), 'llamacpp-parameters.json');
+        let allParameters: Record<string, any> = {};
+
+        try {
+          if (fs.existsSync(parametersFile)) {
+            allParameters = JSON.parse(fs.readFileSync(parametersFile, 'utf8'));
+          }
+        } catch (readError) {
+          console.warn('⚠️ Could not read existing parameters file:', readError);
+        }
+
+        allParameters[modelId] = model.parameters;
+
+        try {
+          fs.writeFileSync(parametersFile, JSON.stringify(allParameters, null, 2));
+          console.log(`💾 Saved parameters for model: ${modelId} to ${parametersFile}`);
+        } catch (writeError) {
+          console.error('❌ Failed to save parameters to file:', writeError);
+        }
+
+        console.log(`🔧 Updated parameters for model: ${modelId}`, model.parameters);
         return { success: true };
       }
       return { success: false, error: 'Model not found' };
@@ -5793,41 +6071,61 @@ console.debug = (...args: unknown[]) => {
     }
   });
 
-  ipcMain.handle('llamacpp:delete-model', async (_, modelId: string) => {
-    try {
-      const model = llamaModels.get(modelId);
-      if (model && model.isDownloaded) {
-        // Delete the file
-        if (fs.existsSync(model.filePath)) {
-          fs.unlinkSync(model.filePath);
-        }
-
-        // Remove from models map
-        llamaModels.delete(modelId);
-
-        console.log(`🗑️ Deleted model: ${modelId}`);
-        return { success: true };
-      }
-      return { success: false, error: 'Model not found' };
-    } catch (error) {
-      console.error('❌ Failed to delete model:', error);
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  });
+  // Removed duplicate delete-model handler - using the one above
 
   ipcMain.handle('llamacpp:download-model', async (event, huggingFaceRepo: string, quantization: string = 'Q4_K_M') => {
     try {
       console.log(`📥 Starting download: ${huggingFaceRepo} (${quantization})`);
 
+      // Get the configured models directory from settings
+      let modelsDir: string;
+      try {
+        const settings = loadAppSettings();
+        modelsDir = settings.general.modelsFolder || path.join(process.cwd(), 'models');
+        console.log(`📁 Using models directory for download: ${modelsDir}`);
+      } catch (_settingsError) {
+        console.warn('⚠️ Failed to get settings, using default models directory');
+        modelsDir = path.join(process.cwd(), 'models');
+      }
+
       // Create models directory if it doesn't exist
-      const modelsDir = path.join(process.cwd(), 'models');
       if (!fs.existsSync(modelsDir)) {
         fs.mkdirSync(modelsDir, { recursive: true });
       }
 
-      // Generate filename from repo and quantization
-      const modelName = huggingFaceRepo.split('/').pop() || 'model';
-      const filename = `${modelName}-${quantization.toLowerCase()}.gguf`;
+      // First, get the actual file list from Hugging Face API to find the correct filename
+      console.log(`🔍 Getting file list from Hugging Face API...`);
+
+      let apiResponse;
+      try {
+        // Try models API first, then datasets API
+        apiResponse = await fetch(`https://huggingface.co/api/models/${huggingFaceRepo}/tree/main`);
+        if (!apiResponse.ok && apiResponse.status === 404) {
+          apiResponse = await fetch(`https://huggingface.co/api/datasets/${huggingFaceRepo}/tree/main`);
+        }
+
+        if (!apiResponse.ok) {
+          throw new Error(`Failed to get file list: ${apiResponse.status}`);
+        }
+      } catch (apiError) {
+        console.error(`❌ Failed to get file list:`, apiError);
+        return { success: false, error: 'Failed to get model file list from Hugging Face' };
+      }
+
+      const files = await apiResponse.json();
+
+      // Find the GGUF file matching the quantization
+      const ggufFiles = files.filter((file: any) => file.path.endsWith('.gguf'));
+      const targetFile = ggufFiles.find((file: any) =>
+        file.path.toLowerCase().includes(quantization.toLowerCase())
+      );
+
+      if (!targetFile) {
+        console.error(`❌ No GGUF file found for quantization: ${quantization}`);
+        return { success: false, error: `No ${quantization} quantization found for this model` };
+      }
+
+      const filename = targetFile.path;
       const filePath = path.join(modelsDir, filename);
 
       // Check if file already exists
@@ -5836,8 +6134,7 @@ console.debug = (...args: unknown[]) => {
         return { success: false, error: 'Model already downloaded' };
       }
 
-      // Construct Hugging Face download URL
-      // This is a simplified approach - in production, you'd use the HF API
+      // Construct proper Hugging Face download URL
       const downloadUrl = `https://huggingface.co/${huggingFaceRepo}/resolve/main/${filename}`;
 
       console.log(`🌐 Download URL: ${downloadUrl}`);
@@ -5850,8 +6147,7 @@ console.debug = (...args: unknown[]) => {
       });
 
       // Use Node.js https module for download with progress tracking
-      const https = require('https');
-      const url = require('url');
+      // https and url modules are already imported at the top
 
       return new Promise((resolve) => {
         const parsedUrl = url.parse(downloadUrl);
@@ -5862,13 +6158,36 @@ console.debug = (...args: unknown[]) => {
             const redirectUrl = response.headers.location;
             console.log(`🔄 Redirecting to: ${redirectUrl}`);
 
-            // For now, return error for redirects (would need recursive handling)
-            resolve({
-              success: false,
-              error: 'Model downloading requires manual download. Please visit the Hugging Face repository and download the .gguf file manually.'
+            // Follow the redirect
+            const redirectParsedUrl = url.parse(redirectUrl);
+            const redirectRequest = https.get(redirectParsedUrl, (redirectResponse: any) => {
+              if (redirectResponse.statusCode !== 200) {
+                console.error(`❌ Redirect failed with status: ${redirectResponse.statusCode}`);
+                resolve({
+                  success: false,
+                  error: `Download failed after redirect: HTTP ${redirectResponse.statusCode}`
+                });
+                return;
+              }
+
+              // Continue with the redirected response
+              handleDownloadResponse(redirectResponse);
+            });
+
+            redirectRequest.on('error', (error: Error) => {
+              console.error(`❌ Redirect request error:`, error);
+              resolve({
+                success: false,
+                error: `Redirect failed: ${error.message}`
+              });
             });
             return;
           }
+
+          handleDownloadResponse(response);
+        });
+
+        function handleDownloadResponse(response: any) {
 
           if (response.statusCode !== 200) {
             console.error(`❌ Download failed with status: ${response.statusCode}`);
@@ -5912,23 +6231,50 @@ console.debug = (...args: unknown[]) => {
 
             // Add to models map
             const modelId = path.basename(filename, '.gguf');
+
+            // Load saved parameters for this model
+            const parametersFile = path.join(app.getPath('userData'), 'llamacpp-parameters.json');
+            let savedParameters: Record<string, any> = {};
+
+            try {
+              if (fs.existsSync(parametersFile)) {
+                savedParameters = JSON.parse(fs.readFileSync(parametersFile, 'utf8'));
+              }
+            } catch (error) {
+              console.warn('⚠️ Could not load saved parameters for downloaded model:', error);
+            }
+
+            const defaultParameters = {
+              contextSize: 8192,  // Better default context size
+              threads: -1,
+              gpuLayers: 32,      // Default to GPU acceleration
+              temperature: 0.7,
+              topK: 40,
+              topP: 0.9,
+              repeatPenalty: 1.1,
+              batchSize: 512,
+              port: 8080,
+              host: '127.0.0.1',
+              // Advanced parameters
+              jinja: false,       // Enable for tool calling
+              flashAttention: false,
+              kvCacheQuantization: 'f16',
+              seed: -1,
+              minP: 0.05,
+              tfsZ: 1.0,
+              typicalP: 1.0,
+              mirostat: 0,
+              mirostatTau: 5.0,
+              mirostatEta: 0.1,
+              timeout: 600
+            };
+
             const model = {
               id: modelId,
               name: modelId.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
               filePath,
               size: downloadedSize,
-              parameters: {
-                contextSize: 4096,
-                threads: -1,
-                gpuLayers: 0,
-                temperature: 0.7,
-                topK: 40,
-                topP: 0.9,
-                repeatPenalty: 1.1,
-                batchSize: 512,
-                port: 8080,
-                host: '127.0.0.1'
-              },
+              parameters: savedParameters[modelId] || defaultParameters,
               isDownloaded: true,
               isRunning: false
             };
@@ -5957,7 +6303,7 @@ console.debug = (...args: unknown[]) => {
               error: `Download failed: ${error.message}. Please download manually from Hugging Face.`
             });
           });
-        });
+        }
 
         request.on('error', (error: Error) => {
           console.error(`❌ Request error: ${error.message}`);
@@ -6061,11 +6407,11 @@ console.debug = (...args: unknown[]) => {
     try {
       console.log('🔍 Detecting system capabilities...');
 
-      const os = require('os');
+      // os module is already imported at the top
 
       // Get system information
       const totalRAM = Math.round(os.totalmem() / (1024 * 1024 * 1024)); // Convert to GB
-      const freeRAM = Math.round(os.freemem() / (1024 * 1024 * 1024)); // Convert to GB
+      const _freeRAM = Math.round(os.freemem() / (1024 * 1024 * 1024)); // Convert to GB
       const availableRAM = Math.round(totalRAM * 0.8); // Assume 80% is safely available
       const cpuCores = os.cpus().length;
       const platform = os.platform();
@@ -6119,7 +6465,6 @@ console.debug = (...args: unknown[]) => {
       };
     }
   });
-}
 
 app.on('window-all-closed', () => {
   // On Windows/Linux, keep the app running in the background

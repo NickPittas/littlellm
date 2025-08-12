@@ -163,5 +163,6 @@ export interface AppSettings {
     saveConversationHistory: boolean;
     conversationHistoryLength: number; // Number of previous messages to include in context
     debugLogging: boolean; // Enable/disable debug logging
+    modelsFolder?: string; // Custom models folder path for downloads
   };
 }

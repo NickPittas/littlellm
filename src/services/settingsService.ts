@@ -141,6 +141,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     saveConversationHistory: true,
     conversationHistoryLength: 10, // Default to last 10 messages
     debugLogging: false, // Debug logging disabled by default
+    modelsFolder: undefined, // Default to browser storage, user can configure custom folder
   },
 };
 
@@ -241,33 +242,18 @@ class SettingsService {
 
   // Save settings to JSON file via Electron with race condition protection
   private async saveSettingsToFile(): Promise<boolean> {
-    // ALWAYS SAVE - No conditions that prevent saving
-    console.log('🔍 saveSettingsToFile called (ALWAYS SAVE mode)');
-    console.log('🔍 Settings to save:', JSON.stringify(this.settings, null, 2));
-
     try {
       // Always attempt to save, even if Electron API might not be available
       if (typeof window !== 'undefined' && window.electronAPI?.updateAppSettings) {
-        console.log('🔍 Calling window.electronAPI.updateAppSettings...');
         const success = await window.electronAPI.updateAppSettings(this.settings);
-        console.log('🔍 updateAppSettings returned:', success);
-
-        if (success) {
-          console.log('✅ Settings saved to JSON file successfully');
-          return true;
-        } else {
-          console.error('❌ Failed to save settings to JSON file - updateAppSettings returned false');
-          // Still return true to indicate we attempted the save (ALWAYS SAVE mode)
-          return true;
-        }
+        return success;
       } else {
-        console.error('❌ Electron API or updateAppSettings not available, but continuing anyway (ALWAYS SAVE mode)');
-        // Return true to indicate we attempted the save (ALWAYS SAVE mode)
+        // Return true to indicate we attempted the save
         return true;
       }
     } catch (error) {
       console.error('❌ Error saving settings to file:', error);
-      // Still return true to indicate we attempted the save (ALWAYS SAVE mode)
+      // Still return true to indicate we attempted the save
       return true;
     }
   }
@@ -364,17 +350,9 @@ class SettingsService {
 
   // Force update settings and notify all listeners (used by Reload Settings button)
   forceUpdateSettings(newSettings: AppSettings) {
-    console.log('🔄 Force updating settings and notifying all listeners');
-    console.log('🔍 Old settings:', JSON.stringify(this.settings, null, 2));
-    console.log('🔍 New settings:', JSON.stringify(newSettings, null, 2));
-
     // DON'T merge with defaults - use the new settings as-is to preserve user data
     this.settings = { ...newSettings };
-    console.log('🔍 Updated settings (no default merge):', JSON.stringify(this.settings, null, 2));
-    console.log('🔍 Notifying', this.listeners.length, 'listeners');
-
     this.notifyListeners();
-    console.log('✅ Settings force updated and all listeners notified');
   }
 
   // Update chat settings in memory only - NO SAVE, NO NOTIFICATIONS
@@ -430,8 +408,6 @@ class SettingsService {
       await this.initializationPromise;
     }
 
-    console.log('🔍 updateSettings called with:', JSON.stringify(updates, null, 2));
-
     // API keys are now handled by secureApiKeyService, not in settings
 
     // Update settings in memory with deep merge
@@ -460,26 +436,17 @@ class SettingsService {
       this.settings.general = { ...this.settings.general, ...updates.general };
     }
 
-    console.log('🔍 Settings updated in memory from:', JSON.stringify(oldSettings, null, 2));
-    console.log('🔍 Settings updated in memory to:', JSON.stringify(this.settings, null, 2));
-
     // Save to disk
-    console.log('🔍 Calling saveSettingsToFile...');
     const success = await this.saveSettingsToFile();
-    console.log('🔍 saveSettingsToFile returned:', success);
 
     if (success) {
-      console.log('🔍 Notifying listeners...');
-
       // Update debug logger immediately if debug setting changed
       if (updates.general?.debugLogging !== undefined) {
         this.updateDebugLogger();
-        // No console output - this would create spam
       }
 
       // Notify listeners immediately after successful save
       this.notifyListeners();
-      console.log('✅ Settings updated and listeners notified');
 
       // No auto-reload - settings are already updated in memory and saved to disk
       // Components should use the current in-memory settings

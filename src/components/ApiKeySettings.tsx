@@ -232,7 +232,7 @@ export function ApiKeySettings({ onApiKeyChange, onRegisterSaveFunction }: ApiKe
     if (!apiKey.trim()) {
       // Only validate if the provider requires an API key
       const provider = PROVIDERS.find(p => p.id === providerId);
-      if (provider && !['lmstudio', 'ollama'].includes(providerId)) {
+      if (provider && !['lmstudio', 'ollama', 'llamacpp', 'jan'].includes(providerId)) {
         return null; // Allow empty keys, they're optional
       }
       return null;

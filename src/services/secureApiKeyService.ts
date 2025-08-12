@@ -305,6 +305,8 @@ class SecureApiKeyService {
         break;
       case 'lmstudio':
       case 'ollama':
+      case 'llamacpp':
+      case 'jan':
       case 'n8n':
         // These providers don't require API keys
         return { isValid: true };

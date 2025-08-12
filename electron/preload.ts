@@ -258,9 +258,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Llama.cpp operations
   llamaCppGetModels: () => ipcRenderer.invoke('llamacpp:get-models'),
-  llamaCppStartSwap: () => ipcRenderer.invoke('llamacpp:start-swap'),
-  llamaCppStopSwap: () => ipcRenderer.invoke('llamacpp:stop-swap'),
-  llamaCppIsSwapRunning: () => ipcRenderer.invoke('llamacpp:is-swap-running'),
+  // Removed llama-swap methods - using direct server
+  llamaCppStartDirect: (modelId: string) => ipcRenderer.invoke('llamacpp:start-direct', modelId),
+  llamaCppStopDirect: () => ipcRenderer.invoke('llamacpp:stop-direct'),
+  llamaCppIsDirectRunning: () => ipcRenderer.invoke('llamacpp:is-direct-running'),
+  llamaCppTestServer: (modelPath: string) => ipcRenderer.invoke('llamacpp:test-server', modelPath),
   llamaCppUpdateModelParameters: (modelId: string, parameters: any) => ipcRenderer.invoke('llamacpp:update-model-parameters', modelId, parameters),
   llamaCppDeleteModel: (modelId: string) => ipcRenderer.invoke('llamacpp:delete-model', modelId),
   llamaCppDownloadModel: (huggingFaceRepo: string, quantization: string) => ipcRenderer.invoke('llamacpp:download-model', huggingFaceRepo, quantization),
@@ -270,6 +272,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onLlamaCppDownloadProgress: (callback: (data: any) => void) => {
     ipcRenderer.on('llamacpp:download-progress', (_, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('llamacpp:download-progress');
+  },
+
+  // MCP server event listeners
+  onMCPServersRestarted: (callback: () => void) => {
+    ipcRenderer.on('mcp-servers-restarted', callback);
+    return () => ipcRenderer.removeAllListeners('mcp-servers-restarted');
   },
 
   // System capabilities

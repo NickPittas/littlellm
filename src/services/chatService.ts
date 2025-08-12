@@ -509,8 +509,8 @@ export const chatService = {
       });
 
       // Check if API key is required and missing
-      // ollama, lmstudio, and n8n don't require API keys
-      if (settings.provider !== 'ollama' && settings.provider !== 'lmstudio' && settings.provider !== 'n8n' && !apiKey) {
+      // ollama, lmstudio, llamacpp, jan, and n8n don't require API keys
+      if (settings.provider !== 'ollama' && settings.provider !== 'lmstudio' && settings.provider !== 'llamacpp' && settings.provider !== 'jan' && settings.provider !== 'n8n' && !apiKey) {
         throw new Error(`API key is required for ${settings.provider}. Please configure it in Settings.`);
       }
 

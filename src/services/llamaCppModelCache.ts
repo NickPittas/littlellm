@@ -339,9 +339,13 @@ class LlamaCppModelCache {
   }
 
   private getFrequentlyUsedModels(): string[] {
-    // In a real implementation, this would load from persistent storage
-    // For now, return some default frequently used models
-    return ['phi-3-mini', 'qwen2.5-0.5b', 'llama-3.2-3b'];
+    // Return models based on actual usage statistics from cache
+    const sortedModels = Array.from(this.cachedModels.values())
+      .sort((a, b) => b.usage.totalRequests - a.usage.totalRequests)
+      .slice(0, 3)
+      .map(model => model.id);
+
+    return sortedModels;
   }
 
   private scheduleBackgroundPreloading(): void {
