@@ -534,7 +534,7 @@ export class MistralProvider extends BaseProvider {
 
     // Execute all tool calls and ensure exact matching
     /* eslint-disable @typescript-eslint/no-explicit-any */
-    const toolResults: any[] = [];
+    const toolResults: Array<{ tool_call_id: string; content: string }> = [];
     for (let i = 0; i < toolCalls.length; i++) {
       const toolCall = toolCalls[i];
       try {
@@ -664,8 +664,8 @@ export class MistralProvider extends BaseProvider {
       toolCallsCount: mistralToolCalls.length,
       toolResultsCount: toolResults.length,
       toolCallIds: mistralToolCalls.map(tc => tc.id),
-      toolResultIds: (toolResults as any[]).map((tr: any) => tr.tool_call_id),
-      idsMatch: mistralToolCalls.every(tc => (toolResults as any[]).some((tr: any) => tr.tool_call_id === tc.id)),
+      toolResultIds: toolResults.map(tr => tr.tool_call_id),
+      idsMatch: mistralToolCalls.every(tc => toolResults.some(tr => tr.tool_call_id === tc.id)),
       messages: followUpMessages.map(msg => ({
         role: msg.role,
         hasToolCalls: !!(msg as any).tool_calls,

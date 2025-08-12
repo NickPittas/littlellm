@@ -1,229 +1,90 @@
 # Bundle Analysis Report
 
-## Current Bundle Statistics
+Generated: 8/12/2025, 9:50:17 PM
 
-Based on Next.js 14.1.0 production build output:
+## Summary
 
-### Main Bundle
-- **Main Route (/)**: 479 kB (570 kB first load)
-- **Not Found Route**: 0 B
-- **Shared JS**: 84.8 kB
+- **Performance Score**: 30/100
+- **Total Size**: 5.02 MB
+- **JavaScript**: 4.94 MB
+- **CSS**: 83.07 KB
+- **Files**: 103
+- **Dependencies**: 38
+- **Heavy Dependencies**: 6
 
-### Detailed Breakdown
-```
-Route (app)                              Size     First Load JS
-┌ ○ /                                    479 kB          570 kB
-└ ○ /_not-found                          0 B                0 B
-+ First Load JS shared by all            84.8 kB
-  ├ chunks/69-3ebb17b319e04061.js        29.2 kB
-  ├ chunks/fd9d1056-c3262cc514bff5bf.js  53.4 kB
-  └ other shared chunks (total)          2.24 kB
-```
+## Largest JavaScript Files
 
-## Analysis Results
+| File | Size | Path |
+|------|------|------|
+| pdf.worker.min.js | 1007.63 KB | js\pdf.worker.min.js |
+| page-45c70d8824b27e2e.js | 708.18 KB | _next\static\chunks\app\page-45c70d8824b27e2e.js |
+| 2170a4aa.49ba600489c31f0d.js | 312.33 KB | _next\static\chunks\2170a4aa.49ba600489c31f0d.js |
+| vendors-19a2b304-4d923fabe1c85503.js | 221.77 KB | _next\static\chunks\vendors-19a2b304-4d923fabe1c85503.js |
+| document-processing.0c1d0534360aa342.js | 179.16 KB | _next\static\chunks\document-processing.0c1d0534360aa342.js |
+| fd9d1056-351181798e076c0c.js | 168.79 KB | _next\static\chunks\fd9d1056-351181798e076c0c.js |
+| framework-8e0e0f4a6b83a956.js | 136.72 KB | _next\static\chunks\framework-8e0e0f4a6b83a956.js |
+| vendors-dfdbbe23-6c72e8880d5ab51d.js | 116.47 KB | _next\static\chunks\vendors-dfdbbe23-6c72e8880d5ab51d.js |
+| polyfills-42372ed130431b0a.js | 109.96 KB | _next\static\chunks\polyfills-42372ed130431b0a.js |
+| vendors-b49fab05-7c9d91c1a5caf57a.js | 97.12 KB | _next\static\chunks\vendors-b49fab05-7c9d91c1a5caf57a.js |
 
-### ✅ Positive Findings
-1. **Reasonable shared chunk size** - 84.8kB is acceptable for a rich application
-2. **Clean chunk splitting** - Good separation between main chunks
-3. **Small auxiliary chunks** - Only 2.24kB in other shared chunks
+## Recommendations
 
-### ⚠️ Optimization Opportunities
+### ⚠️ Large JavaScript files detected
 
-#### 1. Large Main Bundle (479kB)
-The main route bundle is quite large, indicating potential for optimization:
+**Category**: Bundle Size
 
-**Likely Contributors:**
-- React + React DOM + Next.js framework
-- Electron integration code
-- PDF parsing libraries (@xenova/transformers, pdfjs-dist)
-- UI component library (Radix UI components)
-- Icons library (Lucide React)
-- Syntax highlighting (react-syntax-highlighter)
-- Large service files (LLM providers, chat service)
+Found 9 JavaScript files larger than 100KB
 
-#### 2. Missing Code Splitting
-All functionality appears to be loaded on initial page load:
+**Files**:
+- pdf.worker.min.js (1007.63 KB)
+- page-45c70d8824b27e2e.js (708.18 KB)
+- 2170a4aa.49ba600489c31f0d.js (312.33 KB)
+- vendors-19a2b304-4d923fabe1c85503.js (221.77 KB)
+- document-processing.0c1d0534360aa342.js (179.16 KB)
 
-**Heavy Components That Could Be Lazy Loaded:**
-- Settings panels and modals
-- Knowledge base components
-- PDF parsing functionality
-- Syntax highlighting
-- File processing utilities
+**Suggestions**:
+- Implement code splitting for large components
+- Use dynamic imports for heavy libraries
+- Consider lazy loading for non-critical features
 
-#### 3. Large Dependencies
+### ℹ️ Heavy dependencies found
 
-**Heavy Libraries Identified:**
-- `@xenova/transformers` (likely 100-200kB)
-- `pdfjs-dist` (likely 50-100kB)
-- `react-syntax-highlighter` (likely 100kB+)
-- `@radix-ui/*` components (cumulative 50-100kB)
+**Category**: Dependencies
 
-## Optimization Recommendations
+Found 6 potentially heavy dependencies
 
-### 1. Implement Code Splitting
+**Files**:
+- @xenova/transformers
+- react-syntax-highlighter
+- @radix-ui/react-icons
+- framer-motion
+- mammoth
+- xlsx
 
-```typescript
-// Lazy load heavy components
-const SettingsOverlay = lazy(() => import('./components/SettingsOverlay'));
-const KnowledgeBaseSettings = lazy(() => import('./components/KnowledgeBaseSettings'));
-const ApiKeySettings = lazy(() => import('./components/ApiKeySettings'));
+**Suggestions**:
+- Use dynamic imports for heavy libraries
+- Consider lighter alternatives where possible
+- Implement tree shaking for icon libraries
 
-// Lazy load services
-const PDFParser = lazy(() => import('./services/DocumentParserService'));
+### 🚨 Total bundle size is very large
 
-// Use dynamic imports for conditional features
-const loadTransformers = () => import('@xenova/transformers');
-const loadPdfJs = () => import('pdfjs-dist');
-```
+**Category**: Performance
 
-### 2. Optimize Dependencies
+Total JavaScript size: 4.94 MB
 
-```javascript
-// Replace heavy syntax highlighter with lighter alternative
-import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
-// Instead of full Prism import
+**Suggestions**:
+- Implement aggressive code splitting
+- Remove unused dependencies
+- Use webpack-bundle-analyzer for detailed analysis
 
-// Use tree-shaking friendly imports
-import { debounce } from 'lodash-es/debounce';
-// Instead of: import _ from 'lodash';
+### ⚠️ Too many chunks detected
 
-// Optimize Radix UI imports
-import * as Dialog from '@radix-ui/react-dialog';
-// Instead of importing entire component collections
-```
+**Category**: Bundle Structure
 
-### 3. Runtime Loading Strategy
+Found 72 chunk files
 
-```typescript
-// Load heavy libraries only when needed
-const ChatService = {
-  async processDocument(file: File) {
-    if (file.type === 'application/pdf') {
-      const { documentParserService } = await import('./DocumentParserService');
-      return documentParserService.parseDocument(file);
-    }
-    // Handle other types without loading PDF parser
-  },
+**Suggestions**:
+- Optimize webpack splitChunks configuration
+- Merge small chunks to reduce HTTP requests
+- Review chunk splitting strategy
 
-  async enhanceWithAI(text: string) {
-    if (this.needsTransformers(text)) {
-      const transformers = await import('@xenova/transformers');
-      return this.processWithTransformers(text, transformers);
-    }
-    // Use lighter processing for simple cases
-  }
-};
-```
-
-### 4. Bundle Analysis Tools
-
-Add bundle analysis to development workflow:
-
-```json
-{
-  "scripts": {
-    "analyze": "cross-env ANALYZE=true npm run build",
-    "bundle-analyzer": "npx @next/bundle-analyzer",
-    "build:analyze": "npm run build && npm run bundle-analyzer"
-  }
-}
-```
-
-### 5. Progressive Loading
-
-```typescript
-// Implement progressive enhancement
-const ModernChatInterface = () => {
-  const [featuresLoaded, setFeaturesLoaded] = useState(false);
-  
-  useEffect(() => {
-    // Load advanced features after core UI
-    setTimeout(async () => {
-      await Promise.all([
-        import('./advanced-features'),
-        import('./syntax-highlighting'),
-        import('./pdf-processing')
-      ]);
-      setFeaturesLoaded(true);
-    }, 100);
-  }, []);
-
-  return (
-    <div>
-      <CoreChatInterface />
-      {featuresLoaded && <AdvancedFeatures />}
-    </div>
-  );
-};
-```
-
-## Expected Impact
-
-### Current State
-- **Initial load**: 570kB
-- **Time to interactive**: ~2-3 seconds
-- **Memory usage**: High due to all features loaded
-
-### After Optimization
-- **Initial load**: ~200-250kB (56% reduction)
-- **Time to interactive**: ~1-1.5 seconds (50% improvement)
-- **Memory usage**: Reduced by 40-60%
-- **Subsequent loads**: Cached and faster
-
-### Optimization Priority
-
-#### Phase 1: Quick Wins (1 week)
-1. Lazy load settings components
-2. Dynamic import for PDF processing
-3. Tree-shake lodash and other utilities
-**Expected savings**: 100-150kB
-
-#### Phase 2: Advanced Splitting (2-4 weeks)
-1. Split syntax highlighting by language
-2. Conditional loading of AI features
-3. Progressive enhancement strategy
-**Expected savings**: 150-200kB additional
-
-#### Phase 3: Advanced Optimization (1-2 months)
-1. Custom webpack configuration
-2. Advanced tree shaking
-3. Module federation for plugins
-**Expected savings**: 50-100kB additional
-
-## Monitoring
-
-Add bundle size monitoring:
-
-```typescript
-// Performance budget in next.config.js
-module.exports = {
-  experimental: {
-    bundlePagesRouterDependencies: true
-  },
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.optimization.splitChunks.cacheGroups = {
-        ...config.optimization.splitChunks.cacheGroups,
-        vendor: {
-          test: /[\\/]node_modules[\\/]/,
-          name: 'vendors',
-          chunks: 'all',
-          maxSize: 100000, // 100kB limit for vendor chunks
-        }
-      };
-    }
-    return config;
-  }
-};
-```
-
-## Conclusion
-
-The current bundle size is manageable but has significant optimization potential. Implementing code splitting and lazy loading could reduce the initial bundle size by 50-60%, dramatically improving application startup time and memory usage.
-
-Priority should be given to:
-1. Lazy loading heavy components
-2. Dynamic imports for optional features  
-3. Tree-shaking optimization
-4. Progressive feature loading

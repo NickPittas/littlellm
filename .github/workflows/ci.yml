@@ -1,0 +1,331 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  release:
+    types: [ published ]
+
+env:
+  NODE_VERSION: '18'
+  ELECTRON_CACHE: ~/.cache/electron
+  ELECTRON_BUILDER_CACHE: ~/.cache/electron-builder
+
+jobs:
+  # Job 1: Code Quality and Security
+  quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for security scanning
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run ESLint
+        run: npm run lint
+        continue-on-error: true
+      
+      - name: Run TypeScript type checking
+        run: npx tsc --noEmit
+      
+      - name: Run security audit
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+      
+      - name: Check for vulnerabilities with npm audit
+        run: |
+          npm audit --audit-level=high --json > audit-results.json || true
+          if [ -s audit-results.json ]; then
+            echo "🔍 Security vulnerabilities found:"
+            cat audit-results.json
+          else
+            echo "✅ No high-severity vulnerabilities found"
+          fi
+      
+      - name: Upload audit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-audit-results
+          path: audit-results.json
+          retention-days: 30
+
+  # Job 2: Testing
+  test:
+    name: Run Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: ['18', '20']
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test
+        env:
+          CI: true
+      
+      - name: Generate test coverage
+        run: npm run test:coverage
+        continue-on-error: true
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: matrix.os == 'ubuntu-latest' && matrix.node-version == '18'
+        with:
+          file: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  # Job 3: Build Verification
+  build:
+    name: Build Verification
+    runs-on: ${{ matrix.os }}
+    needs: [quality, test]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build application
+        run: npm run build
+      
+      - name: Build Electron app (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run electron:build:linux
+        continue-on-error: true
+      
+      - name: Build Electron app (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npm run electron:build:windows
+        continue-on-error: true
+      
+      - name: Build Electron app (macOS)
+        if: matrix.os == 'macos-latest'
+        run: npm run electron:build:mac
+        continue-on-error: true
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-${{ matrix.os }}
+          path: |
+            dist/
+            build/
+          retention-days: 7
+
+  # Job 4: Bundle Analysis
+  bundle-analysis:
+    name: Bundle Analysis
+    runs-on: ubuntu-latest
+    needs: [build]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build for analysis
+        run: npm run build
+      
+      - name: Analyze bundle size
+        run: |
+          npx webpack-bundle-analyzer dist/static/js/*.js --report --mode static --report-filename bundle-report.html
+        continue-on-error: true
+      
+      - name: Check bundle size
+        run: |
+          echo "📦 Bundle size analysis:"
+          du -sh dist/ || echo "No dist directory found"
+          find dist/ -name "*.js" -exec ls -lh {} \; | head -10 || echo "No JS files found"
+      
+      - name: Upload bundle analysis
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bundle-analysis
+          path: bundle-report.html
+          retention-days: 30
+
+  # Job 5: Dependency Check
+  dependency-check:
+    name: Dependency Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Check for outdated packages
+        run: |
+          echo "📋 Checking for outdated packages:"
+          npm outdated || true
+      
+      - name: License compliance check
+        run: |
+          npx license-checker --summary
+        continue-on-error: true
+      
+      - name: Dependency tree analysis
+        run: |
+          echo "🌳 Dependency tree analysis:"
+          npm ls --depth=0 || true
+          echo "📊 Package count:"
+          npm ls --depth=0 --json | jq '.dependencies | length' || echo "jq not available"
+
+  # Job 6: Performance Testing
+  performance:
+    name: Performance Testing
+    runs-on: ubuntu-latest
+    needs: [build]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build application
+        run: npm run build
+      
+      - name: Performance audit
+        run: |
+          echo "⚡ Performance metrics:"
+          echo "Build time: $(date)"
+          echo "Node modules size: $(du -sh node_modules/ 2>/dev/null || echo 'N/A')"
+          echo "Build output size: $(du -sh dist/ 2>/dev/null || echo 'N/A')"
+      
+      - name: Memory usage test
+        run: |
+          echo "🧠 Memory usage during build:"
+          /usr/bin/time -v npm run build 2>&1 | grep -E "(Maximum resident set size|User time|System time)" || true
+
+  # Job 7: Release (only on release events)
+  release:
+    name: Release Build
+    runs-on: ${{ matrix.os }}
+    if: github.event_name == 'release'
+    needs: [quality, test, build, bundle-analysis]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build for release
+        run: npm run build
+      
+      - name: Package Electron app
+        run: npm run electron:build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: |
+            dist/
+            build/
+          retention-days: 90
+
+  # Job 8: Notification
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    needs: [quality, test, build, bundle-analysis, dependency-check, performance]
+    if: always()
+    
+    steps:
+      - name: Notify success
+        if: needs.quality.result == 'success' && needs.test.result == 'success' && needs.build.result == 'success'
+        run: |
+          echo "🎉 CI/CD Pipeline completed successfully!"
+          echo "✅ All quality checks passed"
+          echo "✅ All tests passed"
+          echo "✅ Build verification successful"
+          echo "📊 Bundle analysis completed"
+          echo "🔍 Security audit completed"
+      
+      - name: Notify failure
+        if: needs.quality.result == 'failure' || needs.test.result == 'failure' || needs.build.result == 'failure'
+        run: |
+          echo "❌ CI/CD Pipeline failed!"
+          echo "Quality: ${{ needs.quality.result }}"
+          echo "Tests: ${{ needs.test.result }}"
+          echo "Build: ${{ needs.build.result }}"
+          exit 1

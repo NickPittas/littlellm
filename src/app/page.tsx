@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, lazy } from 'react';
 import { OverlayRouter } from '../components/OverlayRouter';
-import { ModernChatInterface } from '../components/modern-ui/ModernChatInterface';
+
+// Lazy load the heavy ModernChatInterface to reduce initial bundle size
+const ModernChatInterface = lazy(() => import('../components/modern-ui/ModernChatInterface').then(m => ({ default: m.ModernChatInterface })));
 
 // Test utilities removed - clean production build
 
@@ -31,7 +33,16 @@ export default function Home() {
   // Default to modern UI for all cases (development and production)
   return (
     <div className="h-screen w-screen bg-gray-950 overflow-hidden modern-chat-interface">
-      <ModernChatInterface />
+      <Suspense fallback={
+        <div className="h-full w-full flex items-center justify-center bg-gray-950">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading LittleLLM...</p>
+          </div>
+        </div>
+      }>
+        <ModernChatInterface />
+      </Suspense>
     </div>
   );
 }

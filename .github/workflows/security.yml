@@ -1,0 +1,290 @@
+name: Security Audit
+
+on:
+  schedule:
+    # Run security audit daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: # Allow manual triggering
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Job 1: Dependency Security Audit
+  dependency-audit:
+    name: Dependency Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run npm audit
+        run: |
+          echo "🔍 Running npm security audit..."
+          npm audit --audit-level=moderate --json > npm-audit.json || true
+          
+          # Display results
+          if [ -s npm-audit.json ]; then
+            echo "📊 Security audit results:"
+            cat npm-audit.json | jq '.metadata.vulnerabilities' || cat npm-audit.json
+          else
+            echo "✅ No vulnerabilities found"
+          fi
+      
+      - name: Check for high severity vulnerabilities
+        run: |
+          if [ -s npm-audit.json ]; then
+            HIGH_VULNS=$(cat npm-audit.json | jq '.metadata.vulnerabilities.high // 0')
+            CRITICAL_VULNS=$(cat npm-audit.json | jq '.metadata.vulnerabilities.critical // 0')
+            
+            echo "🔍 High severity vulnerabilities: $HIGH_VULNS"
+            echo "🚨 Critical vulnerabilities: $CRITICAL_VULNS"
+            
+            if [ "$CRITICAL_VULNS" -gt 0 ]; then
+              echo "❌ Critical vulnerabilities found! Failing the build."
+              exit 1
+            elif [ "$HIGH_VULNS" -gt 5 ]; then
+              echo "⚠️ Too many high severity vulnerabilities found!"
+              exit 1
+            fi
+          fi
+      
+      - name: Upload audit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: npm-audit-results
+          path: npm-audit.json
+          retention-days: 30
+
+  # Job 2: License Compliance Check
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install license checker
+        run: npm install -g license-checker
+      
+      - name: Check licenses
+        run: |
+          echo "📋 Checking package licenses..."
+          license-checker --summary > license-summary.txt
+          license-checker --json > license-details.json
+          
+          echo "📊 License summary:"
+          cat license-summary.txt
+      
+      - name: Check for problematic licenses
+        run: |
+          echo "🔍 Checking for problematic licenses..."
+          
+          # List of licenses to avoid (GPL, AGPL, etc.)
+          PROBLEMATIC_LICENSES="GPL-2.0,GPL-3.0,AGPL-1.0,AGPL-3.0,LGPL-2.1,LGPL-3.0"
+          
+          if license-checker --excludePrivatePackages --onlyAllow "MIT;ISC;BSD;Apache;Unlicense;WTFPL;CC0" --summary; then
+            echo "✅ All licenses are compatible"
+          else
+            echo "⚠️ Some packages may have incompatible licenses"
+            license-checker --excludePrivatePackages --json | jq -r 'to_entries[] | select(.value.licenses | test("GPL|AGPL")) | "\(.key): \(.value.licenses)"'
+          fi
+      
+      - name: Upload license results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: license-check-results
+          path: |
+            license-summary.txt
+            license-details.json
+          retention-days: 30
+
+  # Job 3: Code Security Scan
+  code-security:
+    name: Code Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install security scanners
+        run: |
+          npm install -g eslint-plugin-security
+          npm install -g semgrep
+        continue-on-error: true
+      
+      - name: Run ESLint security rules
+        run: |
+          echo "🔍 Running ESLint security scan..."
+          npx eslint . --ext .js,.jsx,.ts,.tsx --config .eslintrc.json --format json > eslint-security.json || true
+          
+          if [ -s eslint-security.json ]; then
+            echo "📊 ESLint security results:"
+            cat eslint-security.json | jq '.[] | select(.messages[].ruleId | test("security")) | {filePath, messages: [.messages[] | select(.ruleId | test("security"))]}' || cat eslint-security.json
+          fi
+        continue-on-error: true
+      
+      - name: Check for hardcoded secrets
+        run: |
+          echo "🔍 Scanning for hardcoded secrets..."
+          
+          # Check for common secret patterns
+          echo "Checking for API keys..."
+          grep -r -i "api[_-]key\s*[:=]\s*['\"][^'\"]*['\"]" src/ || echo "No API keys found"
+          
+          echo "Checking for passwords..."
+          grep -r -i "password\s*[:=]\s*['\"][^'\"]*['\"]" src/ || echo "No hardcoded passwords found"
+          
+          echo "Checking for tokens..."
+          grep -r -i "token\s*[:=]\s*['\"][^'\"]*['\"]" src/ || echo "No hardcoded tokens found"
+          
+          echo "Checking for private keys..."
+          grep -r "BEGIN.*PRIVATE.*KEY" . || echo "No private keys found"
+      
+      - name: Upload security scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: code-security-results
+          path: |
+            eslint-security.json
+          retention-days: 30
+
+  # Job 4: Electron Security Check
+  electron-security:
+    name: Electron Security Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Check Electron security best practices
+        run: |
+          echo "🔍 Checking Electron security configuration..."
+          
+          # Check for nodeIntegration disabled
+          if grep -r "nodeIntegration.*true" electron/ src/; then
+            echo "⚠️ nodeIntegration is enabled - security risk!"
+          else
+            echo "✅ nodeIntegration appears to be properly configured"
+          fi
+          
+          # Check for contextIsolation enabled
+          if grep -r "contextIsolation.*false" electron/ src/; then
+            echo "⚠️ contextIsolation is disabled - security risk!"
+          else
+            echo "✅ contextIsolation appears to be properly configured"
+          fi
+          
+          # Check for webSecurity disabled
+          if grep -r "webSecurity.*false" electron/ src/; then
+            echo "⚠️ webSecurity is disabled - security risk!"
+          else
+            echo "✅ webSecurity appears to be properly configured"
+          fi
+          
+          # Check for allowRunningInsecureContent
+          if grep -r "allowRunningInsecureContent.*true" electron/ src/; then
+            echo "⚠️ allowRunningInsecureContent is enabled - security risk!"
+          else
+            echo "✅ allowRunningInsecureContent appears to be properly configured"
+          fi
+      
+      - name: Check for CSP headers
+        run: |
+          echo "🔍 Checking for Content Security Policy..."
+          if grep -r "Content-Security-Policy" src/ electron/ || grep -r "CSP" src/ electron/; then
+            echo "✅ CSP configuration found"
+          else
+            echo "⚠️ No CSP configuration found - consider adding Content Security Policy"
+          fi
+
+  # Job 5: Security Summary
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [dependency-audit, license-check, code-security, electron-security]
+    if: always()
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: security-results
+      
+      - name: Generate security summary
+        run: |
+          echo "🔒 Security Audit Summary"
+          echo "========================"
+          echo ""
+          echo "📊 Job Results:"
+          echo "- Dependency Audit: ${{ needs.dependency-audit.result }}"
+          echo "- License Check: ${{ needs.license-check.result }}"
+          echo "- Code Security: ${{ needs.code-security.result }}"
+          echo "- Electron Security: ${{ needs.electron-security.result }}"
+          echo ""
+          
+          if [ "${{ needs.dependency-audit.result }}" = "success" ] && 
+             [ "${{ needs.license-check.result }}" = "success" ] && 
+             [ "${{ needs.code-security.result }}" = "success" ] && 
+             [ "${{ needs.electron-security.result }}" = "success" ]; then
+            echo "✅ All security checks passed!"
+          else
+            echo "⚠️ Some security checks failed or had warnings"
+          fi
+          
+          echo ""
+          echo "📁 Artifacts generated:"
+          find security-results -name "*.json" -o -name "*.txt" | sort
+      
+      - name: Fail if critical issues found
+        if: needs.dependency-audit.result == 'failure'
+        run: |
+          echo "❌ Critical security issues found in dependency audit!"
+          exit 1

@@ -3,6 +3,7 @@
  * This demonstrates how the memory system works and can be used for testing
  */
 
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { memoryService } from '../services/memoryService';
 import { executeMemoryTool } from '../services/memoryMCPTools';
 import { MemoryType, MemoryEntry, SearchResponse } from '../types/memory';
@@ -28,12 +29,12 @@ function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args:
 }
 // Mock Electron API for testing
 const mockElectronAPI = {
-  loadMemoryIndex: jest.fn(),
-  saveMemoryIndex: jest.fn(),
-  loadMemoryEntry: jest.fn(),
-  saveMemoryEntry: jest.fn(),
-  deleteMemoryEntry: jest.fn(),
-  getMemoryStats: jest.fn()
+  loadMemoryIndex: vi.fn(),
+  saveMemoryIndex: vi.fn(),
+  loadMemoryEntry: vi.fn(),
+  saveMemoryEntry: vi.fn(),
+  deleteMemoryEntry: vi.fn(),
+  getMemoryStats: vi.fn()
 };
 
 // Setup mock for window.electronAPI
@@ -45,8 +46,8 @@ Object.defineProperty(window, 'electronAPI', {
 describe('Memory System', () => {
   beforeEach(() => {
     // Reset all mocks
-    jest.clearAllMocks();
-    
+    vi.clearAllMocks();
+
     // Setup default mock responses
     mockElectronAPI.loadMemoryIndex.mockResolvedValue(null);
     mockElectronAPI.saveMemoryIndex.mockResolvedValue(true);

@@ -60,6 +60,19 @@ export class DocumentParserService {
     errorsByType: {}
   };
 
+  // Memory management for file buffers
+  private fileBufferCache = new Map<string, { buffer: ArrayBuffer; timestamp: number }>();
+  private readonly BUFFER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly MAX_CACHED_BUFFERS = 10;
+  private cleanupInterval: NodeJS.Timeout | null = null;
+
+  constructor() {
+    // Start cleanup interval for file buffers
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupFileBuffers();
+    }, 60000); // Clean up every minute
+  }
+
   /**
    * Get current parsing statistics
    */
@@ -79,6 +92,51 @@ export class DocumentParserService {
       averageProcessingTime: 0,
       errorsByType: {}
     };
+  }
+
+  /**
+   * Clean up expired file buffers from cache
+   */
+  private cleanupFileBuffers(): void {
+    const now = Date.now();
+    const expiredKeys: string[] = [];
+
+    for (const [key, { timestamp }] of this.fileBufferCache) {
+      if (now - timestamp > this.BUFFER_CACHE_TTL) {
+        expiredKeys.push(key);
+      }
+    }
+
+    for (const key of expiredKeys) {
+      this.fileBufferCache.delete(key);
+    }
+
+    // Also enforce max cache size
+    if (this.fileBufferCache.size > this.MAX_CACHED_BUFFERS) {
+      const entries = Array.from(this.fileBufferCache.entries());
+      entries.sort((a, b) => a[1].timestamp - b[1].timestamp); // Sort by timestamp
+
+      const toRemove = entries.slice(0, entries.length - this.MAX_CACHED_BUFFERS);
+      for (const [key] of toRemove) {
+        this.fileBufferCache.delete(key);
+      }
+    }
+
+    if (expiredKeys.length > 0) {
+      safeDebugLog('info', 'DOCUMENTPARSERSERVICE', `🧹 Cleaned up ${expiredKeys.length} expired file buffers`);
+    }
+  }
+
+  /**
+   * Destroy the service and clean up resources
+   */
+  destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    this.fileBufferCache.clear();
+    safeDebugLog('info', 'DOCUMENTPARSERSERVICE', '🧹 DocumentParserService destroyed and cleaned up');
   }
 
   /**

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
+import { motion, useMotionValue, useSpring, useTransform, MotionValue } from "framer-motion";
 import React, { useRef } from "react";
 import { debugLogger } from '../../services/debugLogger';
 
@@ -31,7 +31,7 @@ export function Dock({
   const mouseX = useMotionValue(Infinity);
 
   const renderChildren = () => {
-    return React.Children.map(children, (child: any) => {
+    return React.Children.map(children, (child: React.ReactElement) => {
       return React.cloneElement(child, {
         mouseX: mouseX,
       });
@@ -75,7 +75,7 @@ export function DockIcon({
   className,
   children,
   ...props
-}: DockIconProps & { mouseX?: any }) {
+}: DockIconProps & { mouseX?: MotionValue<number> }) {
   const ref = useRef<HTMLDivElement>(null);
 
   const distanceCalc = useTransform(mouseX, (val: number) => {

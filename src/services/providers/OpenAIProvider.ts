@@ -9,12 +9,43 @@ import {
   ContentItem,
   LLMProvider,
   ToolObject,
-  ProviderCapabilities
+  ProviderCapabilities,
+  ToolDefinition
 } from './types';
 
 import { OPENAI_SYSTEM_PROMPT } from './prompts/openai';
 import { OpenAIFileService } from '../OpenAIFileService';
 import { PricingService } from '../pricingService';
+
+// OpenAI-specific types
+interface OpenAIRun {
+  id: string;
+  status: string;
+  required_action?: {
+    type: string;
+    submit_tool_outputs?: {
+      tool_calls: Array<{
+        id: string;
+        type: string;
+        function: {
+          name: string;
+          arguments: string;
+        };
+      }>;
+    };
+  };
+}
+
+interface OpenAIMessage {
+  id: string;
+  role: string;
+  content: Array<{
+    type: string;
+    text?: {
+      value: string;
+    };
+  }>;
+}
 
 // SSR-safe debug logging helper
 function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
@@ -682,7 +713,7 @@ export class OpenAIProvider extends BaseProvider {
     }
   }
 
-  private formatToolsForOpenAI(rawTools: any[]): unknown[] {
+  private formatToolsForOpenAI(rawTools: ToolDefinition[]): unknown[] {
     return rawTools.map(tool => {
       // All tools now come in unified format with type: 'function' and function object
       if (tool.type === 'function' && tool.function) {
@@ -739,7 +770,7 @@ export class OpenAIProvider extends BaseProvider {
     safeDebugLog('info', 'OPENAIPROVIDER', `Vector store created with ID: ${vectorStore.id}`);
 
     // Prepare tools array - start with file_search
-    const tools: Array<{ type: string; function?: { name: string; description: string; parameters: any } }> = [{ type: 'file_search' }];
+    const tools: Array<{ type: string; function?: { name: string; description: string; parameters: Record<string, unknown> } }> = [{ type: 'file_search' }];
     
     // Add formatted OpenAI tools
     if (openAITools.length > 0) {
@@ -808,7 +839,7 @@ export class OpenAIProvider extends BaseProvider {
     return thread.id;
   }
 
-  private async addMessageToThread(threadId: string, content: string, attachments: any[], settings: LLMSettings) {
+  private async addMessageToThread(threadId: string, content: string, attachments: File[], settings: LLMSettings) {
     await fetch(`https://api.openai.com/v1/threads/${threadId}/messages`, {
       method: 'POST',
       headers: {
@@ -866,7 +897,7 @@ export class OpenAIProvider extends BaseProvider {
     return run;
   }
 
-  private async handleRequiredAction(threadId: string, run: any, settings: LLMSettings): Promise<void> {
+  private async handleRequiredAction(threadId: string, run: OpenAIRun, settings: LLMSettings): Promise<void> {
     safeDebugLog('info', 'OPENAIPROVIDER', '🔧 Handling required action for OpenAI run:', run.id);
     
     if (!run.required_action || !run.required_action.submit_tool_outputs) {

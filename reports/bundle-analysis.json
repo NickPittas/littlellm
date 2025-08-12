@@ -1,0 +1,254 @@
+{
+  "timestamp": "2025-08-12T18:50:17.837Z",
+  "summary": {
+    "totalFiles": 103,
+    "totalSize": "5.02 MB",
+    "totalJsSize": "4.94 MB",
+    "totalCssSize": "83.07 KB",
+    "largestJsFile": "pdf.worker.min.js (1007.63 KB)",
+    "dependencies": 38,
+    "heavyDependencies": 6
+  },
+  "files": {
+    "javascript": [
+      {
+        "name": "pdf.worker.min.js",
+        "path": "js\\pdf.worker.min.js",
+        "size": 1031813,
+        "sizeFormatted": "1007.63 KB"
+      },
+      {
+        "name": "page-45c70d8824b27e2e.js",
+        "path": "_next\\static\\chunks\\app\\page-45c70d8824b27e2e.js",
+        "size": 725175,
+        "sizeFormatted": "708.18 KB"
+      },
+      {
+        "name": "2170a4aa.49ba600489c31f0d.js",
+        "path": "_next\\static\\chunks\\2170a4aa.49ba600489c31f0d.js",
+        "size": 319824,
+        "sizeFormatted": "312.33 KB"
+      },
+      {
+        "name": "vendors-19a2b304-4d923fabe1c85503.js",
+        "path": "_next\\static\\chunks\\vendors-19a2b304-4d923fabe1c85503.js",
+        "size": 227088,
+        "sizeFormatted": "221.77 KB"
+      },
+      {
+        "name": "document-processing.0c1d0534360aa342.js",
+        "path": "_next\\static\\chunks\\document-processing.0c1d0534360aa342.js",
+        "size": 183459,
+        "sizeFormatted": "179.16 KB"
+      },
+      {
+        "name": "fd9d1056-351181798e076c0c.js",
+        "path": "_next\\static\\chunks\\fd9d1056-351181798e076c0c.js",
+        "size": 172837,
+        "sizeFormatted": "168.79 KB"
+      },
+      {
+        "name": "framework-8e0e0f4a6b83a956.js",
+        "path": "_next\\static\\chunks\\framework-8e0e0f4a6b83a956.js",
+        "size": 140001,
+        "sizeFormatted": "136.72 KB"
+      },
+      {
+        "name": "vendors-dfdbbe23-6c72e8880d5ab51d.js",
+        "path": "_next\\static\\chunks\\vendors-dfdbbe23-6c72e8880d5ab51d.js",
+        "size": 119264,
+        "sizeFormatted": "116.47 KB"
+      },
+      {
+        "name": "polyfills-42372ed130431b0a.js",
+        "path": "_next\\static\\chunks\\polyfills-42372ed130431b0a.js",
+        "size": 112594,
+        "sizeFormatted": "109.96 KB"
+      },
+      {
+        "name": "vendors-b49fab05-7c9d91c1a5caf57a.js",
+        "path": "_next\\static\\chunks\\vendors-b49fab05-7c9d91c1a5caf57a.js",
+        "size": 99446,
+        "sizeFormatted": "97.12 KB"
+      }
+    ],
+    "css": [
+      {
+        "name": "125f0f592bba5ebc.css",
+        "path": "_next\\static\\css\\125f0f592bba5ebc.css",
+        "size": 79549,
+        "sizeFormatted": "77.68 KB"
+      },
+      {
+        "name": "433c119a879b6899.css",
+        "path": "_next\\static\\css\\433c119a879b6899.css",
+        "size": 2708,
+        "sizeFormatted": "2.64 KB"
+      },
+      {
+        "name": "70801aa693880122.css",
+        "path": "_next\\static\\css\\70801aa693880122.css",
+        "size": 2169,
+        "sizeFormatted": "2.12 KB"
+      },
+      {
+        "name": "3c801785e92ee2ca.css",
+        "path": "_next\\static\\css\\3c801785e92ee2ca.css",
+        "size": 639,
+        "sizeFormatted": "639 Bytes"
+      }
+    ]
+  },
+  "dependencies": {
+    "totalDependencies": 38,
+    "totalDevDependencies": 28,
+    "heavyDependencies": [
+      "@xenova/transformers",
+      "react-syntax-highlighter",
+      "@radix-ui/react-icons",
+      "framer-motion",
+      "mammoth",
+      "xlsx"
+    ],
+    "dependencies": {
+      "@apache-arrow/ts": "^14.0.2",
+      "@modelcontextprotocol/sdk": "^1.15.1",
+      "@radix-ui/react-dialog": "^1.1.14",
+      "@radix-ui/react-icons": "^1.3.2",
+      "@radix-ui/react-label": "^2.1.7",
+      "@radix-ui/react-popover": "^1.1.14",
+      "@radix-ui/react-scroll-area": "^1.2.9",
+      "@radix-ui/react-select": "^2.2.5",
+      "@radix-ui/react-slot": "^1.2.3",
+      "@radix-ui/react-tabs": "^1.1.12",
+      "@types/mime-types": "^3.0.1",
+      "@types/react-syntax-highlighter": "^15.5.13",
+      "@xenova/transformers": "^2.17.2",
+      "apache-arrow": "^14.0.2",
+      "class-variance-authority": "^0.7.1",
+      "clsx": "^2.1.1",
+      "cmdk": "^1.1.1",
+      "csv-parser": "^3.2.0",
+      "framer-motion": "^12.23.9",
+      "ical.js": "^2.2.0",
+      "lucide-react": "^0.352.0",
+      "mammoth": "^1.9.1",
+      "mime-types": "^3.0.1",
+      "next": "^14.2.31",
+      "node-html-parser": "^7.0.1",
+      "pdf-parse": "^1.1.1",
+      "react": "^18.2.0",
+      "react-dom": "^18.2.0",
+      "react-markdown": "^10.1.0",
+      "react-syntax-highlighter": "^15.6.1",
+      "remark-gfm": "^4.0.1",
+      "rtf-parser": "^1.3.3",
+      "tailwind-merge": "^2.6.0",
+      "tailwindcss-animate": "^1.0.7",
+      "uuid": "^11.1.0",
+      "vectordb": "^0.21.1",
+      "xlsx": "^0.18.5",
+      "xml2js": "^0.6.2"
+    },
+    "devDependencies": {
+      "@testing-library/jest-dom": "^6.4.2",
+      "@types/node": "^20.19.2",
+      "@types/pdf-parse": "^1.1.5",
+      "@types/react": "^18.2.61",
+      "@types/react-dom": "^18.2.19",
+      "@types/uuid": "^10.0.0",
+      "@types/xml2js": "^0.4.14",
+      "@typescript-eslint/eslint-plugin": "^8.35.1",
+      "@typescript-eslint/parser": "^8.35.1",
+      "@vitest/coverage-v8": "^3.2.4",
+      "@vitest/ui": "^3.2.4",
+      "autoprefixer": "^10.4.21",
+      "concurrently": "^9.2.0",
+      "cross-env": "^7.0.3",
+      "electron": "^37.1.0",
+      "electron-builder": "^25.1.8",
+      "eslint": "^8.57.0",
+      "eslint-config-prettier": "^10.1.5",
+      "eslint-plugin-react": "^7.37.5",
+      "eslint-plugin-react-hooks": "^5.2.0",
+      "eslint-plugin-sonarjs": "^3.0.4",
+      "eslint-plugin-unused-imports": "^4.1.4",
+      "jest": "^29.7.0",
+      "jsdom": "^26.1.0",
+      "madge": "^8.0.0",
+      "tailwindcss": "^3.4.1",
+      "typescript": "^5.8.3",
+      "vitest": "^3.2.4"
+    }
+  },
+  "recommendations": [
+    {
+      "type": "warning",
+      "category": "Bundle Size",
+      "title": "Large JavaScript files detected",
+      "description": "Found 9 JavaScript files larger than 100KB",
+      "files": [
+        "pdf.worker.min.js (1007.63 KB)",
+        "page-45c70d8824b27e2e.js (708.18 KB)",
+        "2170a4aa.49ba600489c31f0d.js (312.33 KB)",
+        "vendors-19a2b304-4d923fabe1c85503.js (221.77 KB)",
+        "document-processing.0c1d0534360aa342.js (179.16 KB)"
+      ],
+      "suggestions": [
+        "Implement code splitting for large components",
+        "Use dynamic imports for heavy libraries",
+        "Consider lazy loading for non-critical features"
+      ]
+    },
+    {
+      "type": "info",
+      "category": "Dependencies",
+      "title": "Heavy dependencies found",
+      "description": "Found 6 potentially heavy dependencies",
+      "files": [
+        "@xenova/transformers",
+        "react-syntax-highlighter",
+        "@radix-ui/react-icons",
+        "framer-motion",
+        "mammoth",
+        "xlsx"
+      ],
+      "suggestions": [
+        "Use dynamic imports for heavy libraries",
+        "Consider lighter alternatives where possible",
+        "Implement tree shaking for icon libraries"
+      ]
+    },
+    {
+      "type": "error",
+      "category": "Performance",
+      "title": "Total bundle size is very large",
+      "description": "Total JavaScript size: 4.94 MB",
+      "suggestions": [
+        "Implement aggressive code splitting",
+        "Remove unused dependencies",
+        "Use webpack-bundle-analyzer for detailed analysis"
+      ]
+    },
+    {
+      "type": "warning",
+      "category": "Bundle Structure",
+      "title": "Too many chunks detected",
+      "description": "Found 72 chunk files",
+      "suggestions": [
+        "Optimize webpack splitChunks configuration",
+        "Merge small chunks to reduce HTTP requests",
+        "Review chunk splitting strategy"
+      ]
+    }
+  ],
+  "performance": {
+    "score": 30,
+    "metrics": {
+      "bundleSize": 5260952,
+      "jsSize": 5175887,
+      "cssSize": 85065,
+      "fileCount": 103
+    }
+  }
+}

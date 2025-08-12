@@ -18,6 +18,7 @@ import {
 } from 'electron';
 import { KnowledgeBaseService } from '../src/services/KnowledgeBaseService.js';
 import { electronInternalCommandHandler } from '../src/electron/internalCommandHandler.js';
+import { makeSecureLocalRequest, checkLocalProviderHealth, getAvailableLocalProviders, logSecurityEvent } from './secureLocalProxy.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
@@ -1502,8 +1503,11 @@ async function openSettingsOverlay(tab?: string) {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: false,
-      allowRunningInsecureContent: true,
+      webSecurity: true, // Enable web security for settings
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false,
+      enableRemoteModule: false,
+      sandbox: false, // Keep false for preload script access
     },
   });
 
@@ -1579,7 +1583,10 @@ async function openActionMenu() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: false, // Allow localhost connections for LM Studio, Ollama, etc.
+      webSecurity: true, // Enable web security
+      experimentalFeatures: false,
+      enableRemoteModule: false,
+      sandbox: false, // Keep false for preload script access
     },
   });
 
@@ -1839,11 +1846,15 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: false, // Allow localhost connections for LM Studio, Ollama, etc.
-      allowRunningInsecureContent: true, // Allow localhost connections
+      webSecurity: true, // Enable web security
+      allowRunningInsecureContent: false, // Disable insecure content
       partition: 'persist:littlellm', // Enable localStorage and persistent storage
       zoomFactor: 1.0,
       disableBlinkFeatures: 'Auxclick',
+      // Enable secure defaults
+      experimentalFeatures: false,
+      enableRemoteModule: false,
+      sandbox: false, // Keep false for preload script access
     },
     icon: getIconPath(),
   };
@@ -5621,6 +5632,28 @@ console.debug = (...args: unknown[]) => {
   // Handle logging from history window to terminal
   ipcMain.handle('log-to-terminal', (_, message: string) => {
     console.log('[HISTORY WINDOW]', message);
+  });
+
+  // Secure Local Provider IPC handlers
+  ipcMain.handle('secure-local-request', async (_, request: {
+    url: string;
+    method: string;
+    headers?: Record<string, string>;
+    body?: string;
+  }) => {
+    logSecurityEvent('LOCAL_PROVIDER_REQUEST', { url: request.url, method: request.method });
+    return await makeSecureLocalRequest(request);
+  });
+
+  ipcMain.handle('check-local-provider-health', async (_, providerName: string) => {
+    logSecurityEvent('PROVIDER_HEALTH_CHECK', { provider: providerName });
+    return await checkLocalProviderHealth(providerName as any);
+  });
+
+  ipcMain.handle('get-available-local-providers', async () => {
+    const providers = await getAvailableLocalProviders();
+    logSecurityEvent('PROVIDER_DISCOVERY', { availableProviders: providers });
+    return providers;
   });
 
   // Handle console window toggle

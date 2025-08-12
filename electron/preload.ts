@@ -24,6 +24,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSecureApiKeys: () => ipcRenderer.invoke('get-secure-api-keys'),
   setSecureApiKeys: (apiKeys: any) => ipcRenderer.invoke('set-secure-api-keys', apiKeys),
 
+  // Secure Local Provider operations
+  secureLocalRequest: (request: {
+    url: string;
+    method: string;
+    headers?: Record<string, string>;
+    body?: string;
+  }) => ipcRenderer.invoke('secure-local-request', request),
+  checkLocalProviderHealth: (providerName: string) => ipcRenderer.invoke('check-local-provider-health', providerName),
+  getAvailableLocalProviders: () => ipcRenderer.invoke('get-available-local-providers'),
+
   // State file operations (separate from settings)
   getStateFile: (filename: string) => ipcRenderer.invoke('get-state-file', filename),
   saveStateFile: (filename: string, data: any) => ipcRenderer.invoke('save-state-file', filename, data),

@@ -12,6 +12,7 @@ import {
 } from './types';
 
 import { OLLAMA_SYSTEM_PROMPT, generateOllamaToolPrompt } from './prompts/ollama';
+import { secureLocalFetch, checkLocalProviderAvailability } from '../../utils/secureLocalFetch';
 
 // SSR-safe debug logging helper
 function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {

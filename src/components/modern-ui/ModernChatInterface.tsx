@@ -240,22 +240,30 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     }
   }, [messages.length, updateSettings]);
 
-  // Load settings on mount
+  // Load settings on mount with memory management
   useEffect(() => {
+    let isMounted = true;
+    const abortController = new AbortController();
+
     const loadSettings = async () => {
       try {
+        if (!isMounted) return;
+
         const savedSettings = settingsService.getChatSettings();
         setSettings(savedSettings);
 
         const provider = savedSettings.provider || 'ollama';
         // Only apply initial provider if user hasn't changed it yet
-        if (!userChangedProviderRef.current) {
+        if (!userChangedProviderRef.current && isMounted) {
           setSelectedProvider(provider);
         } else {
           safeDebugLog('info', 'MODERNCHATINTERFACE', '🛑 Skipping init provider apply; user already changed provider');
         }
-        setToolsEnabled(savedSettings.toolCallingEnabled ?? false); // Use nullish coalescing to respect explicit false
-        setKnowledgeBaseEnabled(savedSettings.ragEnabled ?? false);
+
+        if (isMounted) {
+          setToolsEnabled(savedSettings.toolCallingEnabled ?? false); // Use nullish coalescing to respect explicit false
+          setKnowledgeBaseEnabled(savedSettings.ragEnabled ?? false);
+        }
 
         // Try to get the last selected model for this provider
         let modelToUse = savedSettings.model || 'gemma3:gpu';
@@ -264,6 +272,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           if (secureApiKeyService && !secureApiKeyService.isInitialized()) {
             await secureApiKeyService.waitForInitialization();
           }
+
+          if (!isMounted) return;
 
           const apiKeyData = secureApiKeyService?.getApiKeyData(provider);
           const lastSelectedModel = apiKeyData?.lastSelectedModel;
@@ -276,7 +286,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         }
 
         // Only apply initial model/load if user hasn't changed provider
-        if (!userChangedProviderRef.current) {
+        if (!userChangedProviderRef.current && isMounted) {
           setSelectedModel(modelToUse);
           // Load models for the selected provider (this will validate and potentially update the model)
           await loadModelsForProvider(provider);
@@ -284,29 +294,81 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           safeDebugLog('info', 'MODERNCHATINTERFACE', '🛑 Skipping init model load; user already changed provider');
         }
       } catch (error) {
-        safeDebugLog('error', 'MODERNCHATINTERFACE', 'Failed to load settings:', error);
+        if (isMounted) {
+          safeDebugLog('error', 'MODERNCHATINTERFACE', 'Failed to load settings:', error);
+        }
       }
     };
 
     loadSettings();
     loadPremadePrompts();
+
+    // Cleanup function to prevent memory leaks
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
   }, [loadModelsForProvider]); // Add loadModelsForProvider to dependency array
 
-  // Load available agents on mount
+  // Load available agents on mount with cleanup
   useEffect(() => {
+    let isMounted = true;
+
     const loadAgents = async () => {
       try {
         const agents = await agentService.getAgents();
-        setAvailableAgents(agents);
-        safeDebugLog('info', 'MODERNCHATINTERFACE', `✅ Loaded ${agents.length} available agents`);
+        if (isMounted) {
+          setAvailableAgents(agents);
+          safeDebugLog('info', 'MODERNCHATINTERFACE', `✅ Loaded ${agents.length} available agents`);
+        }
       } catch (error) {
-        safeDebugLog('error', 'MODERNCHATINTERFACE', 'Failed to load agents:', error);
-        setAvailableAgents([]);
+        if (isMounted) {
+          safeDebugLog('error', 'MODERNCHATINTERFACE', 'Failed to load agents:', error);
+          setAvailableAgents([]);
+        }
       }
     };
 
     loadAgents();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  // Memory management cleanup effect
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      // Clean up large message arrays if they exceed reasonable limits
+      if (messages.length > 100) {
+        safeDebugLog('info', 'MODERNCHATINTERFACE', '🧹 Cleaning up old messages to prevent memory issues');
+        setMessages(prev => prev.slice(-50)); // Keep only last 50 messages
+      }
+
+      // Clean up attached files if they're too large or numerous
+      if (attachedFiles.length > 10) {
+        safeDebugLog('info', 'MODERNCHATINTERFACE', '🧹 Cleaning up excess attached files');
+        setAttachedFiles(prev => prev.slice(-5)); // Keep only last 5 files
+      }
+
+      // Clean up premade prompts if they're taking too much memory
+      if (premadePrompts.length > 50) {
+        safeDebugLog('info', 'MODERNCHATINTERFACE', '🧹 Cleaning up excess premade prompts');
+        setPremadePrompts(prev => prev.slice(0, 50)); // Keep only first 50 prompts
+      }
+    }, 60000); // Check every minute
+
+    return () => {
+      clearInterval(cleanupInterval);
+      // Final cleanup on unmount
+      safeDebugLog('info', 'MODERNCHATINTERFACE', '🧹 Component unmounting - cleaning up memory');
+      setMessages([]);
+      setAttachedFiles([]);
+      setPremadePrompts([]);
+      setAvailableModels([]);
+      setAvailableAgents([]);
+    };
+  }, [messages.length, attachedFiles.length, premadePrompts.length]);
 
   // Handle sidebar item clicks
   const handleSidebarItemClick = (itemId: string) => {

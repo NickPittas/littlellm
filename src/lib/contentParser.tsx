@@ -2,6 +2,15 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CodeBlock, InlineCode } from '../components/CodeBlock';
+import {
+  MarkdownComponentProps,
+  CodeBlockProps,
+  LinkProps,
+  HeadingProps,
+  ListProps,
+  TableProps,
+  TableCellProps
+} from '../types/components';
 
 // SSR-safe debug logging helper
 function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
@@ -339,9 +348,7 @@ export function parseMarkdownContent(text: string): React.ReactNode {
       components={{
         // Custom code block component
         // Types for react-markdown renderers kept broad to match library's dynamic nodes
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any
-        code({ node, inline, className, children, ...props }: any) {
+        code({ node, inline, className, children, ...props }: CodeBlockProps) {
           const match = /language-(\w+)/.exec(className || '');
           const language = match ? match[1] : undefined;
 
@@ -360,9 +367,7 @@ export function parseMarkdownContent(text: string): React.ReactNode {
           );
         },
         // Custom link component
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any
-        a({ href, children, ...props }: any) {
+        a({ href, children, ...props }: LinkProps) {
           return (
             <button
               onClick={() => href && handleLinkClick(href)}
@@ -374,42 +379,39 @@ export function parseMarkdownContent(text: string): React.ReactNode {
           );
         },
         // Style headers
-        h1: ({ children }: any) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
-        h2: ({ children }: any) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
-        h3: ({ children }: any) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
-        h4: ({ children }: any) => <h4 className="text-base font-bold mb-2 mt-3">{children}</h4>,
-        h5: ({ children }: any) => <h5 className="text-sm font-bold mb-1 mt-2">{children}</h5>,
-        h6: ({ children }: any) => <h6 className="text-xs font-bold mb-1 mt-2">{children}</h6>,
+        h1: ({ children }: HeadingProps) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
+        h2: ({ children }: HeadingProps) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
+        h3: ({ children }: HeadingProps) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
+        h4: ({ children }: HeadingProps) => <h4 className="text-base font-bold mb-2 mt-3">{children}</h4>,
+        h5: ({ children }: HeadingProps) => <h5 className="text-sm font-bold mb-1 mt-2">{children}</h5>,
+        h6: ({ children }: HeadingProps) => <h6 className="text-xs font-bold mb-1 mt-2">{children}</h6>,
         // Style paragraphs with minimal spacing
         // Avoid placing block elements like <pre> inside <p>
-        p: ({ children }: any) => <p className="mb-1 last:mb-0">{children}</p>,
+        p: ({ children }: MarkdownComponentProps) => <p className="mb-1 last:mb-0">{children}</p>,
         // Style lists with minimal spacing
-        ul: ({ children }: any) => <ul className="list-disc list-inside mb-2 space-y-0">{children}</ul>,
-        ol: ({ children }: any) => <ol className="list-decimal list-inside mb-2 space-y-0">{children}</ol>,
-        li: ({ children }: any) => <li className="ml-4">{children}</li>,
+        ul: ({ children }: ListProps) => <ul className="list-disc list-inside mb-2 space-y-0">{children}</ul>,
+        ol: ({ children }: ListProps) => <ol className="list-decimal list-inside mb-2 space-y-0">{children}</ol>,
+        li: ({ children }: MarkdownComponentProps) => <li className="ml-4">{children}</li>,
         // Style blockquotes with minimal spacing
-        blockquote: ({ children }: any) => (
+        blockquote: ({ children }: MarkdownComponentProps) => (
           <blockquote className="border-l-4 border-gray-500 pl-4 italic my-2 text-gray-300">
             {children}
           </blockquote>
         ),
         // Style tables
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        table: ({ children }: any) => (
+        table: ({ children }: TableProps) => (
           <div className="overflow-x-auto my-4">
             <table className="min-w-full border-collapse border border-gray-600">
               {children}
             </table>
           </div>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        th: ({ children }: any) => (
+        th: ({ children }: TableCellProps) => (
           <th className="border border-gray-600 px-3 py-2 bg-gray-700 font-semibold text-left">
             {children}
           </th>
         ),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        td: ({ children }: any) => (
+        td: ({ children }: TableCellProps) => (
           <td className="border border-gray-600 px-3 py-2">
             {children}
           </td>
@@ -417,10 +419,8 @@ export function parseMarkdownContent(text: string): React.ReactNode {
         // Style horizontal rules with minimal spacing
         hr: () => <hr className="my-3 border-gray-600" />,
         // Style strong and emphasis
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        strong: ({ children }: any) => <strong className="font-bold">{children}</strong>,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        em: ({ children }: any) => <em className="italic">{children}</em>,
+        strong: ({ children }: MarkdownComponentProps) => <strong className="font-bold">{children}</strong>,
+        em: ({ children }: MarkdownComponentProps) => <em className="italic">{children}</em>,
       }}
     >
       {text}

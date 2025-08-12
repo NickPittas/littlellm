@@ -1,4 +1,5 @@
 // Test file for prompt caching functionality
+import { describe, test, expect } from 'vitest';
 import { OpenRouterProvider } from '../src/services/providers/OpenRouterProvider';
 import { AnthropicProvider } from '../src/services/providers/AnthropicProvider';
 import { OpenAIProvider } from '../src/services/providers/OpenAIProvider';

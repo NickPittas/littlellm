@@ -15,6 +15,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { cn } from '@/lib/utils';
 import { debugLogger } from '../../services/debugLogger';
+import { Agent } from '../../types/components';
 
 interface BottomInputAreaProps {
   className?: string;
@@ -36,9 +37,9 @@ interface BottomInputAreaProps {
   knowledgeBaseEnabled?: boolean;
   onToggleKnowledgeBase?: (enabled: boolean) => void;
   onStartNewChat?: () => void;
-  selectedAgent?: any;
-  onAgentChange?: (agent: any) => void;
-  availableAgents?: any[];
+  selectedAgent?: Agent;
+  onAgentChange?: (agent: Agent) => void;
+  availableAgents?: Agent[];
 }
 
 export function BottomInputArea({

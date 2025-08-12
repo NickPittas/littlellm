@@ -64,6 +64,9 @@ class ConversationHistoryService {
   private conversations: Conversation[] = [];
   private currentConversationId: string | null = null;
   private initialized = false;
+  private cleanupInterval: NodeJS.Timeout | null = null;
+  private readonly MAX_CONVERSATIONS_IN_MEMORY = 50;
+  private readonly MAX_MESSAGES_PER_CONVERSATION = 200;
 
   async initialize() {
     if (this.initialized) return;
@@ -126,6 +129,9 @@ class ConversationHistoryService {
       safeDebugLog('error', 'CONVERSATIONHISTORYSERVICE', 'Failed to load conversation history:', error);
       this.conversations = [];
     }
+
+    // Start memory cleanup interval
+    this.startCleanupInterval();
 
     this.initialized = true;
   }
@@ -395,6 +401,61 @@ class ConversationHistoryService {
       hash = hash & hash; // Convert to 32-bit integer
     }
     return hash.toString();
+  }
+
+  /**
+   * Start cleanup interval for memory management
+   */
+  private startCleanupInterval(): void {
+    if (this.cleanupInterval) return;
+
+    this.cleanupInterval = setInterval(() => {
+      this.performMemoryCleanup();
+    }, 5 * 60 * 1000); // Clean up every 5 minutes
+  }
+
+  /**
+   * Perform memory cleanup
+   */
+  private performMemoryCleanup(): void {
+    let cleanedUp = false;
+
+    // Limit conversations in memory
+    if (this.conversations.length > this.MAX_CONVERSATIONS_IN_MEMORY) {
+      const excess = this.conversations.length - this.MAX_CONVERSATIONS_IN_MEMORY;
+      // Keep the most recent conversations
+      this.conversations = this.conversations.slice(0, this.MAX_CONVERSATIONS_IN_MEMORY);
+      safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', `🧹 Cleaned up ${excess} old conversations from memory`);
+      cleanedUp = true;
+    }
+
+    // Limit messages per conversation
+    for (const conversation of this.conversations) {
+      if (conversation.messages.length > this.MAX_MESSAGES_PER_CONVERSATION) {
+        const excess = conversation.messages.length - this.MAX_MESSAGES_PER_CONVERSATION;
+        conversation.messages = conversation.messages.slice(-this.MAX_MESSAGES_PER_CONVERSATION);
+        safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', `🧹 Cleaned up ${excess} old messages from conversation ${conversation.id}`);
+        cleanedUp = true;
+      }
+    }
+
+    if (cleanedUp) {
+      safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', '🧹 Memory cleanup completed');
+    }
+  }
+
+  /**
+   * Destroy the service and clean up resources
+   */
+  destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    this.conversations = [];
+    this.currentConversationId = null;
+    this.initialized = false;
+    safeDebugLog('info', 'CONVERSATIONHISTORYSERVICE', '🧹 ConversationHistoryService destroyed and cleaned up');
   }
 }
 

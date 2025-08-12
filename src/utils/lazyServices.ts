@@ -49,11 +49,56 @@ export async function loadDocumentParserService() {
 
 /**
  * Lazy load PDF processing utilities
- * Note: PDF processing is handled by Electron main process, not browser
+ * Only loads the 1MB+ PDF worker when actually needed
  */
 export async function loadPdfProcessor() {
-  safeDebugLog('info', 'LAZY_SERVICES', 'PDF processing is handled by Electron main process');
-  throw new Error('PDF processing is handled by Electron main process, not browser');
+  const cacheKey = 'PDFProcessor';
+
+  if (serviceCache.has(cacheKey)) {
+    safeDebugLog('info', 'LAZY_SERVICES', 'PDF Processor already loaded from cache');
+    return serviceCache.get(cacheKey);
+  }
+
+  try {
+    safeDebugLog('info', 'LAZY_SERVICES', 'Loading PDF Processor...');
+
+    // Check if we're in Electron environment
+    if (typeof window !== 'undefined' && (window as any).electronAPI) {
+      safeDebugLog('info', 'LAZY_SERVICES', 'Using Electron PDF processing');
+      const electronPdfProcessor = {
+        processPDF: async (file: File) => {
+          return (window as any).electronAPI.processPDF(file);
+        }
+      };
+      serviceCache.set(cacheKey, electronPdfProcessor);
+      return electronPdfProcessor;
+    }
+
+    // Fallback to browser-based PDF processing (lazy loaded)
+    safeDebugLog('info', 'LAZY_SERVICES', 'Loading browser PDF processor...');
+    const pdfjs = await import('pdfjs-dist');
+
+    // Set worker source dynamically to avoid bundling the worker
+    if (typeof window !== 'undefined') {
+      pdfjs.GlobalWorkerOptions.workerSrc = '/js/pdf.worker.min.js';
+    }
+
+    const browserPdfProcessor = {
+      processPDF: async (file: File) => {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+        // Process PDF pages...
+        return pdf;
+      }
+    };
+
+    serviceCache.set(cacheKey, browserPdfProcessor);
+    safeDebugLog('info', 'LAZY_SERVICES', 'PDF Processor loaded successfully');
+    return browserPdfProcessor;
+  } catch (error) {
+    safeDebugLog('error', 'LAZY_SERVICES', 'Failed to load PDF Processor:', error);
+    throw error;
+  }
 }
 
 /**

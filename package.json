@@ -44,7 +44,14 @@
     "dist:mac-dmg": "npm run build && npm run build-electron && electron-builder --mac --config.mac.target=dmg --publish=never",
     "dist:mac-zip": "npm run build && npm run build-electron && electron-builder --mac --config.mac.target=zip --publish=never",
     "dist:mac-universal": "npm run build && npm run build-electron && electron-builder --mac --universal --publish=never",
-    "dist:linux": "npm run build && npm run build-electron && electron-builder --linux --publish=never"
+    "dist:linux": "npm run build && npm run build-electron && electron-builder --linux --publish=never",
+    "electron:build": "npm run build && npm run build-electron && electron-builder",
+    "electron:build:linux": "npm run build && npm run build-electron && electron-builder --linux",
+    "electron:build:windows": "npm run build && npm run build-electron && electron-builder --win",
+    "electron:build:mac": "npm run build && npm run build-electron && electron-builder --mac",
+    "analyze": "node scripts/analyze-bundle.cjs",
+    "analyze:webpack": "npm run build && npx webpack-bundle-analyzer out/_next/static/chunks/*.js",
+    "optimize": "npm run build && npm run analyze"
   },
   "dependencies": {
     "@apache-arrow/ts": "^14.0.2",

@@ -1,12 +1,13 @@
 // Tests for the Agent Service
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import { agentService } from '../services/agentService';
 import { CreateAgentRequest } from '../types/agent';
 import { debugLogger } from '../services/debugLogger';
 
 // Mock the dependencies
-jest.mock('../services/mcpService', () => ({
+vi.mock('../services/mcpService', () => ({
   mcpService: {
-    getAvailableTools: jest.fn().mockResolvedValue([
+    getAvailableTools: vi.fn().mockResolvedValue([
       {
         name: 'test-tool',
         description: 'Test tool',
@@ -15,7 +16,7 @@ jest.mock('../services/mcpService', () => ({
         enabled: true
       }
     ]),
-    getServers: jest.fn().mockResolvedValue([
+    getServers: vi.fn().mockResolvedValue([
       {
         id: 'test-server',
         name: 'Test Server',
@@ -25,14 +26,14 @@ jest.mock('../services/mcpService', () => ({
   }
 }));
 
-jest.mock('../services/llmService', () => ({
+vi.mock('../services/llmService', () => ({
   llmService: {
-    sendMessage: jest.fn().mockResolvedValue({
+    sendMessage: vi.fn().mockResolvedValue({
       success: true,
       content: 'Generated test prompt for the agent',
       usage: { totalTokens: 100 }
     }),
-    getProviders: jest.fn().mockResolvedValue([
+    getProviders: vi.fn().mockResolvedValue([
       {
         id: 'test-provider',
         name: 'Test Provider'
@@ -41,18 +42,29 @@ jest.mock('../services/llmService', () => ({
   }
 }));
 
+vi.mock('../services/secureApiKeyService', () => ({
+  secureApiKeyService: {
+    isInitialized: vi.fn().mockReturnValue(true),
+    getApiKeyData: vi.fn().mockReturnValue({
+      apiKey: 'test-api-key',
+      lastSelectedModel: 'test-model'
+    }),
+    waitForInitialization: vi.fn().mockResolvedValue()
+  }
+}));
+
 // Mock window.electronAPI
 Object.defineProperty(window, 'electronAPI', {
   value: {
-    getStateFile: jest.fn().mockResolvedValue(null),
-    saveStateFile: jest.fn().mockResolvedValue(true)
+    getStateFile: vi.fn().mockResolvedValue(null),
+    saveStateFile: vi.fn().mockResolvedValue(true)
   },
   writable: true
 });
 
 describe('AgentService', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('Agent CRUD Operations', () => {
@@ -221,7 +233,7 @@ describe('AgentService', () => {
   describe('Prompt Generation', () => {
     test('should generate a prompt for an agent', async () => {
       const tools = await agentService.getAvailableTools();
-      
+
       const response = await agentService.generatePrompt({
         userDescription: 'Create an agent that helps with testing',
         selectedTools: tools.slice(0, 2),
@@ -230,7 +242,7 @@ describe('AgentService', () => {
         provider: 'test-provider',
         model: 'test-model'
       });
-      
+
       expect(response.success).toBe(true);
       expect(response.generatedPrompt).toBeDefined();
       expect(typeof response.generatedPrompt).toBe('string');

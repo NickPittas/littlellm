@@ -1,0 +1,321 @@
+name: Performance Monitoring
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    # Run performance tests weekly on Sundays at 3 AM UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch: # Allow manual triggering
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Job 1: Build Performance
+  build-performance:
+    name: Build Performance
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Measure dependency installation time
+        run: |
+          echo "⏱️ Measuring npm install performance..."
+          rm -rf node_modules package-lock.json
+          time npm install > install-time.log 2>&1
+          echo "📊 Installation completed"
+      
+      - name: Measure build time
+        run: |
+          echo "⏱️ Measuring build performance..."
+          /usr/bin/time -v npm run build > build-time.log 2>&1 || true
+          
+          echo "📊 Build performance metrics:"
+          grep -E "(User time|System time|Maximum resident set size|Page size)" build-time.log || echo "Metrics not available"
+      
+      - name: Measure bundle size
+        run: |
+          echo "📦 Measuring bundle size..."
+          
+          if [ -d "dist" ]; then
+            echo "Total dist size: $(du -sh dist/)"
+            echo "JavaScript files:"
+            find dist/ -name "*.js" -exec ls -lh {} \; | head -10
+            echo "CSS files:"
+            find dist/ -name "*.css" -exec ls -lh {} \; | head -5
+          else
+            echo "No dist directory found"
+          fi
+      
+      - name: Generate performance report
+        run: |
+          echo "🚀 Performance Report" > performance-report.md
+          echo "===================" >> performance-report.md
+          echo "" >> performance-report.md
+          echo "## Build Metrics" >> performance-report.md
+          echo "- Date: $(date)" >> performance-report.md
+          echo "- Node.js Version: ${{ env.NODE_VERSION }}" >> performance-report.md
+          echo "- OS: Ubuntu Latest" >> performance-report.md
+          echo "" >> performance-report.md
+          
+          if [ -f build-time.log ]; then
+            echo "## Build Time" >> performance-report.md
+            grep -E "(User time|System time)" build-time.log >> performance-report.md || echo "Build time data not available" >> performance-report.md
+            echo "" >> performance-report.md
+          fi
+          
+          if [ -d dist ]; then
+            echo "## Bundle Size" >> performance-report.md
+            echo "- Total: $(du -sh dist/ | cut -f1)" >> performance-report.md
+            echo "- JavaScript: $(find dist/ -name "*.js" -exec du -ch {} + | tail -1 | cut -f1)" >> performance-report.md
+            echo "- CSS: $(find dist/ -name "*.css" -exec du -ch {} + | tail -1 | cut -f1)" >> performance-report.md
+          fi
+      
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-performance
+          path: |
+            performance-report.md
+            build-time.log
+            install-time.log
+          retention-days: 30
+
+  # Job 2: Runtime Performance
+  runtime-performance:
+    name: Runtime Performance
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build application
+        run: npm run build
+      
+      - name: Install performance testing tools
+        run: |
+          npm install -g lighthouse
+          npm install -g clinic
+        continue-on-error: true
+      
+      - name: Run performance benchmarks
+        run: |
+          echo "⚡ Running performance benchmarks..."
+          
+          if [ -f "scripts/performance-benchmark.mjs" ]; then
+            echo "Running custom benchmarks..."
+            npm run benchmark > benchmark-results.log 2>&1 || echo "Benchmark failed"
+          else
+            echo "No custom benchmarks found"
+          fi
+      
+      - name: Memory usage analysis
+        run: |
+          echo "🧠 Analyzing memory usage patterns..."
+          
+          # Simulate memory usage during typical operations
+          node -e "
+            console.log('Initial memory:', process.memoryUsage());
+            
+            // Simulate loading large data
+            const data = new Array(100000).fill('test data');
+            console.log('After data load:', process.memoryUsage());
+            
+            // Force garbage collection if available
+            if (global.gc) {
+              global.gc();
+              console.log('After GC:', process.memoryUsage());
+            }
+          " > memory-analysis.log 2>&1 || echo "Memory analysis failed"
+      
+      - name: CPU usage simulation
+        run: |
+          echo "🔥 CPU usage simulation..."
+          
+          node -e "
+            const start = Date.now();
+            let iterations = 0;
+            
+            // CPU intensive task for 5 seconds
+            while (Date.now() - start < 5000) {
+              Math.random() * Math.random();
+              iterations++;
+            }
+            
+            console.log('Iterations in 5s:', iterations);
+            console.log('Iterations per second:', Math.round(iterations / 5));
+          " > cpu-analysis.log 2>&1 || echo "CPU analysis failed"
+      
+      - name: Upload runtime performance results
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-performance
+          path: |
+            benchmark-results.log
+            memory-analysis.log
+            cpu-analysis.log
+          retention-days: 30
+
+  # Job 3: Bundle Analysis
+  bundle-analysis:
+    name: Bundle Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build for analysis
+        run: npm run build
+      
+      - name: Install bundle analyzers
+        run: |
+          npm install -g webpack-bundle-analyzer
+          npm install -g source-map-explorer
+        continue-on-error: true
+      
+      - name: Analyze bundle composition
+        run: |
+          echo "📊 Analyzing bundle composition..."
+          
+          if [ -d "dist" ]; then
+            echo "=== Bundle Analysis ===" > bundle-analysis.log
+            echo "Date: $(date)" >> bundle-analysis.log
+            echo "" >> bundle-analysis.log
+            
+            echo "File sizes:" >> bundle-analysis.log
+            find dist/ -type f -name "*.js" -o -name "*.css" | sort | while read file; do
+              size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0")
+              echo "$(basename "$file"): ${size} bytes" >> bundle-analysis.log
+            done
+            
+            echo "" >> bundle-analysis.log
+            echo "Total bundle size: $(du -sh dist/ | cut -f1)" >> bundle-analysis.log
+          else
+            echo "No dist directory found for analysis" > bundle-analysis.log
+          fi
+      
+      - name: Check for large dependencies
+        run: |
+          echo "📦 Checking for large dependencies..."
+          
+          echo "=== Large Dependencies ===" >> bundle-analysis.log
+          echo "" >> bundle-analysis.log
+          
+          # Check node_modules size
+          if [ -d "node_modules" ]; then
+            echo "node_modules size: $(du -sh node_modules/ | cut -f1)" >> bundle-analysis.log
+            echo "" >> bundle-analysis.log
+            
+            echo "Largest packages:" >> bundle-analysis.log
+            du -sh node_modules/*/ | sort -hr | head -10 >> bundle-analysis.log
+          fi
+      
+      - name: Performance recommendations
+        run: |
+          echo "" >> bundle-analysis.log
+          echo "=== Performance Recommendations ===" >> bundle-analysis.log
+          echo "" >> bundle-analysis.log
+          
+          # Check for common performance issues
+          if [ -d "dist" ]; then
+            js_size=$(find dist/ -name "*.js" -exec du -ch {} + | tail -1 | cut -f1 | sed 's/[^0-9]//g')
+            
+            if [ "$js_size" -gt 1000 ]; then
+              echo "⚠️ Large JavaScript bundle detected (${js_size}KB)" >> bundle-analysis.log
+              echo "  - Consider code splitting" >> bundle-analysis.log
+              echo "  - Review large dependencies" >> bundle-analysis.log
+              echo "  - Implement lazy loading" >> bundle-analysis.log
+            else
+              echo "✅ JavaScript bundle size is reasonable" >> bundle-analysis.log
+            fi
+          fi
+          
+          echo "" >> bundle-analysis.log
+          echo "📊 Bundle analysis completed" >> bundle-analysis.log
+      
+      - name: Upload bundle analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-analysis
+          path: bundle-analysis.log
+          retention-days: 30
+
+  # Job 4: Performance Summary
+  performance-summary:
+    name: Performance Summary
+    runs-on: ubuntu-latest
+    needs: [build-performance, runtime-performance, bundle-analysis]
+    if: always()
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: performance-results
+      
+      - name: Generate performance summary
+        run: |
+          echo "⚡ Performance Monitoring Summary" > performance-summary.md
+          echo "================================" >> performance-summary.md
+          echo "" >> performance-summary.md
+          echo "📊 Job Results:" >> performance-summary.md
+          echo "- Build Performance: ${{ needs.build-performance.result }}" >> performance-summary.md
+          echo "- Runtime Performance: ${{ needs.runtime-performance.result }}" >> performance-summary.md
+          echo "- Bundle Analysis: ${{ needs.bundle-analysis.result }}" >> performance-summary.md
+          echo "" >> performance-summary.md
+          
+          echo "📁 Generated Reports:" >> performance-summary.md
+          find performance-results -name "*.log" -o -name "*.md" | sort >> performance-summary.md
+          echo "" >> performance-summary.md
+          
+          if [ "${{ needs.build-performance.result }}" = "success" ] && 
+             [ "${{ needs.runtime-performance.result }}" = "success" ] && 
+             [ "${{ needs.bundle-analysis.result }}" = "success" ]; then
+            echo "✅ All performance tests completed successfully!" >> performance-summary.md
+          else
+            echo "⚠️ Some performance tests failed or had issues" >> performance-summary.md
+          fi
+          
+          echo "" >> performance-summary.md
+          echo "🔗 View detailed results in the artifacts section" >> performance-summary.md
+      
+      - name: Upload performance summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-summary
+          path: performance-summary.md
+          retention-days: 90

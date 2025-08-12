@@ -3,6 +3,8 @@ const nextConfig = {
   reactStrictMode: false, // Disable to prevent double renders in development
   experimental: {
     typedRoutes: true,
+    // optimizeCss: true, // Disabled due to critters dependency issue
+    optimizePackageImports: ['@radix-ui/react-icons', 'lucide-react'], // Tree shake icon libraries
   },
   images: {
     unoptimized: true
@@ -13,6 +15,12 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  // Enable compression
+  compress: true,
+  // Optimize fonts
+  optimizeFonts: true,
+  // Enable SWC minification for better performance
+  swcMinify: true,
   // Security headers (only in development/server mode, not for static export)
   ...(process.env.NODE_ENV !== 'production' && {
     async headers() {
@@ -20,22 +28,23 @@ const nextConfig = {
         {
           source: '/(.*)',
           headers: [
-            // Content Security Policy
+            // Content Security Policy - Secure but allows local AI providers
             {
               key: 'Content-Security-Policy',
               value: [
                 "default-src 'self'",
                 "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // unsafe-eval needed for dynamic imports, unsafe-inline for Next.js
-                "style-src 'self' 'unsafe-inline'", // unsafe-inline needed for styled-components and CSS-in-JS
+                "style-src 'self' 'unsafe-inline' data:", // unsafe-inline needed for styled-components and CSS-in-JS
                 "img-src 'self' data: blob: https:",
                 "font-src 'self' data:",
-                "connect-src 'self' https: wss: ws:",
+                // Allow connections to local AI providers and external APIs
+                "connect-src 'self' https: wss: ws: http://localhost:* http://127.0.0.1:* http://0.0.0.0:*",
                 "media-src 'self' blob:",
                 "object-src 'none'",
                 "base-uri 'self'",
                 "form-action 'self'",
-                "frame-ancestors 'none'",
-                "upgrade-insecure-requests"
+                "frame-ancestors 'none'"
+                // Removed upgrade-insecure-requests to allow local HTTP connections
               ].join('; ')
             },
             // Prevent clickjacking
@@ -91,66 +100,25 @@ const nextConfig = {
       ];
     }
   }),
-  // Fix webpack caching issues on Windows and optimize bundle splitting
+  // Fix webpack caching issues on Windows and basic optimization
   webpack: (config, { dev, isServer }) => {
     if (dev) {
       config.cache = false;
     }
 
-    // Optimize bundle splitting for production
+    // Basic optimization for production
     if (!dev && !isServer) {
+      // Enable tree shaking
       config.optimization = {
         ...config.optimization,
-        splitChunks: {
-          ...config.optimization.splitChunks,
-          cacheGroups: {
-            ...config.optimization.splitChunks.cacheGroups,
-            // Separate vendor chunks for heavy libraries
-            vendor: {
-              test: /[\\/]node_modules[\\/]/,
-              name: 'vendors',
-              chunks: 'all',
-              maxSize: 100000, // 100kB limit for vendor chunks
-              priority: 10,
-            },
-            // Separate chunk for PDF processing
-            pdf: {
-              test: /[\\/]node_modules[\\/](pdfjs-dist|pdf2pic)[\\/]/,
-              name: 'pdf-processing',
-              chunks: 'all',
-              priority: 20,
-            },
-            // Separate chunk for document processing
-            documents: {
-              test: /[\\/]node_modules[\\/](mammoth|xlsx|csv-parser)[\\/]/,
-              name: 'document-processing',
-              chunks: 'all',
-              priority: 20,
-            },
-            // Separate chunk for syntax highlighting
-            syntax: {
-              test: /[\\/]node_modules[\\/](react-syntax-highlighter)[\\/]/,
-              name: 'syntax-highlighting',
-              chunks: 'all',
-              priority: 20,
-            },
-            // Separate chunk for transformers
-            transformers: {
-              test: /[\\/]node_modules[\\/](@xenova\/transformers)[\\/]/,
-              name: 'transformers',
-              chunks: 'all',
-              priority: 20,
-            },
-            // UI components chunk
-            ui: {
-              test: /[\\/]node_modules[\\/](@radix-ui|lucide-react)[\\/]/,
-              name: 'ui-components',
-              chunks: 'all',
-              priority: 15,
-            },
-          },
-        },
+        usedExports: true,
+        sideEffects: false,
       };
+
+      // Basic alias optimization
+      config.resolve = config.resolve || {};
+      config.resolve.alias = config.resolve.alias || {};
+      config.resolve.alias['moment/locale'] = false;
     }
 
     return config;

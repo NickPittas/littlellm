@@ -176,11 +176,30 @@ export interface ProviderConfig {
   contextWindow: number;
 }
 
-// Tool execution result
-export interface ToolExecutionResult {
-  success: boolean;
+// Tool execution result with discriminated union
+export interface SuccessfulToolExecution {
+  success: true;
   result: unknown;
-  error?: string;
+  executionTime?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface FailedToolExecution {
+  success: false;
+  error: string;
+  errorCode?: string;
+  retryable?: boolean;
+}
+
+export type ToolExecutionResult = SuccessfulToolExecution | FailedToolExecution;
+
+// Type guard for tool execution results
+export function isSuccessfulExecution(result: ToolExecutionResult): result is SuccessfulToolExecution {
+  return result.success === true;
+}
+
+export function isFailedExecution(result: ToolExecutionResult): result is FailedToolExecution {
+  return result.success === false;
 }
 
 // Provider capabilities
@@ -193,4 +212,133 @@ export interface ProviderCapabilities {
   promptCachingType?: 'automatic' | 'manual' | 'both'; // Type of caching support
   maxToolNameLength?: number;
   toolFormat: 'openai' | 'anthropic' | 'gemini' | 'custom' | 'text' | 'adaptive';
+}
+
+// Discriminated union for different tool types
+export type ToolType = 'mcp' | 'memory' | 'internal' | 'function';
+
+// Base tool interface
+export interface BaseTool {
+  type: ToolType;
+  name: string;
+  description: string;
+}
+
+// MCP Tool with specific properties
+export interface MCPToolDefinition extends BaseTool {
+  type: 'mcp';
+  inputSchema?: Record<string, unknown>;
+  serverId?: string;
+}
+
+// Memory Tool with function structure
+export interface MemoryToolDefinition extends BaseTool {
+  type: 'memory';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+// Internal Tool for system commands
+export interface InternalToolDefinition extends BaseTool {
+  type: 'internal';
+  category: 'file' | 'system' | 'network' | 'utility';
+  parameters?: Record<string, unknown>;
+}
+
+// Function Tool for provider-specific tools
+export interface FunctionToolDefinition extends BaseTool {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
+// Union type for all tool definitions
+export type ToolDefinition =
+  | MCPToolDefinition
+  | MemoryToolDefinition
+  | InternalToolDefinition
+  | FunctionToolDefinition;
+
+// Type guards for tool types
+export function isMCPToolDefinition(tool: ToolDefinition): tool is MCPToolDefinition {
+  return tool.type === 'mcp';
+}
+
+export function isMemoryToolDefinition(tool: ToolDefinition): tool is MemoryToolDefinition {
+  return tool.type === 'memory';
+}
+
+export function isInternalToolDefinition(tool: ToolDefinition): tool is InternalToolDefinition {
+  return tool.type === 'internal';
+}
+
+export function isFunctionToolDefinition(tool: ToolDefinition): tool is FunctionToolDefinition {
+  return tool.type === 'function';
+}
+
+// Generic provider interface with type constraints
+export interface GenericProvider<TConfig = ProviderConfig, TCapabilities = ProviderCapabilities> {
+  readonly id: string;
+  readonly name: string;
+  readonly capabilities: TCapabilities;
+
+  // Configuration methods
+  configure(config: TConfig): void;
+  validateConfig(config: TConfig): boolean;
+
+  // Core functionality
+  sendMessage(
+    messages: Array<OpenAIMessage | AnthropicMessage | GeminiMessage>,
+    settings: LLMSettings,
+    tools?: ToolDefinition[]
+  ): Promise<LLMResponse>;
+
+  // Optional streaming support
+  sendStreamingMessage?(
+    messages: Array<OpenAIMessage | AnthropicMessage | GeminiMessage>,
+    settings: LLMSettings,
+    tools?: ToolDefinition[],
+    onChunk?: (chunk: string) => void
+  ): Promise<LLMResponse>;
+}
+
+// Specific provider types with enhanced capabilities
+export interface VisionCapableProvider extends GenericProvider {
+  capabilities: ProviderCapabilities & {
+    supportsVision: true;
+    supportedImageFormats: string[];
+    maxImageSize?: number;
+  };
+}
+
+export interface ToolCapableProvider extends GenericProvider {
+  capabilities: ProviderCapabilities & {
+    supportsTools: true;
+    maxConcurrentTools?: number;
+    supportedToolFormats: Array<'openai' | 'anthropic' | 'gemini' | 'custom'>;
+  };
+
+  executeTools(
+    toolCalls: ToolCall[],
+    settings: LLMSettings
+  ): Promise<ToolExecutionResult[]>;
+}
+
+export interface StreamingCapableProvider extends GenericProvider {
+  capabilities: ProviderCapabilities & {
+    supportsStreaming: true;
+  };
+
+  sendStreamingMessage(
+    messages: Array<OpenAIMessage | AnthropicMessage | GeminiMessage>,
+    settings: LLMSettings,
+    tools?: ToolDefinition[],
+    onChunk?: (chunk: string) => void
+  ): Promise<LLMResponse>;
 }
