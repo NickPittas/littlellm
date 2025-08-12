@@ -225,6 +225,7 @@ export async function secureLocalStreamingFetch(
 declare global {
   interface Window {
     electronAPI?: {
+      // Secure local provider methods
       secureLocalRequest: (request: {
         url: string;
         method: string;
@@ -239,6 +240,23 @@ declare global {
       }>;
       checkLocalProviderHealth: (providerName: string) => Promise<boolean>;
       getAvailableLocalProviders: () => Promise<string[]>;
+
+      // Other existing electronAPI methods (for type safety)
+      openActionMenu: () => Promise<void>;
+      toggleConsoleWindow: () => void;
+      syncMessagesToChat: (messages: any[]) => void;
+      takeScreenshot: () => Promise<{ success: boolean; dataURL?: string; error?: string }>;
+      openSettingsOverlay: () => Promise<void>;
+      openChatWindow: () => Promise<void>;
+      openHistory: (conversations: any[]) => Promise<void>;
+      getSettings: () => Promise<any>;
+      updateSettings: (settings: any) => Promise<void>;
+      getAppSettings: () => Promise<any>;
+      updateAppSettings: (settings: any) => Promise<void>;
+      getSecureApiKeys: () => Promise<any>;
+      setSecureApiKeys: (apiKeys: any) => Promise<void>;
+      // Add more as needed...
+      [key: string]: any; // Allow for additional methods
     };
   }
 }

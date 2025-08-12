@@ -14,6 +14,7 @@ import {
 
 import { LMSTUDIO_SYSTEM_PROMPT, generateLMStudioToolPrompt } from './prompts/lmstudio';
 import { JSONUtils } from './utils';
+import { secureLocalFetch, checkLocalProviderAvailability } from '../../utils/secureLocalFetch';
 
 // SSR-safe debug logging helper
 function safeDebugLog(level: 'info' | 'warn' | 'error', prefix: string, ...args: unknown[]) {
@@ -317,14 +318,13 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
 
     let response;
     try {
-      response = await fetch(apiUrl, {
+      response = await secureLocalFetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${settings.apiKey || 'not-needed'}`
         },
-        body: JSON.stringify(requestBody),
-        signal
+        body: JSON.stringify(requestBody)
       });
     } catch (fetchError) {
       safeDebugLog('error', 'LMSTUDIOPROVIDER', `❌ LMStudio connection failed:`, fetchError);
@@ -366,8 +366,9 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     }
 
     try {
-      // LM Studio models endpoint (OpenAI-compatible)
-      const response = await fetch(`${baseUrl}/models`, {
+      // LM Studio models endpoint (OpenAI-compatible) - use secure fetch
+      const response = await secureLocalFetch(`${baseUrl}/models`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json'
         }

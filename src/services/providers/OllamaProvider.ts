@@ -93,7 +93,7 @@ export class OllamaProvider extends BaseProvider {
         }]
       };
 
-      const response = await fetch(endpoint, {
+      const response = await secureLocalFetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(testRequestBody)
@@ -412,7 +412,7 @@ export class OllamaProvider extends BaseProvider {
 
     safeDebugLog('info', 'OLLAMAPROVIDER', `🔍 Ollama: Native request body:`, JSON.stringify(ollamaRequestBody, null, 2));
 
-    const response = await fetch(endpoint, {
+    const response = await secureLocalFetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -461,8 +461,9 @@ export class OllamaProvider extends BaseProvider {
     const ollamaUrl = baseUrl || 'http://localhost:11434';
     
     try {
-      // Ollama models endpoint
-      const response = await fetch(`${ollamaUrl}/api/tags`, {
+      // Ollama models endpoint - use secure fetch for local connections
+      const response = await secureLocalFetch(`${ollamaUrl}/api/tags`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json'
         }
