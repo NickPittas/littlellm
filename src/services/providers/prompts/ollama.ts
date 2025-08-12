@@ -40,13 +40,18 @@ You are an intelligent AI assistant with multiple operational modes and tool cap
 
 ## Tool Execution Format
 
-Use XML-style tags for tool calls:
+Use JSON format for tool calls:
 
-\`\`\`xml
-<tool_name>
-<parameter1_name>value1</parameter1_name>
-<parameter2_name>value2</parameter2_name>
-</tool_name>
+\`\`\`json
+{
+  "tool_call": {
+    "name": "tool_name",
+    "arguments": {
+      "parameter1_name": "value1",
+      "parameter2_name": "value2"
+    }
+  }
+}
 \`\`\`
 
 **Multi-Tool Workflows**: Execute tools in logical sequence automatically. Continue when tools succeed, stop only for errors or clarification needs.
@@ -136,10 +141,10 @@ Task requires: (1) List directory contents, (2) Search for weather information
 
 **CRITICAL REMINDERS:**
 - Only use tools from the available list above: ${availableToolNames.join(', ')}
-- **ALWAYS start tool calls with \`\`\`json and end with \`\`\`**
-- Always use proper JSON formatting for tool calls
-- **IMPORTANT**: Use parameters directly in "arguments" object - NO "input" wrapper needed
-- **EXAMPLE**: {"tool_call": {"name": "list_directory", "arguments": {"path": "C:\\\\Users\\\\..."}}}
+- **ALWAYS use XML format for tool calls as shown above**
+- Use the exact tool names from the available list
+- **IMPORTANT**: Use parameter names directly as XML tags
+- **EXAMPLE**: <web_search><query>search terms</query></web_search>
 - Complete the full workflow: Planning → Execution → Synthesis
 - Provide helpful, comprehensive final responses
 

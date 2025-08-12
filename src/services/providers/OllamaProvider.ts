@@ -1433,6 +1433,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
 
     console.log(`🔍 Ollama parsing text for tools. Available tools:`, availableTools);
     console.log(`🔍 Content to parse:`, content);
+    console.log(`🔍 Content length:`, content.length);
 
     // Pattern 0: XML-style tool tags as instructed in the Ollama system prompt
     // Example:
@@ -1443,14 +1444,28 @@ Continue based on the tool results above. Call additional tools if needed for a 
       const xmlTagRegex = /<([a-zA-Z_][\w-]*)\b[^>]*>([\s\S]*?)<\/\1>/gi;
       let xmlMatch: RegExpExecArray | null;
 
+      console.log(`🔍 Testing XML regex against content...`);
+      console.log(`🔍 Regex pattern: ${xmlTagRegex.source}`);
+
+      // Test with the exact example
+      const testContent = '<web_search>\n<query>current weather in Athens, Greece</query>\n</web_search>';
+      const testRegex = /<([a-zA-Z_][\w-]*)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+      const testMatch = testRegex.exec(testContent);
+      console.log(`🔍 Test match result:`, testMatch);
+
       while ((xmlMatch = xmlTagRegex.exec(content)) !== null) {
         const rawToolName = xmlMatch[1];
         const inner = (xmlMatch[2] || '').trim();
 
+        console.log(`🔍 Found XML tag: ${rawToolName}, inner: ${inner}`);
+
         // Only handle tags that correspond to available tools; ignore others (e.g., <switch_mode>)
         if (!availableTools.includes(rawToolName)) {
+          console.log(`⚠️ Tool ${rawToolName} not in available tools list:`, availableTools);
           continue;
         }
+
+        console.log(`✅ Tool ${rawToolName} is available, processing...`);
 
         const args: Record<string, unknown> = {};
 
@@ -1486,6 +1501,10 @@ Continue based on the tool results above. Call additional tools if needed for a 
         }
 
         toolCalls.push({ name: rawToolName, arguments: args });
+      }
+
+      if (toolCalls.length === 0) {
+        console.log(`🔍 No XML tool calls found in content`);
       }
     } catch (e) {
       console.log('⚠️ XML-style parsing failed:', e);
