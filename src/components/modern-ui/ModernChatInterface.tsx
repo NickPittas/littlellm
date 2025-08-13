@@ -856,10 +856,10 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
         // Try different file path formats
         const possiblePaths = [
-          'z:\\Python\\AI Assistant\\littlellm\\Premadeprompts.md',
-          'Z:\\Python\\AI Assistant\\littlellm\\Premadeprompts.md',
-          './Premadeprompts.md',
-          'Premadeprompts.md'
+          'z:\\Python\\AI Assistant\\littlellm\\docs\\Premadeprompts.md',
+          'Z:\\Python\\AI Assistant\\littlellm\\docs\\Premadeprompts.md',
+          './docs/Premadeprompts.md',
+          'docs/Premadeprompts.md'
         ];
 
         let promptsContent = '';

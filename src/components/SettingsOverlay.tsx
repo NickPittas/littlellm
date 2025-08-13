@@ -774,7 +774,7 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
     initializeSettings();
 
     // Subscribe to settings changes to keep the overlay in sync
-    const unsubscribe = settingsService.subscribe((newSettings) => {
+    return settingsService.subscribe((newSettings) => {
       console.log('🔍 SettingsOverlay: Settings changed via subscription:', newSettings);
       setSettings(newSettings);
       // Only update form data if we don't have unsaved changes
@@ -782,8 +782,6 @@ export function SettingsOverlay({ onClose }: SettingsOverlayProps = {}) {
         setFormData(JSON.parse(JSON.stringify(newSettings)));
       }
     });
-
-    return unsubscribe;
   }, []); // Remove hasChanges dependency to prevent re-initialization loop
 
   return (

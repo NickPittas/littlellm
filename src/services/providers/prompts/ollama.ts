@@ -20,7 +20,7 @@ export function generateOllamaToolPrompt(tools: unknown[]): string {
   console.log(`🔧 generateOllamaToolPrompt: Extracted ${availableToolNames.length} tool names from ${tools.length} tools:`, availableToolNames);
   console.log(`🔧 generateOllamaToolPrompt: Sample tool structure:`, tools[0]);
 
-  const instructions = `
+  return `
 # Concise Universal AI Assistant System Prompt
 
 You are an intelligent AI assistant with multiple operational modes and tool capabilities. Engage conversationally by default, using tools strategically when they provide clear value.
@@ -149,8 +149,6 @@ Task requires: (1) List directory contents, (2) Search for weather information
 - Provide helpful, comprehensive final responses
 
 `;
-
-  return instructions;
 }
 
 // Default system prompt (empty string as in original)

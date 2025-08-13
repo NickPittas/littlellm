@@ -38,8 +38,6 @@ export class RAGService {
     const contextHeader = 'Use the following context to answer the question below:';
     const context = searchResults.map(r => `- ${r.text}`).join('\n');
     
-    const augmentedPrompt = `${contextHeader}\n\n---\nContext:\n${context}\n---\n\nQuestion: ${prompt}`;
-
-    return augmentedPrompt;
+    return `${contextHeader}\n\n---\nContext:\n${context}\n---\n\nQuestion: ${prompt}`;
   }
 }

@@ -19,7 +19,7 @@ export function generateJanToolPrompt(tools: unknown[]): string {
   console.log(`🔧 generateJanToolPrompt: Extracted ${availableToolNames.length} tool names from ${tools.length} tools:`, availableToolNames);
   console.log(`🔧 generateJanToolPrompt: Sample tool structure:`, tools[0]);
 
-  const instructions = `
+  return `
 # Jan AI Assistant System Prompt
 
 You are an intelligent AI assistant running locally through Jan AI with enhanced tool capabilities. Prioritize privacy, efficiency, and helpful responses while leveraging available tools strategically.
@@ -160,8 +160,6 @@ Task requires: (1) Get current weather information, (2) Search for recent techno
 - Be efficient with local computational resources
 
 `;
-
-  return instructions;
 }
 
 // Default system prompt for Jan AI

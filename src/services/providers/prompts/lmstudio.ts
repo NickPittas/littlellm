@@ -99,7 +99,7 @@ Response: Explain ML directly, then use web_search for current AI news
 `;
 
   // Add comprehensive guidance for tool usage
-  const finalInstructions = instructions + `
+  return instructions + `
 
 ## Important Guidelines
 
@@ -114,8 +114,6 @@ Response: Explain ML directly, then use web_search for current AI news
 - **Use multiple tools** when a task requires several operations
 
 Remember: Tools are powerful helpers, but not every question needs them. Use your judgment!`;
-
-  return finalInstructions;
 }
 
 // Default system prompt - clear instructions for tool usage

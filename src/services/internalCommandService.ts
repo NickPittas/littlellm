@@ -388,13 +388,10 @@ class InternalCommandService {
     }
 
     const filteredTools = this.availableTools.filter(tool => {
-      const isEnabled =
-        (tool.category === 'terminal' && commandSettings.enabledCommands.terminal) ||
+      return (tool.category === 'terminal' && commandSettings.enabledCommands.terminal) ||
         (tool.category === 'filesystem' && commandSettings.enabledCommands.filesystem) ||
         (tool.category === 'textEditing' && commandSettings.enabledCommands.textEditing) ||
         (tool.category === 'system' && commandSettings.enabledCommands.system);
-
-      return isEnabled;
     });
 
     console.log(`🔧 Filtered tools count: ${filteredTools.length}`);

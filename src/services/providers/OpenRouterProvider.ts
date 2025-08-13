@@ -618,9 +618,7 @@ export class OpenRouterProvider extends BaseProvider {
       }
 
       const data = await response.json() as APIResponseData;
-      const models = data.data?.map((model) => model.id)?.sort() || [];
-
-      return models;
+      return data.data?.map((model) => model.id)?.sort() || [];
     } catch (error) {
       console.warn('❌ Failed to fetch OpenRouter models:', error);
       return [];

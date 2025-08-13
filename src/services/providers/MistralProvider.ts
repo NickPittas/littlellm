@@ -202,8 +202,7 @@ export class MistralProvider extends BaseProvider {
               });
 
               // Use Mistral's file service to prepare the document
-              const preparedFile = await this.fileService.prepareFileForVision(file);
-              return preparedFile;
+              return await this.fileService.prepareFileForVision(file);
             } catch (error) {
               console.error('❌ Error processing document with Mistral:', error);
               return {

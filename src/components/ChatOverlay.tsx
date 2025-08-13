@@ -30,8 +30,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
   // Initialize window dragging using preload script
   useEffect(() => {
     if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.startDrag) {
-      const cleanup = window.electronAPI.startDrag();
-      return cleanup;
+      return window.electronAPI.startDrag();
     }
   }, []);
 

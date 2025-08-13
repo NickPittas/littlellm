@@ -141,8 +141,7 @@ class MCPService {
     } catch (error) {
       console.error('Failed to call MCP tool:', error);
       // Enhance error with more context
-      const enhancedError = this.enhanceMCPError(toolName, error, args);
-      throw enhancedError;
+      throw this.enhanceMCPError(toolName, error, args);
     }
     throw new Error(`🔧 Tool Unavailable: The ${toolName} tool is not currently available. This might be due to a service configuration issue or the tool being temporarily disabled.`);
   }

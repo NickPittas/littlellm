@@ -933,12 +933,10 @@ export class OpenAIProvider extends BaseProvider {
       }
 
       const data = await response.json() as { data: Array<{ id: string }> };
-      const models = data.data
+      return data.data
         .filter((model) => model.id.includes('gpt'))
         .map((model) => model.id)
         .sort();
-
-      return models;
     } catch (error) {
       console.warn('❌ Failed to fetch OpenAI models:', error);
       return [];

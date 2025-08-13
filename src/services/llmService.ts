@@ -621,8 +621,7 @@ class LLMService {
       console.error(`❌ Failed to execute tool ${toolName}:`, error);
 
       // Categorize and provide user-friendly error messages
-      const errorMessage = this.categorizeToolError(toolName, error, args);
-      return errorMessage;
+      return this.categorizeToolError(toolName, error, args);
     }
   }
 

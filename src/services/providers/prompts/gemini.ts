@@ -5,7 +5,7 @@ export function generateGeminiToolPrompt(_tools: unknown[]): string {
   // Note: tools parameter kept for API compatibility but not currently used
   // Tool categorization and dynamic prompts could be implemented here in the future
 
-  const instructions = `
+  return `
 # Concise Universal AI Assistant System Prompt
 
 You are an intelligent AI assistant with multiple operational modes and tool capabilities. Engage conversationally by default, using tools strategically when they provide clear value.
@@ -83,8 +83,6 @@ Switch modes when task requirements change:
 - Be direct - avoid unnecessary pleasantries
 
 Focus on being a knowledgeable conversational partner with enhanced tool capabilities, adapting your approach based on the user's needs and current operational mode.`;
-
-  return instructions;
 }
 
 // Behavioral system prompt (no tool descriptions - those go in tools parameter)

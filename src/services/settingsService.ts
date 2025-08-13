@@ -395,9 +395,8 @@ class SettingsService {
   async saveSettingsToDisk(): Promise<boolean> {
     // Clean settings before saving to prevent corruption
     this.cleanCorruptedData();
-    const success = await this.saveSettings();
     // DO NOT NOTIFY LISTENERS - Only explicit reload should trigger notifications
-    return success;
+    return await this.saveSettings();
   }
 
   // Clean any corrupted data in settings

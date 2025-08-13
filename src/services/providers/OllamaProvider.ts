@@ -1512,8 +1512,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
 
     if (toolCalls.length > 0) {
       console.log(`✅ Found ${toolCalls.length} XML-style tool calls, returning them`);
-      const uniqueXmlCalls = this.deduplicateToolCalls ? this.deduplicateToolCalls(toolCalls) : toolCalls;
-      return uniqueXmlCalls;
+      return this.deduplicateToolCalls ? this.deduplicateToolCalls(toolCalls) : toolCalls;
     }
 
     // Pattern 1: New model format with optional commentary prefix and to=tool_name and JSON arguments
