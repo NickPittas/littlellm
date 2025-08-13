@@ -310,6 +310,19 @@ class LLMService {
     }
   }
 
+  // Clear conversation state for providers that maintain server-side context (like Ollama)
+  async clearConversationState(settings: LLMSettings): Promise<void> {
+    const provider = this.getProvider(settings.provider);
+
+    // Check if provider has conversation clearing capability
+    if (provider && 'clearConversationState' in provider && typeof provider.clearConversationState === 'function') {
+      console.log(`🧹 Clearing conversation state for provider: ${settings.provider}`);
+      await (provider as unknown as { clearConversationState: (settings: LLMSettings) => Promise<void> }).clearConversationState(settings);
+    } else {
+      console.log(`ℹ️ Provider ${settings.provider} does not support conversation state clearing`);
+    }
+  }
+
   async sendMessage(
     message: string | MessageContent,
     settings: LLMSettings,

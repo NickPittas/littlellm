@@ -20,6 +20,9 @@ export class OllamaProvider extends BaseProvider {
   // Cache for model tool support detection
   private static modelToolSupportCache = new Map<string, boolean>();
 
+  // Track conversation state for cleanup
+  private static conversationState = new Map<string, boolean>();
+
   readonly capabilities: ProviderCapabilities = {
     supportsVision: true,
     supportsTools: true, // Dynamic: structured tools if supported, text-based fallback
@@ -28,6 +31,53 @@ export class OllamaProvider extends BaseProvider {
     maxToolNameLength: undefined,
     toolFormat: 'adaptive' // Adaptive: structured tools or text-based based on model
   };
+
+  /**
+   * Clear conversation state for Ollama to start fresh
+   * This helps ensure new chats don't carry over context from previous conversations
+   */
+  async clearConversationState(settings: LLMSettings): Promise<void> {
+    try {
+      const baseUrl = settings.baseUrl || 'http://localhost:11434';
+      const ollamaUrl = baseUrl.replace('/v1', '');
+
+      console.log('🧹 Ollama: Clearing conversation state for fresh start');
+
+      // Send an empty conversation to reset context
+      // This effectively tells Ollama to forget previous conversation context
+      const resetRequestBody = {
+        model: settings.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'Starting fresh conversation. Previous context cleared.'
+          }
+        ],
+        stream: false,
+        options: {
+          temperature: 0.1,
+          num_predict: 1 // Minimal response
+        }
+      };
+
+      const response = await fetch(`${ollamaUrl}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(resetRequestBody)
+      });
+
+      if (response.ok) {
+        console.log('✅ Ollama: Conversation state cleared successfully');
+      } else {
+        console.warn('⚠️ Ollama: Failed to clear conversation state, but continuing...');
+      }
+    } catch (error) {
+      console.warn('⚠️ Ollama: Error clearing conversation state:', error);
+      // Don't throw - this is a best-effort cleanup
+    }
+  }
 
   // Check if a specific model supports structured tools
   private async checkModelSupportsStructuredTools(model: string, baseUrl?: string): Promise<boolean> {
@@ -1106,9 +1156,11 @@ Please provide a natural, helpful response based on the tool results.`;
 
 Available tools: ${toolNames.join(', ')}
 
-Use structured JSON for tool calls:
-\`\`\`json
-{"tool_call": {"name": "tool_name", "arguments": {"param": "value"}}}
+Use XML format for tool calls:
+\`\`\`xml
+<tool_name>
+<param>value</param>
+</tool_name>
 \`\`\`
 
 Continue based on the tool results above. Call additional tools if needed for a comprehensive response.`;

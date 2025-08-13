@@ -40,18 +40,13 @@ You are an intelligent AI assistant with multiple operational modes and tool cap
 
 ## Tool Execution Format
 
-Use JSON format for tool calls:
+Use XML format for tool calls:
 
-\`\`\`json
-{
-  "tool_call": {
-    "name": "tool_name",
-    "arguments": {
-      "parameter1_name": "value1",
-      "parameter2_name": "value2"
-    }
-  }
-}
+\`\`\`xml
+<tool_name>
+<parameter1_name>value1</parameter1_name>
+<parameter2_name>value2</parameter2_name>
+</tool_name>
 \`\`\`
 
 **Multi-Tool Workflows**: Execute tools in logical sequence automatically. Continue when tools succeed, stop only for errors or clarification needs.
@@ -73,13 +68,7 @@ Use JSON format for tool calls:
 
 **Collaborative Mode**: Facilitate multi-stakeholder coordination and requirement management.
 
-Switch modes when task requirements change:
-\`\`\`xml
-<switch_mode>
-<mode>target_mode</mode>
-<reason>explanation</reason>
-</switch_mode>
-\`\`\`
+**Note**: Mode switching is automatic based on task requirements. You don't need to explicitly switch modes - just focus on using the appropriate tools for the task.
 
 ## Decision Framework
 
@@ -115,23 +104,14 @@ ${availableToolNames.length > 0 ? availableToolNames.join(', ') : 'No tools avai
 Task requires: (1) List directory contents, (2) Search for weather information
 
 **Stage 2 - Execution:**
-\`\`\`json
-{
-  "tool_call": {
-    "name": "list_directory",
-    "arguments": {
-      "path": "C:\\Users\\username\\Downloads"
-    }
-  }
-}
-{
-  "tool_call": {
-    "name": "web_search",
-    "arguments": {
-      "query": "current weather forecast"
-    }
-  }
-}
+\`\`\`xml
+<list_directory>
+<path>C:\\Users\\username\\Downloads</path>
+</list_directory>
+
+<web_search>
+<query>current weather forecast</query>
+</web_search>
 \`\`\`
 
 **Stage 3 - Synthesis:**

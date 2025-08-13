@@ -1076,6 +1076,17 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       console.error('Failed to reset system prompt:', error);
     }
 
+    // Clear conversation state for providers that maintain server-side context (like Ollama)
+    try {
+      if (settings.provider === 'ollama') {
+        console.log('🧹 Clearing Ollama conversation state for fresh start...');
+        await chatService.clearConversationState(settings);
+      }
+    } catch (error) {
+      console.error('Failed to clear conversation state:', error);
+      // Don't block the new chat if this fails
+    }
+
     // Clear the current conversation ID
     conversationHistoryService.setCurrentConversationId(null);
 

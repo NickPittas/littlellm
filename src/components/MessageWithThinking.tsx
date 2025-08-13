@@ -46,6 +46,10 @@ interface ParsedMessage {
   thinking: string[];
   toolExecution: string[];
   response: string;
+  modeSwitch?: {
+    mode: string;
+    reason: string;
+  };
 }
 
 export function MessageWithThinking({ content, className = '', usage, cost, timing, toolCalls, sources }: MessageWithThinkingProps) {
@@ -102,11 +106,12 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     return cleanedText;
   };
 
-  // Parse the message content to extract thinking sections, tool execution, and response
+  // Parse the message content to extract thinking sections, tool execution, mode switches, and response
   const parseMessage = (text: string): ParsedMessage => {
     const thinking: string[] = [];
     const toolExecution: string[] = [];
     let response = text;
+    let modeSwitch: { mode: string; reason: string } | undefined;
 
     // Find all <think>...</think> blocks (structured thinking)
     const thinkRegex = /<think>([\s\S]*?)<\/think>/gi;
@@ -120,6 +125,16 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     let toolMatch;
     while ((toolMatch = toolRegex.exec(text)) !== null) {
       toolExecution.push(toolMatch[1].trim());
+    }
+
+    // Find mode switch blocks: <switch_mode><mode>...</mode><reason>...</reason></switch_mode>
+    const modeSwitchRegex = /<switch_mode>\s*<mode>([\s\S]*?)<\/mode>\s*<reason>([\s\S]*?)<\/reason>\s*<\/switch_mode>/gi;
+    const modeSwitchMatch = modeSwitchRegex.exec(text);
+    if (modeSwitchMatch) {
+      modeSwitch = {
+        mode: modeSwitchMatch[1].trim(),
+        reason: modeSwitchMatch[2].trim()
+      };
     }
 
     // Enhanced parsing for thinking models - ONLY for explicit thinking patterns
@@ -160,8 +175,15 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     // Remove structured thinking and tool execution blocks
     response = response.replace(thinkRegex, '').replace(toolRegex, '');
 
+    // Remove mode switch blocks from response
+    response = response.replace(modeSwitchRegex, '');
+
     // Remove JSON tool call blocks (these should be in Tools Used section)
     response = response.replace(/```json[\s\S]*?```/gi, '');
+
+    // Remove XML tool call blocks (these should be in Tools Used section)
+    // Match XML tool calls but exclude switch_mode, think, and tool_execution
+    response = response.replace(/<(?!switch_mode|think|tool_execution)([a-zA-Z_][\w-]*)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
 
     // Remove tool result markers
     response = response.replace(/\[TOOL_RESULT\][\s\S]*?\[END_TOOL_RESULT\]/gi, '');
@@ -177,7 +199,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     // Clean up extra whitespace and empty lines
     response = response.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
 
-    return { thinking, toolExecution, response };
+    return { thinking, toolExecution, response, modeSwitch };
   };
 
   // Helper function to extract complete JSON object from text starting at a given index
@@ -306,6 +328,61 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
       } catch (error) {
         console.warn('Failed to parse native tool calls:', error);
       }
+    }
+
+    // Pattern 4: XML-style tool calls (for Ollama and other providers)
+    // Example: <web_search><query>search terms</query></web_search>
+    const xmlToolRegex = /<([a-zA-Z_][\w-]*)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+    let xmlMatch;
+    while ((xmlMatch = xmlToolRegex.exec(text)) !== null) {
+      const toolName = xmlMatch[1];
+      const inner = (xmlMatch[2] || '').trim();
+
+      // Skip switch_mode and other non-tool XML tags
+      if (toolName === 'switch_mode' || toolName === 'think' || toolName === 'tool_execution') {
+        continue;
+      }
+
+      const args: Record<string, unknown> = {};
+
+      // Parse child tags as arguments: <param>value</param>
+      const childTagRegex = /<([a-zA-Z_][\w-]*)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+      let childFound = false;
+      let childMatch;
+      while ((childMatch = childTagRegex.exec(inner)) !== null) {
+        childFound = true;
+        const key = childMatch[1];
+        const value = (childMatch[2] || '').trim();
+
+        if (args[key] === undefined) {
+          args[key] = value;
+        } else if (Array.isArray(args[key])) {
+          (args[key] as unknown[]).push(value);
+        } else {
+          args[key] = [args[key], value];
+        }
+      }
+
+      if (!childFound && inner) {
+        // If no child tags, try JSON first, then fallback to single "input"
+        if (inner.startsWith('{') || inner.startsWith('[')) {
+          try {
+            Object.assign(args, JSON.parse(inner));
+          } catch {
+            args.input = inner;
+          }
+        } else {
+          args.input = inner;
+        }
+      }
+
+      // Create deterministic ID based on content
+      const contentHash = btoa(JSON.stringify({name: toolName, args})).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
+      toolCalls.push({
+        id: `extracted_xml_${contentHash}`,
+        name: toolName,
+        arguments: args
+      });
     }
 
     return toolCalls;
@@ -456,8 +533,35 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     }
   };
 
+  // Helper function to get mode color
+  const getModeColor = (mode: string): string => {
+    const modeColors: Record<string, string> = {
+      'Research Mode': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+      'Creative Mode': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+      'Analytical Mode': 'bg-green-500/20 text-green-300 border-green-500/30',
+      'Productivity Mode': 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+      'Collaborative Mode': 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+    };
+    return modeColors[mode] || 'bg-gray-500/20 text-gray-300 border-gray-500/30';
+  };
+
   return (
     <div className={`relative group ${className}`}>
+      {/* Mode Switch Indicator - Show when mode is switched */}
+      {parsed.modeSwitch && (
+        <div className="mb-3">
+          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${getModeColor(parsed.modeSwitch.mode)}`}>
+            <div className="w-2 h-2 rounded-full bg-current animate-pulse"></div>
+            <span>{parsed.modeSwitch.mode} Activated</span>
+          </div>
+          {parsed.modeSwitch.reason && (
+            <div className="mt-1 text-xs text-muted-foreground italic">
+              {parsed.modeSwitch.reason}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Thinking Section - Only show if there are thinking blocks */}
       {hasThinking && (
         <div className="mb-3">

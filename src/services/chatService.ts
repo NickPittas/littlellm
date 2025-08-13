@@ -892,6 +892,21 @@ export const chatService = {
     return llmService.clearModelCache(providerId);
   },
 
+  // Clear conversation state for providers that maintain server-side context
+  async clearConversationState(settings: ChatSettings): Promise<void> {
+    const llmSettings: LLMSettings = {
+      provider: settings.provider,
+      model: settings.model,
+      apiKey: secureApiKeyService?.getApiKey(settings.provider) || '',
+      baseUrl: settings.providers[settings.provider]?.baseUrl,
+      temperature: settings.temperature,
+      maxTokens: settings.maxTokens,
+      systemPrompt: settings.systemPrompt,
+    };
+
+    return llmService.clearConversationState(llmSettings);
+  },
+
   // Force refresh API keys and clear any cached data
   async forceRefreshApiKeys(): Promise<void> {
     console.log('🔄 ChatService: Force refreshing API keys...');
