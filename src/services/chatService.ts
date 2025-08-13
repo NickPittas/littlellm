@@ -60,6 +60,7 @@ export interface Message {
   role: 'user' | 'assistant';
   timestamp: Date;
   isThinking?: boolean; // Mark message as a thinking indicator bubble
+  isStreaming?: boolean; // Mark message as currently streaming
   usage?: {
     promptTokens: number;
     completionTokens: number;

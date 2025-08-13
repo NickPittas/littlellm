@@ -20,9 +20,6 @@ export class OllamaProvider extends BaseProvider {
   // Cache for model tool support detection
   private static modelToolSupportCache = new Map<string, boolean>();
 
-  // Track conversation state for cleanup
-  private static conversationState = new Map<string, boolean>();
-
   readonly capabilities: ProviderCapabilities = {
     supportsVision: true,
     supportsTools: true, // Dynamic: structured tools if supported, text-based fallback
@@ -391,7 +388,7 @@ export class OllamaProvider extends BaseProvider {
       messages: messages,
       temperature: settings.temperature,
       max_tokens: settings.maxTokens,
-      stream: !!onStream
+      stream: true // Ollama only supports streaming
     };
 
     // Check if model supports structured tools
@@ -480,11 +477,12 @@ export class OllamaProvider extends BaseProvider {
       throw new Error(`Ollama API error: ${error}`);
     }
 
-    if (onStream) {
-      return this.handleNativeStreamResponse(response, onStream, settings, provider, conversationHistory, signal);
-    } else {
-      return this.handleNativeNonStreamResponse(response, settings, conversationHistory, conversationId);
+    // Ollama only supports streaming
+    if (!onStream) {
+      throw new Error('Ollama provider only supports streaming responses. Please enable streaming.');
     }
+
+    return this.handleNativeStreamResponse(response, onStream, settings, provider, conversationHistory, signal);
   }
 
   async fetchModels(apiKey: string, baseUrl?: string): Promise<string[]> {
@@ -624,15 +622,7 @@ export class OllamaProvider extends BaseProvider {
     return toolCalls;
   }
 
-  // Check if a model supports tool calling
-  private modelSupportsTools(modelName: string): boolean {
-    console.log(`🔍 Ollama: Assuming tool support for model: "${modelName}" (user can name models anything)`);
 
-    // ALWAYS return true - let the API determine if tools are supported
-    // Users can name their models anything in Ollama, so name-based detection is unreliable
-    // If a model doesn't support tools, the API will simply ignore the tools parameter
-    return true;
-  }
 
   // Private helper methods
   // This method is injected by the ProviderAdapter from the LLMService
@@ -645,7 +635,7 @@ export class OllamaProvider extends BaseProvider {
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    signal?: AbortSignal
+    _signal?: AbortSignal
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     // Use native Ollama tool calling - similar to OpenAI provider
@@ -763,7 +753,11 @@ export class OllamaProvider extends BaseProvider {
     console.log(`🔍 Ollama: Final content length: ${fullContent.length} characters`);
     console.log(`🔍 Ollama: Total chunks processed: ${chunkCount}`);
 
-    // If we have tool calls, execute them and make a follow-up call
+    // Check for XML-based tool calls in the content (since Ollama uses text-based tool calling)
+    const xmlToolCalls = this.parseToolCallsFromText(fullContent);
+    console.log(`🔍 Ollama: Found ${xmlToolCalls.length} XML tool calls in content`);
+
+    // If we have native tool calls, execute them and make a follow-up call
     if (toolCalls.length > 0) {
       console.log(`🔧 Ollama found ${toolCalls.length} native tool calls AFTER streaming completed`);
       console.log(`🔧 Ollama tool calls:`, toolCalls);
@@ -778,7 +772,17 @@ export class OllamaProvider extends BaseProvider {
       return this.executeNativeToolCalls(toolCalls, fullContent, usage, settings, provider, conversationHistory, onStream);
     }
 
+    // If we have XML tool calls, execute them using text-based tool execution
+    if (xmlToolCalls.length > 0) {
+      console.log(`🔧 Ollama found ${xmlToolCalls.length} XML tool calls AFTER streaming completed`);
+      console.log(`🔧 Ollama XML tool calls:`, xmlToolCalls);
+
+      console.log(`🚀 Ollama: Now executing XML tools AFTER complete streaming...`);
+      return this.executeTextBasedTools(xmlToolCalls, fullContent, usage, settings, provider, conversationHistory, onStream);
+    }
+
     console.log(`🔍 Ollama: No tool calls found, returning content: "${fullContent}"`);
+
     return {
       content: fullContent,
       usage: usage ? {
@@ -790,66 +794,7 @@ export class OllamaProvider extends BaseProvider {
     };
   }
 
-  /* eslint-disable @typescript-eslint/no-unused-vars */
-  private async handleNativeNonStreamResponse(
-    response: Response,
-    settings: LLMSettings,
-    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    conversationId?: string
-  ): Promise<LLMResponse> {
-    /* eslint-enable @typescript-eslint/no-unused-vars */
-    const data = await response.json();
-    console.log(`🔍 Ollama native non-stream response:`, JSON.stringify(data, null, 2));
 
-    // Ollama native response format has message directly
-    const message = data.message;
-    if (!message) {
-      console.error('❌ Ollama: No message in response');
-      return { content: '', usage: undefined, toolCalls: [] };
-    }
-
-    console.log(`🔍 Ollama: Message content: "${message?.content || 'NO CONTENT'}"`);
-    console.log(`🔍 Ollama: Message tool_calls:`, message?.tool_calls);
-
-    // Handle native tool calls if present
-    if (message.tool_calls && message.tool_calls.length > 0) {
-      console.log(`🔧 Ollama native response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
-
-      // Convert tool calls to expected format
-      const formattedToolCalls = message.tool_calls.map((tc: {id?: string, function: {name: string, arguments: string}}) => ({
-        id: tc.id || `call_${Date.now()}`,
-        function: {
-          name: tc.function.name,
-          arguments: JSON.stringify(tc.function.arguments) || '{}'
-        }
-      }));
-
-      // Execute tool calls and make follow-up call
-      return this.executeNativeToolCalls(
-        formattedToolCalls,
-        message.content || '',
-        data.total_duration ? {
-          promptTokens: data.prompt_eval_count || 0,
-          completionTokens: data.eval_count || 0,
-          totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
-        } : undefined,
-        settings,
-        { id: 'ollama', name: 'Ollama' } as LLMProvider,
-        conversationHistory,
-        () => {} // No-op for non-stream
-      );
-    }
-
-    return {
-      content: message.content || '',
-      usage: data.total_duration ? {
-        promptTokens: data.prompt_eval_count || 0,
-        completionTokens: data.eval_count || 0,
-        totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
-      } : undefined,
-      toolCalls: []
-    };
-  }
 
   private async executeNativeToolCalls(
     toolCalls: Array<{ id: string; function: { name: string; arguments: string } }>,
@@ -1180,7 +1125,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
     const requestBody = {
       model: settings.model,
       messages: ollamaMessages,
-      stream: !!onStream,
+      stream: true, // Ollama only supports streaming
       options: {
         temperature: settings.temperature,
         num_predict: settings.maxTokens
@@ -1212,139 +1157,12 @@ Continue based on the tool results above. Call additional tools if needed for a 
       throw new Error(`Ollama follow-up API error: ${error}`);
     }
 
-    if (onStream) {
-      // Handle streaming follow-up response
-      let fullContent = '';
-      let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
-
-      if (response.body) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        try {
-          // eslint-disable-next-line no-constant-condition
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n').filter(line => line.trim());
-
-            for (const line of lines) {
-              try {
-                // Ollama native API returns JSON objects directly
-                const parsed = JSON.parse(line);
-                const message = parsed.message;
-
-                if (message?.content) {
-                  fullContent += message.content;
-                  onStream(message.content);
-                }
-
-                // Handle final response with usage data
-                if (parsed.done && parsed.total_duration) {
-                  usage = {
-                    promptTokens: parsed.prompt_eval_count || 0,
-                    completionTokens: parsed.eval_count || 0,
-                    totalTokens: (parsed.prompt_eval_count || 0) + (parsed.eval_count || 0)
-                  };
-                }
-              } catch (error) {
-                // Skip empty lines or malformed JSON
-                if (line.trim()) {
-                  console.warn('Failed to parse follow-up streaming chunk:', error, 'Line:', line);
-                }
-              }
-            }
-          }
-        } finally {
-          reader.releaseLock();
-        }
-      }
-
-      // Check for additional tool calls in the follow-up response (agentic behavior)
-      if (enableTools && fullContent) {
-        const toolCalls = this.parseToolCallsFromText(fullContent);
-        if (toolCalls.length > 0) {
-          console.log(`🔄 Ollama follow-up response contains ${toolCalls.length} additional tool calls - continuing agentic workflow`);
-          // Recursively execute additional tool calls
-          return this.executeTextBasedTools(
-            toolCalls,
-            fullContent,
-            usage,
-            settings,
-            { id: 'ollama', name: 'Ollama' } as LLMProvider,
-            messages,
-            onStream
-          );
-        }
-      }
-
-      return {
-        content: fullContent,
-        usage: usage ? {
-          promptTokens: usage.promptTokens || 0,
-          completionTokens: usage.completionTokens || 0,
-          totalTokens: usage.totalTokens || 0
-        } : undefined
-      };
-    } else {
-      // Handle non-streaming follow-up response
-      const data = await response.json();
-      const message = data.message;
-
-      // Check for additional tool calls in the follow-up response (agentic behavior)
-      const content = message?.content || '';
-      if (enableTools && content) {
-        const toolCalls = this.parseToolCallsFromText(content);
-        if (toolCalls.length > 0) {
-          console.log(`🔄 Ollama follow-up response contains ${toolCalls.length} additional tool calls - continuing agentic workflow`);
-          // Recursively execute additional tool calls
-          return this.executeTextBasedTools(
-            toolCalls,
-            content,
-            data.total_duration ? {
-              promptTokens: data.prompt_eval_count || 0,
-              completionTokens: data.eval_count || 0,
-              totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
-            } : undefined,
-            settings,
-            { id: 'ollama', name: 'Ollama' } as LLMProvider,
-            messages,
-            onStream
-          );
-        }
-      }
-
-      return {
-        content: content,
-        usage: data.total_duration ? {
-          promptTokens: data.prompt_eval_count || 0,
-          completionTokens: data.eval_count || 0,
-          totalTokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
-        } : undefined
-      };
+    // Ollama only supports streaming
+    if (!onStream) {
+      throw new Error('Ollama follow-up calls only support streaming responses.');
     }
-  }
 
-
-
-  public executeMCPTool: (toolName: string, args: Record<string, unknown>) => Promise<string> = async (toolName: string, args: Record<string, unknown>) => {
-    // This will be injected by the main service
-    console.error('🚨 Ollama: executeMCPTool called but not injected! This should not happen.');
-    console.error('🚨 Ollama: toolName:', toolName, 'args:', args);
-    console.error('🚨 Ollama: Method type:', typeof this.executeMCPTool);
-    return JSON.stringify({ error: 'Tool execution not available - injection failed' });
-  };
-
-  // Legacy text-based tool calling methods (kept for reference but not used)
-  private async handleTextBasedToolCalling(
-    response: Response,
-    onStream: (chunk: string) => void,
-    settings: LLMSettings,
-    provider: LLMProvider,
-    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>
-  ): Promise<LLMResponse> {
+    // Handle streaming follow-up response
     let fullContent = '';
     let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
 
@@ -1358,32 +1176,32 @@ Continue based on the tool results above. Call additional tools if needed for a 
           const { done, value } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value);
+          const chunk = decoder.decode(value, { stream: true });
           const lines = chunk.split('\n').filter(line => line.trim());
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') continue;
+            try {
+              // Ollama native API returns JSON objects directly
+              const parsed = JSON.parse(line);
+              const message = parsed.message;
 
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices?.[0]?.delta?.content || '';
+              if (message?.content) {
+                fullContent += message.content;
+                onStream(message.content);
+              }
 
-                if (content) {
-                  fullContent += content;
-                  onStream(content);
-                }
-
-                if (parsed.usage) {
-                  usage = {
-                    promptTokens: parsed.usage.prompt_tokens,
-                    completionTokens: parsed.usage.completion_tokens,
-                    totalTokens: parsed.usage.total_tokens
-                  };
-                }
-              } catch (error) {
-                console.warn('Failed to parse Ollama stream chunk:', error);
+              // Handle final response with usage data
+              if (parsed.done && parsed.total_duration) {
+                usage = {
+                  promptTokens: parsed.prompt_eval_count || 0,
+                  completionTokens: parsed.eval_count || 0,
+                  totalTokens: (parsed.prompt_eval_count || 0) + (parsed.eval_count || 0)
+                };
+              }
+            } catch (error) {
+              // Skip empty lines or malformed JSON
+              if (line.trim()) {
+                console.warn('Failed to parse follow-up streaming chunk:', error, 'Line:', line);
               }
             }
           }
@@ -1393,41 +1211,26 @@ Continue based on the tool results above. Call additional tools if needed for a 
       }
     }
 
-    console.log(`🔍 Ollama response content for tool parsing:`, fullContent);
-
-    // Handle empty responses
-    if (!fullContent || fullContent.trim().length === 0) {
-      console.warn(`⚠️ Ollama returned empty response. This might indicate:`);
-      console.warn(`   - Model failed to generate content`);
-      console.warn(`   - Network/connection issues`);
-      console.warn(`   - Model overloaded or timeout`);
-
-      return {
-        content: "I apologize, but I didn't receive a proper response from the model. This could be due to the model being overloaded or a connection issue. Please try again.",
-        usage: usage ? {
-          promptTokens: usage.promptTokens || 0,
-          completionTokens: usage.completionTokens || 0,
-          totalTokens: usage.totalTokens || 0
-        } : undefined
-      };
+    // Check for additional tool calls in the follow-up response (agentic behavior)
+    if (enableTools && fullContent) {
+      const toolCalls = this.parseToolCallsFromText(fullContent);
+      if (toolCalls.length > 0) {
+        console.log(`🔄 Ollama follow-up response contains ${toolCalls.length} additional tool calls - continuing agentic workflow`);
+        // Recursively execute additional tool calls
+        return this.executeTextBasedTools(
+          toolCalls,
+          fullContent,
+          usage,
+          settings,
+          { id: 'ollama', name: 'Ollama' } as LLMProvider,
+          messages,
+          onStream
+        );
+      }
     }
 
-    // Remove thinking content before parsing for tool calls
-    const contentWithoutThinking = this.removeThinkingContent(fullContent);
-    console.log(`🧠 Content after removing thinking tags:`, contentWithoutThinking);
-
-    // Parse the response for tool calls (excluding thinking content)
-    const toolCalls = this.parseToolCallsFromText(contentWithoutThinking);
-
-    if (toolCalls.length > 0) {
-      console.log(`🔧 Ollama found ${toolCalls.length} tool calls in text response`);
-      return this.executeTextBasedTools(toolCalls, fullContent, usage, settings, provider, conversationHistory, onStream);
-    }
-
-    // Return the original content (with thinking) for UI display
-    // The UI component will handle parsing and displaying thinking content
     return {
-      content: fullContent, // Keep original content with thinking for UI
+      content: fullContent,
       usage: usage ? {
         promptTokens: usage.promptTokens || 0,
         completionTokens: usage.completionTokens || 0,
@@ -1435,6 +1238,10 @@ Continue based on the tool results above. Call additional tools if needed for a 
       } : undefined
     };
   }
+
+  public executeMCPTool?: (toolName: string, args: Record<string, unknown>) => Promise<string>;
+
+
 
   // Helper function to extract complete JSON object from text starting at a given index
   private extractCompleteJSON(text: string, startIndex: number): string | null {
@@ -1511,7 +1318,19 @@ Continue based on the tool results above. Call additional tools if needed for a 
 
         console.log(`🔍 Found XML tag: ${rawToolName}, inner: ${inner}`);
 
-        // Only handle tags that correspond to available tools; ignore others (e.g., <switch_mode>)
+        // IMMEDIATELY skip switch_mode - do not process as tool
+        if (rawToolName === 'switch_mode') {
+          console.log(`🔄 Skipping switch_mode tag in XML tool parsing`);
+          continue;
+        }
+
+        // Also skip other non-tool XML tags
+        if (rawToolName === 'think' || rawToolName === 'thinking' || rawToolName === 'tool_execution') {
+          console.log(`🔄 Skipping non-tool XML tag: ${rawToolName}`);
+          continue;
+        }
+
+        // Only handle tags that correspond to available tools; ignore others
         if (!availableTools.includes(rawToolName)) {
           console.log(`⚠️ Tool ${rawToolName} not in available tools list:`, availableTools);
           continue;
@@ -1891,6 +1710,9 @@ Continue based on the tool results above. Call additional tools if needed for a 
       try {
         console.log(`🔧 Executing Ollama tool: ${toolCall.name} with args:`, toolCall.arguments);
 
+        if (!this.executeMCPTool) {
+          throw new Error('🚨 Ollama: executeMCPTool not injected! This should not happen.');
+        }
         const result = await this.executeMCPTool(toolCall.name, toolCall.arguments);
         const resultString = typeof result === 'string' ? result : JSON.stringify(result);
 
@@ -2042,103 +1864,7 @@ Please provide a natural, helpful response based on the tool results.`;
     return cleanedContent;
   }
 
-  /* eslint-disable @typescript-eslint/no-unused-vars */
-  private async handleNonStreamResponse(
-    response: Response,
-    settings: LLMSettings,
-    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    conversationId?: string
-  ): Promise<LLMResponse> {
-    /* eslint-enable @typescript-eslint/no-unused-vars */
-    const data = await response.json();
-    console.log(`🔍 Ollama raw response:`, JSON.stringify(data, null, 2));
-    const message = data.choices[0].message;
 
-    // Handle tool calls if present
-    if (message.tool_calls && message.tool_calls.length > 0) {
-      console.log(`🔧 Ollama response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
-      // Tool execution will be handled by the main service
-      return {
-        content: message.content || '',
-        usage: data.usage ? {
-          promptTokens: data.usage.prompt_tokens,
-          completionTokens: data.usage.completion_tokens,
-          totalTokens: data.usage.total_tokens
-        } : undefined,
-        toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
-          id: tc.id,
-          name: tc.function.name,
-          arguments: JSON.parse(tc.function.arguments)
-        }))
-      };
-    }
 
-    return {
-      content: message.content,
-      usage: data.usage ? {
-        promptTokens: data.usage.prompt_tokens,
-        completionTokens: data.usage.completion_tokens,
-        totalTokens: data.usage.total_tokens
-      } : undefined
-    };
-  }
-
-  private hasThinkingContent(content: string): boolean {
-    // Check for various thinking patterns
-    const thinkingPatterns = [
-      /<think>/i,
-      /<thinking>/i,
-      /\*\*thinking\*\*/i,
-      /\*thinking\*/i,
-      /thinking:/i,
-      /let me think/i,
-      /i need to think/i,
-      /first, let me/i,
-      /step by step/i
-    ];
-
-    return thinkingPatterns.some(pattern => pattern.test(content));
-  }
-
-  private isThinkingComplete(content: string): boolean {
-    // Check if thinking tags are properly closed
-    const hasOpenThink = /<think>/i.test(content);
-    const hasCloseThink = /<\/think>/i.test(content);
-
-    const hasOpenThinking = /<thinking>/i.test(content);
-    const hasCloseThinking = /<\/thinking>/i.test(content);
-
-    // If we have opening tags, we need closing tags
-    if (hasOpenThink && !hasCloseThink) return false;
-    if (hasOpenThinking && !hasCloseThinking) return false;
-
-    // Check for incomplete reasoning patterns
-    const incompletePatterns = [
-      /thinking\.\.\.$/i,
-      /let me think\.\.\.$/i,
-      /step \d+:?\s*$/i,
-      /first,?\s*$/i,
-      /so,?\s*$/i,
-      /therefore,?\s*$/i
-    ];
-
-    if (incompletePatterns.some(pattern => pattern.test(content.trim()))) {
-      return false;
-    }
-
-    // If content ends with reasoning indicators, it might be incomplete
-    const reasoningEndings = [
-      /\.\.\.$/, // ends with ...
-      /:\s*$/, // ends with :
-      /,\s*$/, // ends with ,
-      /-\s*$/, // ends with -
-    ];
-
-    if (reasoningEndings.some(pattern => pattern.test(content.trim()))) {
-      return false;
-    }
-
-    return true;
-  }
 }

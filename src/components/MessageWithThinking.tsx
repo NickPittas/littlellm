@@ -40,6 +40,7 @@ interface MessageWithThinkingProps {
     error?: boolean;
   }>;
   sources?: Source[];
+  isStreaming?: boolean;
 }
 
 interface ParsedMessage {
@@ -52,7 +53,7 @@ interface ParsedMessage {
   };
 }
 
-export function MessageWithThinking({ content, className = '', usage, cost, timing, toolCalls, sources }: MessageWithThinkingProps) {
+export function MessageWithThinking({ content, className = '', usage, cost, timing, toolCalls, sources, isStreaming = false }: MessageWithThinkingProps) {
   const [showThinking, setShowThinking] = useState(false);
   const [showToolExecution, setShowToolExecution] = useState(false);
   const [showTools, setShowTools] = useState(false);
@@ -127,15 +128,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
       toolExecution.push(toolMatch[1].trim());
     }
 
-    // Find mode switch blocks: <switch_mode><mode>...</mode><reason>...</reason></switch_mode>
-    const modeSwitchRegex = /<switch_mode>\s*<mode>([\s\S]*?)<\/mode>\s*<reason>([\s\S]*?)<\/reason>\s*<\/switch_mode>/gi;
-    const modeSwitchMatch = modeSwitchRegex.exec(text);
-    if (modeSwitchMatch) {
-      modeSwitch = {
-        mode: modeSwitchMatch[1].trim(),
-        reason: modeSwitchMatch[2].trim()
-      };
-    }
+    // No mode switch parsing - just show original content
 
     // Enhanced parsing for thinking models - ONLY for explicit thinking patterns
     // Look for content that appears before tool calls AND has strong thinking indicators
@@ -175,15 +168,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     // Remove structured thinking and tool execution blocks
     response = response.replace(thinkRegex, '').replace(toolRegex, '');
 
-    // Remove mode switch blocks from response
-    response = response.replace(modeSwitchRegex, '');
-
-    // Remove JSON tool call blocks (these should be in Tools Used section)
-    response = response.replace(/```json[\s\S]*?```/gi, '');
-
-    // Remove XML tool call blocks (these should be in Tools Used section)
-    // Match XML tool calls but exclude switch_mode, think, and tool_execution
-    response = response.replace(/<(?!switch_mode|think|tool_execution)([a-zA-Z_][\w-]*)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+    // Show original content - no cleaning
 
     // Remove tool result markers
     response = response.replace(/\[TOOL_RESULT\][\s\S]*?\[END_TOOL_RESULT\]/gi, '');
@@ -243,150 +228,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     return null;
   };
 
-  // Extract tool calls from content if not provided via props
-  const extractToolCallsFromContent = (text: string): Array<{id: string, name: string, arguments: Record<string, unknown>}> => {
-    const toolCalls: Array<{id: string, name: string, arguments: Record<string, unknown>}> = [];
-
-    // Pattern 1: JSON-wrapped tool calls (```json wrapper)
-    const jsonMatches = text.match(/```json\s*([\s\S]*?)\s*```/gi);
-    if (jsonMatches) {
-      for (const match of jsonMatches) {
-        try {
-          const jsonContent = match.replace(/```json\s*|\s*```/gi, '').trim();
-          const parsed = JSON.parse(jsonContent);
-
-          if (parsed.tool_call && parsed.tool_call.name) {
-            // Create deterministic ID based on content to prevent re-render loops
-            const contentHash = btoa(JSON.stringify(parsed.tool_call)).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
-            toolCalls.push({
-              id: `extracted_json_${contentHash}`,
-              name: parsed.tool_call.name,
-              arguments: parsed.tool_call.arguments || {}
-            });
-          }
-        } catch (error) {
-          console.warn('Failed to parse JSON-wrapped tool call:', error);
-        }
-      }
-    }
-
-    // Pattern 2: Direct tool_call format (without ```json wrapper)
-    // Use a more robust approach to find complete JSON objects
-    const toolCallPattern = /\{\s*"tool_call"\s*:\s*\{/gi;
-    let match;
-    while ((match = toolCallPattern.exec(text)) !== null) {
-      try {
-        // Find the complete JSON object starting from the match
-        const startIndex = match.index;
-        const jsonStr = extractCompleteJSON(text, startIndex);
-
-        if (jsonStr) {
-          const parsed = JSON.parse(jsonStr);
-          if (parsed.tool_call && parsed.tool_call.name) {
-            // Create deterministic ID based on content to prevent re-render loops
-            const contentHash = btoa(JSON.stringify(parsed.tool_call)).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
-            toolCalls.push({
-              id: `extracted_direct_${contentHash}`,
-              name: parsed.tool_call.name,
-              arguments: parsed.tool_call.arguments || {}
-            });
-          }
-        }
-      } catch (error) {
-        console.warn('Failed to parse direct tool call:', error);
-      }
-    }
-
-    // Pattern 3: Native OpenAI format (tool_calls array)
-    const nativeToolCallRegex = /"tool_calls"\s*:\s*\[([\s\S]*?)\]/gi;
-    const nativeMatch = nativeToolCallRegex.exec(text);
-    if (nativeMatch) {
-      try {
-        const toolCallsArray = JSON.parse(`[${nativeMatch[1]}]`);
-        for (const tc of toolCallsArray) {
-          if (tc.function && tc.function.name) {
-            let args = {};
-            if (tc.function.arguments) {
-              try {
-                args = typeof tc.function.arguments === 'string'
-                  ? JSON.parse(tc.function.arguments)
-                  : tc.function.arguments;
-              } catch (error) {
-                console.warn('Failed to parse native tool call arguments:', error);
-              }
-            }
-
-            // Create deterministic ID based on content to prevent re-render loops
-            const contentHash = btoa(JSON.stringify({name: tc.function.name, args})).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
-            toolCalls.push({
-              id: tc.id || `extracted_native_${contentHash}`,
-              name: tc.function.name,
-              arguments: args
-            });
-          }
-        }
-      } catch (error) {
-        console.warn('Failed to parse native tool calls:', error);
-      }
-    }
-
-    // Pattern 4: XML-style tool calls (for Ollama and other providers)
-    // Example: <web_search><query>search terms</query></web_search>
-    const xmlToolRegex = /<([a-zA-Z_][\w-]*)\b[^>]*>([\s\S]*?)<\/\1>/gi;
-    let xmlMatch;
-    while ((xmlMatch = xmlToolRegex.exec(text)) !== null) {
-      const toolName = xmlMatch[1];
-      const inner = (xmlMatch[2] || '').trim();
-
-      // Skip switch_mode and other non-tool XML tags
-      if (toolName === 'switch_mode' || toolName === 'think' || toolName === 'tool_execution') {
-        continue;
-      }
-
-      const args: Record<string, unknown> = {};
-
-      // Parse child tags as arguments: <param>value</param>
-      const childTagRegex = /<([a-zA-Z_][\w-]*)\b[^>]*>([\s\S]*?)<\/\1>/gi;
-      let childFound = false;
-      let childMatch;
-      while ((childMatch = childTagRegex.exec(inner)) !== null) {
-        childFound = true;
-        const key = childMatch[1];
-        const value = (childMatch[2] || '').trim();
-
-        if (args[key] === undefined) {
-          args[key] = value;
-        } else if (Array.isArray(args[key])) {
-          (args[key] as unknown[]).push(value);
-        } else {
-          args[key] = [args[key], value];
-        }
-      }
-
-      if (!childFound && inner) {
-        // If no child tags, try JSON first, then fallback to single "input"
-        if (inner.startsWith('{') || inner.startsWith('[')) {
-          try {
-            Object.assign(args, JSON.parse(inner));
-          } catch {
-            args.input = inner;
-          }
-        } else {
-          args.input = inner;
-        }
-      }
-
-      // Create deterministic ID based on content
-      const contentHash = btoa(JSON.stringify({name: toolName, args})).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
-      toolCalls.push({
-        id: `extracted_xml_${contentHash}`,
-        name: toolName,
-        arguments: args
-      });
-    }
-
-    return toolCalls;
-  };
+  // Tool parsing is now handled by the provider, not the UI component
 
   const parsed = useMemo(() => parseMessage(content), [content]);
   const hasThinking = parsed.thinking.length > 0;
@@ -477,16 +319,16 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     }
   }, [content, parsed.response, handleSpeak]);
 
-  // Extract tool calls from content if not provided via props - MEMOIZED to prevent infinite loops
-  const extractedToolCalls = useMemo(() => {
-    // Only extract if no tool calls provided via props
-    if (toolCalls && toolCalls.length > 0) {
-      return [];
-    }
-    return extractToolCallsFromContent(content);
-  }, [content, toolCalls]);
+  // Tool calls should ALWAYS be provided by the provider, never extracted from content
+  // This prevents "xml undefined" issues during streaming and ensures clean architecture
+  const allToolCalls = toolCalls || [];
 
-  const allToolCalls = toolCalls && toolCalls.length > 0 ? toolCalls : extractedToolCalls;
+  // Debug tool calls to find where "undefined" is coming from
+  if (allToolCalls.length > 0) {
+    console.log('🔧 MessageWithThinking allToolCalls:', allToolCalls);
+    console.log('🔧 toolCalls prop:', toolCalls);
+    console.log('🔧 isStreaming:', isStreaming);
+  }
   const hasTools = allToolCalls.length > 0;
 
   // Ensure we always show tool execution section if we have tool calls
@@ -886,9 +728,10 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
                       <div className="mt-1">
                         <span className="font-medium">Arguments: </span>
                         <span className="text-xs">
-                          {Object.entries(toolCall.arguments).map(([key, value]) =>
-                            `${key}: ${String(value).substring(0, 50)}${String(value).length > 50 ? '...' : ''}`
-                          ).join(', ')}
+                          {Object.entries(toolCall.arguments).map(([key, value]) => {
+                            const valueStr = value !== undefined && value !== null ? String(value) : '(empty)';
+                            return `${key}: ${valueStr.substring(0, 50)}${valueStr.length > 50 ? '...' : ''}`;
+                          }).join(', ')}
                         </span>
                       </div>
                     )}

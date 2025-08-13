@@ -217,6 +217,7 @@ export function MainChatArea({
                         timing={message.timing}
                         toolCalls={message.toolCalls}
                         sources={message.sources}
+                        isStreaming={message.isStreaming}
                       />
                     ) : (
                       <UserMessage content={message.content} />

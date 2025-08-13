@@ -452,7 +452,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           setMessages(prev =>
             prev.map(msg =>
               msg.id === assistantMessage.id
-                ? { ...msg, content: assistantContent }
+                ? { ...msg, content: assistantContent, isStreaming: true }
                 : msg
             )
           );
@@ -481,7 +481,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         setMessages(prev =>
           prev.map(msg =>
             msg.id === assistantMessage.id
-              ? { ...msg, usage: response.usage, toolCalls: response.toolCalls, sources: response.sources }
+              ? { ...msg, usage: response.usage, toolCalls: response.toolCalls, sources: response.sources, isStreaming: false }
               : msg
           )
         );
