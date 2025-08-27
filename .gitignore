@@ -256,6 +256,10 @@ coverage/
 # Llama folder
 llama/
 
+# All hidden files and directories (starting with .)
+.*
+!.gitignore
+
 # Analysis and caching directories created during development
 .augment/
 .github/
