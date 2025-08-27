@@ -32,6 +32,11 @@
       "filter": ["**/*"]
     },
     {
+      "from": "docs",
+      "to": "docs",
+      "filter": ["**/*"]
+    },
+    {
       "from": "test",
       "to": "test",
       "filter": ["**/*"]

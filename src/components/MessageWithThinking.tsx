@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
@@ -9,6 +10,9 @@ import type { Source } from '../services/chatService';
 import { debugLogger } from '../services/debugLogger';
 import { getTTSService } from '../services/textToSpeechService';
 import { settingsService } from '../services/settingsService';
+
+// Constants
+const BREAK_WORD_STYLE = 'break-word';
 
 interface MessageWithThinkingProps {
   content: string;
@@ -41,6 +45,11 @@ interface MessageWithThinkingProps {
   }>;
   sources?: Source[];
   isStreaming?: boolean;
+  images?: Array<{
+    data: string;        // Data URL (data:image/png;base64,...)
+    mimeType: string;    // MIME type (e.g., "image/png")
+    alt?: string;        // Optional alt text for accessibility
+  }>;
 }
 
 interface ParsedMessage {
@@ -53,7 +62,7 @@ interface ParsedMessage {
   };
 }
 
-export function MessageWithThinking({ content, className = '', usage, cost, timing, toolCalls, sources, isStreaming = false }: MessageWithThinkingProps) {
+export function MessageWithThinking({ content, className = '', usage, cost, timing, toolCalls, sources, isStreaming = false, images }: MessageWithThinkingProps) {
   const [showThinking, setShowThinking] = useState(false);
   const [showToolExecution, setShowToolExecution] = useState(false);
   const [showTools, setShowTools] = useState(false);
@@ -108,7 +117,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
   };
 
   // Parse the message content to extract thinking sections, tool execution, mode switches, and response
-  const parseMessage = (text: string): ParsedMessage => {
+  const parseMessage = useCallback((text: string): ParsedMessage => {
     const thinking: string[] = [];
     const toolExecution: string[] = [];
     let response = text;
@@ -185,52 +194,11 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
     response = response.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
 
     return { thinking, toolExecution, response, modeSwitch };
-  };
-
-  // Helper function to extract complete JSON object from text starting at a given index
-  const extractCompleteJSON = (text: string, startIndex: number): string | null => {
-    let braceCount = 0;
-    let inString = false;
-    let escaped = false;
-    let jsonStart = -1;
-
-    for (let i = startIndex; i < text.length; i++) {
-      const char = text[i];
-
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (char === '\\' && inString) {
-        escaped = true;
-        continue;
-      }
-
-      if (char === '"') {
-        inString = !inString;
-        continue;
-      }
-
-      if (!inString) {
-        if (char === '{') {
-          if (jsonStart === -1) jsonStart = i;
-          braceCount++;
-        } else if (char === '}') {
-          braceCount--;
-          if (braceCount === 0 && jsonStart !== -1) {
-            return text.substring(jsonStart, i + 1);
-          }
-        }
-      }
-    }
-
-    return null;
-  };
+  }, []);
 
   // Tool parsing is now handled by the provider, not the UI component
 
-  const parsed = useMemo(() => parseMessage(content), [content]);
+  const parsed = useMemo(() => parseMessage(content), [content, parseMessage]);
   const hasThinking = parsed.thinking.length > 0;
   const hasToolExecution = parsed.toolExecution.length > 0;
 
@@ -321,7 +289,7 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
 
   // Tool calls should ALWAYS be provided by the provider, never extracted from content
   // This prevents "xml undefined" issues during streaming and ensures clean architecture
-  const allToolCalls = toolCalls || [];
+  const allToolCalls = useMemo(() => toolCalls || [], [toolCalls]);
 
   // Debug tool calls to find where "undefined" is coming from
   if (allToolCalls.length > 0) {
@@ -442,8 +410,8 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
                       userSelect: 'text',
                       WebkitUserSelect: 'text',
                       textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                      wordWrap: 'break-word',
-                      overflowWrap: 'break-word',
+                      wordWrap: BREAK_WORD_STYLE,
+                      overflowWrap: BREAK_WORD_STYLE,
                       maxWidth: '100%'
                     } as React.CSSProperties & { WebkitAppRegion?: string }
                   )}
@@ -588,8 +556,8 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
                                 userSelect: 'text',
                                 WebkitUserSelect: 'text',
                                 border: 'none',
-                                wordWrap: 'break-word',
-                                overflowWrap: 'break-word',
+                                wordWrap: BREAK_WORD_STYLE,
+                                overflowWrap: BREAK_WORD_STYLE,
                                 maxWidth: '100%'
                               } as React.CSSProperties & { WebkitAppRegion?: string }
                             )}
@@ -610,8 +578,8 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
                           userSelect: 'text',
                           WebkitUserSelect: 'text',
                           textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-                          wordWrap: 'break-word',
-                          overflowWrap: 'break-word',
+                          wordWrap: BREAK_WORD_STYLE,
+                          overflowWrap: BREAK_WORD_STYLE,
                           maxWidth: '100%'
                         } as React.CSSProperties & { WebkitAppRegion?: string }}
                       >
@@ -658,8 +626,8 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
                                    WebkitAppRegion: 'no-drag',
                                    userSelect: 'text',
                                    WebkitUserSelect: 'text',
-                                   wordWrap: 'break-word',
-                                   overflowWrap: 'break-word'
+                                   wordWrap: BREAK_WORD_STYLE,
+                                   overflowWrap: BREAK_WORD_STYLE
                                  } as React.CSSProperties & { WebkitAppRegion?: string }}>
                               {tool.result || '(empty result)'}
                             </div>
@@ -790,10 +758,39 @@ export function MessageWithThinking({ content, className = '', usage, cost, timi
           WebkitAppRegion: 'no-drag',
           userSelect: 'text',
           WebkitUserSelect: 'text',
-          wordWrap: 'break-word',
-          overflowWrap: 'break-word',
+          wordWrap: BREAK_WORD_STYLE,
+          overflowWrap: BREAK_WORD_STYLE,
           maxWidth: '100%'
         } as React.CSSProperties & { WebkitAppRegion?: string }
+      )}
+
+      {/* Generated Images */}
+      {images && images.length > 0 && (
+        <div className="mt-4 space-y-3 border border-border rounded-lg p-3">
+          <div className="text-sm font-medium text-foreground mb-2">
+            🖼️ Generated {images.length} image{images.length > 1 ? 's' : ''}
+          </div>
+          {images.map((image, index) => (
+            <div key={index} className="w-full">
+              <img
+                src={image.data}
+                alt={image.alt || `Generated image ${index + 1}`}
+                className="w-full max-w-full h-auto rounded-lg shadow-lg cursor-pointer hover:shadow-xl transition-shadow"
+                style={{
+                  maxHeight: '500px',
+                  objectFit: 'contain',
+                  display: 'block'
+                }}
+                onClick={() => {
+                  window.open(image.data, '_blank');
+                }}
+                onError={(e) => {
+                  console.error('Failed to load image:', e);
+                }}
+              />
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Token Usage, Cost, and Performance Info */}

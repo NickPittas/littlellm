@@ -1,7 +1,16 @@
+/* eslint-disable no-console */
 import { llmService, type LLMSettings } from './llmService';
 import { sessionService } from './sessionService';
 import { settingsService } from './settingsService';
 import { debugLogger } from './debugLogger';
+
+// Constants for duplicate strings
+const PARSING_STATUS_SUCCESS = '✅ Parsing Status: Success';
+const PARSING_STATUS_FAILED = '❌ Parsing Status: Failed';
+const PARSING_STATUS_ERROR = '❌ Parsing Status: Error';
+const PARSING_STATUS_FAILED_FALLBACK = '⚠️ Parsing Status: Failed (using fallback)';
+const DEFAULT_ANALYZE_MESSAGE = 'Please analyze the attached content.';
+const DEFAULT_WEB_RESULT_TITLE = 'Web result';
 
 // Conditionally import services only in browser environment
 let secureApiKeyService: {
@@ -88,6 +97,11 @@ export interface Message {
     error?: boolean;
   }>;
   sources?: Source[];
+  images?: Array<{
+    data: string;        // Data URL (data:image/png;base64,...)
+    mimeType: string;    // MIME type (e.g., "image/png")
+    alt?: string;        // Optional alt text for accessibility
+  }>;
 }
 
 // Import shared types
@@ -175,14 +189,14 @@ export const chatService = {
             if (result.text.includes('PDF parsing module could not be loaded') ||
                 result.text.includes('PDF text extraction is not available')) {
               console.error('📄 PDF parsing failed - received fallback message');
-              return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n❌ Parsing Status: Failed\nError: PDF parsing module not available\n\nThe PDF file was uploaded but text extraction failed. You can:\n• Describe the content you'd like me to analyze\n• Copy and paste text from the PDF\n• Convert the PDF to a text file and upload that instead`;
+              return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n${PARSING_STATUS_FAILED}\nError: PDF parsing module not available\n\nThe PDF file was uploaded but text extraction failed. You can:\n• Describe the content you'd like me to analyze\n• Copy and paste text from the PDF\n• Convert the PDF to a text file and upload that instead`;
             }
 
             // Return the actual parsed text content
-            return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n✅ Parsing Status: Success\nPages: ${result.metadata?.pages || 1}\n\nContent:\n${result.text}`;
+            return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n${PARSING_STATUS_SUCCESS}\nPages: ${result.metadata?.pages || 1}\n\nContent:\n${result.text}`;
           } else {
             console.error('📄 PDF parsing failed:', result.error);
-            return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n❌ Parsing Status: Failed\nError: ${result.error || 'Unknown error'}\n\nThe PDF file was uploaded but text extraction failed. You can:\n• Describe the content you'd like me to analyze\n• Copy and paste text from the PDF\n• Convert the PDF to a text file and upload that instead`;
+            return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n${PARSING_STATUS_FAILED}\nError: ${result.error || 'Unknown error'}\n\nThe PDF file was uploaded but text extraction failed. You can:\n• Describe the content you'd like me to analyze\n• Copy and paste text from the PDF\n• Convert the PDF to a text file and upload that instead`;
           }
         } else {
           // Fallback if electronAPI is not available
@@ -191,7 +205,7 @@ export const chatService = {
         }
       } catch (error) {
         console.error('📄 PDF parsing error:', error);
-        return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n❌ Parsing Status: Error\nError: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease describe what you'd like me to analyze about this PDF.`;
+        return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n${PARSING_STATUS_ERROR}\nError: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease describe what you'd like me to analyze about this PDF.`;
       }
     } else if (supportedFormats.includes(fileExtension)) {
       // Use DocumentParserService for supported document formats
@@ -207,12 +221,12 @@ export const chatService = {
 
         // Add processing status
         if (parsedDocument.metadata?.success === false) {
-          result += `⚠️ Parsing Status: Failed (using fallback)\n`;
+          result += `${PARSING_STATUS_FAILED_FALLBACK}\n`;
           if (parsedDocument.metadata?.error) {
             result += `Error: ${parsedDocument.metadata.error}\n`;
           }
         } else {
-          result += `✅ Parsing Status: Success\n`;
+          result += `${PARSING_STATUS_SUCCESS}\n`;
         }
 
         if (parsedDocument.metadata?.processingTime) {
@@ -411,7 +425,7 @@ export const chatService = {
               const contentArray: Array<ContentItem> = [
                 {
                   type: 'text',
-                  text: message || 'Please analyze the attached content.'
+                  text: message || DEFAULT_ANALYZE_MESSAGE
                 },
                 ...(processedFiles as ContentItem[])
               ];
@@ -438,7 +452,7 @@ export const chatService = {
           // Ollama uses a different format with separate images array
           console.log('Using Ollama format');
 
-          let textContent = augmentedMessage || 'Please analyze the attached content.';
+          let textContent = augmentedMessage || DEFAULT_ANALYZE_MESSAGE;
           const images: string[] = [];
 
           for (const file of files) {
@@ -469,7 +483,7 @@ export const chatService = {
           // For all other providers, use simple text format
           console.log('Using simple text format for provider:', provider);
 
-          let combinedText = augmentedMessage || 'Please analyze the attached content.';
+          let combinedText = augmentedMessage || DEFAULT_ANALYZE_MESSAGE;
 
           for (const file of files) {
             if (file.type.startsWith('image/')) {
@@ -664,13 +678,18 @@ export const chatService = {
           tokensPerSecond
         },
         toolCalls: response.toolCalls, // Include tool calls in the message
-        sources: sources // Always include sources array, even if empty
+        sources: sources, // Always include sources array, even if empty
+        images: response.images // Include generated images from LLM response
       };
 
       console.log('📋 Created message with toolCalls:', {
         hasToolCalls: !!response.toolCalls,
         toolCallsCount: response.toolCalls?.length || 0,
-        toolNames: response.toolCalls?.map(tc => tc.name) || []
+        toolNames: response.toolCalls?.map(tc => tc.name) || [],
+        hasImages: !!response.images,
+        imageCount: response.images?.length || 0,
+        hasCost: !!response.cost,
+        costAmount: response.cost?.totalCost
       });
 
       return assistantMessage;
@@ -811,7 +830,7 @@ export const chatService = {
               const itemObj = item as Record<string, unknown>;
               sources.push({
                 type: 'web',
-                title: itemObj.title as string || 'Web result',
+                title: itemObj.title as string || DEFAULT_WEB_RESULT_TITLE,
                 url: itemObj.url as string,
                 snippet: itemObj.content as string || itemObj.snippet as string
               });
@@ -828,7 +847,7 @@ export const chatService = {
                 const itemObj = item as Record<string, unknown>;
                 sources.push({
                   type: 'web',
-                  title: itemObj.title as string || 'Web result',
+                  title: itemObj.title as string || DEFAULT_WEB_RESULT_TITLE,
                   url: itemObj.url as string,
                   snippet: itemObj.description as string || itemObj.snippet as string
                 });
@@ -841,7 +860,7 @@ export const chatService = {
         if (resultObj.url || resultObj.title) {
           sources.push({
             type: 'web',
-            title: resultObj.title as string || 'Web result',
+            title: resultObj.title as string || DEFAULT_WEB_RESULT_TITLE,
             url: resultObj.url as string,
             snippet: resultObj.content as string || resultObj.description as string || resultObj.snippet as string
           });
@@ -943,7 +962,7 @@ export const chatService = {
     const contentArray: Array<ContentItem> = [
       {
         type: 'text',
-        text: message || 'Please analyze the attached content.'
+        text: message || DEFAULT_ANALYZE_MESSAGE
       }
     ];
 

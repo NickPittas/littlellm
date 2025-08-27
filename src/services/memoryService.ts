@@ -1,9 +1,10 @@
+/* eslint-disable no-console */
 /**
  * Memory Service for LiteLLM
  * Handles persistent memory storage, retrieval, and search functionality
  */
 
-import { 
+import {
   MemoryEntry, 
   MemoryIndex, 
   MemoryIndexEntry, 

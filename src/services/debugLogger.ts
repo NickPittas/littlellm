@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Debug Logger Service
  *

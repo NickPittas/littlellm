@@ -10,17 +10,30 @@ function copyAssets() {
   const publicDir = path.join(__dirname, '..', 'public', 'assets');
   const outDir = path.join(__dirname, '..', 'out', 'assets');
 
+  // Docs directories
+  const docsSourceDir = path.join(__dirname, '..', 'docs');
+  const docsPublicDir = path.join(__dirname, '..', 'public', 'docs');
+  const docsOutDir = path.join(__dirname, '..', 'out', 'docs');
+
   // Ensure directories exist
   if (!fs.existsSync(path.join(__dirname, '..', 'public'))) {
     fs.mkdirSync(path.join(__dirname, '..', 'public'), { recursive: true });
   }
-  
+
   if (!fs.existsSync(publicDir)) {
     fs.mkdirSync(publicDir, { recursive: true });
   }
 
   if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(docsPublicDir)) {
+    fs.mkdirSync(docsPublicDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(docsOutDir)) {
+    fs.mkdirSync(docsOutDir, { recursive: true });
   }
 
   // Copy assets to public directory (for development)
@@ -33,6 +46,18 @@ function copyAssets() {
   if (fs.existsSync(sourceDir)) {
     copyRecursive(sourceDir, outDir);
     console.log('✅ Assets copied to out directory');
+  }
+
+  // Copy docs to public directory (for development)
+  if (fs.existsSync(docsSourceDir)) {
+    copyRecursive(docsSourceDir, docsPublicDir);
+    console.log('✅ Docs copied to public directory');
+  }
+
+  // Copy docs to out directory (for production)
+  if (fs.existsSync(docsSourceDir)) {
+    copyRecursive(docsSourceDir, docsOutDir);
+    console.log('✅ Docs copied to out directory');
   }
 }
 

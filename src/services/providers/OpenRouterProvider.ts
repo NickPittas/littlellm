@@ -14,6 +14,7 @@ import {
 
 import { OPENROUTER_SYSTEM_PROMPT, generateOpenRouterToolPrompt } from './prompts/openrouter';
 // import { RAGService } from '../RAGService'; // Moved to Electron main process, accessed via IPC
+import { PricingService } from '../pricingService';
 
 export class OpenRouterProvider extends BaseProvider {
   readonly id = 'openrouter';
@@ -32,26 +33,21 @@ export class OpenRouterProvider extends BaseProvider {
   // OpenRouter-specific tool calling methods
   private async getOpenRouterTools(settings: LLMSettings): Promise<unknown[]> {
     try {
-      console.log(`🔍 Getting tools for OpenRouter provider`);
-      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
+
 
       // Check if tool calling is disabled
       if (settings?.toolCallingEnabled === false) {
-        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
+
         return [];
       }
 
       // Get raw tools from the centralized service (temporarily)
       const rawTools = await this.getMCPToolsForProvider('openrouter', settings);
-      console.log(`📋 Raw tools received (${rawTools.length} tools):`, rawTools.map((t: unknown) => (t as {name?: string, function?: {name?: string}}).name || (t as {name?: string, function?: {name?: string}}).function?.name));
+
 
       // Format tools specifically for OpenRouter (uses OpenAI format)
-      const formattedTools = this.formatToolsForOpenRouter(rawTools);
-      console.log(`🔧 Formatted ${formattedTools.length} tools for OpenRouter`);
-
-      return formattedTools;
-    } catch (error) {
-      console.error('❌ Failed to get OpenRouter tools:', error);
+      return this.formatToolsForOpenRouter(rawTools);
+    } catch {
       return [];
     }
   }
@@ -92,7 +88,7 @@ export class OpenRouterProvider extends BaseProvider {
         };
       }
 
-      console.warn(`⚠️ Skipping invalid tool:`, tool);
+
       return null;
     }).filter(tool => tool !== null);
   }
@@ -108,7 +104,7 @@ export class OpenRouterProvider extends BaseProvider {
     if (model.startsWith('perplexity/')) return 'perplexity';
 
     // Default to OpenAI format for unknown models (safest)
-    console.log(`⚠️ Unknown OpenRouter model prefix for "${model}", defaulting to OpenAI format`);
+
     return 'openai';
   }
 
@@ -204,8 +200,7 @@ export class OpenRouterProvider extends BaseProvider {
     const supportsManualCaching = this.modelSupportsManualCaching(underlyingProvider);
     const cachingEnabled = settings.promptCachingEnabled ?? false;
 
-    console.log(`🔧 OpenRouter underlying provider "${underlyingProvider}" supports structured tools: ${supportsStructuredTools}`);
-    console.log(`🔧 OpenRouter underlying provider "${underlyingProvider}" supports manual caching: ${supportsManualCaching}, enabled: ${cachingEnabled}`);
+
 
     // Build messages based on provider format
     let messages: unknown[];
@@ -239,11 +234,11 @@ export class OpenRouterProvider extends BaseProvider {
     if (supportsStructuredTools && tools.length > 0) {
       requestBody.tools = tools;
       requestBody.tool_choice = 'auto';
-      console.log(`🚀 OpenRouter API call with ${tools.length} structured tools for ${underlyingProvider} model`);
+
     } else if (tools.length > 0) {
       // For models without structured tools, use enhanced system prompt with proper tool calling instructions
       const enhancedSystemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, tools as ToolObject[], underlyingProvider);
-      console.log(`🔧 OpenRouter enhanced system prompt for ${underlyingProvider} (${enhancedSystemPrompt.length - systemPrompt.length} chars added)`);
+
 
       if (underlyingProvider === 'anthropic') {
         requestBody.system = enhancedSystemPrompt;
@@ -254,23 +249,12 @@ export class OpenRouterProvider extends BaseProvider {
           (messages as Array<{role: string, content: string}>)[systemMessageIndex].content = enhancedSystemPrompt;
         }
       }
-      console.log(`🚀 OpenRouter API call with ${tools.length} text-based tools for ${underlyingProvider} model (enhanced system prompt)`);
-    } else {
-      console.log(`🚀 OpenRouter API call without tools for ${underlyingProvider} model`);
     }
 
     return { requestBody, messages };
   }
 
-  private formatToolsAsText(tools: ToolObject[]): string {
-    return tools.map(tool => {
-      const name = tool.name || tool.function?.name || 'unknown_tool';
-      const description = tool.description || tool.function?.description || 'No description';
-      const parameters = tool.parameters || tool.function?.parameters || {};
 
-      return `- ${name}: ${description}\n  Parameters: ${JSON.stringify(parameters, null, 2)}`;
-    }).join('\n\n');
-  }
 
   /**
    * Parse text-based tool calls from model response content
@@ -279,7 +263,7 @@ export class OpenRouterProvider extends BaseProvider {
   private parseTextBasedToolCalls(content: string, availableTools: string[] = []): Array<{ name: string; arguments: Record<string, unknown> }> {
     const toolCalls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
-    console.log(`🔍 OpenRouter parsing text for tool calls in content:`, content.substring(0, 200) + '...');
+
 
     // Pattern 0: Simple functions.tool_name:id format (most common)
     // functions.list_processes:0, functions.write_file:1, etc.
@@ -294,9 +278,6 @@ export class OpenRouterProvider extends BaseProvider {
         // For simple format, we need to extract arguments from context or use empty object
         const args = this.extractArgumentsForSimpleToolCall(content, toolName, toolId);
         toolCalls.push({ name: toolName, arguments: args });
-        console.log(`✅ Found simple function format tool call: ${toolName}:${toolId} with args:`, args);
-      } else {
-        console.log(`⚠️ Tool ${toolName} not in available tools list:`, availableTools);
       }
       simpleMatch = simpleFunctionRegex.exec(content);
     }
@@ -313,13 +294,12 @@ export class OpenRouterProvider extends BaseProvider {
         // Handle nested input structure: {"input": {"path": "..."}} -> {"path": "..."}
         if (args.input && typeof args.input === 'object' && Object.keys(args).length === 1) {
           args = args.input;
-          console.log(`🔧 Unwrapped nested input structure for ${toolName}`);
+
         }
 
         toolCalls.push({ name: toolName, arguments: args });
-        console.log(`✅ Found custom format tool call: ${toolName} with args:`, args);
-      } catch (error) {
-        console.warn(`⚠️ Failed to parse custom format tool call:`, match[0], error);
+      } catch {
+        // Skip invalid custom format calls
       }
       match = customFormatRegex.exec(content);
     }
@@ -336,11 +316,11 @@ export class OpenRouterProvider extends BaseProvider {
             name: jsonObj.tool_call.name,
             arguments: jsonObj.tool_call.arguments
           });
-          console.log(`✅ Found JSON-wrapped tool call: ${jsonObj.tool_call.name} with args:`, jsonObj.tool_call.arguments);
+
           return toolCalls; // Return early if we found the structured format
         }
-      } catch (error) {
-        console.log(`⚠️ Failed to parse JSON-wrapped tool call:`, match[1], error);
+      } catch {
+        // Skip invalid JSON-wrapped calls
       }
     }
 
@@ -353,16 +333,13 @@ export class OpenRouterProvider extends BaseProvider {
         const toolName = match[1];
         const args = JSON.parse(match[2]);
         toolCalls.push({ name: toolName, arguments: args });
-        console.log(`✅ Found direct tool call: ${toolName} with args:`, args);
         return toolCalls; // Return early if we found the structured format
-      } catch (error) {
-        console.log(`⚠️ Failed to parse direct tool call arguments:`, match[2], error);
+      } catch {
         // Try fallback parsing
         const toolName = match[1];
         const args = this.parseArgumentsFromText(match[2]);
         if (Object.keys(args).length > 0) {
           toolCalls.push({ name: toolName, arguments: args });
-          console.log(`✅ Found direct tool call with fallback parsing: ${toolName} with args:`, args);
           return toolCalls;
         }
       }
@@ -370,12 +347,12 @@ export class OpenRouterProvider extends BaseProvider {
 
     // If we found structured tool calls, return them
     if (toolCalls.length > 0) {
-      console.log(`✅ Found ${toolCalls.length} structured tool calls, returning them`);
+
       return toolCalls;
     }
 
     // STEP 2: If no structured tool calls found, search for traces of tool usage in text
-    console.log(`🔍 No structured tool calls found, searching for tool usage traces in text...`);
+
 
     return this.parseToolTracesFromText(content, availableTools);
   }
@@ -406,7 +383,7 @@ export class OpenRouterProvider extends BaseProvider {
         const parsed = JSON.parse(match[0]);
         // If it's a valid object with reasonable properties, use it
         if (typeof parsed === 'object' && parsed !== null && Object.keys(parsed).length > 0) {
-          console.log(`🔧 Extracted arguments for ${toolName} from context:`, parsed);
+
           return parsed;
         }
       } catch {
@@ -415,7 +392,7 @@ export class OpenRouterProvider extends BaseProvider {
     }
 
     // If no JSON found, return empty object (tool will use defaults)
-    console.log(`🔧 No arguments found for ${toolName}, using empty object`);
+
     return {};
   }
 
@@ -425,7 +402,7 @@ export class OpenRouterProvider extends BaseProvider {
   private parseToolTracesFromText(content: string, availableTools: string[]): Array<{ name: string; arguments: Record<string, unknown> }> {
     const toolCalls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
-    console.log(`🔍 Searching for tool usage traces in content...`);
+
 
     for (const toolName of availableTools) {
       // Pattern 1: Direct tool mentions with arguments
@@ -437,7 +414,7 @@ export class OpenRouterProvider extends BaseProvider {
         const args = this.parseArgumentsFromText(argsText);
         if (Object.keys(args).length > 0) {
           toolCalls.push({ name: toolName, arguments: args });
-          console.log(`✅ Found direct mention: ${toolName} with args:`, args);
+
           continue;
         }
       }
@@ -451,7 +428,7 @@ export class OpenRouterProvider extends BaseProvider {
         const args = this.parseArgumentsFromText(argsText);
         if (Object.keys(args).length > 0) {
           toolCalls.push({ name: toolName, arguments: args });
-          console.log(`✅ Found function call: ${toolName}(${argsText}) -> args:`, args);
+
           continue;
         }
       }
@@ -465,20 +442,60 @@ export class OpenRouterProvider extends BaseProvider {
           const query = searchMatch[1].trim().replace(/['"]/g, '');
           if (query.length > 2) {
             toolCalls.push({ name: toolName, arguments: { query } });
-            console.log(`✅ Found search action: ${toolName} with query: "${query}"`);
+
             continue;
           }
         }
       }
     }
 
-    console.log(`🔍 Found ${toolCalls.length} tool usage traces`);
+
     return toolCalls;
   }
 
   /**
    * Parse arguments from text using various heuristics
    */
+  private extractArgumentsFromRawString(toolName: string, rawString: string): Record<string, unknown> {
+    const args: Record<string, unknown> = {};
+
+    // For web_search, try to extract query from various patterns
+    if (toolName === 'web_search' || toolName === 'search') {
+      // Look for query patterns in the raw string
+      const queryPatterns = [
+        /"query":\s*"([^"]+)"/i,
+        /'query':\s*'([^']+)'/i,
+        /query:\s*"([^"]+)"/i,
+        /query:\s*'([^']+)'/i,
+        /query:\s*([^,}]+)/i,
+        /"([^"]+)"/,  // Any quoted string
+        /'([^']+)'/   // Any single-quoted string
+      ];
+
+      for (const pattern of queryPatterns) {
+        const match = pattern.exec(rawString);
+        if (match && match[1]) {
+          args.query = match[1].trim();
+          break;
+        }
+      }
+    }
+
+    return args;
+  }
+
+  private validateAndFixToolArguments(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+    // Ensure web_search has a query parameter
+    if (toolName === 'web_search' || toolName === 'search') {
+      if (!args.query || typeof args.query !== 'string' || args.query.trim() === '') {
+        // If no valid query, provide a default that indicates the issue
+        args.query = 'search query not provided';
+      }
+    }
+
+    return args;
+  }
+
   private parseArgumentsFromText(text: string): Record<string, unknown> {
     const args: Record<string, unknown> = {};
 
@@ -520,8 +537,7 @@ export class OpenRouterProvider extends BaseProvider {
         const typedTool = tool as { function?: { name?: string } };
         return typedTool.function?.name || 'unknown_tool';
       }).filter(name => name !== 'unknown_tool');
-    } catch (error) {
-      console.error('❌ Failed to get tool names for parsing:', error);
+    } catch {
       return [];
     }
   }
@@ -537,9 +553,8 @@ export class OpenRouterProvider extends BaseProvider {
   ): Promise<LLMResponse> {
     // Detect underlying provider from model name
     const underlyingProvider = this.detectUnderlyingProvider(settings.model);
-    const supportsStructuredTools = this.modelSupportsStructuredTools(underlyingProvider);
-    console.log(`🔍 OpenRouter model "${settings.model}" detected as underlying provider: ${underlyingProvider}`);
-    console.log(`🔍 OpenRouter structured tools support: ${supportsStructuredTools} for provider: ${underlyingProvider}`);
+
+
 
     // Get OpenRouter-specific formatted tools
     const openRouterTools = await this.getOpenRouterTools(settings);
@@ -552,13 +567,7 @@ export class OpenRouterProvider extends BaseProvider {
 
     const systemPrompt = hasCustomSystemPrompt ? settings.systemPrompt! : this.getSystemPrompt();
 
-    console.log(`🔍 OpenRouter system prompt source:`, {
-      hasCustom: hasCustomSystemPrompt,
-      usingCustom: hasCustomSystemPrompt,
-      promptLength: systemPrompt?.length || 0,
-      promptStart: systemPrompt?.substring(0, 100) + '...',
-      underlyingProvider
-    });
+
 
     // Build request based on underlying provider format
     const { requestBody } = await this.buildProviderSpecificRequest(
@@ -600,7 +609,7 @@ export class OpenRouterProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.log('❌ No OpenRouter API key provided - cannot fetch models');
+
       return [];
     }
 
@@ -613,14 +622,13 @@ export class OpenRouterProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        console.warn(`❌ OpenRouter API error: ${response.status} - check API key`);
+
         return [];
       }
 
       const data = await response.json() as APIResponseData;
       return data.data?.map((model) => model.id)?.sort() || [];
-    } catch (error) {
-      console.warn('❌ Failed to fetch OpenRouter models:', error);
+    } catch {
       return [];
     }
   }
@@ -657,11 +665,9 @@ export class OpenRouterProvider extends BaseProvider {
     if (supportsStructuredTools) {
       // For structured tools, just return the base prompt
       // The LLM will use native function calling based on the tools parameter
-      console.log(`🔧 OpenRouter using structured tools for ${provider}, skipping XML tool instructions`);
       return basePrompt;
     } else {
       // For text-based tool calling, add the complex tool instructions with XML format
-      console.log(`🔧 OpenRouter using text-based tools for ${provider}, adding XML tool instructions`);
       const toolInstructions = generateOpenRouterToolPrompt(tools);
       return basePrompt + toolInstructions;
     }
@@ -797,26 +803,49 @@ export class OpenRouterProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     onStream?: (chunk: string) => void
   ): Promise<LLMResponse> {
-    console.log(`🔧 OpenRouter detected ${toolCalls.length} tool calls, executing...`);
+
 
     // Convert to standard format for tool execution
     const standardToolCalls = toolCalls
       .filter(tc => tc.id && tc.function?.name)
-      .map(tc => ({
-        id: tc.id!,
-        name: tc.function!.name!,
-        arguments: JSON.parse(tc.function!.arguments || '{}')
-      }));
+      .map(tc => {
+        let parsedArguments = {};
+        try {
+          parsedArguments = JSON.parse(tc.function!.arguments || '{}');
+        } catch (error) {
+          // If JSON parsing fails, try to extract arguments from malformed JSON
+          const argsStr = tc.function!.arguments || '{}';
+          try {
+            // Try to fix common JSON issues
+            const fixedArgs = argsStr
+              .replace(/'/g, '"')  // Replace single quotes with double quotes
+              .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')  // Quote unquoted keys
+              .replace(/:\s*([^",\[\]{}]+)(?=[,}])/g, ':"$1"');  // Quote unquoted string values
+            parsedArguments = JSON.parse(fixedArgs);
+          } catch {
+            // If all parsing fails, try to extract key parameters from the raw string
+            parsedArguments = this.extractArgumentsFromRawString(tc.function!.name!, argsStr);
+          }
+        }
+
+        // Validate that critical parameters are present for specific tools
+        parsedArguments = this.validateAndFixToolArguments(tc.function!.name!, parsedArguments);
+
+        return {
+          id: tc.id!,
+          name: tc.function!.name!,
+          arguments: parsedArguments
+        };
+      });
 
     // Execute all tool calls in parallel
     const toolResults = [];
     for (const toolCall of standardToolCalls) {
       try {
-        console.log(`🔧 Executing OpenRouter tool call: ${toolCall.name} with args:`, toolCall.arguments);
-        console.log(`🔧 OpenRouter executeMCPTool method available:`, typeof this.executeMCPTool);
+
 
         const toolResult = await this.executeMCPTool(toolCall.name, toolCall.arguments);
-        console.log(`✅ OpenRouter tool execution successful for ${toolCall.name}:`, toolResult?.substring(0, 100) + '...');
+
 
         toolResults.push({
           role: 'tool',
@@ -825,12 +854,7 @@ export class OpenRouterProvider extends BaseProvider {
           content: toolResult
         });
       } catch (error) {
-        console.error(`❌ OpenRouter tool execution failed for ${toolCall.name}:`, error);
-        console.error(`❌ Error details:`, {
-          name: error instanceof Error ? error.name : 'Unknown',
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
-        });
+
 
         const errorMessage = `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`;
         toolResults.push({
@@ -864,7 +888,7 @@ export class OpenRouterProvider extends BaseProvider {
       }
     ];
 
-    console.log(`🔄 Making OpenRouter follow-up call to process tool results...`);
+
 
     // Get tools for follow-up call to maintain structured tool calling context
     const tools = await this.getOpenRouterTools(settings);
@@ -883,7 +907,7 @@ export class OpenRouterProvider extends BaseProvider {
     if (supportsStructuredTools && tools.length > 0) {
       followUpRequestBody.tools = tools;
       followUpRequestBody.tool_choice = 'auto';
-      console.log(`🔧 OpenRouter follow-up call includes ${tools.length} structured tools to maintain context`);
+
     }
 
     const followUpResponse = await fetch(`${provider.baseUrl}/chat/completions`, {
@@ -919,8 +943,8 @@ export class OpenRouterProvider extends BaseProvider {
         toolCalls: standardToolCalls
       };
     } else {
-      const errorText = await followUpResponse.text();
-      console.error(`❌ OpenRouter follow-up call failed (${followUpResponse.status}):`, errorText);
+      await followUpResponse.text();
+
 
       // Return original response with tool calls
       return {
@@ -942,11 +966,11 @@ export class OpenRouterProvider extends BaseProvider {
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    signal?: AbortSignal
+    _signal?: AbortSignal
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
 
-    console.log(`🔍 Starting OpenRouter stream response handling...`);
+
     const reader = response.body?.getReader();
     if (!reader) {
       throw new Error('No response body');
@@ -954,7 +978,7 @@ export class OpenRouterProvider extends BaseProvider {
 
     let fullContent = '';
     let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
-    let chunkCount = 0;
+
     const toolCalls: Array<{ id?: string; type?: string; function?: { name?: string; arguments?: string } }> = [];
     const decoder = new TextDecoder();
 
@@ -965,10 +989,8 @@ export class OpenRouterProvider extends BaseProvider {
         if (done) break;
 
         const chunk = decoder.decode(value);
-        chunkCount++;
-        if (chunkCount <= 3) {
-          console.log(`🔍 OpenRouter stream chunk ${chunkCount}:`, chunk.substring(0, 200) + (chunk.length > 200 ? '...' : ''));
-        }
+
+
         const lines = chunk.split('\n');
 
         for (const line of lines) {
@@ -1008,8 +1030,8 @@ export class OpenRouterProvider extends BaseProvider {
               if (parsed.usage) {
                 usage = parsed.usage;
               }
-            } catch (error) {
-              console.error(`❌ OpenRouter error parsing chunk:`, error, `Data: ${data.substring(0, 100)}...`);
+            } catch {
+              // Skip invalid chunks
             }
           }
         }
@@ -1021,23 +1043,18 @@ export class OpenRouterProvider extends BaseProvider {
     // Filter out empty tool calls and log final state
     const validToolCalls = toolCalls.filter(tc => tc && tc.function?.name);
 
-    console.log(`🔍 OpenRouter stream response completed:`, {
-      contentLength: fullContent.length,
-      hasUsage: !!usage,
-      usage: usage,
-      toolCallsCount: validToolCalls.length
-    });
+
 
     // Check for text-based tool calls if no structured tool calls found
     if (validToolCalls.length === 0 && fullContent && (fullContent.includes('tool_call') || fullContent.includes('<|tool_call') || fullContent.includes('functions.'))) {
-      console.log(`🔍 OpenRouter: No structured tool calls found in stream, checking for text-based tool calls...`);
+
 
       // Get available tool names for parsing
       const availableTools = await this.getAvailableToolNames(settings);
       const textBasedToolCalls = this.parseTextBasedToolCalls(fullContent, availableTools);
 
       if (textBasedToolCalls.length > 0) {
-        console.log(`🔧 OpenRouter: Found ${textBasedToolCalls.length} text-based tool calls in stream:`, textBasedToolCalls);
+
 
         // Convert to structured format and execute
         const structuredToolCalls = textBasedToolCalls.map((tc, index) => ({
@@ -1063,22 +1080,17 @@ export class OpenRouterProvider extends BaseProvider {
     }
 
     if (validToolCalls.length > 0) {
-      console.log(`🔧 OpenRouter assembled ${validToolCalls.length} structured tool calls:`, validToolCalls.map(tc => ({
-        name: tc.function?.name,
-        arguments: tc.function?.arguments
-      })));
+
 
       // Execute tools and make follow-up call
       return this.executeToolsAndFollowUp(validToolCalls, fullContent, usage, settings, provider, conversationHistory, onStream);
     }
 
+    const { usage: usageInfo, cost } = this.createUsageAndCost(settings.model, usage);
     return {
       content: fullContent,
-      usage: usage ? {
-        promptTokens: usage.prompt_tokens || 0,
-        completionTokens: usage.completion_tokens || 0,
-        totalTokens: usage.total_tokens || 0
-      } : undefined,
+      usage: usageInfo,
+      cost,
       toolCalls: validToolCalls
         .filter(tc => tc.id && tc.function?.name)
         .map(tc => ({
@@ -1094,31 +1106,26 @@ export class OpenRouterProvider extends BaseProvider {
     response: Response,
     settings: LLMSettings,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    conversationId?: string
+    _conversationId?: string
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
     const choice = data.choices[0];
     const message = choice.message;
 
-    console.log('🔍 OpenRouter non-stream response:', {
-      hasToolCalls: !!(message.tool_calls && message.tool_calls.length > 0),
-      toolCallsCount: message.tool_calls?.length || 0,
-      content: message.content,
-      usage: data.usage
-    });
+
 
     // Check for text-based tool calls if no structured tool calls found
     if (!message.tool_calls || message.tool_calls.length === 0) {
       if (message.content && (message.content.includes('tool_call') || message.content.includes('<|tool_call') || message.content.includes('functions.'))) {
-        console.log(`🔍 OpenRouter: No structured tool calls found, checking for text-based tool calls...`);
+
 
         // Get available tool names for parsing
         const availableTools = await this.getAvailableToolNames(settings);
         const textBasedToolCalls = this.parseTextBasedToolCalls(message.content, availableTools);
 
         if (textBasedToolCalls.length > 0) {
-          console.log(`🔧 OpenRouter: Found ${textBasedToolCalls.length} text-based tool calls:`, textBasedToolCalls);
+
 
           // Convert to structured format and execute
           const structuredToolCalls = textBasedToolCalls.map((tc, index) => ({
@@ -1145,11 +1152,11 @@ export class OpenRouterProvider extends BaseProvider {
 
     // Handle tool calls if present (OpenAI format) - execute immediately like Anthropic
     if (message.tool_calls && message.tool_calls.length > 0) {
-      console.log(`🔧 OpenRouter response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
+
 
       // Check if we have the parallel execution method injected
       if ((this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).executeMultipleToolsParallel && (this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).summarizeToolResultsForModel) {
-        console.log(`🚀 Executing ${message.tool_calls.length} OpenRouter tools immediately`);
+
 
         // Format tool calls for execution
         const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
@@ -1164,43 +1171,36 @@ export class OpenRouterProvider extends BaseProvider {
         
         try {
           const parallelResults = await (executeMultipleToolsParallel as (calls: unknown[], provider: string) => Promise<Array<{success: boolean}>>)(toolCallsForExecution, 'openrouter');
-          console.log(`✅ OpenRouter tool execution completed: ${parallelResults.filter(r => r.success).length}/${parallelResults.length} successful`);
+
 
           // Get tool results summary for the model
           const toolSummary = (summarizeToolResultsForModel as (results: unknown[]) => string)(parallelResults);
           
           // Return response with tool results included
+          const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
           return {
             content: (message.content || '') + '\n\n' + toolSummary,
-            usage: data.usage ? {
-              promptTokens: data.usage.prompt_tokens,
-              completionTokens: data.usage.completion_tokens,
-              totalTokens: data.usage.total_tokens
-            } : undefined
+            usage,
+            cost
           };
-        } catch (error) {
-          console.error(`❌ OpenRouter tool execution failed:`, error);
+        } catch {
           // Fall back to returning tool calls for external handling
+          const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
           return {
             content: message.content || '',
-            usage: data.usage ? {
-              promptTokens: data.usage.prompt_tokens,
-              completionTokens: data.usage.completion_tokens,
-              totalTokens: data.usage.total_tokens
-            } : undefined,
+            usage,
+            cost,
             toolCalls: toolCallsForExecution
           };
         }
       } else {
-        console.warn(`⚠️ OpenRouter provider missing tool execution methods - falling back to external handling`);
+
         // Fall back to external handling if methods not injected
+        const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
         return {
           content: message.content || '',
-          usage: data.usage ? {
-            promptTokens: data.usage.prompt_tokens,
-            completionTokens: data.usage.completion_tokens,
-            totalTokens: data.usage.total_tokens
-          } : undefined,
+          usage,
+          cost,
           toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
             id: tc.id,
             name: tc.function.name,
@@ -1210,13 +1210,28 @@ export class OpenRouterProvider extends BaseProvider {
       }
     }
 
+    const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
     return {
       content: message.content,
-      usage: data.usage ? {
-        promptTokens: data.usage.prompt_tokens,
-        completionTokens: data.usage.completion_tokens,
-        totalTokens: data.usage.total_tokens
-      } : undefined
+      usage,
+      cost
     };
+  }
+
+  /**
+   * Create usage and cost information from OpenRouter API response
+   */
+  private createUsageAndCost(model: string, usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }) {
+    if (!usage) return { usage: undefined, cost: undefined };
+
+    const usageInfo = {
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0
+    };
+
+    const costInfo = PricingService.calculateCost('openrouter', model, usageInfo.promptTokens, usageInfo.completionTokens);
+
+    return { usage: usageInfo, cost: costInfo };
   }
 }

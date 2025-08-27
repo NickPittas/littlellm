@@ -112,26 +112,12 @@ export class LMStudioProvider extends BaseProvider {
     const hasDataPatterns = /\b(data|database|api|json|xml|csv|export|import)\b/.test(fullContext);
 
     // Combine all indicators - be more inclusive for tool usage
-    const shouldInclude = hasToolIndicators ||
-                         hasActionVerbs ||
-                         hasFilePatterns ||
-                         hasCommandPatterns ||
-                         hasDataPatterns ||
-                         (hasQuestionWords && hasTimeReference);
-
-    console.log(`🔍 Comprehensive tool usage analysis:`, {
-      queryText: queryText.substring(0, 100),
-      hasToolIndicators,
-      hasActionVerbs,
-      hasFilePatterns,
-      hasCommandPatterns,
-      hasDataPatterns,
-      hasQuestionWords,
-      hasTimeReference,
-      decision: shouldInclude
-    });
-
-    return shouldInclude;
+    return hasToolIndicators ||
+           hasActionVerbs ||
+           hasFilePatterns ||
+           hasCommandPatterns ||
+           hasDataPatterns ||
+           (hasQuestionWords && hasTimeReference);
   }
 
 
@@ -151,15 +137,11 @@ export class LMStudioProvider extends BaseProvider {
 
     // Determine if tools are needed based on query content
     const needsTools = this.shouldIncludeTools(message, conversationHistory);
-    console.log(`🤔 LM Studio: Query analysis - Tools needed: ${needsTools}`);
 
     // Get tools only if needed (smart tool usage)
     let mcpTools: unknown[] = [];
     if (needsTools) {
       mcpTools = await this.getMCPToolsForProvider('lmstudio', settings);
-      console.log(`🔧 LM Studio: Including ${mcpTools.length} tools for this query`);
-    } else {
-      console.log(`🚫 LM Studio: Skipping tools for this query - no external data needed`);
     }
 
     // Use behavioral system prompt + tool descriptions (text-based approach)
@@ -172,10 +154,7 @@ export class LMStudioProvider extends BaseProvider {
 
     // Add tool descriptions to system prompt only if tools are needed
     if (mcpTools.length > 0) {
-      console.log(`🔍 [LM STUDIO DEBUG] Available tools being passed to model:`, mcpTools.map(t => {
-        const tool = t as { name?: string; function?: { name?: string } };
-        return tool.name || tool.function?.name || 'unknown';
-      }));
+
 
       systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, mcpTools as ToolObject[]);
       systemPrompt += `\n\n## Tool Usage Guidance
@@ -192,21 +171,7 @@ Answer directly for general knowledge questions without tools.
 
 CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
 
-      console.log(`🔧 LM Studio enhanced system prompt with ${mcpTools.length} text-based tool descriptions`);
-      console.log(`🔍 [LM STUDIO DEBUG] System prompt length: ${systemPrompt.length} characters`);
-    } else if (needsTools) {
-      console.warn(`⚠️ [LM STUDIO DEBUG] Tools were needed but none available!`);
-    } else {
-      console.log(`✅ [LM STUDIO DEBUG] No tools included - query can be answered directly`);
     }
-
-    console.log(`🔍 LM Studio system prompt source:`, {
-      hasCustom: hasCustomSystemPrompt,
-      usingCustom: hasCustomSystemPrompt,
-      promptLength: systemPrompt?.length || 0,
-      promptStart: systemPrompt?.substring(0, 100) + '...',
-      toolsIncluded: mcpTools.length > 0
-    });
 
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
@@ -225,25 +190,21 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       const messageWithImages = message as { text: string; images: string[] };
       const content: ContentItem[] = [{ type: 'text', text: messageWithImages.text }];
 
-      console.log(`🖼️ LM Studio: Processing ${messageWithImages.images.length} images`);
+
 
       for (const imageUrl of messageWithImages.images) {
-        console.log(`🖼️ LM Studio: Raw image data length:`, imageUrl.length);
+
 
         // Extract base64 data if it's a data URL, otherwise assume it's raw base64
         let base64Data = imageUrl;
-        if (imageUrl.startsWith('data:image/')) {
+        if (imageUrl.startsWith('data:image/') || imageUrl.includes(',')) {
           base64Data = imageUrl.split(',')[1];
-          console.log(`🖼️ LM Studio: Extracted base64 from data URL`);
-        } else if (imageUrl.includes(',')) {
-          base64Data = imageUrl.split(',')[1];
-          console.log(`🖼️ LM Studio: Extracted base64 from comma-separated data`);
         }
 
         // Use exact format from working Python example: f"data:image/jpeg;base64,{base64_image}"
         const formattedImageUrl = `data:image/jpeg;base64,${base64Data}`;
 
-        console.log(`🖼️ LM Studio: Formatted image URL:`, formattedImageUrl.substring(0, 50) + '...');
+
 
         // Exact structure from working example
         content.push({
@@ -253,7 +214,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       }
 
       messages.push({ role: 'user', content });
-      console.log(`🖼️ LM Studio: Created message with ${content.length} content items`);
+
     }
 
     const requestBody: Record<string, unknown> = {
@@ -264,37 +225,16 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       stream: !!onStream
     };
 
-    // Check if this request contains images
-    const hasImages = (requestBody.messages as Array<{content: unknown}>).some(msg =>
-      Array.isArray(msg.content) && msg.content.some((item: {type?: string}) => item.type === 'image_url')
-    );
 
-    // Debug: Log the complete request being sent to LM Studio
-    console.log(`🔍 LM Studio request body:`, {
-      model: requestBody.model,
-      messageCount: (requestBody.messages as Array<unknown>).length,
-      hasImages: hasImages,
-      stream: requestBody.stream
-    });
 
     // LM Studio uses text-based tool descriptions in system prompt (no structured tools)
-    console.log(`🚀 LM Studio API call with text-based tools:`, {
-      model: settings.model,
-      toolDescriptionsInSystemPrompt: mcpTools.length > 0,
-      toolCount: mcpTools.length,
-      note: 'Tools are included as text descriptions in system prompt, not as structured tools parameter'
-    });
 
     // NOTE: No requestBody.tools - LM Studio doesn't support structured tools
     // Tool descriptions are already included in the system prompt above
 
     // Use standard OpenAI-compatible endpoint
     const apiUrl = `${baseUrl}/chat/completions`;
-    console.log(`🔗 LMStudio request URL: ${apiUrl}`);
-    console.log(`🔗 LMStudio request headers:`, {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${settings.apiKey || 'not-needed'}`
-    });
+
 
     let response;
     try {
@@ -308,13 +248,11 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
         signal
       });
     } catch (fetchError) {
-      console.error(`❌ LMStudio connection failed:`, fetchError);
       throw new Error(`Failed to connect to LM Studio at ${baseUrl}. Make sure LM Studio is running and the server is started. Error: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`);
     }
 
     if (!response.ok) {
       const error = await response.text();
-      console.error(`❌ LMStudio API error (${response.status}):`, error);
 
       // Check for common LMStudio issues
       if (response.status === 404) {
@@ -340,9 +278,9 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     }
   }
 
-  async fetchModels(apiKey: string, baseUrl?: string): Promise<string[]> {
+  async fetchModels(_apiKey: string, baseUrl?: string): Promise<string[]> {
     if (!baseUrl) {
-      console.error('❌ No LM Studio base URL provided - cannot fetch models');
+
       throw new Error('LM Studio base URL is required to fetch available models. Please add the base URL in settings (e.g., http://localhost:1234).');
     }
 
@@ -356,7 +294,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ LM Studio API error: ${response.status}`, errorText);
+
         throw new Error(`Failed to connect to LM Studio at ${baseUrl}. Status: ${response.status} - ${errorText}. Make sure LM Studio is running and the server is started.`);
       }
 
@@ -369,7 +307,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
 
       return models;
     } catch (error) {
-      console.error('❌ Failed to fetch LM Studio models:', error);
+
       throw error instanceof Error ? error : new Error(`Failed to fetch LM Studio models: ${String(error)}`);
     }
   }
@@ -454,7 +392,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    signal?: AbortSignal
+    _signal?: AbortSignal
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     // Try native OpenAI-compatible tool calling first, then fallback to text-based
@@ -510,13 +448,13 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
                 // Check for native tool calls
                 if (delta?.tool_calls) {
                   hasNativeToolCalls = true;
-                  console.log(`🔧 LM Studio detected native tool calls:`, delta.tool_calls);
+
 
                   // Accumulate tool calls (they might come in chunks)
                   for (const toolCall of delta.tool_calls) {
                     // Only process tool calls that have valid data
                     if (!toolCall.id || !toolCall.function?.name) {
-                      console.warn(`⚠️ Skipping incomplete tool call:`, toolCall);
+
                       continue;
                     }
 
@@ -559,8 +497,8 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
                     totalTokens: parsed.usage.total_tokens
                   };
                 }
-              } catch (error) {
-                console.warn('Failed to parse LM Studio stream chunk:', error);
+              } catch {
+                // Failed to parse stream chunk, continue
               }
             }
           }
@@ -570,11 +508,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       }
     }
 
-    console.log(`🔍 LM Studio hybrid analysis:`, {
-      hasNativeToolCalls,
-      nativeToolCallsCount: nativeToolCalls.length,
-      contentLength: fullContent.length
-    });
+
 
     // If we detected native tool calls during streaming, validate and use them
     if (hasNativeToolCalls && nativeToolCalls.length > 0) {
@@ -582,7 +516,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       const validToolCalls = nativeToolCalls.filter(tc => {
         // Check basic structure
         if (!tc.id || !tc.function?.name || tc.function?.name.trim() === '') {
-          console.warn(`⚠️ Filtering out tool call with missing name:`, tc);
+
           return false;
         }
 
@@ -592,7 +526,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
           try {
             parsedArgs = JSON.parse(tc.function.arguments);
           } catch {
-            console.warn(`⚠️ Filtering out tool call with invalid JSON arguments:`, tc);
+
             return false;
           }
         }
@@ -600,36 +534,36 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
         // Check if arguments are meaningful (not just empty object)
         const hasValidArgs = Object.keys(parsedArgs).length > 0;
         if (!hasValidArgs) {
-          console.warn(`⚠️ Filtering out tool call with empty arguments:`, tc);
+
           return false;
         }
 
         // Tool-specific validation
         const toolName = tc.function.name;
         if (toolName === 'web_search' && !parsedArgs.query) {
-          console.warn(`⚠️ Filtering out web_search without query parameter:`, tc);
+
           return false;
         }
 
         if ((toolName === 'read_file' || toolName === 'write_file' || toolName === 'edit_file') && !parsedArgs.path) {
-          console.warn(`⚠️ Filtering out ${toolName} without path parameter:`, tc);
+
           return false;
         }
 
         if (toolName === 'fetch' && !parsedArgs.url) {
-          console.warn(`⚠️ Filtering out fetch without url parameter:`, tc);
+
           return false;
         }
 
-        console.log(`✅ Valid tool call: ${toolName} with args:`, parsedArgs);
+
         return true;
       });
 
       if (validToolCalls.length > 0) {
-        console.log(`🔧 LM Studio using native tool calling with ${validToolCalls.length} valid tool calls`);
+
         return this.executeNativeToolCalls(validToolCalls, fullContent, usage, settings, provider, conversationHistory, onStream);
       } else {
-        console.log(`⚠️ All ${nativeToolCalls.length} native tool calls were invalid, falling back to text parsing`);
+
         // Reset the flag since we're not using native tool calls
         hasNativeToolCalls = false;
       }
@@ -637,12 +571,11 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
 
     // For text-based parsing, we now have the COMPLETE response
     // Parse it only after streaming is finished
-    console.log(`🔍 LM Studio parsing complete response for text-based tool calls`);
-    console.log(`🔍 STREAMING COMPLETE - Full content length: ${fullContent.length}`);
+
 
     // Safety check: Only parse if we have substantial content (not partial)
     if (fullContent.length < 10) {
-      console.log(`⚠️ Content too short (${fullContent.length} chars), likely incomplete - skipping tool parsing`);
+
       return {
         content: fullContent,
         usage: usage ? {
@@ -662,7 +595,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
   // Method to inject actual tool names from MCP service
   setAvailableToolNames(toolNames: string[]): void {
     this.availableToolNames = toolNames;
-    console.log(`🔧 LM Studio: Updated available tool names:`, toolNames);
+
   }
 
   private async handleTextBasedToolCallingFromContent(
@@ -673,15 +606,11 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
-    console.log(`🔍 LM Studio parsing complete response for tool calls`);
+
 
     // Handle empty responses
     if (!fullContent || fullContent.trim().length === 0) {
-      console.warn(`⚠️ LM Studio returned empty response. This might indicate:`);
-      console.warn(`   - Model failed to generate content`);
-      console.warn(`   - Network/connection issues`);
-      console.warn(`   - Model overloaded or timeout`);
-      console.warn(`   - Model not properly loaded in LM Studio`);
+
 
       return {
         content: "I apologize, but I didn't receive a proper response from the LM Studio model. This could be due to the model being overloaded, not properly loaded, or a connection issue. Please check that the model is running in LM Studio and try again.",
@@ -694,58 +623,41 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     }
 
     // Remove thinking content before parsing for tool calls
-    console.log(`🔍 RAW CONTENT BEFORE CLEANING:`, fullContent);
-
-    // Check if content appears to contain incomplete tool calls
-    const hasIncompleteToolCall = fullContent.includes('to=') && !fullContent.match(/to=[a-zA-Z_][a-zA-Z0-9_-]+\s*json\{.*\}/);
-    if (hasIncompleteToolCall) {
-      console.log(`⚠️ Detected incomplete tool call in content - this suggests parsing during streaming`);
-      console.log(`🔍 Content snippet:`, fullContent.substring(fullContent.lastIndexOf('to='), fullContent.lastIndexOf('to=') + 50));
-    }
-
     const contentWithoutThinking = this.removeThinkingContent(fullContent);
-    console.log(`🧠 Content after removing thinking tags:`, contentWithoutThinking);
 
     // Parse the response for tool calls (excluding thinking content)
     const toolCalls = this.parseToolCallsFromText(contentWithoutThinking);
 
-    console.log(`🔍 Text parsing result: found ${toolCalls.length} tool calls:`, toolCalls);
-
     if (toolCalls.length > 0) {
-      console.log(`🔧 LM Studio found ${toolCalls.length} tool calls in complete response`);
       return this.executeTextBasedTools(toolCalls, fullContent, usage, settings, provider, conversationHistory, onStream);
     }
 
     // Return the original content (with thinking) for UI display
     // The UI component will handle parsing and displaying thinking content
-    const result = {
+    const usageInfo = usage ? {
+      promptTokens: usage.promptTokens || 0,
+      completionTokens: usage.completionTokens || 0,
+      totalTokens: usage.totalTokens || 0
+    } : undefined;
+
+    // No cost calculation for local providers
+    return {
       content: fullContent, // Keep original content with thinking for UI
-      usage: usage ? {
-        promptTokens: usage.promptTokens || 0,
-        completionTokens: usage.completionTokens || 0,
-        totalTokens: usage.totalTokens || 0
-      } : undefined
+      usage: usageInfo,
+      cost: undefined
     };
-
-    console.log(`🔍 LM Studio returning result without tool calls:`, {
-      contentLength: result.content.length,
-      hasUsage: !!result.usage,
-      hasToolCalls: false
-    });
-
-    return result;
   }
 
   private async executeNativeToolCalls(
     toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }>,
-    initialContent: string,
-    usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined,
+    _initialContent: string,
+    _usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined,
     settings: LLMSettings,
-    provider: LLMProvider,
+    _provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
-    console.log(`🔧 LM Studio executing ${toolCalls.length} native tool calls`);
+
 
     // Execute all tool calls
     const toolResults: Array<{ id: string; name: string; result: string; error?: boolean }> = [];
@@ -757,14 +669,11 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
         if (toolCall.function.arguments) {
           try {
             args = JSON.parse(toolCall.function.arguments);
-          } catch (parseError) {
-            console.warn(`⚠️ Failed to parse tool arguments: ${toolCall.function.arguments}`, parseError);
+          } catch {
             // Try to extract arguments using fallback parsing
             args = this.parseArgumentsFromText(toolCall.function.arguments);
           }
         }
-
-        console.log(`🔧 Executing LM Studio native tool: ${toolCall.function.name} with args:`, args);
 
         const result = await this.executeMCPTool(toolCall.function.name, args);
         toolResults.push({
@@ -773,9 +682,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
           result: typeof result === 'string' ? result : JSON.stringify(result),
           error: false
         });
-        console.log(`✅ LM Studio native tool ${toolCall.function.name} executed successfully`);
       } catch (error) {
-        console.error(`❌ LM Studio native tool ${toolCall.function.name} failed:`, error);
         const userFriendlyError = this.formatToolError(toolCall.function.name, error);
         toolResults.push({
           id: toolCall.id,
@@ -793,7 +700,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       toolCalls
     );
 
-    console.log(`🔄 LM Studio making native follow-up call with proper conversation format`);
+
 
     // Make a follow-up call without tools (following official LM Studio pattern)
     const followUpResponse = await this.makeDirectFollowUpCall(
@@ -811,8 +718,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
         if (tc.function.arguments) {
           try {
             parsedArgs = JSON.parse(tc.function.arguments);
-          } catch (parseError) {
-            console.warn(`⚠️ Failed to parse tool arguments for return: ${tc.function.arguments}`, parseError);
+          } catch {
             parsedArgs = this.parseArgumentsFromText(tc.function.arguments);
           }
         }
@@ -836,21 +742,18 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     response: Response,
     settings: LLMSettings,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    conversationId?: string
+    _conversationId?: string
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
-    console.log(`🔍 LMStudio raw response:`, JSON.stringify(data, null, 2));
     const message = data.choices[0].message;
-    console.log(`🔍 LMStudio message:`, message);
 
     // Handle tool calls if present - execute immediately like Anthropic
     if (message.tool_calls && message.tool_calls.length > 0) {
-      console.log(`🔧 LMStudio response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
 
       // Check if we have the parallel execution method injected
       if ((this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).executeMultipleToolsParallel && (this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).summarizeToolResultsForModel) {
-        console.log(`🚀 Executing ${message.tool_calls.length} LMStudio tools immediately`);
+
         
         // Format tool calls for execution
         const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => {
@@ -859,8 +762,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
           if (toolCall.function.arguments) {
             try {
               parsedArgs = JSON.parse(toolCall.function.arguments);
-            } catch (parseError) {
-              console.warn(`⚠️ Failed to parse tool arguments in non-stream: ${toolCall.function.arguments}`, parseError);
+            } catch {
               parsedArgs = this.parseArgumentsFromText(toolCall.function.arguments);
             }
           }
@@ -878,51 +780,43 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
         
         try {
           const parallelResults = await (executeMultipleToolsParallel as (calls: unknown[], provider: string) => Promise<Array<{success: boolean}>>)(toolCallsForExecution, 'lmstudio');
-          console.log(`✅ LMStudio tool execution completed: ${parallelResults.filter(r => r.success).length}/${parallelResults.length} successful`);
+
 
           // Get tool results summary for the model
           const toolSummary = (summarizeToolResultsForModel as (results: unknown[]) => string)(parallelResults);
           
           // Return response with tool results included
+          const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
           return {
             content: (message.content || '') + '\n\n' + toolSummary,
-            usage: data.usage ? {
-              promptTokens: data.usage.prompt_tokens,
-              completionTokens: data.usage.completion_tokens,
-              totalTokens: data.usage.total_tokens
-            } : undefined
+            usage,
+            cost
           };
-        } catch (error) {
-          console.error(`❌ LMStudio tool execution failed:`, error);
+        } catch {
           // Fall back to returning tool calls for external handling
+          const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
           return {
             content: message.content || '',
-            usage: data.usage ? {
-              promptTokens: data.usage.prompt_tokens,
-              completionTokens: data.usage.completion_tokens,
-              totalTokens: data.usage.total_tokens
-            } : undefined,
+            usage,
+            cost,
             toolCalls: toolCallsForExecution
           };
         }
       } else {
-        console.warn(`⚠️ LMStudio provider missing tool execution methods - falling back to external handling`);
+
         // Fall back to external handling if methods not injected
+        const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
         return {
           content: message.content || '',
-          usage: data.usage ? {
-            promptTokens: data.usage.prompt_tokens,
-            completionTokens: data.usage.completion_tokens,
-            totalTokens: data.usage.total_tokens
-          } : undefined,
+          usage,
+          cost,
           toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => {
             // Safely parse arguments
             let parsedArgs: Record<string, unknown> = {};
             if (tc.function.arguments) {
               try {
                 parsedArgs = JSON.parse(tc.function.arguments);
-              } catch (parseError) {
-                console.warn(`⚠️ Failed to parse tool arguments in non-stream: ${tc.function.arguments}`, parseError);
+              } catch {
                 parsedArgs = this.parseArgumentsFromText(tc.function.arguments);
               }
             }
@@ -942,7 +836,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     const toolCalls = this.parseToolCallsFromText(content);
 
     if (toolCalls.length > 0) {
-      console.log(`🔧 LM Studio found ${toolCalls.length} tool calls in non-stream response`);
+
       // For non-stream, we can't use onStream, so pass a no-op function
       return this.executeTextBasedTools(toolCalls, content, data.usage ? {
         promptTokens: data.usage.prompt_tokens,
@@ -951,30 +845,22 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       } : undefined, settings, { id: 'lmstudio', name: 'LM Studio' } as LLMProvider, conversationHistory, () => {});
     }
 
+    const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
     return {
       content: content,
-      usage: data.usage ? {
-        promptTokens: data.usage.prompt_tokens,
-        completionTokens: data.usage.completion_tokens,
-        totalTokens: data.usage.total_tokens
-      } : undefined
+      usage,
+      cost
     };
   }
 
   private parseToolCallsFromText(content: string): Array<{ name: string; arguments: Record<string, unknown> }> {
-    console.log(`🚨 PARSETEXT METHOD CALLED WITH CONTENT: "${content}"`);
+
     const toolCalls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
     // Get available tool names from MCP tools
     const availableTools = this.getAvailableToolNames();
 
-    console.log(`🔍 LM Studio parsing text for tools. Available tools:`, availableTools);
-    console.log(`🔍 Content to parse:`, content);
 
-    // DEBUG: Test if content matches our expected pattern
-    const testRegex = /to=([a-zA-Z_][a-zA-Z0-9_-]*)\s*json/gi;
-    const testMatch = testRegex.exec(content);
-    console.log(`🔍 DEBUG: Simple regex test result:`, testMatch);
 
     // STEP 1: Look for structured tool call formats first
 
@@ -1051,14 +937,12 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
           }
         }
       }
-    } catch (e) {
-      console.log('⚠️ Fenced tool block parsing failed:', e);
+    } catch {
+      // Fenced tool block parsing failed
     }
 
     if (toolCalls.length > 0) {
-      const unique = this.deduplicateToolCalls(toolCalls);
-      console.log(`✅ Found ${unique.length} fenced tool calls`);
-      return unique;
+      return this.deduplicateToolCalls(toolCalls);
     }
 
     // Pattern 1: New model format with optional commentary prefix and to=tool_name and JSON arguments
@@ -1072,8 +956,6 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     const nestedFunctionFormatRegex = /(?:commentary\s+)?to=functions\s*json\{[^}]*"name"\s*:\s*"([^"]+)"[^}]*"arguments"\s*:\s*(\{[^}]*\})[^}]*\}/gi;
 
     // Handle nested function format FIRST
-    console.log(`🔍 Testing nested format regex against content: "${content}"`);
-    console.log(`🔍 Nested format regex: ${nestedFunctionFormatRegex}`);
 
     let nestedMatch;
     while ((nestedMatch = nestedFunctionFormatRegex.exec(content)) !== null) {
@@ -1086,12 +968,10 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
           try {
             const args = JSON.parse(jsonArgs);
             toolCalls.push({ name: rawToolName, arguments: args });
-            console.log(`✅ Found valid nested function tool call: ${rawToolName} with args:`, args);
-          } catch (error) {
-            console.log(`⚠️ Failed to parse JSON arguments for nested ${rawToolName}:`, jsonArgs, error);
+          } catch {
+            // Failed to parse JSON arguments
           }
         } else {
-          console.log(`⚠️ Nested function tool "${rawToolName}" not found. Available tools:`, availableTools.slice(0, 10), '...');
           // Return an error response that the LLM can see and correct
           return [{
             name: 'error_response',
@@ -1100,30 +980,22 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
             }
           }];
         }
-      } catch (error) {
-        console.log(`⚠️ Failed to parse nested function format tool call:`, nestedMatch[0], error);
+      } catch {
+        // Failed to parse nested function format tool call
       }
     }
 
     // If we found nested function calls, deduplicate and return them
     if (toolCalls.length > 0) {
-      const uniqueToolCalls = this.deduplicateToolCalls(toolCalls);
-      console.log(`✅ Found ${toolCalls.length} nested function format tool calls, deduplicated to ${uniqueToolCalls.length}`);
-      return uniqueToolCalls;
+      return this.deduplicateToolCalls(toolCalls);
     }
 
     let newModelMatch;
-    console.log(`🔍 Testing regular format regex against content: "${content}"`);
-    console.log(`🔍 Regular format regex: ${newModelFormatRegex}`);
-
     while ((newModelMatch = newModelFormatRegex.exec(content)) !== null) {
       try {
-        console.log(`🔍 Regular format match found:`, newModelMatch);
         const rawToolName = newModelMatch[1];
         const jsonArgs = newModelMatch[2];
-        console.log(`🔍 Extracted tool name: "${rawToolName}", args: "${jsonArgs}"`);
-        console.log(`🔍 Full regex match:`, newModelMatch);
-        console.log(`🔍 Available tools containing "${rawToolName}":`, availableTools.filter(t => t.includes(rawToolName)));
+
 
         // Only parse tools that actually exist - no guessing or mapping
         if (availableTools.includes(rawToolName)) {
@@ -1132,17 +1004,15 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
             let cleanJsonArgs = jsonArgs;
             if (jsonArgs === '{"":""}' || jsonArgs === '{"": ""}') {
               cleanJsonArgs = '{}';
-              console.log(`🔧 Fixed malformed empty JSON: ${jsonArgs} -> ${cleanJsonArgs}`);
+
             }
 
             const args = JSON.parse(cleanJsonArgs);
             toolCalls.push({ name: rawToolName, arguments: args });
-            console.log(`✅ Found valid tool call: ${rawToolName} with args:`, args);
-          } catch (error) {
-            console.log(`⚠️ Failed to parse JSON arguments for ${rawToolName}:`, jsonArgs, error);
+          } catch {
+            // Failed to parse JSON arguments
           }
         } else {
-          console.log(`⚠️ Tool "${rawToolName}" not found. Available tools:`, availableTools.slice(0, 10), '...');
           // Return an error response that the LLM can see and correct
           return [{
             name: 'error_response',
@@ -1151,16 +1021,14 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
             }
           }];
         }
-      } catch (error) {
-        console.log(`⚠️ Failed to parse new model format tool call:`, newModelMatch[0], error);
+      } catch {
+        // Failed to parse new model format tool call
       }
     }
 
     // If we found any new model format tool calls, deduplicate and return them
     if (toolCalls.length > 0) {
-      const uniqueToolCalls = this.deduplicateToolCalls(toolCalls);
-      console.log(`✅ Found ${toolCalls.length} new model format tool calls, deduplicated to ${uniqueToolCalls.length}`);
-      return uniqueToolCalls;
+      return this.deduplicateToolCalls(toolCalls);
     }
 
     // Pattern 2: Enhanced tool_call format with ```json wrapper (Option 2)
@@ -1181,20 +1049,18 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
             }
           }
           if (toolCalls.length > 0) {
-            const unique = this.deduplicateToolCalls(toolCalls);
-            console.log(`✅ Found ${unique.length} JSON-wrapped array tool calls`);
-            return unique;
+            return this.deduplicateToolCalls(toolCalls);
           }
         } else if (jsonObj.tool_call && jsonObj.tool_call.name) {
           const tName = jsonObj.tool_call.name;
           const tArgsRaw = jsonObj.tool_call.arguments ?? {};
           const tArgs = typeof tArgsRaw === 'string' ? (JSON.parse(tArgsRaw) as Record<string, unknown>) : tArgsRaw;
           toolCalls.push({ name: tName, arguments: tArgs });
-          console.log(`✅ Found JSON-wrapped tool call: ${tName} with args:`, tArgs);
+
           return toolCalls; // Return early if we found the structured format
         }
       } catch {
-        console.log(`⚠️ Failed to parse JSON-wrapped tool call:`, match[1]);
+        // Failed to parse JSON-wrapped tool call
       }
     }
 
@@ -1216,14 +1082,12 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
             toolCalls.push({ name: tName, arguments: tArgs });
           }
         }
-      } catch (e) {
-        console.log(`⚠️ Failed to parse direct tool_call JSON:`, e);
+      } catch {
+        // Failed to parse direct tool_call JSON
       }
     }
     if (toolCalls.length > 0) {
-      const unique = this.deduplicateToolCalls(toolCalls);
-      console.log(`✅ Found ${unique.length} direct tool_call objects`);
-      return unique;
+      return this.deduplicateToolCalls(toolCalls);
     }
 
     // Pattern 4: Look for any JSON blocks and check if they contain tool calls
@@ -1251,21 +1115,20 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
             name: tName,
             arguments: tArgs
           });
-          console.log(`✅ Found JSON block tool call: ${tName} with args:`, tArgs);
         }
       } catch {
-        console.log(`⚠️ Failed to parse JSON block:`, jsonMatch[1]);
+        // Failed to parse JSON block
       }
     }
 
     // If we found structured tool calls, return them
     if (toolCalls.length > 0) {
-      console.log(`✅ Found ${toolCalls.length} structured tool calls, returning them`);
+
       return toolCalls;
     }
 
     // STEP 2: If no structured tool calls found, search for traces of tool usage in text
-    console.log(`🔍 No structured tool calls found, searching for tool usage traces in text...`);
+
 
     return this.parseToolTracesFromText(content, availableTools);
   }
@@ -1273,7 +1136,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
   private parseToolTracesFromText(content: string, availableTools: string[]): Array<{ name: string; arguments: Record<string, unknown> }> {
     const toolCalls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
 
-    console.log(`🔍 Searching for tool usage traces in content...`);
+
 
     for (const toolName of availableTools) {
       // Pattern 1: Direct tool mentions with intent to use
@@ -1295,7 +1158,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
           const args = this.extractArgumentsFromIntent(toolName, intent);
           if (Object.keys(args).length > 0) {
             toolCalls.push({ name: toolName, arguments: args });
-            console.log(`✅ Found tool usage intent: ${toolName} with intent "${intent}" -> args:`, args);
+
             break; // Found this tool, move to next
           }
         }
@@ -1310,7 +1173,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
         const args = this.parseArgumentsFromText(argsText);
         if (Object.keys(args).length > 0) {
           toolCalls.push({ name: toolName, arguments: args });
-          console.log(`✅ Found function call: ${toolName}(${argsText}) -> args:`, args);
+
           continue;
         }
       }
@@ -1324,13 +1187,13 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
         const args = this.createArgumentsForTool(toolName, query);
         if (Object.keys(args).length > 0) {
           toolCalls.push({ name: toolName, arguments: args });
-          console.log(`✅ Found quoted params: ${toolName} with "${query}" -> args:`, args);
+
           continue;
         }
       }
     }
 
-    console.log(`🔍 Tool trace parsing found ${toolCalls.length} tool calls:`, toolCalls);
+
     return toolCalls;
   }
 
@@ -1420,7 +1283,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       // Try to parse as JSON first
       return JSON.parse(argsText);
     } catch {
-      console.log(`⚠️ JSON parsing failed for: ${argsText}, trying fallback parsing`);
+
 
       // If JSON parsing fails, try to extract key-value pairs
       const args: Record<string, unknown> = {};
@@ -1465,12 +1328,12 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
         // Last resort: attempt to salvage from malformed JSON
         const recovered = JSONUtils.extractArgumentsFromMalformedJson(argsText);
         if (Object.keys(recovered).length > 0) {
-          console.log(`✅ Recovered arguments from malformed JSON:`, recovered);
+
           return recovered;
         }
       }
 
-      console.log(`✅ Fallback parsing extracted:`, args);
+
       return args;
     }
   }
@@ -1494,34 +1357,31 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
 
   private async executeTextBasedTools(
     toolCalls: Array<{ name: string; arguments: Record<string, unknown> }>,
-    originalContent: string,
-    usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined,
+    _originalContent: string,
+    _usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined,
     settings: LLMSettings,
-    provider: LLMProvider,
+    _provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
-    console.log(`🔧 LM Studio executing ${toolCalls.length} text-based tool calls`);
-
     // STEP 1: Show tool execution start but CONTINUE streaming thinking content
-    console.log(`🔧 LM Studio: Starting tool execution while preserving thinking stream`);
 
     // Show tool execution start
-    const toolExecutionHeader = `\n\n<tool_execution>\n🔧 **Tool Execution Started**\n\nExecuting ${toolCalls.length} tool${toolCalls.length !== 1 ? 's' : ''}:\n${toolCalls.map(tc => `- ${tc.name}`).join('\n')}\n</tool_execution>\n\n`;
+    const toolNames = toolCalls.map(tc => `- ${tc.name}`).join('\n');
+    const toolExecutionHeader = `\n\n<tool_execution>\n🔧 **Tool Execution Started**\n\nExecuting ${toolCalls.length} tool${toolCalls.length !== 1 ? 's' : ''}:\n${toolNames}\n</tool_execution>\n\n`;
     onStream(toolExecutionHeader);
 
     // Execute all tool calls
     const toolResults: Array<{ name: string; result: string; error?: boolean }> = [];
 
     // STEP 2: Execute ALL tools to completion WITHOUT streaming
-    console.log(`🔧 LM Studio: Executing ${toolCalls.length} tools to completion...`);
 
     for (const toolCall of toolCalls) {
       try {
         // Handle error responses from tool parsing
         if (toolCall.name === 'error_response') {
           const errVal = (toolCall.arguments as Record<string, unknown>)?.error;
-          console.log(`⚠️ Tool parsing error:`, errVal);
+
           const errStr = typeof errVal === 'string' ? errVal : JSON.stringify(errVal ?? 'Tool parsing error');
           toolResults.push({
             name: 'error_response',
@@ -1531,22 +1391,15 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
           continue;
         }
 
-        console.log(`🔧 Executing LM Studio tool: ${toolCall.name} with args:`, toolCall.arguments);
-
         const result = await this.executeMCPTool(toolCall.name, toolCall.arguments);
         const resultString = typeof result === 'string' ? result : JSON.stringify(result);
-
-        console.log(`🔍 DEBUG: Tool ${toolCall.name} returned result:`, resultString.substring(0, 200) + '...');
 
         toolResults.push({
           name: toolCall.name,
           result: resultString,
           error: false
         });
-
-        console.log(`✅ LM Studio tool ${toolCall.name} executed successfully`);
       } catch (error) {
-        console.error(`❌ LM Studio tool ${toolCall.name} failed:`, error);
         const userFriendlyError = this.formatToolError(toolCall.name, error);
 
         toolResults.push({
@@ -1561,7 +1414,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     const successCount = toolResults.filter(tr => !tr.error).length;
     const failureCount = toolResults.filter(tr => tr.error).length;
 
-    console.log(`🏁 LM Studio: Tool execution complete - ${successCount} successful, ${failureCount} failed`);
+
 
     // Show completion in UI
     const completionMessage = `<tool_execution>\n🏁 **Tool Execution Complete**\n\n✅ ${successCount} successful, ❌ ${failureCount} failed\n\nStarting fresh LLM call with results...\n</tool_execution>\n\n`;
@@ -1593,8 +1446,6 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     );
 
     // STEP 4: Make completely fresh LLM call with clean conversation history
-    console.log(`🔄 LM Studio: Starting FRESH LLM call with tool results (no prompt contamination)`);
-    console.log(`🧹 LM Studio: Clean conversation history prepared with ${properConversationHistory.length} messages`);
 
     // Make a follow-up call without tools (following official LM Studio pattern)
     const followUpResponse = await this.makeDirectFollowUpCall(
@@ -1605,7 +1456,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
 
     // According to LM Studio docs, we should return ONLY the final assistant response
     // Tool execution details are handled by the UI separately via toolCalls
-    console.log(`🎯 LM Studio: Final response (clean):`, followUpResponse.content);
+
 
     return {
       content: followUpResponse.content || '',
@@ -1652,17 +1503,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       return msg.role !== 'tool';
     });
 
-    console.log(`🧹 LM Studio: Conversation history filtering:`, {
-      original: conversationHistory.length,
-      cleaned: cleanedHistory.length,
-      filtered: conversationHistory.length - cleanedHistory.length
-    });
 
-    // Log the content of recent messages for debugging
-    cleanedHistory.slice(-3).forEach((msg, index) => {
-      const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-      console.log(`🔍 Recent message ${index}: [${msg.role}] ${content.substring(0, 100)}...`);
-    });
 
     const messages: Array<Record<string, unknown>> = [...cleanedHistory];
 
@@ -1696,7 +1537,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     };
     messages.push(finalInstruction);
 
-    console.log(`🔧 Built cleaned conversation history with ${messages.length} messages (filtered previous tool results + ${toolCalls.length} current tool results)`);
+
     return messages;
   }
 
@@ -1705,11 +1546,8 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     settings: LLMSettings,
     onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
-    console.log(`🔄 Making follow-up call without tools (following official LM Studio pattern)`);
-
     // According to official LM Studio documentation, the follow-up call should NOT include tools
     // This prevents recursive tool calling and ensures proper synchronization
-    console.log(`✅ LM Studio follow-up call without tools - following official pattern for final response`);
 
     // Use the original system prompt for follow-up calls (maintain consistency)
     const finalResponsePrompt = settings.systemPrompt || this.getSystemPrompt();
@@ -1731,41 +1569,14 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       // No tools included - following official LM Studio pattern for final response
     };
 
-    // Sanitize and log a small preview of the follow-up payload to verify tool outputs are included
-    try {
-      const msgs = requestBody.messages as Array<Record<string, any>>;
-      const preview = {
-        model: requestBody.model,
-        messageCount: msgs.length,
-        roles: msgs.map(m => m.role),
-        assistantToolCallIncluded: msgs.some(m => Array.isArray((m as any).tool_calls) && (m as any).tool_calls.length > 0),
-        toolResultSummaries: msgs
-          .map((m, idx) => ({ idx, role: m.role, name: (m as any).name, id: (m as any).tool_call_id, content: (m as any).content }))
-          .filter(s => s.role === 'tool')
-          .map(s => ({
-            idx: s.idx,
-            name: s.name,
-            id: s.id,
-            contentLen: typeof s.content === 'string' ? s.content.length : JSON.stringify(s.content || '').length,
-            contentPreview: typeof s.content === 'string' ? s.content.slice(0, 160) : '[non-string]'
-          })),
-        finalInstructionPreview: (() => {
-          const last = msgs[msgs.length - 1];
-          const txt = typeof last?.content === 'string' ? last.content : JSON.stringify(last?.content || '');
-          return txt.slice(0, 200);
-        })()
-      };
-      console.log('🔎 [LM STUDIO DEBUG] Follow-up payload preview:', preview);
-    } catch (e) {
-      console.warn('⚠️ [LM STUDIO DEBUG] Failed to build follow-up payload preview:', e);
-    }
+
 
     // Construct the correct URL - baseUrl might already include /v1
     const baseUrl = settings.baseUrl || 'http://localhost:1234';
     const endpoint = baseUrl.endsWith('/v1') ? '/chat/completions' : '/v1/chat/completions';
     const fullUrl = `${baseUrl}${endpoint}`;
 
-    console.log(`🔗 Follow-up call URL: ${fullUrl}`);
+
 
     const response = await fetch(fullUrl, {
       method: 'POST',
@@ -1792,7 +1603,7 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
     response: Response,
     onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
-    console.log(`🔄 Processing follow-up stream response`);
+
 
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
@@ -1831,11 +1642,11 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       reader.releaseLock();
     }
 
-    console.log(`✅ Follow-up response completed. Content length: ${fullContent.length}`);
+
 
     // No recursive tool calling - following official LM Studio pattern
     // The follow-up call should provide the final response without calling more tools
-    console.log(`🎯 LM Studio final response ready - no additional tool calls needed`);
+
 
     return {
       content: fullContent,
@@ -1941,11 +1752,25 @@ CRITICAL: Only use the exact tool names listed above. DO NOT invent tools.`;
       if (!seen.has(key)) {
         seen.add(key);
         unique.push(toolCall);
-      } else {
-        console.log(`🔧 Removed duplicate tool call: ${toolCall.name}`);
       }
     }
 
     return unique;
+  }
+
+  /**
+   * Create usage information from LM Studio API response (no cost calculation for local provider)
+   */
+  private createUsageAndCost(_model: string, usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }) {
+    if (!usage) return { usage: undefined, cost: undefined };
+
+    const usageInfo = {
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0
+    };
+
+    // No cost calculation for local providers
+    return { usage: usageInfo, cost: undefined };
   }
 }

@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Storage abstraction layer that uses Electron storage when available,
  * falls back to localStorage, and provides a no-op implementation when neither is available

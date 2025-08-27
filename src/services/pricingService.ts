@@ -66,6 +66,8 @@ export const PROVIDER_PRICING: { [providerId: string]: ProviderPricing } = {
     'gemini-1.5-flash-latest': { inputPrice: 0.075, outputPrice: 0.30, currency: 'USD', lastUpdated: '2025-01-01' },
     'gemini-1.0-pro': { inputPrice: 0.50, outputPrice: 1.50, currency: 'USD', lastUpdated: '2025-01-01' },
     'gemini-pro': { inputPrice: 0.50, outputPrice: 1.50, currency: 'USD', lastUpdated: '2025-01-01' },
+    // Gemini 2.5 models with image generation
+    'gemini-2.5-flash-image-preview': { inputPrice: 0.075, outputPrice: 0.30, currency: 'USD', lastUpdated: '2025-01-26' },
     'gemini-pro-vision': { inputPrice: 0.25, outputPrice: 0.50, currency: 'USD', lastUpdated: '2025-01-01' },
   },
 

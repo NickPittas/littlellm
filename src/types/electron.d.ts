@@ -99,8 +99,10 @@ export interface ElectronAPI {
   // File operations
   selectFiles: (options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }>; properties?: string[] }) => Promise<string[]>;
   readFile: (filePath: string) => Promise<{ success: boolean; content?: string; name?: string; type?: string; error?: string }>;
+  writeFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>;
   parsePdfFile: (fileBuffer: ArrayBuffer, fileName: string) => Promise<{ success: boolean; text?: string; metadata?: { pages?: number; [key: string]: unknown }; error?: string }>;
   selectDirectory: () => Promise<string | null>;
+  getAppPath: () => Promise<string>;
   debugMCPTools: () => Promise<{ tools: Array<{ name: string; description: string; category: string; inputSchema: Record<string, unknown> }> }>;
 
   // Event listeners

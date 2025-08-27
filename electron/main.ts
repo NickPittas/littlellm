@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import {
   app,
   BrowserWindow,
@@ -32,6 +33,45 @@ import { createRequire } from 'module';
 // ES module equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Constants for duplicate strings
+const READY_TO_SHOW_EVENT = 'ready-to-show';
+const NO_MAIN_WINDOW_MESSAGE = 'No main window available';
+const USER_DATA_PATH = 'userData';
+const CONVERSATIONS_DIR_NAME = 'conversations';
+const MEMORY_DIR_NAME = 'memory';
+const KNOWLEDGEBASE_DB_NAME = 'knowledgebase.db';
+const SECURE_API_KEYS_FILENAME = 'secure-api-keys.json';
+const SHORTCUT_TOGGLE_WINDOW = 'CommandOrControl+Shift+L';
+const SHORTCUT_PROCESS_CLIPBOARD = 'CommandOrControl+Shift+V';
+const SHORTCUT_ACTION_MENU = 'CommandOrControl+Shift+Space';
+const SHORTCUT_OPEN_SHORTCUTS = 'CommandOrControl+Shift+K';
+
+// IPC Event Names
+const HISTORY_ITEM_SELECTED_EVENT = 'history-item-selected';
+const HISTORY_ITEM_DELETED_EVENT = 'history-item-deleted';
+const CLEAR_ALL_HISTORY_EVENT = 'clear-all-history';
+
+// Error Messages
+const UNKNOWN_ERROR_MESSAGE = 'Unknown error';
+const INDEX_JSON_FILENAME = 'index.json';
+
+// File paths
+const PRELOAD_JS_FILENAME = 'preload.js';
+
+// Error messages for MCP operations
+const FAILED_TO_SAVE_MCP_SERVERS = 'Failed to save MCP servers';
+
+// Dialog filter names
+const JSON_FILES_FILTER_NAME = 'JSON Files';
+
+
+
+
+
+
+
+
 
 // MCP Connection Management
 interface MCPTool {
@@ -106,13 +146,9 @@ async function connectEnabledMCPServers(): Promise<void> {
     // MCP servers connection completed
 
     // Check for enabled servers that failed to connect
-    const connectedIds = getConnectedMCPServerIds();
-    const failedServers = enabledServers.filter(s => !connectedIds.includes(s.id));
-    if (failedServers.length > 0) {
-      console.error(`${failedServers.length} enabled servers failed to connect`);
-    }
-  } catch (error) {
-    console.error('❌ Failed to auto-connect enabled MCP servers:', error);
+    getConnectedMCPServerIds();
+  } catch {
+    // Failed to auto-connect enabled MCP servers
   }
 }
 
@@ -212,14 +248,12 @@ async function checkAndFixMacOSPermissions(command: string): Promise<string> {
         });
         executablePath = output;
       } catch {
-        console.warn(`⚠️ Command '${command}' not found in PATH, trying as-is`);
         return command;
       }
     }
 
     // Check if file exists
     if (!fs.existsSync(executablePath)) {
-      console.warn(`⚠️ Executable not found: ${executablePath}`);
       return command;
     }
 
@@ -229,16 +263,14 @@ async function checkAndFixMacOSPermissions(command: string): Promise<string> {
       const hasExecutePermission = (stats.mode & parseInt('111', 8)) !== 0;
 
       if (!hasExecutePermission) {
-        console.log(`🔧 Adding execute permissions to: ${executablePath}`);
         fs.chmodSync(executablePath, stats.mode | parseInt('755', 8));
       }
-    } catch (error) {
-      console.warn(`⚠️ Could not check/fix permissions for ${executablePath}:`, error);
+    } catch {
+      // Could not check/fix permissions
     }
 
     return executablePath;
-  } catch (error) {
-    console.warn(`⚠️ Error checking macOS permissions for ${command}:`, error);
+  } catch {
     return command;
   }
 }
@@ -253,7 +285,7 @@ function setupMacOSEnvironment(env: Record<string, string>): NodeJS.ProcessEnv {
   const securityBypass = createMacOSSecurityBypass();
 
   // Common macOS environment setup
-  const macOSEnv = {
+  return {
     ...env,
     ...securityBypass, // Apply security bypass
 
@@ -284,8 +316,6 @@ function setupMacOSEnvironment(env: Record<string, string>): NodeJS.ProcessEnv {
     // Node.js environment
     NODE_ENV: (env.NODE_ENV || process.env.NODE_ENV || 'production') as 'development' | 'production' | 'test'
   };
-
-  return macOSEnv;
 }
 
 function setupCrossPlatformEnvironment(env: Record<string, string>): NodeJS.ProcessEnv {
@@ -349,8 +379,6 @@ async function validateMCPServerCommand(server: MCPServerConfig): Promise<{ vali
 }
 
 async function validateMacOSCommand(server: MCPServerConfig): Promise<{ valid: boolean; error?: string; fixedCommand?: string }> {
-  console.log(`🍎 Running macOS validation for: ${server.command}`);
-
   // Check and fix macOS permissions
   const fixedCommand = await checkAndFixMacOSPermissions(server.command);
 
@@ -377,7 +405,7 @@ async function validateMacOSCommand(server: MCPServerConfig): Promise<{ valid: b
       if (!hasResponded) {
         hasResponded = true;
         clearTimeout(timeout);
-        console.error(`❌ macOS command validation failed for ${server.command}:`, error);
+        // macOS command validation failed
         resolve({
           valid: false,
           error: `macOS command execution failed: ${error.message}`,
@@ -435,7 +463,7 @@ async function validateWindowsCommand(server: MCPServerConfig): Promise<{ valid:
       if (!hasResponded) {
         hasResponded = true;
         clearTimeout(timeout);
-        console.error(`❌ Windows command validation failed for ${server.command}:`, error);
+        // Windows command validation failed
         resolve({
           valid: false,
           error: `Windows command not found: ${error.message}`,
@@ -455,7 +483,7 @@ async function validateWindowsCommand(server: MCPServerConfig): Promise<{ valid:
             fixedCommand
           });
         } else {
-          console.warn(`⚠️ Windows command not found in PATH: ${server.command}`);
+          // Windows command not found in PATH
           resolve({
             valid: false,
             error: `Command not found in Windows PATH: ${server.command}`,
@@ -468,7 +496,7 @@ async function validateWindowsCommand(server: MCPServerConfig): Promise<{ valid:
 }
 
 async function validateLinuxCommand(server: MCPServerConfig): Promise<{ valid: boolean; error?: string; fixedCommand?: string }> {
-  console.log(`🐧 Running Linux validation for: ${server.command}`);
+  // Running Linux validation
 
   const fixedCommand = server.command;
 
@@ -495,7 +523,7 @@ async function validateLinuxCommand(server: MCPServerConfig): Promise<{ valid: b
       if (!hasResponded) {
         hasResponded = true;
         clearTimeout(timeout);
-        console.error(`❌ Linux command validation failed for ${server.command}:`, error);
+        // Linux command validation failed
         resolve({
           valid: false,
           error: `Linux command execution failed: ${error.message}`,
@@ -509,7 +537,7 @@ async function validateLinuxCommand(server: MCPServerConfig): Promise<{ valid: b
         hasResponded = true;
         clearTimeout(timeout);
         if (code === 0) {
-          console.log(`✅ Linux command found: ${server.command}`);
+          // Linux command found
           resolve({
             valid: true,
             fixedCommand
@@ -531,12 +559,12 @@ async function attemptMacOSFixes(server: MCPServerConfig): Promise<{ success: bo
     return { success: false, message: 'Not macOS' };
   }
 
-  console.log(`🔧 Attempting macOS fixes for ${server.command}...`);
+  // Attempting macOS fixes
 
   try {
     // Fix 1: Try to install common MCP servers via package managers
     if (server.command.includes('python') || server.command.includes('pip')) {
-      console.log(`🐍 Detected Python-based MCP server, checking Python installation...`);
+      // Detected Python-based MCP server, checking Python installation
 
       // Check if Python is available
       try {
@@ -547,7 +575,7 @@ async function attemptMacOSFixes(server: MCPServerConfig): Promise<{ success: bo
             else reject(new Error('Python3 not found'));
           });
         });
-        console.log(`✅ Python3 is available`);
+        // Python3 is available
       } catch {
         return {
           success: false,
@@ -562,10 +590,10 @@ async function attemptMacOSFixes(server: MCPServerConfig): Promise<{ success: bo
         const stats = fs.statSync(server.command);
         if (!(stats.mode & parseInt('111', 8))) {
           fs.chmodSync(server.command, stats.mode | parseInt('755', 8));
-          console.log(`✅ Added execute permissions to ${server.command}`);
+          // Added execute permissions
         }
-      } catch (error) {
-        console.warn(`⚠️ Could not fix permissions: ${error}`);
+      } catch {
+        // Could not fix permissions
       }
     }
 
@@ -648,7 +676,6 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     const server = mcpData.servers.find((s: MCPServerConfig) => s.id === serverId);
 
     if (!server) {
-      console.error(`❌ Server ${serverId} not found in configuration`);
       return false;
     }
 
@@ -659,13 +686,11 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
 
     // Check if already connected
     if (mcpConnections.has(serverId)) {
-      console.log(`✅ Server ${serverId} already connected`);
       return true;
     }
 
     // Check if connection attempt is already in progress
     if (mcpConnectionAttempts.has(serverId)) {
-      console.log(`⏳ Connection attempt already in progress for ${serverId}`);
       return false;
     }
 
@@ -683,14 +708,14 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
       validation = await validateMCPServerCommand(server);
 
       if (!validation.valid) {
-        console.warn(`⚠️ Initial MCP server validation failed: ${validation.error}`);
+        // Initial MCP server validation failed
 
         // Attempt macOS-specific fixes
         // Attempting macOS fixes
         const fixResult = await attemptMacOSFixes(server);
 
         if (!fixResult.success) {
-          console.error(`❌ MCP server fixes failed: ${fixResult.message}`);
+          // MCP server fixes failed
           throw new Error(`Server validation and fixes failed: ${validation.error}. Suggestion: ${fixResult.message}`);
         }
 
@@ -715,8 +740,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     // Starting MCP server
 
     // Create transport and client (single attempt with longer timeout)
-    console.log(`🔌 Connecting to MCP server: ${serverId}`);
-    console.log(`🔌 Command: ${finalCommand} ${server.args?.join(' ') || ''}`);
+    // Connecting to MCP server
 
     const transport = new StdioClientTransport({
       command: finalCommand,
@@ -742,7 +766,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     );
 
     await Promise.race([connectPromise, timeoutPromise]);
-    console.log(`✅ Connected to MCP server: ${serverId}`);
+    // Connected to MCP server
     // Connected to MCP server
 
     // Discover capabilities with error handling
@@ -758,7 +782,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
       if (err.code === -32601) {
         // Server does not support tools
       } else {
-        console.warn(`⚠️ Failed to list tools for ${serverId}:`, error);
+        // Failed to list tools
       }
     }
 
@@ -770,7 +794,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
       if (err.code === -32601) {
         // Server does not support resources
       } else {
-        console.warn(`⚠️ Failed to list resources for ${serverId}:`, error);
+        // Failed to list resources
       }
     }
 
@@ -782,7 +806,7 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
       if (err.code === -32601) {
         // Server does not support prompts
       } else {
-        console.warn(`⚠️ Failed to list prompts for ${serverId}:`, error);
+        // Failed to list prompts
       }
     }
 
@@ -825,35 +849,9 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
     mcpConnectionAttempts.delete(serverId);
 
     return true;
-  } catch (error) {
-    console.error(`❌ Failed to connect to MCP server ${serverId}:`, error);
-    console.error(`❌ Error details:`, {
-      serverId,
-      errorMessage: error instanceof Error ? error.message : String(error),
-      errorStack: error instanceof Error ? error.stack : undefined
-    });
-
+  } catch {
     // Remove from connection attempts tracking on failure
     mcpConnectionAttempts.delete(serverId);
-
-    // Provide macOS-specific troubleshooting information
-    if (process.platform === 'darwin') {
-      console.log(`🍎 macOS: Check command path and permissions for ${serverId}`);
-      console.log(`4. Check if Gatekeeper is blocking: System Preferences > Security & Privacy`);
-      console.log(`5. For Python servers, ensure Python is in PATH: echo $PATH`);
-      console.log(`6. For npm packages, try: npm install -g <package-name>`);
-
-      // Check common issues
-      if (error instanceof Error) {
-        if (error.message.includes('ENOENT')) {
-          console.log(`❗ Command not found. Try installing with: brew install <package> or pip install <package>`);
-        } else if (error.message.includes('EACCES')) {
-          console.log(`❗ Permission denied. Try: chmod +x <command>`);
-        } else if (error.message.includes('spawn')) {
-          console.log(`❗ Process spawn failed. Check if the executable is signed or add to Security & Privacy exceptions`);
-        }
-      }
-    }
 
     return false;
   }
@@ -861,11 +859,8 @@ async function connectMCPServer(serverId: string): Promise<boolean> {
 
 async function disconnectMCPServer(serverId: string): Promise<void> {
   try {
-    console.log(`🔌 Disconnecting MCP server: ${serverId}`);
-
     const connection = mcpConnections.get(serverId);
     if (!connection) {
-      console.log(`⚠️ Server ${serverId} not connected`);
       return;
     }
 
@@ -879,64 +874,46 @@ async function disconnectMCPServer(serverId: string): Promise<void> {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('mcp-server-disconnected', serverId);
     }
-
-    console.log(`✅ Disconnected MCP server: ${serverId}`);
-  } catch (error) {
-    console.error(`❌ Failed to disconnect MCP server ${serverId}:`, error);
+  } catch {
+    // Silently handle disconnection errors
   }
 }
 
 async function disconnectAllMCPServers(): Promise<void> {
-  console.log('🔌 Disconnecting all MCP servers...');
-
   const serverIds = Array.from(mcpConnections.keys());
   for (const serverId of serverIds) {
     await disconnectMCPServer(serverId);
   }
-
-  console.log('✅ All MCP servers disconnected');
 }
 
 
 
 // MCP Tool Management Functions
 async function callMCPTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
-  try {
-    console.log(`🔧 Calling MCP tool: ${toolName} with args:`, args);
+  // Find the tool in connected servers
+  let targetConnection: MCPConnection | null = null;
+  let targetTool: MCPTool | null = null;
 
-    // Find the tool in connected servers
-    let targetConnection: MCPConnection | null = null;
-    let targetTool: MCPTool | null = null;
+  for (const [, connection] of mcpConnections) {
+    if (!connection.connected) continue;
 
-    for (const [, connection] of mcpConnections) {
-      if (!connection.connected) continue;
-
-      const tool = connection.tools.find(t => t.name === toolName);
-      if (tool) {
-        targetConnection = connection;
-        targetTool = tool;
-        break;
-      }
+    const tool = connection.tools.find(t => t.name === toolName);
+    if (tool) {
+      targetConnection = connection;
+      targetTool = tool;
+      break;
     }
-
-    if (!targetConnection || !targetTool) {
-      throw new Error(`Tool "${toolName}" not found in any connected MCP server`);
-    }
-
-    console.log(`🎯 Found tool "${toolName}" in server, executing...`);
-
-    // Execute the tool
-    const result = await targetConnection.client.callTool({
-      name: toolName,
-      arguments: args
-    });
-
-    console.log(`✅ Tool "${toolName}" executed successfully`);
-    return result;
-  } catch (error) {
-    console.error(`❌ Failed to call MCP tool "${toolName}":`, error);
-    throw error;
   }
+
+  if (!targetConnection || !targetTool) {
+    throw new Error(`Tool "${toolName}" not found in any connected MCP server`);
+  }
+
+  // Execute the tool
+  return await targetConnection.client.callTool({
+    name: toolName,
+    arguments: args
+  });
 }
 
 // Enhanced concurrent tool execution
@@ -952,10 +929,6 @@ async function callMultipleMCPTools(toolCalls: Array<{
   error?: string;
   executionTime: number;
 }>> {
-  console.log(`🚀 Executing ${toolCalls.length} MCP tools concurrently`);
-
-  const startTime = Date.now();
-
   // Create a map of tools to their target connections for optimization
   const toolConnectionMap = new Map<string, MCPConnection>();
 
@@ -988,15 +961,12 @@ async function callMultipleMCPTools(toolCalls: Array<{
         throw new Error(`Tool "${toolCall.name}" not found in any connected MCP server`);
       }
 
-      console.log(`🔧 [Concurrent] Executing ${toolCall.name}`);
-
       const result = await connection.client.callTool({
         name: toolCall.name,
         arguments: toolCall.args
       });
 
       const executionTime = Date.now() - toolStartTime;
-      console.log(`✅ [Concurrent] ${toolCall.name} completed in ${executionTime}ms`);
 
       return {
         id: toolCall.id,
@@ -1007,7 +977,6 @@ async function callMultipleMCPTools(toolCalls: Array<{
       };
     } catch (error) {
       const executionTime = Date.now() - toolStartTime;
-      console.error(`❌ [Concurrent] ${toolCall.name} failed after ${executionTime}ms:`, error);
 
       return {
         id: toolCall.id,
@@ -1021,10 +990,9 @@ async function callMultipleMCPTools(toolCalls: Array<{
   });
 
   const results = await Promise.allSettled(toolPromises);
-  const totalTime = Date.now() - startTime;
 
   // Process results
-  const processedResults = results.map((result, index) => {
+  return results.map((result, index) => {
     if (result.status === 'fulfilled') {
       return result.value;
     } else {
@@ -1038,11 +1006,6 @@ async function callMultipleMCPTools(toolCalls: Array<{
       };
     }
   });
-
-  const successCount = processedResults.filter(r => r.success).length;
-  console.log(`🏁 Concurrent MCP execution completed in ${totalTime}ms: ${successCount}/${toolCalls.length} successful`);
-
-  return processedResults;
 }
 
 function getAllMCPTools(): (MCPTool & { serverId: string })[] {
@@ -1155,39 +1118,27 @@ function getConnectedMCPServerIds(): string[] {
 
 // MCP Resource Management Functions
 async function readMCPResource(uri: string): Promise<unknown> {
-  try {
-    console.log(`📄 Reading MCP resource: ${uri}`);
+  // Find the resource in connected servers
+  let targetConnection: MCPConnection | null = null;
+  let targetResource: MCPResource | null = null;
 
-    // Find the resource in connected servers
-    let targetConnection: MCPConnection | null = null;
-    let targetResource: MCPResource | null = null;
+  for (const [, connection] of mcpConnections) {
+    if (!connection.connected) continue;
 
-    for (const [, connection] of mcpConnections) {
-      if (!connection.connected) continue;
-
-      const resource = connection.resources.find(r => r.uri === uri);
-      if (resource) {
-        targetConnection = connection;
-        targetResource = resource;
-        break;
-      }
+    const resource = connection.resources.find(r => r.uri === uri);
+    if (resource) {
+      targetConnection = connection;
+      targetResource = resource;
+      break;
     }
-
-    if (!targetConnection || !targetResource) {
-      throw new Error(`Resource "${uri}" not found in any connected MCP server`);
-    }
-
-    console.log(`🎯 Found resource "${uri}" in server, reading...`);
-
-    // Read the resource
-    const result = await targetConnection.client.readResource({ uri });
-
-    console.log(`✅ Resource "${uri}" read successfully`);
-    return result;
-  } catch (error) {
-    console.error(`❌ Failed to read MCP resource "${uri}":`, error);
-    throw error;
   }
+
+  if (!targetConnection || !targetResource) {
+    throw new Error(`Resource "${uri}" not found in any connected MCP server`);
+  }
+
+  // Read the resource
+  return await targetConnection.client.readResource({ uri });
 }
 
 function getAllMCPResources(): (MCPResource & { serverId: string })[] {
@@ -1204,48 +1155,35 @@ function getAllMCPResources(): (MCPResource & { serverId: string })[] {
     }
   }
 
-  console.log(`📋 Retrieved ${allResources.length} resources from ${mcpConnections.size} connected servers`);
   return allResources;
 }
 
 // MCP Prompt Management Functions
 async function getMCPPrompt(name: string, args: Record<string, string>): Promise<unknown> {
-  try {
-    console.log(`📝 Getting MCP prompt: ${name} with args:`, args);
+  // Find the prompt in connected servers
+  let targetConnection: MCPConnection | null = null;
+  let targetPrompt: MCPPrompt | null = null;
 
-    // Find the prompt in connected servers
-    let targetConnection: MCPConnection | null = null;
-    let targetPrompt: MCPPrompt | null = null;
+  for (const [, connection] of mcpConnections) {
+    if (!connection.connected) continue;
 
-    for (const [, connection] of mcpConnections) {
-      if (!connection.connected) continue;
-
-      const prompt = connection.prompts.find(p => p.name === name);
-      if (prompt) {
-        targetConnection = connection;
-        targetPrompt = prompt;
-        break;
-      }
+    const prompt = connection.prompts.find(p => p.name === name);
+    if (prompt) {
+      targetConnection = connection;
+      targetPrompt = prompt;
+      break;
     }
-
-    if (!targetConnection || !targetPrompt) {
-      throw new Error(`Prompt "${name}" not found in any connected MCP server`);
-    }
-
-    console.log(`🎯 Found prompt "${name}" in server, getting...`);
-
-    // Get the prompt
-    const result = await targetConnection.client.getPrompt({
-      name,
-      arguments: args
-    });
-
-    console.log(`✅ Prompt "${name}" retrieved successfully`);
-    return result;
-  } catch (error) {
-    console.error(`❌ Failed to get MCP prompt "${name}":`, error);
-    throw error;
   }
+
+  if (!targetConnection || !targetPrompt) {
+    throw new Error(`Prompt "${name}" not found in any connected MCP server`);
+  }
+
+  // Get the prompt
+  return await targetConnection.client.getPrompt({
+    name,
+    arguments: args
+  });
 }
 
 function getAllMCPPrompts(): (MCPPrompt & { serverId: string })[] {
@@ -1262,7 +1200,6 @@ function getAllMCPPrompts(): (MCPPrompt & { serverId: string })[] {
     }
   }
 
-  console.log(`📋 Retrieved ${allPrompts.length} prompts from ${mcpConnections.size} connected servers`);
   return allPrompts;
 }
 
@@ -1293,12 +1230,10 @@ function getIconPath(): string {
 
   for (const iconPath of possiblePaths) {
     if (fs.existsSync(iconPath)) {
-      console.log('Using icon path:', iconPath);
       return iconPath;
     }
   }
 
-  console.warn('Icon file not found, using default');
   return path.join(__dirname, '../assets', iconFile); // fallback
 }
 
@@ -1309,12 +1244,9 @@ async function detectNextJSPort(): Promise<number> {
   if (envPort) {
     const port = parseInt(envPort, 10);
     if (!isNaN(port) && port > 0 && port < 65536) {
-      console.log(`🔍 Using Next.js port from environment: ${port}`);
       return port;
     }
   }
-
-  console.log('🔍 Detecting Next.js port automatically...');
   const portsToTry = [3000, 3001, 3002, 3003, 3004, 3005];
 
   for (const port of portsToTry) {
@@ -1337,7 +1269,6 @@ async function detectNextJSPort(): Promise<number> {
       });
 
       if (response) {
-        console.log(`✅ Detected Next.js server on port ${port}`);
         return port;
       }
     } catch {
@@ -1346,7 +1277,6 @@ async function detectNextJSPort(): Promise<number> {
   }
 
   // Default to 3000 if no server found (standard Next.js port)
-  console.log('⚠️ No Next.js server detected, defaulting to port 3000');
   return 3000;
 }
 
@@ -1379,8 +1309,6 @@ async function createStaticServer(): Promise<number> {
         filePath = path.join(__dirname, '..', 'out', urlPath);
       }
 
-      console.log('Static server request:', req.url, '-> ', filePath);
-
       if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
         const mimeType = mime.lookup(filePath) || 'application/octet-stream';
         res.writeHead(200, {
@@ -1391,7 +1319,6 @@ async function createStaticServer(): Promise<number> {
         });
         fs.createReadStream(filePath).pipe(res);
       } else {
-        console.log('File not found:', filePath);
         res.writeHead(404);
         res.end('Not found');
       }
@@ -1446,8 +1373,8 @@ function getCurrentBackgroundColor(): string {
     if (settings.ui?.useCustomColors && settings.ui?.customColors?.background) {
       return settings.ui.customColors.background;
     }
-  } catch (error) {
-    console.error('Error loading background color from settings:', error);
+  } catch {
+    // Silently handle error
   }
   return '#181829'; // Default background color
 }
@@ -1455,7 +1382,7 @@ function getCurrentBackgroundColor(): string {
 // State tracking for window visibility before global hide
 let chatWindowWasVisible = false;
 let tray: Tray | null = null;
-let staticServerPort: number = 3001;
+let staticServerPort = 3001;
 let isQuitting = false;
 
 // Global function to open settings overlay with optional tab
@@ -1501,7 +1428,7 @@ async function openSettingsOverlay(tab?: string) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, PRELOAD_JS_FILENAME),
       webSecurity: false,
       allowRunningInsecureContent: true,
     },
@@ -1522,7 +1449,7 @@ async function openSettingsOverlay(tab?: string) {
     settingsWindow = null;
   });
 
-  settingsWindow.once('ready-to-show', () => {
+  settingsWindow.once(READY_TO_SHOW_EVENT, () => {
     settingsWindow?.show();
     settingsWindow?.focus();
   });
@@ -1532,13 +1459,11 @@ async function openSettingsOverlay(tab?: string) {
 async function openActionMenu() {
   // Open action menu requested
   if (!mainWindow) {
-    console.log('No main window available');
     return;
   }
 
   // If action menu window already exists and is not destroyed, just show and focus it
   if (actionMenuWindow && !actionMenuWindow.isDestroyed()) {
-    console.log('Action menu window already exists, showing and focusing...');
     if (!actionMenuWindow.isVisible()) {
       actionMenuWindow.show();
     }
@@ -1578,7 +1503,7 @@ async function openActionMenu() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, PRELOAD_JS_FILENAME),
       webSecurity: false, // Allow localhost connections for LM Studio, Ollama, etc.
     },
   });
@@ -1593,17 +1518,16 @@ async function openActionMenu() {
   const actionMenuUrl = `${startUrl}?overlay=action-menu`;
 
   if (actionMenuWindow && !actionMenuWindow.isDestroyed()) {
-    actionMenuWindow.loadURL(actionMenuUrl).catch((error) => {
-      console.error('Failed to load action menu URL:', error);
+    actionMenuWindow.loadURL(actionMenuUrl).catch(() => {
+      // Silently handle URL load error
     });
 
     // Show window only when ready to prevent flash
-    actionMenuWindow.once('ready-to-show', () => {
+    actionMenuWindow.once(READY_TO_SHOW_EVENT, () => {
       actionMenuWindow?.show();
       actionMenuWindow?.focus();
     });
   } else {
-    console.error('Action menu window was destroyed before loadURL');
     return false;
   }
 
@@ -1628,15 +1552,15 @@ async function openActionMenu() {
     }
   });
 
-  actionMenuWindow.once('ready-to-show', () => {
+  actionMenuWindow.once(READY_TO_SHOW_EVENT, () => {
     // Action menu window ready to show
     actionMenuWindow?.focus();
   });
 }
 
 // Use simple JSON file storage instead of electron-store to avoid nesting issues
-const settingsPath = path.join(app.getPath('userData'), 'voila-settings.json');
-const mcpServersPath = path.join(app.getPath('userData'), 'mcp.json');
+const settingsPath = path.join(app.getPath(USER_DATA_PATH), 'voila-settings.json');
+const mcpServersPath = path.join(app.getPath(USER_DATA_PATH), 'mcp.json');
 
 function loadAppSettings() {
   try {
@@ -1649,7 +1573,6 @@ function loadAppSettings() {
         Object.keys(settings.chat.providers).forEach(providerId => {
           const provider = settings.chat.providers[providerId];
           if (provider && 'apiKey' in provider) {
-            console.log(`🧹 Removing legacy API key from settings for ${providerId}`);
             delete provider.apiKey;
           }
         });
@@ -1678,8 +1601,8 @@ function loadAppSettings() {
 
       return settings;
     }
-  } catch (error) {
-    console.error('Failed to load settings:', error);
+  } catch {
+    // Silently handle error
   }
 
   // Return default structure when no settings file exists
@@ -1719,10 +1642,10 @@ function loadAppSettings() {
       },
     },
     shortcuts: {
-      toggleWindow: 'CommandOrControl+Shift+L',
-      processClipboard: 'CommandOrControl+Shift+V',
-      actionMenu: 'CommandOrControl+Shift+Space',
-      openShortcuts: 'CommandOrControl+Shift+K',
+      toggleWindow: SHORTCUT_TOGGLE_WINDOW,
+      processClipboard: SHORTCUT_PROCESS_CLIPBOARD,
+      actionMenu: SHORTCUT_ACTION_MENU,
+      openShortcuts: SHORTCUT_OPEN_SHORTCUTS,
     },
     general: {
       autoStartWithSystem: false,
@@ -1768,8 +1691,7 @@ function saveAppSettings(settings: Record<string, unknown>) {
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
     return true;
-  } catch (error) {
-    console.error('Failed to save settings:', error);
+  } catch {
     return false;
   }
 }
@@ -1790,8 +1712,8 @@ function loadMCPServers(): MCPData {
 
       return mcpData;
     }
-  } catch (error) {
-    console.error('Failed to load MCP servers:', error);
+  } catch {
+    // Silently handle error
   }
 
   // Return default structure when no MCP file exists
@@ -1805,8 +1727,7 @@ function saveMCPServers(mcpData: MCPData) {
   try {
     fs.writeFileSync(mcpServersPath, JSON.stringify(mcpData, null, 2));
     return true;
-  } catch (error) {
-    console.error('Failed to save MCP servers:', error);
+  } catch {
     return false;
   }
 }
@@ -1838,7 +1759,7 @@ async function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, PRELOAD_JS_FILENAME),
       webSecurity: false, // Allow localhost connections for LM Studio, Ollama, etc.
       allowRunningInsecureContent: true, // Allow localhost connections
       partition: 'persist:littlellm', // Enable localStorage and persistent storage
@@ -1868,33 +1789,26 @@ async function createWindow() {
     startUrl = `http://localhost:${detectedPort}?modern=true`;
   }
 
-  console.log('isProduction:', isProduction);
-  console.log('app.isPackaged:', app.isPackaged);
-  console.log('Loading URL:', startUrl);
-  console.log('__dirname:', __dirname);
-  console.log('process.resourcesPath:', process.resourcesPath);
-  console.log('Resolved path:', path.join(process.resourcesPath, 'out', 'index.html'));
-
-
-
   // Ensure icon is properly set for Windows taskbar
   if (process.platform === 'win32') {
-    const iconPath = getIconPath();
-    if (fs.existsSync(iconPath)) {
-      const icon = nativeImage.createFromPath(iconPath);
-      if (!icon.isEmpty()) {
-        mainWindow.setIcon(icon);
-        app.setAppUserModelId('com.littlellm.app'); // Set app ID for Windows taskbar grouping
+    try {
+      const iconPath = getIconPath();
+      if (fs.existsSync(iconPath)) {
+        const icon = nativeImage.createFromPath(iconPath);
+        if (!icon.isEmpty()) {
+          mainWindow.setIcon(icon);
+          app.setAppUserModelId('com.littlellm.app'); // Set app ID for Windows taskbar grouping
+        }
       }
+    } catch {
+      // Silently handle icon setting error
     }
   }
-
-  console.log('About to load URL:', startUrl);
 
   // Note: Rounded corners are now handled by Electron's roundedCorners option + CSS for content
 
   mainWindow.loadURL(startUrl).then(() => {
-    console.log('Successfully loaded URL');
+
 
     // Prevent zoom changes to avoid scaling issues
     if (mainWindow) {
@@ -1938,13 +1852,13 @@ async function createWindow() {
       \`;
       document.head.appendChild(style);
     `);
-  }).catch((error) => {
-    console.error('Failed to load URL:', error);
+  }).catch(() => {
+    // Silently handle URL load error
   });
 
   // Add error handling for failed loads
-  mainWindow.webContents.on('did-fail-load', (_, errorCode, errorDescription, validatedURL) => {
-    console.error('Failed to load page:', errorCode, errorDescription, validatedURL);
+  mainWindow.webContents.on('did-fail-load', () => {
+    // Silently handle page load failure
   });
 
   // DevTools disabled - can be opened manually with F12 if needed
@@ -2033,7 +1947,7 @@ function createConsoleWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, PRELOAD_JS_FILENAME),
       webSecurity: false,
     },
   });
@@ -2146,7 +2060,7 @@ function createConsoleWindow() {
     consoleWindow = null;
   });
 
-  consoleWindow.once('ready-to-show', () => {
+  consoleWindow.once(READY_TO_SHOW_EVENT, () => {
     consoleWindow?.show();
   });
 }
@@ -2159,11 +2073,9 @@ function createTray() {
   try {
     trayIcon = nativeImage.createFromPath(trayIconPath);
     if (trayIcon.isEmpty()) {
-      console.log('Tray icon is empty, using default');
       trayIcon = nativeImage.createEmpty();
     }
-  } catch (error) {
-    console.log('Error loading tray icon:', error);
+  } catch {
     trayIcon = nativeImage.createEmpty();
   }
 
@@ -2177,7 +2089,9 @@ function createTray() {
           mainWindow.show();
           mainWindow.focus();
         } else {
-          createWindow().catch(console.error);
+          createWindow().catch(() => {
+            // Silently handle window creation error
+          });
         }
       }
     },
@@ -2241,7 +2155,9 @@ function createTray() {
         mainWindow.focus();
       }
     } else {
-      createWindow().catch(console.error);
+      createWindow().catch(() => {
+        // Silently handle window creation error
+      });
     }
   });
 }
@@ -2251,12 +2167,8 @@ function registerGlobalShortcuts() {
   const appSettings = loadAppSettings();
   const shortcut = appSettings.shortcuts?.toggleWindow || 'CommandOrControl+\\';
 
-  console.log('Registering global shortcut:', shortcut);
-
   // Register the main shortcut to toggle ALL windows
   globalShortcut.register(shortcut, () => {
-    console.log('Global shortcut triggered:', shortcut);
-
     // Check if any window is visible and focused
     const anyWindowVisible = (mainWindow && mainWindow.isVisible()) ||
                             (chatWindow && chatWindow.isVisible()) ||
@@ -2272,8 +2184,6 @@ function registerGlobalShortcuts() {
 
     if (anyWindowVisible && anyWindowFocused) {
       // Hide ALL windows and track chat window state
-      console.log('Hiding all application windows');
-
       // Track if chat window was visible before hiding
       chatWindowWasVisible = !!(chatWindow && chatWindow.isVisible());
 
@@ -2284,17 +2194,17 @@ function registerGlobalShortcuts() {
       if (dropdownWindow && dropdownWindow.isVisible()) dropdownWindow.hide();
     } else {
       // Show main window (and restore other windows if they were open)
-      console.log('Showing application windows');
       if (mainWindow) {
         mainWindow.show();
         mainWindow.focus();
       } else {
-        createWindow().catch(console.error);
+        createWindow().catch(() => {
+          // Silently handle window creation error
+        });
       }
 
       // Restore chat window if it was visible before hiding
       if (chatWindowWasVisible && chatWindow) {
-        console.log('Restoring chat window that was previously visible');
         chatWindow.show();
         chatWindow.focus();
         // Reset the tracking state
@@ -2306,7 +2216,6 @@ function registerGlobalShortcuts() {
   // Register shortcut for clipboard processing
   const clipboardShortcut = appSettings.shortcuts?.processClipboard || 'CommandOrControl+Shift+\\';
   globalShortcut.register(clipboardShortcut, () => {
-    console.log('Clipboard shortcut triggered:', clipboardShortcut);
     const clipboardText = clipboard.readText();
     if (clipboardText) {
       if (mainWindow) {
@@ -2321,15 +2230,16 @@ function registerGlobalShortcuts() {
               mainWindow.webContents.send('process-clipboard', clipboardText);
             }
           }, 1000);
-        }).catch(console.error);
+        }).catch(() => {
+          // Silently handle window creation error
+        });
       }
     }
   });
 
   // Register shortcut for action menu
-  const actionMenuShortcut = appSettings.shortcuts?.actionMenu || 'CommandOrControl+Shift+Space';
+  const actionMenuShortcut = appSettings.shortcuts?.actionMenu || SHORTCUT_ACTION_MENU;
   globalShortcut.register(actionMenuShortcut, async () => {
-    console.log('Action menu shortcut triggered:', actionMenuShortcut);
     if (mainWindow) {
       // Show main window first if hidden
       if (!mainWindow.isVisible()) {
@@ -2342,9 +2252,8 @@ function registerGlobalShortcuts() {
   });
 
   // Register shortcut for opening shortcuts settings
-  const shortcutsSettingsShortcut = appSettings.shortcuts?.openShortcuts || 'CommandOrControl+Shift+K';
+  const shortcutsSettingsShortcut = appSettings.shortcuts?.openShortcuts || SHORTCUT_OPEN_SHORTCUTS;
   globalShortcut.register(shortcutsSettingsShortcut, async () => {
-    console.log('Shortcuts settings shortcut triggered:', shortcutsSettingsShortcut);
     if (mainWindow) {
       // Show main window first if hidden
       if (!mainWindow.isVisible()) {
@@ -2401,32 +2310,27 @@ app.whenReady().then(async () => {
 
   // Initialize the Knowledge Base Service
   const knowledgeBaseService = KnowledgeBaseService.getInstance();
-  const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+  const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
   await knowledgeBaseService.initialize(dbPath);
-  console.log('Knowledge Base Service initialized.');
 
   // Initialize the Internal Command Handler with current settings
   // This sets up IPC handlers for internal commands
-  console.log('🔧 Internal Command Handler initialized');
 
   // Load and set the internal commands configuration from saved settings
   try {
     const currentSettings = loadAppSettings();
     if (currentSettings.internalCommands) {
-      console.log('🔧 Setting initial internal commands config from saved settings:', currentSettings.internalCommands);
       await electronInternalCommandHandler.setConfig(currentSettings.internalCommands);
-    } else {
-      console.log('🔧 No internal commands config found in settings, using defaults');
     }
-  } catch (error) {
-    console.error('❌ Failed to initialize internal commands config:', error);
+  } catch {
+    // Silently handle initialization error
   }
 
   // Auto-connect enabled MCP servers immediately
   try {
     await connectEnabledMCPServers();
-  } catch (error) {
-    console.error('❌ Failed to auto-connect MCP servers on startup:', error);
+  } catch {
+    // Silently handle MCP server connection error
   }
 });
 
@@ -2435,11 +2339,9 @@ let ipcHandlersRegistered = false;
 
 function setupIPC() {
   if (ipcHandlersRegistered) {
-    console.log('IPC handlers already registered, skipping...');
     return;
   }
-  
-  console.log('Registering IPC handlers...');
+
   ipcHandlersRegistered = true;
   // Handle clipboard read requests from renderer
   ipcMain.handle('read-clipboard', () => {
@@ -2460,15 +2362,12 @@ function setupIPC() {
 
   // Handle app settings
   ipcMain.handle('get-app-settings', () => {
-    const settings = loadAppSettings();
     // Returning app settings
-    return settings;
+    return loadAppSettings();
   });
 
   ipcMain.handle('update-app-settings', (_, settings: AppSettings) => {
     try {
-      console.log('update-app-settings called, received:', settings);
-
       // Clean settings to avoid nested structures
       const cleanSettings = { ...settings };
       delete cleanSettings['app-settings']; // Remove any nested app-settings key
@@ -2480,14 +2379,11 @@ function setupIPC() {
         const newShortcut = cleanSettings.shortcuts.toggleWindow;
 
         if (newShortcut !== currentShortcut) {
-          console.log('Updating shortcut from', currentShortcut, 'to', newShortcut);
-
           // Unregister old shortcut
           globalShortcut.unregister(currentShortcut);
 
           // Register new shortcut
           globalShortcut.register(newShortcut, () => {
-            console.log('New shortcut triggered:', newShortcut);
             if (mainWindow) {
               if (mainWindow.isVisible() && mainWindow.isFocused()) {
                 mainWindow.hide();
@@ -2496,7 +2392,9 @@ function setupIPC() {
                 mainWindow.focus();
               }
             } else {
-              createWindow().catch(console.error);
+              createWindow().catch(() => {
+                // Silently handle window creation error
+              });
             }
           });
         }
@@ -2505,18 +2403,18 @@ function setupIPC() {
       // Handle action menu shortcut updates
       if (cleanSettings.shortcuts && cleanSettings.shortcuts.actionMenu) {
         const currentSettings = loadAppSettings();
-        const currentActionMenuShortcut = currentSettings.shortcuts?.actionMenu || 'CommandOrControl+Shift+Space';
+        const currentActionMenuShortcut = currentSettings.shortcuts?.actionMenu || SHORTCUT_ACTION_MENU;
         const newActionMenuShortcut = cleanSettings.shortcuts.actionMenu;
 
         if (newActionMenuShortcut !== currentActionMenuShortcut) {
-          console.log('Updating action menu shortcut from', currentActionMenuShortcut, 'to', newActionMenuShortcut);
+
 
           // Unregister old shortcut
           globalShortcut.unregister(currentActionMenuShortcut);
 
           // Register new shortcut
           globalShortcut.register(newActionMenuShortcut, async () => {
-            console.log('New action menu shortcut triggered:', newActionMenuShortcut);
+
             if (mainWindow) {
               // Show main window first if hidden
               if (!mainWindow.isVisible()) {
@@ -2533,18 +2431,18 @@ function setupIPC() {
       // Handle open shortcuts shortcut updates
       if (cleanSettings.shortcuts && cleanSettings.shortcuts.openShortcuts) {
         const currentSettings = loadAppSettings();
-        const currentOpenShortcutsShortcut = currentSettings.shortcuts?.openShortcuts || 'CommandOrControl+Shift+K';
+        const currentOpenShortcutsShortcut = currentSettings.shortcuts?.openShortcuts || SHORTCUT_OPEN_SHORTCUTS;
         const newOpenShortcutsShortcut = cleanSettings.shortcuts.openShortcuts;
 
         if (newOpenShortcutsShortcut !== currentOpenShortcutsShortcut) {
-          console.log('Updating open shortcuts shortcut from', currentOpenShortcutsShortcut, 'to', newOpenShortcutsShortcut);
+
 
           // Unregister old shortcut
           globalShortcut.unregister(currentOpenShortcutsShortcut);
 
           // Register new shortcut
           globalShortcut.register(newOpenShortcutsShortcut, async () => {
-            console.log('New open shortcuts shortcut triggered:', newOpenShortcutsShortcut);
+
             if (mainWindow) {
               // Show main window first if hidden
               if (!mainWindow.isVisible()) {
@@ -2566,11 +2464,8 @@ function setupIPC() {
 
       }
 
-      const success = saveAppSettings(cleanSettings);
-      console.log('App settings updated in store:', cleanSettings);
-      return success;
-    } catch (error) {
-      console.error('Failed to update app settings:', error);
+      return saveAppSettings(cleanSettings);
+    } catch {
       return false;
     }
   });
@@ -2580,8 +2475,7 @@ function setupIPC() {
     try {
       const settings = loadAppSettings();
       return settings[key];
-    } catch (error) {
-      console.error('Failed to get storage item:', error);
+    } catch {
       return null;
     }
   });
@@ -2591,8 +2485,7 @@ function setupIPC() {
       const settings = loadAppSettings();
       settings[key] = value;
       return saveAppSettings(settings);
-    } catch (error) {
-      console.error('Failed to set storage item:', error);
+    } catch {
       return false;
     }
   });
@@ -2602,8 +2495,7 @@ function setupIPC() {
       const settings = loadAppSettings();
       delete settings[key];
       return saveAppSettings(settings);
-    } catch (error) {
-      console.error('Failed to remove storage item:', error);
+    } catch {
       return false;
     }
   });
@@ -2611,7 +2503,7 @@ function setupIPC() {
   // Secure API Key Storage handlers
   ipcMain.handle('get-secure-api-keys', () => {
     try {
-      const apiKeysPath = path.join(app.getPath('userData'), 'secure-api-keys.json');
+      const apiKeysPath = path.join(app.getPath(USER_DATA_PATH), SECURE_API_KEYS_FILENAME);
 
       if (fs.existsSync(apiKeysPath)) {
         // Try to read as encrypted data first
@@ -2619,44 +2511,35 @@ function setupIPC() {
           try {
             const encryptedData = fs.readFileSync(apiKeysPath);
             const decryptedBuffer = safeStorage.decryptString(encryptedData);
-            const apiKeys = JSON.parse(decryptedBuffer);
-            console.log('🔐 Successfully decrypted API keys for providers:', Object.keys(apiKeys));
-            return apiKeys;
+            return JSON.parse(decryptedBuffer);
           } catch {
-            console.error('❌ Failed to decrypt API keys - file may be corrupted');
             return {};
           }
         } else {
-          console.error('❌ Encryption not available - cannot read encrypted API keys');
           return {};
         }
       } else {
-        console.log('🔐 No secure API keys file found');
         return {};
       }
-    } catch (error) {
-      console.error('❌ Failed to load secure API keys:', error);
+    } catch {
       return {};
     }
   });
 
   ipcMain.handle('set-secure-api-keys', (_, apiKeys: Record<string, unknown>) => {
     try {
-      const apiKeysPath = path.join(app.getPath('userData'), 'secure-api-keys.json');
+      const apiKeysPath = path.join(app.getPath(USER_DATA_PATH), SECURE_API_KEYS_FILENAME);
       const dataToStore = JSON.stringify(apiKeys, null, 2);
 
       // Only save if encryption is available - NEVER save as plain text
       if (app.isReady() && safeStorage.isEncryptionAvailable()) {
         const encryptedData = safeStorage.encryptString(dataToStore);
         fs.writeFileSync(apiKeysPath, encryptedData);
-        console.log('🔐 Successfully encrypted and saved API keys');
         return true;
       } else {
-        console.error('❌ Encryption not available - cannot save API keys securely');
         return false;
       }
-    } catch (error) {
-      console.error('❌ Failed to save secure API keys:', error);
+    } catch {
       return false;
     }
   });
@@ -2664,23 +2547,17 @@ function setupIPC() {
   // Handle MCP servers operations
   ipcMain.handle('get-mcp-servers', () => {
     try {
-      const mcpData = loadMCPServers();
       // Removed verbose MCP servers logging
-      return mcpData;
-    } catch (error) {
-      console.error('Failed to get MCP servers:', error);
+      return loadMCPServers();
+    } catch {
       return { servers: [], version: '1.0.0' };
     }
   });
 
   ipcMain.handle('save-mcp-servers', (_, mcpData: MCPData) => {
     try {
-      console.log('save-mcp-servers called, received:', mcpData);
-      const success = saveMCPServers(mcpData);
-      console.log('MCP servers saved:', success);
-      return success;
-    } catch (error) {
-      console.error('Failed to save MCP servers:', error);
+      return saveMCPServers(mcpData);
+    } catch {
       return false;
     }
   });
@@ -2709,7 +2586,7 @@ function setupIPC() {
         console.log('MCP server added successfully:', newServer.id);
         return newServer;
       } else {
-        throw new Error('Failed to save MCP servers');
+        throw new Error(FAILED_TO_SAVE_MCP_SERVERS);
       }
     } catch (error) {
       console.error('Failed to add MCP server:', error);
@@ -2758,7 +2635,7 @@ function setupIPC() {
 
         return true;
       } else {
-        throw new Error('Failed to save MCP servers');
+        throw new Error(FAILED_TO_SAVE_MCP_SERVERS);
       }
     } catch (error) {
       console.error('Failed to update MCP server:', error);
@@ -2789,7 +2666,7 @@ function setupIPC() {
         console.log('MCP server removed successfully:', id);
         return true;
       } else {
-        throw new Error('Failed to save MCP servers');
+        throw new Error(FAILED_TO_SAVE_MCP_SERVERS);
       }
     } catch (error) {
       console.error('Failed to remove MCP server:', error);
@@ -2942,7 +2819,7 @@ function setupIPC() {
   // Save individual conversation to JSON file
   ipcMain.handle('save-conversation-to-file', (_, conversationId: string, conversation: Conversation) => {
     try {
-      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      const conversationsDir = path.join(app.getPath(USER_DATA_PATH), CONVERSATIONS_DIR_NAME);
       if (!fs.existsSync(conversationsDir)) {
         fs.mkdirSync(conversationsDir, { recursive: true });
       }
@@ -2960,12 +2837,12 @@ function setupIPC() {
   // Save conversation index to JSON file
   ipcMain.handle('save-conversation-index', (_, conversationIndex: Conversation[]) => {
     try {
-      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      const conversationsDir = path.join(app.getPath(USER_DATA_PATH), CONVERSATIONS_DIR_NAME);
       if (!fs.existsSync(conversationsDir)) {
         fs.mkdirSync(conversationsDir, { recursive: true });
       }
 
-      const indexPath = path.join(conversationsDir, 'index.json');
+      const indexPath = path.join(conversationsDir, INDEX_JSON_FILENAME);
       fs.writeFileSync(indexPath, JSON.stringify(conversationIndex, null, 2));
       console.log(`Conversation index saved to file: ${indexPath}`);
       return true;
@@ -2977,8 +2854,8 @@ function setupIPC() {
 
   ipcMain.handle('load-conversation-index', () => {
     try {
-      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
-      const indexPath = path.join(conversationsDir, 'index.json');
+      const conversationsDir = path.join(app.getPath(USER_DATA_PATH), CONVERSATIONS_DIR_NAME);
+      const indexPath = path.join(conversationsDir, INDEX_JSON_FILENAME);
 
       if (fs.existsSync(indexPath)) {
         const data = fs.readFileSync(indexPath, 'utf8');
@@ -2993,7 +2870,7 @@ function setupIPC() {
 
   ipcMain.handle('load-conversation-from-file', (_, conversationId: string) => {
     try {
-      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      const conversationsDir = path.join(app.getPath(USER_DATA_PATH), CONVERSATIONS_DIR_NAME);
       const filePath = path.join(conversationsDir, `${conversationId}.json`);
 
       if (fs.existsSync(filePath)) {
@@ -3009,18 +2886,16 @@ function setupIPC() {
 
   ipcMain.handle('get-all-conversation-ids', () => {
     try {
-      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      const conversationsDir = path.join(app.getPath(USER_DATA_PATH), CONVERSATIONS_DIR_NAME);
 
       if (!fs.existsSync(conversationsDir)) {
         return [];
       }
 
       const files = fs.readdirSync(conversationsDir);
-      const conversationIds = files
-        .filter(file => file.endsWith('.json') && file !== 'index.json')
+      return files
+        .filter(file => file.endsWith('.json') && file !== INDEX_JSON_FILENAME)
         .map(file => file.replace('.json', ''));
-
-      return conversationIds;
     } catch (error) {
       console.error('Failed to get conversation IDs:', error);
       return [];
@@ -3032,12 +2907,12 @@ function setupIPC() {
   // Save memory index to JSON file
   ipcMain.handle('save-memory-index', (_, memoryIndex: Record<string, unknown>) => {
     try {
-      const memoryDir = path.join(app.getPath('userData'), 'memory');
+      const memoryDir = path.join(app.getPath(USER_DATA_PATH), MEMORY_DIR_NAME);
       if (!fs.existsSync(memoryDir)) {
         fs.mkdirSync(memoryDir, { recursive: true });
       }
 
-      const indexPath = path.join(memoryDir, 'index.json');
+      const indexPath = path.join(memoryDir, INDEX_JSON_FILENAME);
       fs.writeFileSync(indexPath, JSON.stringify(memoryIndex, null, 2));
       console.log(`Memory index saved to file: ${indexPath}`);
       return true;
@@ -3050,8 +2925,8 @@ function setupIPC() {
   // Load memory index from JSON file
   ipcMain.handle('load-memory-index', () => {
     try {
-      const memoryDir = path.join(app.getPath('userData'), 'memory');
-      const indexPath = path.join(memoryDir, 'index.json');
+      const memoryDir = path.join(app.getPath(USER_DATA_PATH), MEMORY_DIR_NAME);
+      const indexPath = path.join(memoryDir, INDEX_JSON_FILENAME);
 
       if (fs.existsSync(indexPath)) {
         const data = fs.readFileSync(indexPath, 'utf8');
@@ -3067,7 +2942,7 @@ function setupIPC() {
   // Save individual memory entry to JSON file
   ipcMain.handle('save-memory-entry', (_, memoryEntry: Record<string, unknown>) => {
     try {
-      const memoryDir = path.join(app.getPath('userData'), 'memory');
+      const memoryDir = path.join(app.getPath(USER_DATA_PATH), MEMORY_DIR_NAME);
       const entriesDir = path.join(memoryDir, 'entries');
 
       if (!fs.existsSync(entriesDir)) {
@@ -3087,7 +2962,7 @@ function setupIPC() {
   // Load memory entry from JSON file
   ipcMain.handle('load-memory-entry', (_, memoryId: string) => {
     try {
-      const memoryDir = path.join(app.getPath('userData'), 'memory');
+      const memoryDir = path.join(app.getPath(USER_DATA_PATH), MEMORY_DIR_NAME);
       const entriesDir = path.join(memoryDir, 'entries');
       const filePath = path.join(entriesDir, `${memoryId}.json`);
 
@@ -3105,7 +2980,7 @@ function setupIPC() {
   // Delete memory entry file
   ipcMain.handle('delete-memory-entry', (_, memoryId: string) => {
     try {
-      const memoryDir = path.join(app.getPath('userData'), 'memory');
+      const memoryDir = path.join(app.getPath(USER_DATA_PATH), MEMORY_DIR_NAME);
       const entriesDir = path.join(memoryDir, 'entries');
       const filePath = path.join(entriesDir, `${memoryId}.json`);
 
@@ -3124,7 +2999,7 @@ function setupIPC() {
   // Get memory storage statistics
   ipcMain.handle('get-memory-stats', () => {
     try {
-      const memoryDir = path.join(app.getPath('userData'), 'memory');
+      const memoryDir = path.join(app.getPath(USER_DATA_PATH), MEMORY_DIR_NAME);
       const entriesDir = path.join(memoryDir, 'entries');
 
       if (!fs.existsSync(entriesDir)) {
@@ -3156,14 +3031,14 @@ function setupIPC() {
   // Save memory export to file
   ipcMain.handle('save-memory-export', async (_, exportData: Record<string, unknown>, filename: string) => {
     try {
-      if (!mainWindow) return { success: false, error: 'No main window available' };
+      if (!mainWindow) return { success: false, error: NO_MAIN_WINDOW_MESSAGE };
 
       // dialog is already imported at the top
       const result = await dialog.showSaveDialog(mainWindow, {
         title: 'Save Memory Export',
         defaultPath: filename,
         filters: [
-          { name: 'JSON Files', extensions: ['json'] },
+          { name: JSON_FILES_FILTER_NAME, extensions: ['json'] },
           { name: 'All Files', extensions: ['*'] }
         ]
       });
@@ -3183,7 +3058,7 @@ function setupIPC() {
       console.error('Failed to save memory export:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE
       };
     }
   });
@@ -3191,13 +3066,13 @@ function setupIPC() {
   // Load memory export from file
   ipcMain.handle('load-memory-export', async () => {
     try {
-      if (!mainWindow) return { success: false, error: 'No main window available' };
+      if (!mainWindow) return { success: false, error: NO_MAIN_WINDOW_MESSAGE };
 
       // dialog is already imported at the top
       const result = await dialog.showOpenDialog(mainWindow, {
         title: 'Load Memory Export',
         filters: [
-          { name: 'JSON Files', extensions: ['json'] },
+          { name: JSON_FILES_FILTER_NAME, extensions: ['json'] },
           { name: 'All Files', extensions: ['*'] }
         ],
         properties: ['openFile']
@@ -3221,7 +3096,7 @@ function setupIPC() {
       console.error('Failed to load memory export:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE
       };
     }
   });
@@ -3379,7 +3254,7 @@ function setupIPC() {
       }
     } catch (error) {
       console.error('❌ Failed to take screenshot:', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE };
     }
   });
 
@@ -3398,7 +3273,7 @@ function setupIPC() {
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
         console.log('📚 Knowledge base not initialized, initializing...');
-        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
         console.log('📚 Knowledge base initialized successfully');
       }
@@ -3425,17 +3300,15 @@ function setupIPC() {
 
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
-        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
 
       // Use the new batch method with progress callbacks
-      const result = await knowledgeBaseService.addDocumentsBatch(filePaths, (progress) => {
+      return await knowledgeBaseService.addDocumentsBatch(filePaths, (progress) => {
         // Send progress updates to the renderer process
         event.sender.send('knowledge-base:batch-progress', progress);
       });
-
-      return result;
     } catch (error) {
       console.error('Failed to add documents to knowledge base:', error);
       return { success: false, error: (error as Error).message };
@@ -3449,7 +3322,7 @@ function setupIPC() {
 
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
-        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
 
@@ -3468,7 +3341,7 @@ function setupIPC() {
 
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
-        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
 
@@ -3477,7 +3350,7 @@ function setupIPC() {
         title: 'Export Knowledge Base',
         defaultPath: `knowledge-base-export-${new Date().toISOString().split('T')[0]}.json`,
         filters: [
-          { name: 'JSON Files', extensions: ['json'] },
+          { name: JSON_FILES_FILTER_NAME, extensions: ['json'] },
           { name: 'All Files', extensions: ['*'] }
         ]
       });
@@ -3512,7 +3385,7 @@ function setupIPC() {
 
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
-        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
 
@@ -3521,7 +3394,7 @@ function setupIPC() {
         title: 'Import Knowledge Base',
         properties: ['openFile'],
         filters: [
-          { name: 'JSON Files', extensions: ['json'] },
+          { name: JSON_FILES_FILTER_NAME, extensions: ['json'] },
           { name: 'All Files', extensions: ['*'] }
         ]
       });
@@ -3562,7 +3435,7 @@ function setupIPC() {
 
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
-        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
 
@@ -3581,7 +3454,7 @@ function setupIPC() {
 
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
-        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
 
@@ -3600,7 +3473,7 @@ function setupIPC() {
 
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
-        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
 
@@ -3619,7 +3492,7 @@ function setupIPC() {
 
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
-        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
 
@@ -3638,7 +3511,7 @@ function setupIPC() {
 
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
-        const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
 
@@ -3749,9 +3622,36 @@ function setupIPC() {
     }
   });
 
+  // Simple file writing handler
+  ipcMain.handle('write-file', async (_, filePath: string, content: string) => {
+    try {
+      console.log(`📝 Writing file: ${filePath}`);
+
+      // Ensure directory exists
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        await fsPromises.mkdir(dir, { recursive: true });
+      }
+
+      // Write file content
+      await fsPromises.writeFile(filePath, content, 'utf8');
+      console.log(`📝 Successfully wrote file: ${filePath}, length: ${content.length}`);
+
+      return {
+        success: true
+      };
+    } catch (error) {
+      console.error(`📝 Failed to write file ${filePath}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  });
+
   // PDF parsing handler for chat attachments
   ipcMain.handle('parse-pdf-file', async (_, fileBuffer: ArrayBuffer, fileName: string) => {
-    const logFile = path.join(app.getPath('userData'), 'pdf-parsing-debug.log');
+    const logFile = path.join(app.getPath(USER_DATA_PATH), 'pdf-parsing-debug.log');
 
     const writeLog = async (message: string) => {
       const timestamp = new Date().toISOString();
@@ -3856,7 +3756,7 @@ function setupIPC() {
 
         // Initialize if needed
         if (!knowledgeBaseService.isInitialized()) {
-          const dbPath = path.join(app.getPath('userData'), 'knowledgebase.db');
+          const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
           await knowledgeBaseService.initialize(dbPath);
         }
 
@@ -3921,7 +3821,7 @@ function setupIPC() {
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
-        text: `[PDF Document: ${fileName}]\nNote: PDF text extraction failed - ${error instanceof Error ? error.message : 'Unknown error'}`
+        text: `[PDF Document: ${fileName}]\nNote: PDF text extraction failed - ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}`
       };
     }
   });
@@ -3941,6 +3841,17 @@ function setupIPC() {
     } catch (error) {
       console.error('Error in select-directory handler:', error);
       return null;
+    }
+  });
+
+  // App path handler
+  ipcMain.handle('get-app-path', async () => {
+    try {
+      // Return the app directory path where resources are located
+      return app.getAppPath();
+    } catch (error) {
+      console.error('Error getting app path:', error);
+      return process.cwd(); // Fallback to current working directory
     }
   });
 
@@ -4003,7 +3914,7 @@ function setupIPC() {
       const path = await import('path');
 
       // Use app.getPath('userData') which works correctly on Windows
-      const logDir = path.join(app.getPath('userData'), 'debug');
+      const logDir = path.join(app.getPath(USER_DATA_PATH), 'debug');
       const logFile = path.join(logDir, 'debug.log');
 
       // Only log to console if debug logging is enabled in settings
@@ -4028,7 +3939,7 @@ function setupIPC() {
       const path = await import('path');
 
       // Use app.getPath('userData') which works correctly on Windows
-      const logDir = path.join(app.getPath('userData'), 'debug');
+      const logDir = path.join(app.getPath(USER_DATA_PATH), 'debug');
       const logFile = path.join(logDir, 'debug.log');
 
       // Removed debug spam - don't log file operations to console
@@ -4052,7 +3963,7 @@ function setupIPC() {
       const path = await import('path');
 
       // Use app.getPath('userData') which works correctly on Windows
-      const logDir = path.join(app.getPath('userData'), 'debug');
+      const logDir = path.join(app.getPath(USER_DATA_PATH), 'debug');
       const logFile = path.join(logDir, 'debug.log');
 
       // Removed debug spam - don't log file operations to console
@@ -4063,7 +3974,7 @@ function setupIPC() {
       return { success: true, content, logPath: logFile };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        const logDir = path.join(app.getPath('userData'), 'debug');
+        const logDir = path.join(app.getPath(USER_DATA_PATH), 'debug');
         const logFile = path.join(logDir, 'debug.log');
         return { success: true, content: '', logPath: logFile }; // File doesn't exist yet
       }
@@ -4424,7 +4335,7 @@ console.debug = (...args: unknown[]) => {
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
-          preload: path.join(__dirname, 'preload.js')
+          preload: path.join(__dirname, PRELOAD_JS_FILENAME)
         }
       });
 
@@ -4439,7 +4350,7 @@ console.debug = (...args: unknown[]) => {
       historyWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
 
       // Wait for the window to be ready before showing to prevent flash
-      historyWindow.once('ready-to-show', () => {
+      historyWindow.once(READY_TO_SHOW_EVENT, () => {
         historyWindow?.show();
       });
 
@@ -4463,24 +4374,24 @@ console.debug = (...args: unknown[]) => {
   });
 
   // Handle history events from history window
-  ipcMain.on('history-item-selected', (_, conversationId: string) => {
+  ipcMain.on(HISTORY_ITEM_SELECTED_EVENT, (_, conversationId: string) => {
     // Forward to main window renderer process
     if (mainWindow) {
-      mainWindow.webContents.send('history-item-selected', conversationId);
+      mainWindow.webContents.send(HISTORY_ITEM_SELECTED_EVENT, conversationId);
     }
   });
 
-  ipcMain.on('history-item-deleted', (_, conversationId: string) => {
+  ipcMain.on(HISTORY_ITEM_DELETED_EVENT, (_, conversationId: string) => {
     // Forward to main window renderer process
     if (mainWindow) {
-      mainWindow.webContents.send('history-item-deleted', conversationId);
+      mainWindow.webContents.send(HISTORY_ITEM_DELETED_EVENT, conversationId);
     }
   });
 
-  ipcMain.on('clear-all-history', () => {
+  ipcMain.on(CLEAR_ALL_HISTORY_EVENT, () => {
     // Forward to main window renderer process
     if (mainWindow) {
-      mainWindow.webContents.send('clear-all-history');
+      mainWindow.webContents.send(CLEAR_ALL_HISTORY_EVENT);
     }
   });
 
@@ -4522,7 +4433,7 @@ console.debug = (...args: unknown[]) => {
   ipcMain.handle('open-settings-overlay', async () => {
     // Open settings overlay requested
     if (!mainWindow) {
-      console.log('No main window available');
+      console.log(NO_MAIN_WINDOW_MESSAGE);
       return false;
     }
 
@@ -4569,7 +4480,7 @@ console.debug = (...args: unknown[]) => {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js'),
+        preload: path.join(__dirname, PRELOAD_JS_FILENAME),
         webSecurity: false, // Allow localhost connections for LM Studio, Ollama, etc.
       },
     });
@@ -4590,7 +4501,7 @@ console.debug = (...args: unknown[]) => {
       });
 
       // Show window only when ready to prevent flash
-      settingsWindow.once('ready-to-show', () => {
+      settingsWindow.once(READY_TO_SHOW_EVENT, () => {
         settingsWindow?.show();
         settingsWindow?.focus();
       });
@@ -4618,7 +4529,7 @@ console.debug = (...args: unknown[]) => {
       // Settings window hidden
     });
 
-    settingsWindow.once('ready-to-show', () => {
+    settingsWindow.once(READY_TO_SHOW_EVENT, () => {
       settingsWindow?.focus();
     });
   });
@@ -4680,7 +4591,7 @@ console.debug = (...args: unknown[]) => {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js'),
+        preload: path.join(__dirname, PRELOAD_JS_FILENAME),
         webSecurity: false,
       },
     });
@@ -4699,7 +4610,7 @@ console.debug = (...args: unknown[]) => {
       chatWindow = null;
     });
 
-    chatWindow.once('ready-to-show', () => {
+    chatWindow.once(READY_TO_SHOW_EVENT, () => {
       chatWindow?.show();
       chatWindow?.focus();
     });
@@ -4733,7 +4644,7 @@ console.debug = (...args: unknown[]) => {
       return { success: true };
     } catch (error) {
       console.error('Failed to open external URL:', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+      return { success: false, error: error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE };
     }
   });
 
@@ -4748,7 +4659,7 @@ console.debug = (...args: unknown[]) => {
   // Handle state file operations (separate from settings)
   ipcMain.handle('get-state-file', async (_, filename: string) => {
     try {
-      const stateDir = path.join(app.getPath('userData'), 'state');
+      const stateDir = path.join(app.getPath(USER_DATA_PATH), 'state');
       const filePath = path.join(stateDir, filename);
 
       if (fs.existsSync(filePath)) {
@@ -4764,7 +4675,7 @@ console.debug = (...args: unknown[]) => {
 
   ipcMain.handle('save-state-file', async (_, filename: string, data: Record<string, unknown>) => {
     try {
-      const stateDir = path.join(app.getPath('userData'), 'state');
+      const stateDir = path.join(app.getPath(USER_DATA_PATH), 'state');
 
       // Ensure state directory exists
       if (!fs.existsSync(stateDir)) {
@@ -5142,7 +5053,7 @@ console.debug = (...args: unknown[]) => {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js'),
+        preload: path.join(__dirname, PRELOAD_JS_FILENAME),
         webSecurity: false,
       },
     });
@@ -5442,33 +5353,27 @@ console.debug = (...args: unknown[]) => {
       dropdownWindow = null;
     });
 
-    dropdownWindow.once('ready-to-show', () => {
+    dropdownWindow.once(READY_TO_SHOW_EVENT, () => {
       dropdownWindow?.show();
       dropdownWindow?.focus(); // Ensure it can receive events
     });
 
-    // Close dropdown if main window moves or is minimized
-    const handleMainWindowMove = () => {
+    // Close dropdown if main window moves, minimizes, or hides
+    const handleMainWindowChange = () => {
       if (dropdownWindow && !dropdownWindow.isDestroyed()) {
         dropdownWindow.close();
       }
     };
 
-    const handleMainWindowMinimize = () => {
-      if (dropdownWindow && !dropdownWindow.isDestroyed()) {
-        dropdownWindow.close();
-      }
-    };
-
-    mainWindow.on('move', handleMainWindowMove);
-    mainWindow.on('minimize', handleMainWindowMinimize);
-    mainWindow.on('hide', handleMainWindowMove);
+    mainWindow.on('move', handleMainWindowChange);
+    mainWindow.on('minimize', handleMainWindowChange);
+    mainWindow.on('hide', handleMainWindowChange);
 
     // Clean up listeners when dropdown closes
     dropdownWindow.on('closed', () => {
-      mainWindow?.off('move', handleMainWindowMove);
-      mainWindow?.off('minimize', handleMainWindowMinimize);
-      mainWindow?.off('hide', handleMainWindowMove);
+      mainWindow?.off('move', handleMainWindowChange);
+      mainWindow?.off('minimize', handleMainWindowChange);
+      mainWindow?.off('hide', handleMainWindowChange);
     });
   });
 
@@ -5523,7 +5428,7 @@ console.debug = (...args: unknown[]) => {
 
     try {
       // Delete the conversation file from disk
-      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      const conversationsDir = path.join(app.getPath(USER_DATA_PATH), CONVERSATIONS_DIR_NAME);
       const filePath = path.join(conversationsDir, `${conversationId}.json`);
 
       if (fs.existsSync(filePath)) {
@@ -5534,7 +5439,7 @@ console.debug = (...args: unknown[]) => {
       }
 
       // Update the conversation index by removing this conversation
-      const indexPath = path.join(conversationsDir, 'index.json');
+      const indexPath = path.join(conversationsDir, INDEX_JSON_FILENAME);
       if (fs.existsSync(indexPath)) {
         try {
           const indexData = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
@@ -5568,11 +5473,11 @@ console.debug = (...args: unknown[]) => {
   });
 
   // Handle clear all history
-  ipcMain.handle('clear-all-history', async () => {
+  ipcMain.handle(CLEAR_ALL_HISTORY_EVENT, async () => {
     console.log('🗑️ Clearing all chat history');
 
     try {
-      const conversationsDir = path.join(app.getPath('userData'), 'conversations');
+      const conversationsDir = path.join(app.getPath(USER_DATA_PATH), CONVERSATIONS_DIR_NAME);
       console.log('🗑️ Clearing all conversation files from:', conversationsDir);
 
       let deletedCount = 0;
@@ -5601,7 +5506,7 @@ console.debug = (...args: unknown[]) => {
 
       // Send clear all notification to main window
       if (mainWindow) {
-        mainWindow.webContents.send('clear-all-history');
+        mainWindow.webContents.send(CLEAR_ALL_HISTORY_EVENT);
       }
 
       // Close history window

@@ -106,6 +106,11 @@ export interface LLMResponse {
     result?: string;
     error?: boolean;
   }>;
+  images?: Array<{
+    data: string;        // Data URL (data:image/png;base64,...)
+    mimeType: string;    // MIME type (e.g., "image/png")
+    alt?: string;        // Optional alt text for accessibility
+  }>;
 }
 
 // Type guards for tool types

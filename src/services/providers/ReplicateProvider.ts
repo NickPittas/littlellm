@@ -12,6 +12,7 @@ import {
 } from './types';
 
 import { REPLICATE_SYSTEM_PROMPT, generateReplicateToolPrompt } from './prompts/replicate';
+import { PricingService } from '../pricingService';
 
 export class ReplicateProvider extends BaseProvider {
   readonly id = 'replicate';
@@ -91,16 +92,16 @@ export class ReplicateProvider extends BaseProvider {
     if (data.status === 'starting' || data.status === 'processing') {
       // For simplicity, we'll wait for completion
       const completedData = await this.pollForCompletion(data.urls.get, settings.apiKey, signal);
-      return this.parseReplicateResponse(completedData, prompt);
+      return this.parseReplicateResponse(completedData, prompt, settings);
     }
 
-    return this.parseReplicateResponse(data, prompt);
+    return this.parseReplicateResponse(data, prompt, settings);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.error('❌ No Replicate API key provided - cannot fetch models');
+
       throw new Error('Replicate API key is required to fetch available models. Please add your API key in settings.');
     }
 
@@ -161,7 +162,7 @@ export class ReplicateProvider extends BaseProvider {
     throw new Error('Replicate prediction timed out');
   }
 
-  private parseReplicateResponse(data: {output?: unknown}, prompt: string): LLMResponse {
+  private parseReplicateResponse(data: {output?: unknown}, prompt: string, settings: LLMSettings): LLMResponse {
     let content = '';
     
     if (data.output) {
@@ -176,10 +177,29 @@ export class ReplicateProvider extends BaseProvider {
 
     // Estimate token usage
     const usage = this.createEstimatedUsage(prompt, content, 'Replicate estimated');
+    const { usage: usageInfo, cost } = this.createUsageAndCost(settings.model, usage);
 
     return {
       content,
-      usage
+      usage: usageInfo,
+      cost
     };
+  }
+
+  /**
+   * Create usage and cost information from Replicate API response
+   */
+  private createUsageAndCost(model: string, usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number }) {
+    if (!usage) return { usage: undefined, cost: undefined };
+
+    const usageInfo = {
+      promptTokens: usage.promptTokens || 0,
+      completionTokens: usage.completionTokens || 0,
+      totalTokens: usage.totalTokens || 0
+    };
+
+    const costInfo = PricingService.calculateCost('replicate', model, usageInfo.promptTokens, usageInfo.completionTokens);
+
+    return { usage: usageInfo, cost: costInfo };
   }
 }

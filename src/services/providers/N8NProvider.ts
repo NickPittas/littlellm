@@ -12,6 +12,7 @@ import {
 } from './types';
 
 import { N8N_SYSTEM_PROMPT, generateN8NToolPrompt } from './prompts/n8n';
+import { PricingService } from '../pricingService';
 
 export class N8NProvider extends BaseProvider {
   readonly id = 'n8n';
@@ -35,25 +36,16 @@ export class N8NProvider extends BaseProvider {
     conversationId?: string
   ): Promise<LLMResponse> {
     // N8N workflow integration
-    console.log(`🔍 N8N sendMessage called with:`, {
-      settingsBaseUrl: settings.baseUrl,
-      providerBaseUrl: provider.baseUrl,
-      messageType: typeof message
-    });
+
 
     const baseUrl = settings.baseUrl || provider.baseUrl;
 
     if (!baseUrl) {
-      console.error('🚨 N8N webhook URL is missing:', {
-        settingsBaseUrl: settings.baseUrl,
-        providerBaseUrl: provider.baseUrl,
-        hasSettings: !!settings,
-        hasProvider: !!provider
-      });
+
       throw new Error('N8N webhook URL is required. Please configure the webhook URL in Settings → API Keys → N8N Base URL.');
     }
 
-    console.log(`🔍 N8N: Using webhook URL: ${baseUrl}`);
+
 
     // Prepare the payload for the N8N workflow
     const payload = {
@@ -71,7 +63,7 @@ export class N8NProvider extends BaseProvider {
       conversationId: conversationId || undefined
     };
 
-    console.log('🔗 N8N webhook payload:', JSON.stringify(payload, null, 2));
+
 
     const response = await fetch(baseUrl, {
       method: 'POST',
@@ -82,16 +74,11 @@ export class N8NProvider extends BaseProvider {
       signal
     });
 
-    console.log('🔗 N8N response status:', {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-      url: response.url
-    });
+
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('🚨 N8N workflow error response:', error);
+
       throw new Error(`N8N workflow error (${response.status}): ${error}`);
     }
 
@@ -102,9 +89,9 @@ export class N8NProvider extends BaseProvider {
     }
   }
 
-  async fetchModels(apiKey: string, baseUrl?: string): Promise<string[]> {
+  async fetchModels(_apiKey: string, baseUrl?: string): Promise<string[]> {
     if (!baseUrl) {
-      console.error('❌ No N8N workflow URL provided - cannot fetch models');
+
       throw new Error('N8N workflow URL is required. Please add the workflow URL in settings.');
     }
 
@@ -117,7 +104,7 @@ export class N8NProvider extends BaseProvider {
       }
       return [workflowName];
     } catch (error) {
-      console.error('❌ Failed to process N8N workflow URL:', error);
+
       throw error instanceof Error ? error : new Error(`Failed to process N8N workflow URL: ${String(error)}`);
     }
   }
@@ -188,13 +175,7 @@ export class N8NProvider extends BaseProvider {
     try {
       // First check if response has content
       const responseText = await response.text();
-      console.log('🔗 N8N raw response:', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-        bodyLength: responseText.length,
-        bodyPreview: responseText.substring(0, 200)
-      });
+
 
       if (!responseText.trim()) {
         throw new Error('N8N webhook returned empty response. Check your workflow configuration.');
@@ -203,12 +184,11 @@ export class N8NProvider extends BaseProvider {
       let data;
       try {
         data = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error('🚨 N8N JSON parse error:', parseError);
+      } catch {
         throw new Error(`N8N webhook returned invalid JSON: ${responseText.substring(0, 100)}...`);
       }
 
-      console.log('🔗 N8N workflow response:', JSON.stringify(data, null, 2));
+
 
       // Handle different possible response formats from N8N workflows
       let content = '';
@@ -241,13 +221,32 @@ export class N8NProvider extends BaseProvider {
         usage = this.createEstimatedUsage(prompt, content, 'N8N estimated');
       }
 
+      const { usage: usageInfo, cost } = this.createUsageAndCost(_settings.model, usage);
       return {
         content,
-        usage
+        usage: usageInfo,
+        cost
       };
     } catch (error) {
-      console.error('❌ Failed to parse N8N workflow response:', error);
+
       throw new Error(`Failed to parse N8N workflow response: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /**
+   * Create usage and cost information from N8N workflow response
+   */
+  private createUsageAndCost(model: string, usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number }) {
+    if (!usage) return { usage: undefined, cost: undefined };
+
+    const usageInfo = {
+      promptTokens: usage.promptTokens || 0,
+      completionTokens: usage.completionTokens || 0,
+      totalTokens: usage.totalTokens || 0
+    };
+
+    const costInfo = PricingService.calculateCost('n8n', model, usageInfo.promptTokens, usageInfo.completionTokens);
+
+    return { usage: usageInfo, cost: costInfo };
   }
 }

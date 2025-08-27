@@ -14,6 +14,7 @@ import {
 
 import { REQUESTY_SYSTEM_PROMPT } from './prompts/requesty';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
+import { PricingService } from '../pricingService';
 
 export class RequestyProvider extends BaseProvider {
   readonly id = 'requesty';
@@ -96,7 +97,7 @@ export class RequestyProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.log('❌ No Requesty API key provided - cannot fetch models');
+
       return [];
     }
 
@@ -109,14 +110,13 @@ export class RequestyProvider extends BaseProvider {
       });
 
       if (!response.ok) {
-        console.warn(`❌ Requesty API error: ${response.status} - check API key`);
+
         return [];
       }
 
       const data = await response.json() as APIResponseData;
       return data.data?.map((model) => model.id)?.sort() || [];
-    } catch (error) {
-      console.warn('❌ Failed to fetch Requesty models:', error);
+    } catch {
       return [];
     }
   }
@@ -147,7 +147,7 @@ export class RequestyProvider extends BaseProvider {
 
     // Requesty uses structured tool calling with tools parameter and tool_choice
     // Don't add XML tool instructions as they conflict with native function calling
-    console.log(`🔧 Requesty using structured tools, skipping XML tool instructions`);
+
     return basePrompt;
   }
 
@@ -223,13 +223,11 @@ export class RequestyProvider extends BaseProvider {
     const message = choice.message;
 
     if (message.tool_calls && message.tool_calls.length > 0) {
+      const { usage, cost } = this.createUsageAndCost(_settings.model, data.usage);
       return {
         content: message.content || '',
-        usage: data.usage ? {
-          promptTokens: data.usage.prompt_tokens,
-          completionTokens: data.usage.completion_tokens,
-          totalTokens: data.usage.total_tokens
-        } : undefined,
+        usage,
+        cost,
         toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
           id: tc.id,
           name: tc.function.name,
@@ -238,13 +236,28 @@ export class RequestyProvider extends BaseProvider {
       };
     }
 
+    const { usage, cost } = this.createUsageAndCost(_settings.model, data.usage);
     return {
       content: message.content,
-      usage: data.usage ? {
-        promptTokens: data.usage.prompt_tokens,
-        completionTokens: data.usage.completion_tokens,
-        totalTokens: data.usage.total_tokens
-      } : undefined
+      usage,
+      cost
     };
+  }
+
+  /**
+   * Create usage and cost information from Requesty API response
+   */
+  private createUsageAndCost(model: string, usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }) {
+    if (!usage) return { usage: undefined, cost: undefined };
+
+    const usageInfo = {
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0
+    };
+
+    const costInfo = PricingService.calculateCost('requesty', model, usageInfo.promptTokens, usageInfo.completionTokens);
+
+    return { usage: usageInfo, cost: costInfo };
   }
 }

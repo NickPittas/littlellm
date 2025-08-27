@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Internal Command Service (Browser-compatible)
  * Provides DesktopCommanderMCP-like functionality as internal tools

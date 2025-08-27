@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 // Extend Window interface for tool thinking trigger
 declare global {
   interface Window {

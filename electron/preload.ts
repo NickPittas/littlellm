@@ -102,11 +102,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File reading API
   readFile: (filePath: string) => ipcRenderer.invoke('read-file', filePath),
 
+  // File writing API
+  writeFile: (filePath: string, content: string) => ipcRenderer.invoke('write-file', filePath, content),
+
   // PDF parsing for chat attachments
   parsePdfFile: (fileBuffer: ArrayBuffer, fileName: string) => ipcRenderer.invoke('parse-pdf-file', fileBuffer, fileName),
 
   // Directory selection API
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
+
+  // App path API
+  getAppPath: () => ipcRenderer.invoke('get-app-path'),
 
   // Memory export/import operations
   saveMemoryExport: (exportData: any, filename: string) => ipcRenderer.invoke('save-memory-export', exportData, filename),

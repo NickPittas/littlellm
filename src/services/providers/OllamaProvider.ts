@@ -13,12 +13,15 @@ import {
 
 import { OLLAMA_SYSTEM_PROMPT, generateOllamaToolPrompt } from './prompts/ollama';
 
+
 export class OllamaProvider extends BaseProvider {
   readonly id = 'ollama';
   readonly name = 'Ollama (Local)';
 
   // Cache for model tool support detection
   private static modelToolSupportCache = new Map<string, boolean>();
+
+  private static readonly DEFAULT_BASE_URL = 'http://localhost:11434';
 
   readonly capabilities: ProviderCapabilities = {
     supportsVision: true,
@@ -35,10 +38,10 @@ export class OllamaProvider extends BaseProvider {
    */
   async clearConversationState(settings: LLMSettings): Promise<void> {
     try {
-      const baseUrl = settings.baseUrl || 'http://localhost:11434';
+      const baseUrl = settings.baseUrl || OllamaProvider.DEFAULT_BASE_URL;
       const ollamaUrl = baseUrl.replace('/v1', '');
 
-      console.log('🧹 Ollama: Clearing conversation state for fresh start');
+
 
       // Send an empty conversation to reset context
       // This effectively tells Ollama to forget previous conversation context
@@ -66,12 +69,11 @@ export class OllamaProvider extends BaseProvider {
       });
 
       if (response.ok) {
-        console.log('✅ Ollama: Conversation state cleared successfully');
+        // Conversation state cleared successfully
       } else {
-        console.warn('⚠️ Ollama: Failed to clear conversation state, but continuing...');
+        // Failed to clear conversation state, but continuing
       }
-    } catch (error) {
-      console.warn('⚠️ Ollama: Error clearing conversation state:', error);
+    } catch {
       // Don't throw - this is a best-effort cleanup
     }
   }
@@ -81,16 +83,11 @@ export class OllamaProvider extends BaseProvider {
     // Check cache first
     const cacheKey = `${model}@${baseUrl || 'default'}`;
     if (OllamaProvider.modelToolSupportCache.has(cacheKey)) {
-      const cached = OllamaProvider.modelToolSupportCache.get(cacheKey)!;
-      console.log(`🔍 Ollama: Using cached tool support for model "${model}": ${cached}`);
-      return cached;
+      return OllamaProvider.modelToolSupportCache.get(cacheKey)!;
     }
-
-    console.log(`🔍 Ollama: Testing structured tool support for model "${model}" at ${baseUrl || 'http://localhost:11434'}...`);
 
     // Most Ollama models don't support structured tools yet, so default to text-based
     // This ensures models get tool descriptions in their system prompt
-    console.log(`🔍 Ollama: Defaulting to text-based tools for model "${model}" (most reliable approach)`);
     OllamaProvider.modelToolSupportCache.set(cacheKey, false);
     return false;
 
@@ -98,7 +95,7 @@ export class OllamaProvider extends BaseProvider {
     /*
     // Test with a simple tool call to detect support
     try {
-      const ollamaUrl = (baseUrl || 'http://localhost:11434').replace('/v1', '');
+      const ollamaUrl = (baseUrl || OllamaProvider.DEFAULT_BASE_URL).replace('/v1', '');
       const endpoint = `${ollamaUrl}/api/chat`;
 
       const testRequestBody = {
@@ -128,26 +125,26 @@ export class OllamaProvider extends BaseProvider {
 
       if (response.ok) {
         // Model supports structured tools
-        console.log(`✅ Ollama: Model "${model}" supports structured tools`);
+
         OllamaProvider.modelToolSupportCache.set(cacheKey, true);
         return true;
       } else {
         const errorText = await response.text();
         if (errorText.includes('does not support tools')) {
           // Model explicitly doesn't support tools
-          console.log(`❌ Ollama: Model "${model}" does not support structured tools`);
+
           OllamaProvider.modelToolSupportCache.set(cacheKey, false);
           return false;
         } else {
           // Other error - assume no tool support to be safe
-          console.log(`⚠️ Ollama: Model "${model}" tool support unknown (error: ${errorText}), assuming no support`);
+
           OllamaProvider.modelToolSupportCache.set(cacheKey, false);
           return false;
         }
       }
     } catch (error) {
       // Network or other error - assume no tool support to be safe
-      console.log(`⚠️ Ollama: Failed to test tool support for model "${model}":`, error);
+
       OllamaProvider.modelToolSupportCache.set(cacheKey, false);
       return false;
     }
@@ -157,26 +154,21 @@ export class OllamaProvider extends BaseProvider {
   // Ollama-specific tool calling methods
   private async getOllamaTools(settings: LLMSettings): Promise<unknown[]> {
     try {
-      console.log(`🔍 Getting tools for Ollama provider`);
-      console.log(`🔍 Tool calling enabled:`, settings?.toolCallingEnabled !== false);
+
 
       // Check if tool calling is disabled
       if (settings?.toolCallingEnabled === false) {
-        console.log(`🚫 Tool calling is disabled, returning empty tools array`);
+
         return [];
       }
 
       // Get raw tools from the centralized service (temporarily)
       const rawTools = await this.getMCPToolsForProvider('ollama', settings);
-      console.log(`📋 Raw tools received (${rawTools.length} tools):`, (rawTools as Array<{name?: string, function?: {name?: string}}>).map(t => t.name || t.function?.name));
+
 
       // Format tools specifically for Ollama (uses OpenAI format)
-      const formattedTools = this.formatToolsForOllama(rawTools);
-      console.log(`🔧 Formatted ${formattedTools.length} tools for Ollama`);
-
-      return formattedTools;
-    } catch (error) {
-      console.error('❌ Failed to get Ollama tools:', error);
+      return this.formatToolsForOllama(rawTools);
+    } catch {
       return [];
     }
   }
@@ -217,7 +209,7 @@ export class OllamaProvider extends BaseProvider {
         };
       }
 
-      console.warn(`⚠️ Skipping invalid tool:`, tool);
+
       return null;
     }).filter(tool => tool !== null);
   }
@@ -229,16 +221,12 @@ export class OllamaProvider extends BaseProvider {
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}> = [],
     onStream?: (chunk: string) => void,
     signal?: AbortSignal,
-    conversationId?: string
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _conversationId?: string
   ): Promise<LLMResponse> {
-    console.log(`🔍 Ollama sendMessage called with:`, {
-      model: settings.model,
-      baseUrl: settings.baseUrl,
-      providerBaseUrl: provider.baseUrl,
-      messageType: typeof message
-    });
+
     // Ollama API - check if using OpenAI-compatible endpoint or native API
-    const baseUrl = settings.baseUrl || provider.baseUrl || 'http://localhost:11434';
+    const baseUrl = settings.baseUrl || provider.baseUrl || OllamaProvider.DEFAULT_BASE_URL;
 
     const messages = [];
 
@@ -255,33 +243,12 @@ export class OllamaProvider extends BaseProvider {
 
     // Add tool descriptions to system prompt (Ollama doesn't support structured tools)
     if (ollamaTools.length > 0) {
-      const originalLength = systemPrompt.length;
       systemPrompt = this.enhanceSystemPromptWithTools(systemPrompt, ollamaTools as ToolObject[]);
-      const newLength = systemPrompt.length;
-      console.log(`🔧 Ollama enhanced system prompt with ${ollamaTools.length} text-based tool descriptions`);
-      console.log(`🔧 Ollama system prompt length: ${originalLength} → ${newLength} (+${newLength - originalLength} chars)`);
-      console.log(`🔧 Ollama tool names included:`, (ollamaTools as Array<{function?: {name?: string}, name?: string}>).map(t => t.function?.name || t.name).filter(Boolean));
     }
 
-    console.log(`🔍 Ollama system prompt source:`, {
-      hasCustom: hasCustomSystemPrompt,
-      usingCustom: hasCustomSystemPrompt,
-      promptLength: systemPrompt?.length || 0,
-      promptStart: systemPrompt?.substring(0, 200) + '...',
-      toolsIncluded: ollamaTools.length > 0
-    });
 
-    // Debug: Show a sample of the actual system prompt to verify tool descriptions are included
-    if (systemPrompt && systemPrompt.length > 1000) {
-      const toolSectionStart = systemPrompt.indexOf('Available Tools:');
-      if (toolSectionStart !== -1) {
-        const toolSection = systemPrompt.substring(toolSectionStart, toolSectionStart + 500);
-        console.log(`🔧 Ollama system prompt tool section preview:`, toolSection + '...');
-      } else {
-        console.warn(`⚠️ Ollama: "Available Tools:" section not found in system prompt!`);
-        console.log(`🔧 Ollama system prompt end preview:`, systemPrompt.substring(Math.max(0, systemPrompt.length - 500)));
-      }
-    }
+
+
 
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
@@ -380,8 +347,7 @@ export class OllamaProvider extends BaseProvider {
       }
     }
 
-    console.log(`🔍 Ollama: Using model: "${settings.model}"`);
-    console.log(`🔍 Ollama: Available tools: ${ollamaTools.length}`);
+
 
     const requestBody: Record<string, unknown> = {
       model: settings.model,
@@ -394,25 +360,10 @@ export class OllamaProvider extends BaseProvider {
     // Check if model supports structured tools
     const supportsStructuredTools = await this.checkModelSupportsStructuredTools(settings.model, baseUrl);
 
-    if (supportsStructuredTools && ollamaTools.length > 0) {
-      console.log(`🚀 Ollama API call with structured tools:`, {
-        model: settings.model,
-        toolCount: ollamaTools.length,
-        note: 'Model supports structured tools - using tools parameter'
-      });
-    } else {
-      console.log(`🚀 Ollama API call with text-based tools:`, {
-        model: settings.model,
-        toolDescriptionsInSystemPrompt: ollamaTools.length > 0,
-        toolCount: ollamaTools.length,
-        note: 'Model does not support structured tools - using text descriptions in system prompt'
-      });
-    }
-
     // Use Ollama's native /api/chat endpoint (not OpenAI-compatible)
     const ollamaUrl = baseUrl.replace('/v1', '');
     const endpoint = `${ollamaUrl}/api/chat`;
-    console.log(`🔍 Ollama: Using native API URL: ${endpoint}`);
+
 
     // Convert to Ollama's native format with dynamic tool support
     const ollamaRequestBody = {
@@ -427,17 +378,7 @@ export class OllamaProvider extends BaseProvider {
       ...(supportsStructuredTools && ollamaTools.length > 0 && { tools: ollamaTools })
     };
 
-    // Debug: Show what's actually being sent to Ollama
-    console.log(`🔍 Ollama request debug:`, {
-      model: ollamaRequestBody.model,
-      messageCount: (ollamaRequestBody.messages as unknown[]).length,
-      hasStructuredTools: 'tools' in ollamaRequestBody,
-      structuredToolCount: supportsStructuredTools && ollamaTools.length > 0 ? ollamaTools.length : 0,
-      systemMessageLength: ((ollamaRequestBody.messages as Array<{role: string, content: string}>).find(m => m.role === 'system')?.content?.length || 0),
-      systemMessagePreview: ((ollamaRequestBody.messages as Array<{role: string, content: string}>).find(m => m.role === 'system')?.content?.substring(0, 200) || '') + '...'
-    });
 
-    console.log(`🔍 Ollama: Native request body:`, JSON.stringify(ollamaRequestBody, null, 2));
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -450,13 +391,7 @@ export class OllamaProvider extends BaseProvider {
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('🚨 Ollama API error response:', error);
-      console.error('🚨 Ollama API error details:', {
-        status: response.status,
-        statusText: response.statusText,
-        url: response.url,
-        requestModel: settings.model
-      });
+
 
       // Handle model not found error specifically
       if (response.status === 404 && error.includes('not found')) {
@@ -468,7 +403,7 @@ export class OllamaProvider extends BaseProvider {
             : '\n\nNo models found. Please install models using: ollama pull <model-name>';
 
           throw new Error(`Model "${settings.model}" not found in Ollama.${modelSuggestions}\n\nTo install this model, run: ollama pull ${settings.model}`);
-        } catch (fetchError) {
+        } catch {
           // If we can't fetch models, just show the basic error
           throw new Error(`Model "${settings.model}" not found in Ollama. Please install it using: ollama pull ${settings.model}`);
         }
@@ -485,8 +420,8 @@ export class OllamaProvider extends BaseProvider {
     return this.handleNativeStreamResponse(response, onStream, settings, provider, conversationHistory, signal);
   }
 
-  async fetchModels(apiKey: string, baseUrl?: string): Promise<string[]> {
-    const ollamaUrl = baseUrl || 'http://localhost:11434';
+  async fetchModels(_apiKey: string, baseUrl?: string): Promise<string[]> {
+    const ollamaUrl = baseUrl || OllamaProvider.DEFAULT_BASE_URL;
     
     try {
       // Ollama models endpoint
@@ -498,7 +433,7 @@ export class OllamaProvider extends BaseProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Ollama API error: ${response.status}`, errorText);
+
         throw new Error(`Failed to connect to Ollama at ${ollamaUrl}. Status: ${response.status} - ${errorText}. Make sure Ollama is running and accessible.`);
       }
 
@@ -511,7 +446,7 @@ export class OllamaProvider extends BaseProvider {
 
       return models;
     } catch (error) {
-      console.error('❌ Failed to fetch Ollama models:', error);
+
       throw error instanceof Error ? error : new Error(`Failed to fetch Ollama models: ${String(error)}`);
     }
   }
@@ -610,13 +545,13 @@ export class OllamaProvider extends BaseProvider {
                 arguments: parsed.tool_call.arguments || {}
               });
             }
-          } catch (parseError) {
-            console.warn(`⚠️ Failed to parse JSON block:`, jsonContent, parseError);
+          } catch {
+            // Skip invalid JSON blocks
           }
         }
       }
-    } catch (error) {
-      console.warn(`⚠️ Error parsing text-based tool calls:`, error);
+    } catch {
+      // Continue with empty tool calls if parsing fails
     }
 
     return toolCalls;
@@ -642,11 +577,9 @@ export class OllamaProvider extends BaseProvider {
     let fullContent = '';
     let usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
     const toolCalls: Array<{ id: string; function: { name: string; arguments: string } }> = [];
-    let chunkCount = 0;
     let streamingComplete = false;
 
-    console.log('🔍 Ollama: Starting to process streaming response...');
-    console.log('🔍 Ollama: IMPORTANT - Tool execution will only happen AFTER streaming is complete');
+
 
     if (response.body) {
       const reader = response.body.getReader();
@@ -658,14 +591,12 @@ export class OllamaProvider extends BaseProvider {
           const { done, value } = await reader.read();
           if (done) {
             streamingComplete = true;
-            console.log(`🔍 Ollama: Stream ended. Total chunks processed: ${chunkCount}`);
-            console.log(`🔍 Ollama: Streaming is now COMPLETE - ready for tool processing`);
+
             break;
           }
 
           const chunk = decoder.decode(value, { stream: true });
-          chunkCount++;
-          console.log(`🔍 Ollama: Chunk ${chunkCount}:`, chunk);
+
 
           const lines = chunk.split('\n').filter(line => line.trim());
 
@@ -684,7 +615,7 @@ export class OllamaProvider extends BaseProvider {
 
               // Handle tool calls in Ollama native format
               if (message?.tool_calls) {
-                console.log(`🔧 Ollama: Found tool calls in response:`, message.tool_calls);
+
                 for (const toolCall of message.tool_calls) {
                   if (toolCall.function) {
                     toolCalls.push({
@@ -705,13 +636,10 @@ export class OllamaProvider extends BaseProvider {
                   completionTokens: parsed.eval_count || 0,
                   totalTokens: (parsed.prompt_eval_count || 0) + (parsed.eval_count || 0)
                 };
-                console.log(`🔍 Ollama: Final usage data:`, usage);
+
               }
-            } catch (error) {
+            } catch {
               // Skip empty lines or malformed JSON
-              if (line.trim()) {
-                console.warn('Failed to parse Ollama streaming chunk:', error, 'Raw line:', line);
-              }
             }
           }
         }
@@ -720,20 +648,16 @@ export class OllamaProvider extends BaseProvider {
       }
     }
 
-    console.log(`🔍 Ollama: Final results - Content length: ${fullContent.length}, Tool calls: ${toolCalls.length}`);
-    console.log(`🔍 Ollama: Full content:`, fullContent);
-    console.log(`🔍 Ollama: Tool calls:`, toolCalls);
+
 
     // If no native tool calls found, check for text-based tool calls in content
     if (toolCalls.length === 0 && fullContent.includes('```json')) {
-      console.log(`🔍 Ollama: No native tool calls found, checking for text-based tool calls...`);
       const textBasedToolCalls = this.parseTextBasedToolCalls(fullContent);
       if (textBasedToolCalls.length > 0) {
-        console.log(`🔧 Ollama: Found ${textBasedToolCalls.length} text-based tool calls:`, textBasedToolCalls);
         // Convert to native format
         for (const textTool of textBasedToolCalls) {
           toolCalls.push({
-            id: `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            id: `call_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
             function: {
               name: textTool.name,
               arguments: JSON.stringify(textTool.arguments)
@@ -745,51 +669,39 @@ export class OllamaProvider extends BaseProvider {
 
     // IMPORTANT: Verify streaming is complete before tool execution
     if (!streamingComplete) {
-      console.error(`❌ Ollama: CRITICAL ERROR - Attempting tool execution before streaming is complete!`);
       throw new Error('Tool execution attempted before streaming completion');
     }
 
-    console.log(`✅ Ollama: Streaming is CONFIRMED COMPLETE. Processing tool calls...`);
-    console.log(`🔍 Ollama: Final content length: ${fullContent.length} characters`);
-    console.log(`🔍 Ollama: Total chunks processed: ${chunkCount}`);
-
     // Check for XML-based tool calls in the content (since Ollama uses text-based tool calling)
     const xmlToolCalls = this.parseToolCallsFromText(fullContent);
-    console.log(`🔍 Ollama: Found ${xmlToolCalls.length} XML tool calls in content`);
+
 
     // If we have native tool calls, execute them and make a follow-up call
     if (toolCalls.length > 0) {
-      console.log(`🔧 Ollama found ${toolCalls.length} native tool calls AFTER streaming completed`);
-      console.log(`🔧 Ollama tool calls:`, toolCalls);
+
 
       // Stream any initial content first
       if (fullContent && typeof onStream === 'function') {
-        console.log(`🔄 Ollama: All content already streamed during response. Content: "${fullContent.substring(0, 200)}..."`);
         // Content was already streamed during parsing, no need to stream again
       }
 
-      console.log(`🚀 Ollama: Now executing tools AFTER complete streaming...`);
+
       return this.executeNativeToolCalls(toolCalls, fullContent, usage, settings, provider, conversationHistory, onStream);
     }
 
     // If we have XML tool calls, execute them using text-based tool execution
     if (xmlToolCalls.length > 0) {
-      console.log(`🔧 Ollama found ${xmlToolCalls.length} XML tool calls AFTER streaming completed`);
-      console.log(`🔧 Ollama XML tool calls:`, xmlToolCalls);
 
-      console.log(`🚀 Ollama: Now executing XML tools AFTER complete streaming...`);
       return this.executeTextBasedTools(xmlToolCalls, fullContent, usage, settings, provider, conversationHistory, onStream);
     }
 
-    console.log(`🔍 Ollama: No tool calls found, returning content: "${fullContent}"`);
 
+
+    const { usage: usageInfo, cost } = this.createUsageAndCost(settings.model, usage);
     return {
       content: fullContent,
-      usage: usage ? {
-        promptTokens: usage.promptTokens || 0,
-        completionTokens: usage.completionTokens || 0,
-        totalTokens: usage.totalTokens || 0
-      } : undefined,
+      usage: usageInfo,
+      cost,
       toolCalls: []
     };
   }
@@ -798,26 +710,22 @@ export class OllamaProvider extends BaseProvider {
 
   private async executeNativeToolCalls(
     toolCalls: Array<{ id: string; function: { name: string; arguments: string } }>,
-    originalContent: string,
+    _originalContent: string,
     usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined,
     settings: LLMSettings,
-    provider: LLMProvider,
+    _provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
-    console.log(`🔧 Ollama executing ${toolCalls.length} native tool calls`);
-
     // Check if we have parallel execution method injected (like Anthropic/Mistral)
     if ((this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).executeMultipleToolsParallel && (this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).summarizeToolResultsForModel) {
-      console.log(`🚀 Using parallel execution for ${toolCalls.length} Ollama tools`);
       
       // Format tool calls for parallel execution
       const toolCallsForExecution = toolCalls.map(tc => {
         let parsedArgs: Record<string, unknown> = {};
         try {
           parsedArgs = JSON.parse(tc.function.arguments);
-        } catch (parseError) {
-          console.warn(`⚠️ Failed to parse tool arguments: ${tc.function.arguments}`, parseError);
+        } catch {
           parsedArgs = {};
         }
         
@@ -834,7 +742,7 @@ export class OllamaProvider extends BaseProvider {
         const summarizeToolResultsForModel = (this as unknown as {summarizeToolResultsForModel: unknown}).summarizeToolResultsForModel;
 
         const parallelResults = await (executeMultipleToolsParallel as (calls: unknown[], provider: string) => Promise<Array<{success: boolean}>>)(toolCallsForExecution, 'ollama');
-        console.log(`✅ Ollama parallel execution completed: ${parallelResults.filter(r => r.success).length}/${parallelResults.length} successful`);
+
         
         // Get tool results summary for the model
         const toolSummary = (summarizeToolResultsForModel as (results: unknown[]) => string)(parallelResults);
@@ -843,7 +751,7 @@ export class OllamaProvider extends BaseProvider {
         onStream('\n\n' + toolSummary);
 
         // Make follow-up call to get model's response based on tool results
-        console.log(`🔄 Making Ollama follow-up call to process tool results...`);
+
 
         try {
           // Build follow-up prompt with tool results
@@ -872,7 +780,7 @@ Please integrate these results into a natural, helpful response.`;
           );
 
           // Combine original content + tool summary + follow-up response
-          const combinedContent = originalContent + '\n\n' + toolSummary + '\n\n' + followUpResponse.content;
+          const combinedContent = _originalContent + '\n\n' + toolSummary + '\n\n' + followUpResponse.content;
 
           return {
             content: combinedContent,
@@ -887,27 +795,23 @@ Please integrate these results into a natural, helpful response.`;
             } : undefined,
             toolCalls: toolCallsForExecution
           };
-        } catch (followUpError) {
-          console.error(`❌ Ollama follow-up call failed:`, followUpError);
+        } catch {
           // Fall back to returning tool summary only
+          const { usage: usageInfo, cost } = this.createUsageAndCost(settings.model, usage);
           return {
-            content: originalContent + '\n\n' + toolSummary,
-            usage: usage ? {
-              promptTokens: usage.promptTokens || 0,
-              completionTokens: usage.completionTokens || 0,
-              totalTokens: usage.totalTokens || 0
-            } : undefined,
+            content: _originalContent + '\n\n' + toolSummary,
+            usage: usageInfo,
+            cost,
             toolCalls: toolCallsForExecution
           };
         }
-      } catch (error) {
-        console.error(`❌ Ollama parallel tool execution failed, falling back to sequential:`, error);
+      } catch {
         // Fall back to sequential execution below
       }
     }
 
     // Fallback: Execute all tool calls sequentially (old method)
-    console.log(`⚠️ Using sequential execution for ${toolCalls.length} Ollama tools`);
+
     const toolResults: Array<{ name: string; result: string; error?: boolean }> = [];
 
     for (const toolCall of toolCalls) {
@@ -917,24 +821,19 @@ Please integrate these results into a natural, helpful response.`;
         if (toolCall.function.arguments) {
           try {
             parsedArgs = JSON.parse(toolCall.function.arguments);
-          } catch (parseError) {
-            console.warn(`⚠️ Failed to parse tool arguments: ${toolCall.function.arguments}`, parseError);
+          } catch {
             parsedArgs = {};
           }
         }
 
-        console.log(`🔧 Executing Ollama native tool: ${toolCall.function.name} with args:`, parsedArgs);
         const result = await (this as unknown as {executeMCPTool: (name: string, args: unknown) => Promise<string>}).executeMCPTool(toolCall.function.name, parsedArgs);
-        console.log(`🔍 Ollama: Tool execution result:`, result);
 
         toolResults.push({
           name: toolCall.function.name,
           result: result,
           error: false
         });
-        console.log(`✅ Ollama native tool ${toolCall.function.name} executed successfully`);
       } catch (error) {
-        console.error(`❌ Ollama native tool ${toolCall.function.name} failed:`, error);
         const userFriendlyError = (this as unknown as {formatToolError?: (name: string, error: unknown) => string}).formatToolError ? (this as unknown as {formatToolError: (name: string, error: unknown) => string}).formatToolError(toolCall.function.name, error) : String(error);
         toolResults.push({
           name: toolCall.function.name,
@@ -964,13 +863,13 @@ Original Question: ${this.getLastUserMessage(conversationHistory)}
 
 Please provide a natural, helpful response based on the tool results.`;
 
-    console.log(`🔄 Ollama making follow-up call with simplified prompt`);
+
 
     // Clean conversation history to remove any malformed tool results
     const cleanedHistory = conversationHistory.filter(msg => {
       // Remove messages that contain tool execution errors
       if (typeof msg.content === 'string' && msg.content.includes('Tool Results:') && msg.content.includes('Error:')) {
-        console.log(`🧹 Removing malformed tool result message from history`);
+
         return false;
       }
       return true;
@@ -992,7 +891,6 @@ Please provide a natural, helpful response based on the tool results.`;
 
     // According to OpenAI/LM Studio docs, we should return ONLY the final assistant response
     // Tool execution details are handled by the UI separately via toolCalls
-    console.log(`🎯 Ollama: Final response (clean):`, followUpResponse.content);
 
     return {
       content: followUpResponse.content || '',
@@ -1001,8 +899,8 @@ Please provide a natural, helpful response based on the tool results.`;
         let parsedArgs: Record<string, unknown> = {};
         try {
           parsedArgs = JSON.parse(tc.function.arguments);
-        } catch (error) {
-          console.warn(`⚠️ Failed to parse tool arguments for return: ${tc.function.arguments}`, error);
+        } catch {
+          // Use empty args if parsing fails
         }
 
         const result = toolResults.find(tr => tr.name === tc.function.name);
@@ -1042,7 +940,7 @@ Please provide a natural, helpful response based on the tool results.`;
     onStream: (chunk: string) => void,
     enableTools = true
   ): Promise<LLMResponse> {
-    const baseUrl = settings.baseUrl || 'http://localhost:11434';
+    const baseUrl = settings.baseUrl || OllamaProvider.DEFAULT_BASE_URL;
     const ollamaUrl = baseUrl.replace('/v1', '');
     const endpoint = `${ollamaUrl}/api/chat`;
 
@@ -1086,10 +984,8 @@ Please provide a natural, helpful response based on the tool results.`;
     if (enableTools && this.getMCPToolsForProvider) {
       try {
         tools = await this.getMCPToolsForProvider('ollama', settings);
-        console.log(`🔧 Ollama follow-up call with ${tools.length} text-based tools for continued agentic behavior`);
-        console.log(`🔧 Ollama follow-up: Tools will be included in system prompt, NOT as structured tools parameter`);
-      } catch (error) {
-        console.warn(`⚠️ Failed to get tools for Ollama follow-up call:`, error);
+      } catch {
+        // Continue without tools if fetching fails
       }
     }
 
@@ -1134,15 +1030,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
       ...(supportsStructuredTools && enableTools && tools.length > 0 && { tools })
     };
 
-    console.log(`🔧 Ollama follow-up call using ${supportsStructuredTools ? 'structured' : 'text-based'} tools`);
-    if (supportsStructuredTools && tools.length > 0) {
-      console.log(`🔧 Ollama follow-up: Including ${tools.length} structured tools in request`);
-    } else if (tools.length > 0) {
-      console.log(`🔧 Ollama follow-up: Tools included as text descriptions in system prompt`);
-    }
 
-    console.log(`🔄 Ollama making follow-up call ${enableTools ? 'with' : 'without'} tools to: ${endpoint}`);
-    console.log(`🔍 Ollama direct follow-up request body:`, JSON.stringify(requestBody, null, 2));
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -1198,11 +1086,8 @@ Continue based on the tool results above. Call additional tools if needed for a 
                   totalTokens: (parsed.prompt_eval_count || 0) + (parsed.eval_count || 0)
                 };
               }
-            } catch (error) {
+            } catch {
               // Skip empty lines or malformed JSON
-              if (line.trim()) {
-                console.warn('Failed to parse follow-up streaming chunk:', error, 'Line:', line);
-              }
             }
           }
         }
@@ -1215,7 +1100,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
     if (enableTools && fullContent) {
       const toolCalls = this.parseToolCallsFromText(fullContent);
       if (toolCalls.length > 0) {
-        console.log(`🔄 Ollama follow-up response contains ${toolCalls.length} additional tool calls - continuing agentic workflow`);
+
         // Recursively execute additional tool calls
         return this.executeTextBasedTools(
           toolCalls,
@@ -1229,13 +1114,11 @@ Continue based on the tool results above. Call additional tools if needed for a 
       }
     }
 
+    const { usage: usageInfo, cost } = this.createUsageAndCost(settings.model, usage);
     return {
       content: fullContent,
-      usage: usage ? {
-        promptTokens: usage.promptTokens || 0,
-        completionTokens: usage.completionTokens || 0,
-        totalTokens: usage.totalTokens || 0
-      } : undefined
+      usage: usageInfo,
+      cost
     };
   }
 
@@ -1290,9 +1173,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
     // Get available tool names from MCP tools
     const availableTools = this.getAvailableToolNames();
 
-    console.log(`🔍 Ollama parsing text for tools. Available tools:`, availableTools);
-    console.log(`🔍 Content to parse:`, content);
-    console.log(`🔍 Content length:`, content.length);
+
 
     // Pattern 0: XML-style tool tags as instructed in the Ollama system prompt
     // Example:
@@ -1303,40 +1184,36 @@ Continue based on the tool results above. Call additional tools if needed for a 
       const xmlTagRegex = /<([a-zA-Z_][\w-]*)\b[^>]*>([\s\S]*?)<\/\1>/gi;
       let xmlMatch: RegExpExecArray | null;
 
-      console.log(`🔍 Testing XML regex against content...`);
-      console.log(`🔍 Regex pattern: ${xmlTagRegex.source}`);
 
-      // Test with the exact example
-      const testContent = '<web_search>\n<query>current weather in Athens, Greece</query>\n</web_search>';
-      const testRegex = /<([a-zA-Z_][\w-]*)\b[^>]*>([\s\S]*?)<\/\1>/gi;
-      const testMatch = testRegex.exec(testContent);
-      console.log(`🔍 Test match result:`, testMatch);
+
+
+
 
       while ((xmlMatch = xmlTagRegex.exec(content)) !== null) {
         const rawToolName = xmlMatch[1];
         const inner = (xmlMatch[2] || '').trim();
 
-        console.log(`🔍 Found XML tag: ${rawToolName}, inner: ${inner}`);
+
 
         // IMMEDIATELY skip switch_mode - do not process as tool
         if (rawToolName === 'switch_mode') {
-          console.log(`🔄 Skipping switch_mode tag in XML tool parsing`);
+
           continue;
         }
 
         // Also skip other non-tool XML tags
         if (rawToolName === 'think' || rawToolName === 'thinking' || rawToolName === 'tool_execution') {
-          console.log(`🔄 Skipping non-tool XML tag: ${rawToolName}`);
+
           continue;
         }
 
         // Only handle tags that correspond to available tools; ignore others
         if (!availableTools.includes(rawToolName)) {
-          console.log(`⚠️ Tool ${rawToolName} not in available tools list:`, availableTools);
+
           continue;
         }
 
-        console.log(`✅ Tool ${rawToolName} is available, processing...`);
+
 
         const args: Record<string, unknown> = {};
 
@@ -1374,15 +1251,13 @@ Continue based on the tool results above. Call additional tools if needed for a 
         toolCalls.push({ name: rawToolName, arguments: args });
       }
 
-      if (toolCalls.length === 0) {
-        console.log(`🔍 No XML tool calls found in content`);
-      }
-    } catch (e) {
-      console.log('⚠️ XML-style parsing failed:', e);
+
+    } catch {
+      // Continue with empty tool calls if XML parsing fails
     }
 
     if (toolCalls.length > 0) {
-      console.log(`✅ Found ${toolCalls.length} XML-style tool calls, returning them`);
+
       return this.deduplicateToolCalls ? this.deduplicateToolCalls(toolCalls) : toolCalls;
     }
 
@@ -1420,18 +1295,16 @@ Continue based on the tool results above. Call additional tools if needed for a 
         // Verify this is a valid tool name
         if (availableTools.includes(toolName)) {
           toolCalls.push({ name: toolName, arguments: args });
-          console.log(`✅ Found nested function format tool call: ${rawToolName} -> ${toolName} with args:`, args);
-        } else {
-          console.log(`⚠️ Nested function tool name "${rawToolName}" (mapped to "${toolName}") not in available tools:`, availableTools);
+
         }
-      } catch (error) {
-        console.log(`⚠️ Failed to parse nested function format tool call:`, nestedMatch[0], error);
+      } catch {
+        // Skip invalid nested function calls
       }
     }
 
     // If we found nested function calls, return them immediately
     if (toolCalls.length > 0) {
-      console.log(`✅ Found ${toolCalls.length} nested function format tool calls, returning them`);
+
       return toolCalls;
     }
 
@@ -1448,17 +1321,17 @@ Continue based on the tool results above. Call additional tools if needed for a 
             let cleanJsonArgs = jsonArgs;
             if (jsonArgs === '{"":""}' || jsonArgs === '{"": ""}') {
               cleanJsonArgs = '{}';
-              console.log(`🔧 Fixed malformed empty JSON: ${jsonArgs} -> ${cleanJsonArgs}`);
+
             }
 
             const args = JSON.parse(cleanJsonArgs);
             toolCalls.push({ name: rawToolName, arguments: args });
-            console.log(`✅ Found valid tool call: ${rawToolName} with args:`, args);
-          } catch (error) {
-            console.log(`⚠️ Failed to parse JSON arguments for ${rawToolName}:`, jsonArgs, error);
+
+          } catch {
+            // Skip invalid JSON arguments
           }
         } else {
-          console.log(`⚠️ Tool "${rawToolName}" not found. Available tools:`, availableTools.slice(0, 10), '...');
+
           // Return an error response that the LLM can see and correct
           return [{
             name: 'error_response',
@@ -1467,14 +1340,14 @@ Continue based on the tool results above. Call additional tools if needed for a 
             }
           }];
         }
-      } catch (error) {
-        console.log(`⚠️ Failed to parse new model format tool call:`, newModelMatch[0], error);
+      } catch {
+        // Skip invalid new model format calls
       }
     }
 
     // If we found any new model format tool calls, return them
     if (toolCalls.length > 0) {
-      console.log(`✅ Found ${toolCalls.length} new model format tool calls, returning them`);
+
       return toolCalls;
     }
 
@@ -1490,11 +1363,11 @@ Continue based on the tool results above. Call additional tools if needed for a 
             name: jsonObj.tool_call.name,
             arguments: jsonObj.tool_call.arguments
           });
-          console.log(`✅ Found JSON-wrapped tool call: ${jsonObj.tool_call.name} with args:`, jsonObj.tool_call.arguments);
+
           return toolCalls; // Return early if we found the structured format
         }
       } catch {
-        console.log(`⚠️ Failed to parse JSON-wrapped tool call:`, match[1]);
+        // Skip invalid JSON-wrapped calls
       }
     }
 
@@ -1515,12 +1388,12 @@ Continue based on the tool results above. Call additional tools if needed for a 
               name: parsed.tool_call.name,
               arguments: parsed.tool_call.arguments || {}
             });
-            console.log(`✅ Found direct tool call: ${parsed.tool_call.name} with args:`, parsed.tool_call.arguments);
+
             return toolCalls; // Return early if we found the structured format
           }
         }
-      } catch (error) {
-        console.log(`⚠️ Failed to parse direct tool call:`, error);
+      } catch {
+        // Skip invalid direct tool calls
       }
     }
 
@@ -1535,10 +1408,10 @@ Continue based on the tool results above. Call additional tools if needed for a 
             name: jsonObj.tool_call.name,
             arguments: jsonObj.tool_call.arguments
           });
-          console.log(`✅ Found JSON block tool call: ${jsonObj.tool_call.name} with args:`, jsonObj.tool_call.arguments);
+
         }
       } catch {
-        console.log(`⚠️ Failed to parse JSON block:`, jsonMatch[1]);
+        // Skip invalid JSON blocks
       }
     }
 
@@ -1554,7 +1427,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
       if (match) {
         const args = this.parseArgumentsFromText(match[1]);
         toolCalls.push({ name: toolName, arguments: args });
-        console.log(`✅ Found function call: ${toolName} with args:`, args);
+
         continue;
       }
 
@@ -1564,7 +1437,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
       if (match) {
         const args = this.parseArgumentsFromText(match[1]);
         toolCalls.push({ name: toolName, arguments: args });
-        console.log(`✅ Found JSON-like call: ${toolName} with args:`, args);
+
         continue;
       }
 
@@ -1580,7 +1453,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
             const args = this.parseArgumentsFromText(jsonMatch);
             if (Object.keys(args).length > 0) {
               toolCalls.push({ name: toolName, arguments: args });
-              console.log(`✅ Found nearby JSON call: ${toolName} with args:`, args);
+
               break;
             }
           }
@@ -1596,7 +1469,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
       // Try to parse as JSON first
       return JSON.parse(argsText);
     } catch {
-      console.log(`⚠️ JSON parsing failed for: ${argsText}, trying fallback parsing`);
+
 
       // If JSON parsing fails, try to extract key-value pairs
       const args: Record<string, unknown> = {};
@@ -1637,7 +1510,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
         }
       }
 
-      console.log(`✅ Fallback parsing extracted:`, args);
+
       return args;
     }
   }
@@ -1651,8 +1524,6 @@ Continue based on the tool results above. Call additional tools if needed for a 
       if (!seen.has(key)) {
         seen.add(key);
         unique.push(toolCall);
-      } else {
-        console.log(`🔧 Removed duplicate tool call: ${toolCall.name}`);
       }
     }
 
@@ -1664,7 +1535,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
   // Method to inject actual tool names from MCP service
   setAvailableToolNames(toolNames: string[]): void {
     this.availableToolNames = toolNames;
-    console.log(`🔧 Ollama: Updated available tool names:`, toolNames);
+
   }
 
   private getAvailableToolNames(): string[] {
@@ -1686,29 +1557,27 @@ Continue based on the tool results above. Call additional tools if needed for a 
 
   private async executeTextBasedTools(
     toolCalls: Array<{ name: string; arguments: Record<string, unknown> }>,
-    originalContent: string,
-    usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined,
+    _originalContent: string,
+    _usage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined,
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
     onStream: (chunk: string) => void
   ): Promise<LLMResponse> {
-    console.log(`🔧 Ollama executing ${toolCalls.length} text-based tool calls`);
-
     // STEP 1: STOP all streaming and execute tools completely
-    console.log(`🛑 Ollama: Stopping stream to execute tools cleanly`);
 
     // Show tool execution start (this is the ONLY streaming during tool execution)
-    const toolExecutionHeader = `\n\n<tool_execution>\n🔧 **Tool Execution Started**\n\nExecuting ${toolCalls.length} tool${toolCalls.length !== 1 ? 's' : ''}:\n${toolCalls.map(tc => `- ${tc.name}`).join('\n')}\n</tool_execution>\n\n`;
+    const toolNames = toolCalls.map(tc => `- ${tc.name}`).join('\n');
+    const toolExecutionHeader = `\n\n<tool_execution>\n🔧 **Tool Execution Started**\n\nExecuting ${toolCalls.length} tool${toolCalls.length !== 1 ? 's' : ''}:\n${toolNames}\n</tool_execution>\n\n`;
     onStream(toolExecutionHeader);
 
     // STEP 2: Execute ALL tools to completion WITHOUT streaming
-    console.log(`🔧 Ollama: Executing ${toolCalls.length} tools to completion...`);
+
     const toolResults: Array<{ name: string; result: string; error?: boolean }> = [];
 
     for (const toolCall of toolCalls) {
       try {
-        console.log(`🔧 Executing Ollama tool: ${toolCall.name} with args:`, toolCall.arguments);
+
 
         if (!this.executeMCPTool) {
           throw new Error('🚨 Ollama: executeMCPTool not injected! This should not happen.');
@@ -1722,9 +1591,7 @@ Continue based on the tool results above. Call additional tools if needed for a 
           error: false
         });
 
-        console.log(`✅ Ollama tool ${toolCall.name} executed successfully`);
       } catch (error) {
-        console.error(`❌ Ollama tool ${toolCall.name} failed:`, error);
         const userFriendlyError = this.formatToolError(toolCall.name, error);
 
         toolResults.push({
@@ -1749,13 +1616,13 @@ Original Question: ${this.getLastUserMessage(conversationHistory)}
 
 Please provide a natural, helpful response based on the tool results.`;
 
-    console.log(`🔄 Ollama making follow-up call with tool results`);
+
 
     // Clean conversation history to remove any malformed tool results
     const cleanedHistory = conversationHistory.filter(msg => {
       // Remove messages that contain tool execution errors
       if (typeof msg.content === 'string' && msg.content.includes('Tool Results:') && msg.content.includes('Error:')) {
-        console.log(`🧹 Removing malformed tool result message from history`);
+
         return false;
       }
       return true;
@@ -1823,48 +1690,21 @@ Please provide a natural, helpful response based on the tool results.`;
     return `❌ ${toolName} execution failed: ${errorStr}`;
   }
 
-  private removeThinkingContent(content: string): string {
-    // Remove various thinking patterns and model template tags from content before parsing for tool calls
-    let cleanedContent = content;
 
-    // Remove <think>...</think> blocks
-    cleanedContent = cleanedContent.replace(/<think>[\s\S]*?<\/think>/gi, '');
 
-    // Remove <thinking>...</thinking> blocks
-    cleanedContent = cleanedContent.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+  /**
+   * Create usage information from Ollama API response (no cost calculation for local provider)
+   */
+  private createUsageAndCost(_model: string, usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number }) {
+    if (!usage) return { usage: undefined, cost: undefined };
 
-    // Remove unclosed thinking tags (in case they're at the end)
-    cleanedContent = cleanedContent.replace(/<think>[\s\S]*$/gi, '');
-    cleanedContent = cleanedContent.replace(/<thinking>[\s\S]*$/gi, '');
+    const usageInfo = {
+      promptTokens: usage.promptTokens || 0,
+      completionTokens: usage.completionTokens || 0,
+      totalTokens: usage.totalTokens || 0
+    };
 
-    // Remove model-specific template tags
-    // New model format tags: <|start|>, <|message|>, <|channel|>, <|end|>, <|constrain|>
-    cleanedContent = cleanedContent.replace(/<\|start\|>/gi, '');
-    cleanedContent = cleanedContent.replace(/<\|message\|>/gi, '');
-    cleanedContent = cleanedContent.replace(/<\|channel\|>/gi, '');
-    cleanedContent = cleanedContent.replace(/<\|end\|>/gi, '');
-    cleanedContent = cleanedContent.replace(/<\|constrain\|>/gi, '');
-
-    // Qwen3 format tags: <|im_start|>, <|im_end|>
-    cleanedContent = cleanedContent.replace(/<\|im_start\|>/gi, '');
-    cleanedContent = cleanedContent.replace(/<\|im_end\|>/gi, '');
-
-    // Remove role indicators that might appear after template tags
-    cleanedContent = cleanedContent.replace(/^(system|user|assistant)\s*/gim, '');
-
-    // Remove channel indicators that might appear after <|channel|> tags
-    cleanedContent = cleanedContent.replace(/^(final|analysis|commentary)\s*/gim, '');
-
-    // Clean up any remaining template-like patterns
-    cleanedContent = cleanedContent.replace(/<\|[^|]*\|>/gi, '');
-
-    // Clean up any extra whitespace
-    cleanedContent = cleanedContent.trim();
-
-    return cleanedContent;
+    // No cost calculation for local providers
+    return { usage: usageInfo, cost: undefined };
   }
-
-
-
-
 }

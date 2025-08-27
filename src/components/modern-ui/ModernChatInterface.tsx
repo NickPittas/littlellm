@@ -24,6 +24,9 @@ import { settingsService } from '../../services/settingsService';
 import { conversationHistoryService } from '../../services/conversationHistoryService';
 import { secureApiKeyService } from '../../services/secureApiKeyService';
 
+// Constants
+const DEFAULT_MODEL = 'gemma3:gpu';
+
 interface ModernChatInterfaceProps {
   className?: string;
 }
@@ -34,7 +37,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('gemma3:gpu');
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [selectedProvider, setSelectedProvider] = useState('ollama');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
@@ -67,7 +70,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   // Settings state
   const [settings, setSettings] = useState<ChatSettings>({
     provider: 'ollama',
-    model: 'gemma3:gpu',
+    model: DEFAULT_MODEL,
     temperature: 0.7,
     maxTokens: 2000,
     systemPrompt: '',
@@ -109,7 +112,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   // Load models for a specific provider
   const loadModelsForProvider = useCallback(async (providerId: string) => {
     try {
-      console.log('Loading models for provider:', providerId);
       setAvailableModels([]); // Clear current models while loading
 
       // Get API key and base URL from secure storage
@@ -120,24 +122,21 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         const apiKeyData = secureApiKeyService?.getApiKeyData(providerId);
         apiKey = apiKeyData?.apiKey || '';
         baseUrl = apiKeyData?.baseUrl || '';
-      } catch (error) {
-        console.warn(`Failed to get API key data for ${providerId}:`, error);
+      } catch {
+        // Silently handle API key retrieval errors
       }
 
       // Skip model loading for remote providers without API keys
       if (!apiKey && providerId !== 'ollama' && providerId !== 'lmstudio' && providerId !== 'n8n') {
-        console.warn(`No API key found for ${providerId}, skipping model loading`);
         setAvailableModels([]);
         return;
       }
 
       // Fetch models using the existing chat service
       const models = await chatService.fetchModels(providerId, apiKey, baseUrl);
-      console.log(`Loaded ${models.length} models for ${providerId}:`, models);
 
       // If the provider has changed since this request started, ignore results
       if (providerId !== selectedProviderRef.current) {
-        console.log('⏭️ Ignoring models for stale provider load:', providerId, 'current is', selectedProviderRef.current);
         return;
       }
 
@@ -153,30 +152,26 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
         if (lastSelectedModel && models.includes(lastSelectedModel)) {
           modelToSelect = lastSelectedModel;
-          console.log(`✅ Restored last selected model for ${providerId}:`, lastSelectedModel);
         }
-      } catch (error) {
-        console.warn(`Failed to get last selected model for ${providerId}:`, error);
+      } catch {
+        // Silently handle last selected model retrieval errors
       }
 
       // If no valid last selected model, use first available
       if (!modelToSelect && models.length > 0) {
         modelToSelect = models[0];
-        console.log(`🔄 Using first available model for ${providerId}:`, modelToSelect);
       }
 
       // Update the selected model if we found one
       if (modelToSelect) {
         // Guard again in case provider changed while computing model
         if (providerId !== selectedProviderRef.current) {
-          console.log('⏭️ Skipping model apply for stale provider:', providerId);
           return;
         }
         setSelectedModel(modelToSelect);
         updateSettings({ model: modelToSelect });
       }
     } catch (error) {
-      console.error('Failed to load models for provider:', providerId, error);
       setAvailableModels([]);
 
       // Add error message to chat if there are existing messages
@@ -220,23 +215,20 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         // Only apply initial provider if user hasn't changed it yet
         if (!userChangedProviderRef.current) {
           setSelectedProvider(provider);
-        } else {
-          console.log('🛑 Skipping init provider apply; user already changed provider');
         }
         setToolsEnabled(savedSettings.toolCallingEnabled ?? false); // Use nullish coalescing to respect explicit false
         setKnowledgeBaseEnabled(savedSettings.ragEnabled ?? false);
 
         // Try to get the last selected model for this provider
-        let modelToUse = savedSettings.model || 'gemma3:gpu';
+        let modelToUse = savedSettings.model || DEFAULT_MODEL;
         try {
           const apiKeyData = secureApiKeyService?.getApiKeyData(provider);
           const lastSelectedModel = apiKeyData?.lastSelectedModel;
           if (lastSelectedModel) {
             modelToUse = lastSelectedModel;
-            console.log(`✅ Restored last selected model for ${provider} on startup:`, lastSelectedModel);
           }
-        } catch (error) {
-          console.warn(`Failed to get last selected model for ${provider} on startup:`, error);
+        } catch {
+          // Silently handle last selected model retrieval errors
         }
 
         // Only apply initial model/load if user hasn't changed provider
@@ -244,11 +236,9 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           setSelectedModel(modelToUse);
           // Load models for the selected provider (this will validate and potentially update the model)
           await loadModelsForProvider(provider);
-        } else {
-          console.log('🛑 Skipping init model load; user already changed provider');
         }
-      } catch (error) {
-        console.error('Failed to load settings:', error);
+      } catch {
+        // Silently handle settings loading errors
       }
     };
 
@@ -262,9 +252,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       try {
         const agents = await agentService.getAgents();
         setAvailableAgents(agents);
-        console.log(`✅ Loaded ${agents.length} available agents`);
-      } catch (error) {
-        console.error('Failed to load agents:', error);
+      } catch {
         setAvailableAgents([]);
       }
     };
@@ -274,8 +262,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
   // Handle sidebar item clicks
   const handleSidebarItemClick = (itemId: string) => {
-    console.log('Sidebar item clicked:', itemId);
-
     // Handle different sidebar actions
     switch (itemId) {
       case 'agents':
@@ -305,7 +291,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         }
         break;
       case 'add-split-chat':
-        console.log('Adding split chat...');
+        // Handle split chat functionality
         break;
     }
   };
@@ -321,7 +307,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
     // Ensure we have a valid model selected
     if (!selectedModel) {
-      console.error('No model selected');
       return;
     }
 
@@ -389,14 +374,12 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     }
 
     setIsLoading(true); // Start thinking indicator
-    console.log('🧠 Started thinking indicator - user message sent');
 
     // Create abort controller for this request
     const controller = new AbortController();
     setAbortController(controller);
 
-    // Track when we started processing for timeout detection
-    const processingStartTime = Date.now();
+
 
     // Save conversation immediately after user message
     try {
@@ -407,8 +390,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         const newConversationId = await conversationHistoryService.createNewConversation(updatedMessages);
         conversationHistoryService.setCurrentConversationId(newConversationId);
       }
-    } catch (error) {
-      console.error('Failed to save conversation after user message:', error);
+    } catch {
+      // Failed to save conversation after user message
     }
 
     try {
@@ -435,14 +418,11 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         (chunk: string) => {
           // Ensure chunk is a string and handle edge cases
           if (typeof chunk !== 'string') {
-            console.warn('⚠️ Received non-string chunk in onStream:', typeof chunk, chunk);
             return;
           }
 
           // Log when streaming starts (first chunk received) and update states properly
           if (assistantContent === '' && chunk.trim().length > 0) {
-            const processingDuration = Date.now() - processingStartTime;
-            console.log(`🤖 Model started streaming after ${processingDuration}ms, switching to streaming mode`);
             setIsLoading(false); // Stop loading indicator (thinking animation)
             setIsStreaming(true); // Start streaming mode (keep stop button active)
           }
@@ -459,9 +439,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         },
         controller.signal, // signal
         conversationHistoryService.getCurrentConversationId() || undefined,
-        (isSearching: boolean, query?: string) => {
+        () => {
           // Handle knowledge base search indicator
-          console.log('🔍 Knowledge base search state changed:', { isSearching, query });
           // TODO: Add knowledge base search indicator to UI
         }
       );
@@ -477,19 +456,17 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           )
         );
       } else {
-        // Streaming occurred, just update usage, toolCalls, and sources without changing content
+        // Streaming occurred, just update usage, toolCalls, sources, images, and cost without changing content
         setMessages(prev =>
           prev.map(msg =>
             msg.id === assistantMessage.id
-              ? { ...msg, usage: response.usage, toolCalls: response.toolCalls, sources: response.sources, isStreaming: false }
+              ? { ...msg, usage: response.usage, toolCalls: response.toolCalls, sources: response.sources, images: response.images, cost: response.cost, isStreaming: false }
               : msg
           )
         );
       }
 
       // Stop all indicators when final response is complete
-      const totalProcessingTime = Date.now() - processingStartTime;
-      console.log(`✅ Final response complete after ${totalProcessingTime}ms, stopping all indicators`);
       setIsLoading(false);
       setIsStreaming(false);
 
@@ -498,7 +475,7 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
       // Save conversation to history
       const currentConversationId = conversationHistoryService.getCurrentConversationId();
-      const finalMessages = [...updatedMessages, { ...assistantMessage, content: response.content, usage: response.usage, toolCalls: response.toolCalls, sources: response.sources }];
+      const finalMessages = [...updatedMessages, { ...assistantMessage, content: response.content, usage: response.usage, toolCalls: response.toolCalls, sources: response.sources, images: response.images, cost: response.cost }];
 
       if (currentConversationId) {
         await conversationHistoryService.updateConversation(currentConversationId, finalMessages);
@@ -508,11 +485,9 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       }
 
     } catch (error) {
-      console.error('Failed to send message:', error);
 
       // Check if this was an abort (user stopped generation)
       if (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'))) {
-        console.log('🛑 Request was aborted by user');
         setIsLoading(false);
         setAbortController(null);
         return; // Don't show error message for user-initiated aborts
@@ -565,7 +540,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   // Handle stopping message generation
   const handleStopGeneration = () => {
     if (abortController && (isLoading || isStreaming)) {
-      console.log('🛑 User requested to stop generation');
       abortController.abort();
       setIsLoading(false);
       setIsStreaming(false);
@@ -588,7 +562,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
   // Handle file upload - simplified to match original behavior
   const handleFileUpload = async (files: FileList) => {
-    console.log('Files uploaded:', Array.from(files).map(f => f.name));
 
     // Add files to attached files list - parsing will be handled by chatService
     const newFiles = Array.from(files);
@@ -603,7 +576,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   // Handle model change with persistence
   const handleModelChange = async (newModel: string) => {
     setSelectedModel(newModel);
-    console.log('Model changed to:', newModel);
 
     // Save to general settings
     try {
@@ -614,9 +586,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
       await settingsService.updateSettings({ chat: updatedSettings });
       setSettings(updatedSettings);
-      console.log('Model saved to general settings:', newModel);
-    } catch (error) {
-      console.error('Failed to save model to general settings:', error);
+    } catch {
+      // Failed to save model to general settings
     }
 
     // Also save as last selected model for current provider
@@ -635,10 +606,9 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
             lastSelectedModel: newModel
           });
         }
-        console.log(`✅ Saved last selected model for ${selectedProvider}:`, newModel);
       }
-    } catch (error) {
-      console.error('Failed to save last selected model for provider:', error);
+    } catch {
+      // Failed to save last selected model for provider
     }
   };
 
@@ -646,18 +616,13 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   // Test function for screenshot (can be called from console)
   if (typeof window !== 'undefined') {
     (window as unknown as { testScreenshot: () => Promise<{ success: boolean; dataURL?: string; error?: string }> }).testScreenshot = async () => {
-    console.log('🧪 Testing screenshot functionality...');
     try {
       if (typeof window !== 'undefined' && window.electronAPI) {
-        const result = await window.electronAPI.takeScreenshot();
-        console.log('🧪 Test result:', result);
-        return result;
+        return await window.electronAPI.takeScreenshot();
       } else {
-        console.log('🧪 electronAPI not available');
         return { success: false, error: 'electronAPI not available' };
       }
     } catch (error) {
-      console.error('🧪 Test failed:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   };
@@ -666,24 +631,18 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   // Handle screenshot - enhanced with better feedback
   const handleScreenshot = async () => {
     try {
-      console.log('📸 Screenshot button clicked');
 
       if (typeof window !== 'undefined' && window.electronAPI) {
-        console.log('📸 Calling electronAPI.takeScreenshot...');
         const result = await window.electronAPI.takeScreenshot();
-        console.log('📸 Screenshot result:', { success: result.success, hasDataURL: !!result.dataURL, error: result.error });
 
         if (typeof result === 'object' && result.success && result.dataURL) {
-          console.log('📸 Converting screenshot to file...');
           const response = await fetch(result.dataURL);
           const blob = await response.blob();
           const file = new File([blob], `screenshot-${Date.now()}.png`, { type: 'image/png' });
 
-          console.log(`📸 Screenshot file created: ${file.name} (${Math.round(file.size / 1024)}KB)`);
 
           // Auto-attach screenshot to chat
           setAttachedFiles(prev => [...prev, file]);
-          console.log('✅ Screenshot captured and attached to chat');
 
           // Show a brief success indicator
           const successMsg = document.createElement('div');
@@ -710,7 +669,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         throw new Error('Screenshot functionality is not available in this environment');
       }
     } catch (error) {
-      console.error('❌ Failed to take screenshot:', error);
 
       // Show error notification
       const errorMsg = document.createElement('div');
@@ -744,7 +702,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   const handleToggleMCP = (enabled: boolean) => {
     setMcpEnabled(enabled);
     // MCP settings are managed separately, not through chat settings
-    console.log('MCP toggled:', enabled);
   };
 
   const handleToggleKnowledgeBase = (enabled: boolean) => {
@@ -754,7 +711,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
   // Handle provider selection
   const handleProviderSelect = async (providerId: string) => {
-    console.log('Provider selected:', providerId);
     userChangedProviderRef.current = true;
     setSelectedProvider(providerId);
     updateSettings({ provider: providerId });
@@ -772,7 +728,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   // Handle agent selection from management interface
   const handleAgentSelect = async (agent: AgentConfiguration) => {
     try {
-      console.log('🤖 Agent selected from management:', agent.name);
 
       // Set the selected agent
       setSelectedAgent(agent);
@@ -799,16 +754,14 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       // Start a new chat with the agent configuration
       handleStartNewChat();
 
-      console.log('✅ Agent configuration applied successfully');
-    } catch (error) {
-      console.error('❌ Failed to apply agent configuration:', error);
+    } catch {
+      // Failed to apply agent configuration
     }
   };
 
   // Handle agent change from dropdown
   const handleAgentChange = async (agent: AgentConfiguration | null) => {
     try {
-      console.log('🤖 Agent changed from dropdown:', agent?.name || 'No Agent');
 
       setSelectedAgent(agent);
 
@@ -840,60 +793,49 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         }));
       }
 
-      console.log('✅ Agent change applied successfully');
-    } catch (error) {
-      console.error('❌ Failed to apply agent change:', error);
+    } catch {
+      // Failed to apply agent change
     }
   };
 
   // Load premade prompts from file
   const loadPremadePrompts = async () => {
     try {
-      console.log('🎯 Starting to load premade prompts...');
 
       if (typeof window !== 'undefined' && window.electronAPI) {
-        console.log('🎯 Electron API available, attempting to read file...');
-
-        // Try different file path formats
-        const possiblePaths = [
-          'z:\\Python\\AI Assistant\\littlellm\\docs\\Premadeprompts.md',
-          'Z:\\Python\\AI Assistant\\littlellm\\docs\\Premadeprompts.md',
-          './docs/Premadeprompts.md',
-          'docs/Premadeprompts.md'
-        ];
-
+        // Get the app directory and construct the path to Premadeprompts.md
         let promptsContent = '';
-        let successfulPath = '';
 
-        for (const path of possiblePaths) {
+        try {
+          // Use the app directory to locate the prompts file
+          const appPath = await window.electronAPI.getAppPath();
+          const promptsFilePath = `${appPath}/docs/Premadeprompts.md`;
+
+          const fileData = await window.electronAPI.readFile(promptsFilePath);
+
+          // Handle the API response format
+          if (fileData && fileData.success && fileData.content) {
+            promptsContent = fileData.content;
+          }
+        } catch {
+          // Fallback: try relative path if app path method fails
           try {
-            console.log(`🎯 Trying to read file from: ${path}`);
-            const fileData = await window.electronAPI.readFile(path);
-
-            // Handle the new API response format
+            const fileData = await window.electronAPI.readFile('docs/Premadeprompts.md');
             if (fileData && fileData.success && fileData.content) {
               promptsContent = fileData.content;
-              successfulPath = path;
-              console.log(`🎯 Successfully read file from: ${path}, content length: ${promptsContent.length}`);
-              break;
-            } else if (fileData && !fileData.success) {
-              console.log(`🎯 Failed to read from ${path}: ${fileData.error}`);
-              continue;
             }
-          } catch (pathError) {
-            console.log(`🎯 Failed to read from ${path}:`, pathError);
-            continue;
+          } catch {
+            // If all methods fail, set empty prompts
+            promptsContent = '';
           }
         }
 
         if (!promptsContent) {
-          console.error('🎯 Failed to read prompts file from any path');
           setPremadePrompts([]);
           return;
         }
 
         // Parse prompts from the structured content (title: "..." prompt: "...")
-        console.log('🎯 Parsing prompts from structured content...');
         const lines = promptsContent.split('\n');
         const prompts: Array<{title: string, content: string}> = [];
 
@@ -934,7 +876,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
                   title: currentTitle,
                   content: currentPrompt
                 });
-                console.log(`🎯 Found prompt: ${currentTitle}`);
 
                 // Reset for next prompt
                 currentTitle = '';
@@ -945,12 +886,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         }
 
         setPremadePrompts(prompts);
-        console.log('🎯 Successfully loaded', prompts.length, 'premade prompts from', successfulPath);
-      } else {
-        console.error('🎯 Electron API not available');
       }
-    } catch (error) {
-      console.error('🎯 Failed to load premade prompts:', error);
+    } catch {
       setPremadePrompts([]);
     }
   };
@@ -981,9 +918,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         setModelInstructionsOpen(false);
         setCustomSystemPrompt('');
 
-        console.log('Custom prompt applied as system prompt:', combinedSystemPrompt.substring(0, 100) + '...');
-      } catch (error) {
-        console.error('Failed to apply custom prompt:', error);
+      } catch {
+        // Failed to apply custom prompt
       }
     }
   };
@@ -999,9 +935,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       await settingsService.updateSettings({ chat: updatedSettings });
       setSettings(updatedSettings);
 
-      console.log('System prompt cleared');
-    } catch (error) {
-      console.error('Failed to clear system prompt:', error);
+    } catch {
+      // Failed to clear system prompt
     }
   };
 
@@ -1023,9 +958,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       setSettings(updatedSettings);
       setQuickPromptsOpen(false);
 
-      console.log(`Quick prompt "${prompt.title}" applied as system prompt:`, combinedSystemPrompt.substring(0, 100) + '...');
-    } catch (error) {
-      console.error('Failed to apply quick prompt:', error);
+    } catch {
+      // Failed to apply quick prompt
     }
   };
 
@@ -1033,7 +967,6 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
   // Handle chat history selection
   const handleChatSelect = async (chatId: string) => {
-    console.log('Selected chat:', chatId);
     try {
       // Load the selected conversation from the history service
       const conversation = await conversationHistoryService.getConversation(chatId);
@@ -1042,18 +975,14 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         setMessages(conversation.messages);
         // Set the current conversation ID
         conversationHistoryService.setCurrentConversationId(chatId);
-        console.log(`Loaded conversation "${conversation.title}" with ${conversation.messages.length} messages`);
-      } else {
-        console.error('Conversation not found:', chatId);
       }
-    } catch (error) {
-      console.error('Failed to load conversation:', error);
+    } catch {
+      // Failed to load conversation
     }
   };
 
   // Handle starting a new chat
   const handleStartNewChat = async () => {
-    console.log('Starting new chat...');
 
     // Clear messages
     setMessages([]);
@@ -1071,19 +1000,16 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
 
       await settingsService.updateSettings({ chat: updatedSettings });
       setSettings(updatedSettings);
-      console.log('System prompt reset for new chat');
-    } catch (error) {
-      console.error('Failed to reset system prompt:', error);
+    } catch {
+      // Failed to reset system prompt
     }
 
     // Clear conversation state for providers that maintain server-side context (like Ollama)
     try {
       if (settings.provider === 'ollama') {
-        console.log('🧹 Clearing Ollama conversation state for fresh start...');
         await chatService.clearConversationState(settings);
       }
-    } catch (error) {
-      console.error('Failed to clear conversation state:', error);
+    } catch {
       // Don't block the new chat if this fails
     }
 
@@ -1098,52 +1024,40 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       window.electronAPI.syncMessagesToChat([]);
     }
 
-    console.log('New chat started - all state cleared');
   };
 
   // Listen for prompt selections from action menu overlay
   useEffect(() => {
-    console.log('🎯 Setting up prompt selection listener in ModernChatInterface');
 
     if (typeof window !== 'undefined' && window.electronAPI) {
       const handlePromptSelected = async (promptText: string) => {
-        console.log('🎯 ModernChatInterface received prompt from action menu:', promptText);
 
         let processedPrompt = promptText;
 
         // If the prompt contains {content} placeholder, replace it with clipboard content
         if (promptText.includes('{content}')) {
           try {
-            console.log('🎯 Prompt contains {content}, reading clipboard...');
             const clipboardContent = await window.electronAPI.readClipboard();
 
             if (clipboardContent && clipboardContent.trim()) {
               processedPrompt = promptText.replace('{content}', clipboardContent.trim());
-              console.log('🎯 Replaced {content} with clipboard content');
             } else {
               processedPrompt = promptText.replace('{content}', '[No clipboard content available]');
-              console.log('🎯 No clipboard content available, using placeholder');
             }
-          } catch (error) {
-            console.error('🎯 Failed to read clipboard:', error);
+          } catch {
             processedPrompt = promptText.replace('{content}', '[Clipboard access failed]');
           }
         }
 
         // Set the processed prompt in the input field
         setInputValue(processedPrompt);
-        console.log('🎯 ModernChatInterface set input with processed prompt:', processedPrompt);
       };
 
-      console.log('🎯 Registering onPromptSelected listener');
       window.electronAPI.onPromptSelected?.(handlePromptSelected);
 
       return () => {
-        console.log('🎯 Cleaning up prompt selection listener');
         window.electronAPI.removeAllListeners('prompt-selected');
       };
-    } else {
-      console.warn('🎯 electronAPI not available for prompt selection');
     }
   }, []); // Empty dependency array - only setup once
 

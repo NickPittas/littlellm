@@ -158,8 +158,12 @@ export class GeminiProvider extends BaseProvider {
     // Format tools for Gemini (clean schemas)
     const formattedTools = rawMcpTools.length > 0 ? this.formatTools(rawMcpTools as ToolObject[]) : [];
 
-    const endpoint = onStream ? 'streamGenerateContent?alt=sse' : 'generateContent';
-    const url = `${provider.baseUrl}/models/${settings.model}:${endpoint}${onStream ? '' : '?key=' + settings.apiKey}`;
+    // For image generation models, use non-streaming to ensure we get the complete response with images
+    const useStreaming = onStream && !settings.model.includes('image');
+    const endpoint = useStreaming ? 'streamGenerateContent?alt=sse' : 'generateContent';
+    const url = `${provider.baseUrl}/models/${settings.model}:${endpoint}${useStreaming ? '' : '?key=' + settings.apiKey}`;
+
+    console.log(`🖼️ Gemini request mode: ${useStreaming ? 'streaming' : 'non-streaming'} for model: ${settings.model}`);
 
     const requestBody: Record<string, unknown> = {
       contents,
@@ -206,16 +210,7 @@ export class GeminiProvider extends BaseProvider {
       console.log(`🚀 Gemini API call without tools (no MCP tools available)`);
     }
 
-    // Set system instruction (behavioral prompt only - no tool descriptions)
-    if (systemPrompt) {
-      requestBody.system_instruction = {
-        parts: [{ text: systemPrompt }]
-      };
-      console.log(`🔧 Gemini system instruction set:`, {
-        length: systemPrompt.length,
-        preview: systemPrompt.substring(0, 100) + '...'
-      });
-    }
+
 
     console.log('🔍 Gemini request body:', JSON.stringify(requestBody, null, 2));
 
@@ -242,10 +237,16 @@ export class GeminiProvider extends BaseProvider {
       throw new Error(`Gemini API error: ${error}`);
     }
 
-    if (onStream) {
-      return this.handleStreamResponse(response, onStream, settings, provider, conversationHistory, signal);
+    if (useStreaming) {
+      return this.handleStreamResponse(response, onStream!, settings, provider, conversationHistory, signal);
     } else {
-      return this.handleNonStreamResponse(response, settings, conversationHistory, conversationId);
+      // For non-streaming (including image generation), simulate streaming if callback provided
+      const result = await this.handleNonStreamResponse(response, settings, conversationHistory, conversationId);
+      if (onStream && result.content) {
+        onStream(result.content);
+      }
+
+      return result;
     }
   }
 
@@ -760,6 +761,7 @@ export class GeminiProvider extends BaseProvider {
     let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined = undefined;
     const decoder = new TextDecoder();
     const toolCalls: Array<{ id?: string; name?: string; arguments?: unknown; result?: string; isError?: boolean; function?: { name?: string; arguments?: string } }> = [];
+    const images: Array<{ data: string; mimeType: string; alt?: string }> = [];
 
     try {
       // eslint-disable-next-line no-constant-condition
@@ -776,6 +778,12 @@ export class GeminiProvider extends BaseProvider {
             if (!data || data === '[DONE]') continue;
 
             try {
+              // Check if the JSON is complete before parsing
+              if (!data.endsWith('}') && !data.endsWith(']')) {
+                console.log('🔍 Gemini: Skipping incomplete JSON chunk');
+                continue;
+              }
+
               const parsed = JSON.parse(data);
               console.log('🔍 Gemini streaming chunk:', JSON.stringify(parsed, null, 2));
 
@@ -787,6 +795,34 @@ export class GeminiProvider extends BaseProvider {
                   if (part.text) {
                     fullContent += part.text;
                     onStream(part.text);
+                  }
+
+                  // Handle generated images (matches Python: part.inline_data)
+                  if (part.inline_data || part.inlineData) {
+                    const imageData = part.inline_data || part.inlineData;
+                    if (imageData && imageData.data) {
+                      // Handle both mime_type (REST API) and mimeType (SDK) formats
+                      const mimeType = imageData.mime_type || imageData.mimeType || 'image/png';
+
+                      console.log(`🖼️ Gemini streaming generated image:`, {
+                        mimeType: mimeType,
+                        dataLength: imageData.data.length,
+                        hasData: !!imageData.data
+                      });
+
+                      // Convert to data URL format (matches Python: BytesIO(part.inline_data.data))
+                      const dataUrl = `data:${mimeType};base64,${imageData.data}`;
+                      images.push({
+                        data: dataUrl,
+                        mimeType: mimeType,
+                        alt: 'Generated image'
+                      });
+
+                      // Show image placeholder in stream
+                      const imageMessage = `\n\n🖼️ **Generated Image**\n`;
+                      fullContent += imageMessage;
+                      onStream(imageMessage);
+                    }
                   }
 
                   // Handle function calls
@@ -853,6 +889,8 @@ export class GeminiProvider extends BaseProvider {
               }
             } catch (e) {
               console.warn('Failed to parse Gemini streaming chunk:', e);
+              console.warn('Problematic data:', data.substring(0, 200) + '...');
+              // Continue processing other chunks instead of failing completely
             }
           }
         }
@@ -866,6 +904,10 @@ export class GeminiProvider extends BaseProvider {
       return this.executeGeminiFollowUp(toolCalls, fullContent, usage, settings, provider, conversationHistory, onStream);
     }
 
+    // For image generation models, images might only be available in the final complete response
+    // The streaming API may not include image data, so we need to check the final state
+    console.log('🖼️ Checking for images in streaming response - found:', images.length);
+
     return {
       content: fullContent,
       usage: usage ? {
@@ -877,7 +919,8 @@ export class GeminiProvider extends BaseProvider {
         id: tc.id || `gemini-${Date.now()}`,
         name: tc.name || '',
         arguments: tc.arguments as Record<string, unknown> || {}
-      }))
+      })),
+      images: images.length > 0 ? images : undefined
     };
   }
 
@@ -900,11 +943,20 @@ export class GeminiProvider extends BaseProvider {
         return { content: 'Error: Invalid response structure from Gemini' };
       }
 
-      // Handle tool calls in Gemini format
+      // Handle tool calls and generated images in Gemini format
       let content = '';
       const toolCalls = [];
+      const images = [];
 
       console.log('🔍 Gemini candidate parts:', candidate.content.parts);
+      console.log('🔍 Detailed parts analysis:', candidate.content.parts.map((part, index) => ({
+        index,
+        hasText: !!part.text,
+        hasInlineData: !!(part.inline_data || part.inlineData),
+        hasFunctionCall: !!part.functionCall,
+        keys: Object.keys(part)
+      })));
+
       for (const part of candidate.content.parts) {
         if (part.text) {
           content += part.text;
@@ -916,6 +968,27 @@ export class GeminiProvider extends BaseProvider {
             name: part.functionCall.name,
             arguments: part.functionCall.args
           });
+        } else if (part.inline_data || part.inlineData) {
+          // Handle generated images from Gemini (matches Python: part.inline_data)
+          const imageData = part.inline_data || part.inlineData;
+          if (imageData && imageData.data) {
+            // Handle both mime_type (REST API) and mimeType (SDK) formats
+            const mimeType = imageData.mime_type || imageData.mimeType || 'image/png';
+
+            console.log(`🖼️ Gemini response contains generated image:`, {
+              mimeType: mimeType,
+              dataLength: imageData.data.length,
+              hasData: !!imageData.data
+            });
+
+            // Convert to data URL format (matches Python: BytesIO(part.inline_data.data))
+            const dataUrl = `data:${mimeType};base64,${imageData.data}`;
+            images.push({
+              data: dataUrl,
+              mimeType: mimeType,
+              alt: 'Generated image'
+            });
+          }
         }
       }
 
@@ -924,7 +997,8 @@ export class GeminiProvider extends BaseProvider {
         content,
         usage,
         cost,
-        toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        images: images.length > 0 ? images : undefined
       };
     } catch (error) {
       console.error('❌ Failed to parse Gemini response:', error);
@@ -945,6 +1019,15 @@ export class GeminiProvider extends BaseProvider {
     };
 
     const costInfo = PricingService.calculateCost('gemini', model, usageInfo.promptTokens, usageInfo.completionTokens);
+
+    console.log('💰 Gemini cost calculation:', {
+      model,
+      promptTokens: usageInfo.promptTokens,
+      completionTokens: usageInfo.completionTokens,
+      costInfo,
+      hasCost: !!costInfo,
+      costAmount: costInfo?.totalCost
+    });
 
     return { usage: usageInfo, cost: costInfo };
   }

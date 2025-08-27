@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import React, { useState, useEffect } from 'react';
 import { ProgressLogPanel } from './ProgressLogPanel';
 import { Button } from './ui/button';

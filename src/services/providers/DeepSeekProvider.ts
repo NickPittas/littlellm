@@ -14,6 +14,7 @@ import {
 
 import { DEEPSEEK_SYSTEM_PROMPT } from './prompts/deepseek';
 import { OpenAICompatibleStreaming } from './shared/OpenAICompatibleStreaming';
+import { PricingService } from '../pricingService';
 
 export class DeepSeekProvider extends BaseProvider {
   readonly id = 'deepseek';
@@ -83,13 +84,6 @@ export class DeepSeekProvider extends BaseProvider {
     if (mcpTools.length > 0) {
       requestBody.tools = mcpTools;
       requestBody.tool_choice = 'auto';
-      console.log(`🚀 DeepSeek API call with ${mcpTools.length} tools:`, {
-        model: settings.model,
-        toolCount: mcpTools.length,
-        tools: mcpTools
-      });
-    } else {
-      console.log(`🚀 DeepSeek API call without tools (no MCP tools available)`);
     }
 
     const response = await fetch(`${provider.baseUrl}/chat/completions`, {
@@ -116,7 +110,6 @@ export class DeepSeekProvider extends BaseProvider {
 
   async fetchModels(apiKey: string): Promise<string[]> {
     if (!apiKey) {
-      console.error('❌ No DeepSeek API key provided - cannot fetch models');
       throw new Error('DeepSeek API key is required to fetch available models. Please add your API key in settings.');
     }
 
@@ -131,7 +124,6 @@ export class DeepSeekProvider extends BaseProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ DeepSeek API error: ${response.status}`, errorText);
         throw new Error(`Failed to fetch DeepSeek models: ${response.status} - ${errorText}`);
       }
 
@@ -144,7 +136,6 @@ export class DeepSeekProvider extends BaseProvider {
 
       return models;
     } catch (error) {
-      console.error('❌ Failed to fetch DeepSeek models:', error);
       throw error instanceof Error ? error : new Error(`Failed to fetch DeepSeek models: ${String(error)}`);
     }
   }
@@ -176,7 +167,6 @@ export class DeepSeekProvider extends BaseProvider {
 
     // DeepSeek uses structured tool calling with tools parameter and tool_choice
     // Don't add XML tool instructions as they conflict with native function calling
-    console.log(`🔧 DeepSeek using structured tools, skipping XML tool instructions`);
     return basePrompt;
   }
 
@@ -235,7 +225,7 @@ export class DeepSeekProvider extends BaseProvider {
     settings: LLMSettings,
     provider: LLMProvider,
     conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    signal?: AbortSignal
+    _signal?: AbortSignal
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     return OpenAICompatibleStreaming.handleStreamResponse(
@@ -284,27 +274,19 @@ export class DeepSeekProvider extends BaseProvider {
   private async handleNonStreamResponse(
     response: Response,
     settings: LLMSettings,
-    conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
-    conversationId?: string
+    _conversationHistory: Array<{role: string, content: string | Array<ContentItem>}>,
+    _conversationId?: string
   ): Promise<LLMResponse> {
     /* eslint-enable @typescript-eslint/no-unused-vars */
     const data = await response.json();
-    console.log('🔍 DeepSeek non-streaming response:', {
-      hasUsage: !!data.usage,
-      usage: data.usage,
-      responseKeys: Object.keys(data)
-    });
 
     const choice = data.choices[0];
     const message = choice.message;
 
     // Handle tool calls (same as OpenAI format) - execute immediately like Anthropic
     if (message.tool_calls && message.tool_calls.length > 0) {
-      console.log(`🔧 DeepSeek response contains ${message.tool_calls.length} tool calls:`, message.tool_calls);
-
       // Check if we have the parallel execution method injected
       if ((this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).executeMultipleToolsParallel && (this as unknown as {executeMultipleToolsParallel?: unknown, summarizeToolResultsForModel?: unknown}).summarizeToolResultsForModel) {
-        console.log(`🚀 Executing ${message.tool_calls.length} DeepSeek tools immediately`);
 
         // Format tool calls for execution
         const toolCallsForExecution = message.tool_calls.map((toolCall: { id: string; function: { name: string; arguments: string } }) => ({
@@ -319,43 +301,34 @@ export class DeepSeekProvider extends BaseProvider {
         
         try {
           const parallelResults = await (executeMultipleToolsParallel as (calls: unknown[], provider: string) => Promise<Array<{success: boolean}>>)(toolCallsForExecution, 'deepseek');
-          console.log(`✅ DeepSeek tool execution completed: ${parallelResults.filter(r => r.success).length}/${parallelResults.length} successful`);
 
           // Get tool results summary for the model
           const toolSummary = (summarizeToolResultsForModel as (results: unknown[]) => string)(parallelResults);
           
           // Return response with tool results included
+          const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
           return {
             content: (message.content || '') + '\n\n' + toolSummary,
-            usage: data.usage ? {
-              promptTokens: data.usage.prompt_tokens,
-              completionTokens: data.usage.completion_tokens,
-              totalTokens: data.usage.total_tokens
-            } : undefined
+            usage,
+            cost
           };
-        } catch (error) {
-          console.error(`❌ DeepSeek tool execution failed:`, error);
+        } catch {
           // Fall back to returning tool calls for external handling
+          const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
           return {
             content: message.content || '',
-            usage: data.usage ? {
-              promptTokens: data.usage.prompt_tokens,
-              completionTokens: data.usage.completion_tokens,
-              totalTokens: data.usage.total_tokens
-            } : undefined,
+            usage,
+            cost,
             toolCalls: toolCallsForExecution
           };
         }
       } else {
-        console.warn(`⚠️ DeepSeek provider missing tool execution methods - falling back to external handling`);
         // Fall back to external handling if methods not injected
+        const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
         return {
           content: message.content || '',
-          usage: data.usage ? {
-            promptTokens: data.usage.prompt_tokens,
-            completionTokens: data.usage.completion_tokens,
-            totalTokens: data.usage.total_tokens
-          } : undefined,
+          usage,
+          cost,
           toolCalls: message.tool_calls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
             id: tc.id,
             name: tc.function.name,
@@ -365,13 +338,28 @@ export class DeepSeekProvider extends BaseProvider {
       }
     }
 
+    const { usage, cost } = this.createUsageAndCost(settings.model, data.usage);
     return {
       content: message.content,
-      usage: data.usage ? {
-        promptTokens: data.usage.prompt_tokens,
-        completionTokens: data.usage.completion_tokens,
-        totalTokens: data.usage.total_tokens
-      } : undefined
+      usage,
+      cost
     };
+  }
+
+  /**
+   * Create usage and cost information from DeepSeek API response
+   */
+  private createUsageAndCost(model: string, usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }) {
+    if (!usage) return { usage: undefined, cost: undefined };
+
+    const usageInfo = {
+      promptTokens: usage.prompt_tokens || 0,
+      completionTokens: usage.completion_tokens || 0,
+      totalTokens: usage.total_tokens || 0
+    };
+
+    const costInfo = PricingService.calculateCost('deepseek', model, usageInfo.promptTokens, usageInfo.completionTokens);
+
+    return { usage: usageInfo, cost: costInfo };
   }
 }

@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Electron Main Process Internal Command Handler
  * Handles internal commands in the main process where Node.js APIs are available

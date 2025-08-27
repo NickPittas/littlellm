@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 // Anthropic provider implementation
 
 import { BaseProvider } from './BaseProvider';

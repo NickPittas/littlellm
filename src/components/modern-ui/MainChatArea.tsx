@@ -214,9 +214,11 @@ export function MainChatArea({
                               : String(message.content)
                         }
                         usage={message.usage}
+                        cost={message.cost}
                         timing={message.timing}
                         toolCalls={message.toolCalls}
                         sources={message.sources}
+                        images={message.images}
                         isStreaming={message.isStreaming}
                       />
                     ) : (

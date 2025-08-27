@@ -62,22 +62,15 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
 
           // Request current messages from main window
           window.electronAPI.requestCurrentMessages?.();
-        } catch (error) {
-          console.error('Failed to load initial messages:', error);
+        } catch {
+          // Silently handle error - localStorage might not be available or data might be corrupted
+          // Fall back to requesting messages from main window
         }
       };
 
       // Listen for message updates from main window
       const handleMessagesUpdate = (newMessages: unknown[]) => {
         const messages = newMessages as Message[];
-        console.log('📨 ChatOverlay received messages:', messages.map(m => ({
-          id: m.id,
-          role: m.role,
-          hasContent: !!m.content,
-          hasSources: !!m.sources,
-          sourcesCount: m.sources?.length || 0,
-          sources: m.sources
-        })));
         setMessages(messages);
         // Store messages in localStorage for persistence
         localStorage.setItem('chatWindowMessages', JSON.stringify(newMessages));
@@ -297,6 +290,7 @@ export function ChatOverlay({ onClose }: ChatOverlayProps) {
                           timing={message.timing}
                           toolCalls={message.toolCalls}
                           sources={message.sources}
+                          images={message.images}
                         />
                       )
                     ) : (
