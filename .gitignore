@@ -258,6 +258,7 @@ llama/
 
 # Analysis and caching directories created during development
 .augment/
+.github/
 .npm-cache/
 npm_cache/
 .pnpm-cache/
