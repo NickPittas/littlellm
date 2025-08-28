@@ -1,8 +1,8 @@
-# LittleLLM v4.1.0 🤖💬
+# LittleLLM v4.2.0 🤖💬
 
-A powerful, enterprise-grade desktop AI chat application that provides seamless access to multiple AI providers with advanced features including MCP (Model Context Protocol) integration, intelligent tool calling, knowledge base management, memory systems, modern UI architecture, and comprehensive file processing capabilities.
+A powerful, enterprise-grade desktop AI chat application that provides seamless access to multiple AI providers with advanced features including MCP (Model Context Protocol) integration, intelligent tool calling, comprehensive knowledge base management, custom agent creation, memory systems, modern UI architecture, and extensive file processing capabilities.
 
-**Now available on Windows, macOS (Intel + Apple Silicon), and Linux with a TypeScript-first architecture.**
+**Now available on Windows, macOS (Intel + Apple Silicon), and Linux with a TypeScript-first architecture and zero compilation errors.**
 
 ![LittleLLM Screenshot](assets/icon.png)
 
@@ -51,15 +51,18 @@ A powerful, enterprise-grade desktop AI chat application that provides seamless 
 - **Visual Indicators**: Real-time status for tools, knowledge base, and MCP servers ✨
 - **Unified Interface**: Single, cohesive modern interface replacing legacy components ✨
 
-### 🧠 **Knowledge Base & Memory System**
-- **Vector Database**: LanceDB-powered knowledge base with semantic search ✨
-- **Document Processing**: Intelligent parsing of PDFs, Office docs, text files ✨
-- **Batch Upload**: Process multiple documents with real-time progress tracking ✨
-- **Smart Chunking**: Automatic text segmentation with overlap for context preservation ✨
-- **RAG Integration**: Retrieval-Augmented Generation with relevance scoring ✨
-- **Memory Context**: Persistent conversation memory with automatic retrieval ✨
-- **Export/Import**: Full knowledge base backup and restore capabilities ✨
-- **Search Analytics**: Performance monitoring and success rate tracking ✨
+### 🧠 **Advanced Knowledge Base & RAG System**
+- **LanceDB Vector Database**: High-performance vector storage with semantic search capabilities ✨
+- **Multi-Format Document Processing**: Intelligent parsing of PDFs, DOCX, XLSX, TXT, RTF, HTML, XML, and more ✨
+- **Batch Document Upload**: Process multiple documents simultaneously with real-time progress tracking ✨
+- **Google Docs Integration**: Direct import from Google Docs URLs with automatic text extraction ✨
+- **Smart Text Chunking**: Advanced text segmentation with configurable overlap for context preservation ✨
+- **Intelligent RAG Integration**: Retrieval-Augmented Generation with relevance scoring and source attribution ✨
+- **Knowledge Base Registry**: Centralized management system for multiple knowledge bases ✨
+- **Migration & Backup**: Complete knowledge base export/import with version control ✨
+- **Performance Analytics**: Real-time search analytics, success rate tracking, and optimization insights ✨
+- **Metadata-Based Filtering**: Advanced search filtering by document type, date, source, and custom tags ✨
+- **Context Window Management**: Intelligent token limit handling for optimal LLM performance ✨
 
 ### 🛠️ **Advanced Tool Ecosystem**
 - **MCP (Model Context Protocol) Integration**: Full support for MCP servers and tools ✨
@@ -81,39 +84,43 @@ A powerful, enterprise-grade desktop AI chat application that provides seamless 
 - **Settings Persistence**: Race condition-free configuration management ✨
 - **Memory Safety**: Automatic cleanup and resource management ✨
 
-### 📁 **Comprehensive File Processing**
-- **Images**: PNG, JPG, GIF, WebP with automatic optimization and vision model support
-- **Office Documents**: Word (DOCX/DOC), Excel (XLSX/XLS/ODS), PowerPoint (PPTX/PPT)
-- **Text Formats**: TXT, MD, RTF, CSV, JSON, HTML, XML with intelligent parsing
-- **Calendar Files**: ICS (iCalendar) with event extraction and scheduling
-- **PDFs**: Native provider support with OCR fallback and table extraction
-- **Knowledge Base Integration**: Automatic document indexing and vector embedding
-- **Batch Processing**: Upload multiple files with real-time progress tracking
-- **Smart Chunking**: Intelligent text segmentation with context preservation
-- **Error Recovery**: Comprehensive fallback mechanisms with detailed reporting
-- **Performance Analytics**: Real-time parsing statistics and success rates
-- **Clipboard Support**: Paste images and text with automatic format detection
-- **Drag & Drop**: Visual file attachment with processing indicators
+### 📁 **Enterprise-Grade File Processing**
+- **Vision Support**: PNG, JPG, GIF, WebP with automatic optimization and multi-model vision support ✨
+- **Office Suite**: Word (DOCX/DOC), Excel (XLSX/XLS/ODS), PowerPoint (PPTX/PPT) with table extraction ✨
+- **Text & Markup**: TXT, MD, RTF, CSV, JSON, HTML, XML with intelligent structure parsing ✨
+- **Calendar Integration**: ICS (iCalendar) with event extraction, scheduling, and timezone support ✨
+- **Advanced PDF Processing**: Native provider support with OCR fallback, table extraction, and metadata preservation ✨
+- **Knowledge Base Auto-Indexing**: Automatic document indexing with vector embedding and semantic search ✨
+- **High-Performance Batch Processing**: Upload and process multiple files simultaneously with progress tracking ✨
+- **Intelligent Text Chunking**: Smart segmentation with configurable overlap and context preservation ✨
+- **Robust Error Recovery**: Comprehensive fallback mechanisms with detailed error reporting and retry logic ✨
+- **Real-Time Analytics**: Live parsing statistics, success rates, and performance monitoring ✨
+- **Enhanced Clipboard Support**: Paste images, text, and files with automatic format detection ✨
+- **Modern Drag & Drop**: Visual file attachment with real-time processing indicators and validation ✨
+- **Document Migration**: Seamless import/export with version control and data integrity checks ✨
 
-### 🤖 **Custom Agent Creation System**
-- **Specialized Agents**: Create AI agents tailored for specific tasks and workflows
-- **Template Library**: Pre-built templates for Document Analysis, Web Research, Code Assistance, and more
-- **AI-Generated Prompts**: Use LLMs to automatically generate specialized system prompts
-- **Tool Selection**: Choose specific tools and MCP servers for each agent
-- **Provider Configuration**: Set default LLM provider and model per agent
-- **Import/Export**: Share agents via JSON files with dependency validation
-- **Runtime Integration**: Select agents from chat interface with automatic configuration
-- **Agent Management**: Visual interface for creating, editing, and organizing agents
+### 🤖 **Advanced Agent Management System**
+- **Custom Agent Creation**: Build specialized AI agents tailored for specific tasks and workflows ✨
+- **Comprehensive Template Library**: Pre-built templates for Document Analysis, Web Research, Code Assistance, and more ✨
+- **AI-Powered Prompt Generation**: Use LLMs to automatically generate specialized system prompts ✨
+- **Granular Tool Selection**: Choose specific tools and MCP servers for each agent with advanced configuration ✨
+- **Provider & Model Configuration**: Set default LLM provider, model, temperature, and token limits per agent ✨
+- **Knowledge Base Integration**: Link agents to specific knowledge bases for enhanced RAG capabilities ✨
+- **Agent Import/Export**: Share agents via JSON files with comprehensive dependency validation ✨
+- **Runtime Agent Switching**: Select and switch agents directly from chat interface with automatic configuration ✨
+- **Visual Agent Management**: Modern UI for creating, editing, duplicating, and organizing agents ✨
+- **Agent Lifecycle Management**: Complete CRUD operations with version tracking and metadata ✨
+- **Template System**: Reusable agent templates with categorization and customization options ✨
 
 #### Built-in Agent Templates
-- **📄 Document Analyst**: Specialized for document analysis and summarization
-- **🌐 Web Researcher**: Expert at web browsing and information gathering
-- **💻 Code Assistant**: Focused on software development and code review
-- **📊 Data Analyst**: Expert at data analysis and visualization
-- **✍️ Creative Writer**: Specialized in creative writing and content creation
-- **📈 Business Analyst**: Expert at business analysis and market research
-- **📝 Technical Writer**: Focused on technical documentation creation
-- **🎧 Customer Support**: Specialized in customer service and support
+- **📄 Document Analyst**: Specialized for document analysis, summarization, and content extraction
+- **🌐 Web Researcher**: Expert at web browsing, information gathering, and source verification
+- **💻 Code Assistant**: Focused on software development, code review, and debugging
+- **📊 Data Analyst**: Expert at data analysis, visualization, and statistical interpretation
+- **✍️ Creative Writer**: Specialized in creative writing, content creation, and storytelling
+- **📈 Business Analyst**: Expert at business analysis, market research, and strategic planning
+- **📝 Technical Writer**: Focused on technical documentation, API docs, and user guides
+- **🎧 Customer Support**: Specialized in customer service, support ticket resolution, and FAQ generation
 
 ## 🚀 Quick Start
 
@@ -134,29 +141,58 @@ A powerful, enterprise-grade desktop AI chat application that provides seamless 
    - **Jan AI**: API key may be required (local AI application)
    - **Ollama**: No API key needed (local models)
 
-### Start Chatting
+### Start Using Advanced Features
 1. Press **Ctrl+Shift+L** to open the modern chat interface
 2. Select a provider and model from the bottom input area
-3. Type your message and press Enter or click the send button
-4. Attach files by clicking the paperclip icon or drag & drop
-5. Take screenshots with the camera icon for instant image capture
-6. Use the sidebar to access settings, agents, prompts, and chat history
-7. Toggle tools, knowledge base, and MCP servers with the bottom toolbar buttons
-8. Upload documents to the knowledge base for RAG-enhanced conversations
-9. Create custom agents for specialized tasks and workflows
-10. Copy text from clipboard, then select prompts with `{content}` for automatic insertion
+3. **Upload Documents to Knowledge Base**: 
+   - Click the knowledge base icon in the sidebar
+   - Upload PDFs, Office docs, or enter Google Docs URLs
+   - Watch real-time processing progress
+   - Enable RAG toggle for enhanced responses
+4. **Create Custom Agents**:
+   - Access agent management from the sidebar
+   - Choose from pre-built templates or create custom agents
+   - Configure tools, knowledge bases, and LLM settings
+   - Switch agents directly from the chat interface
+5. **Enhanced Chat Experience**:
+   - Type messages and press Enter or click send
+   - Attach files via paperclip icon or drag & drop
+   - Take screenshots with the camera icon
+   - Use tool calling toggle for advanced functionality
+   - Access prompts with Ctrl+Shift+Space
+6. **Knowledge Base Management**:
+   - Create multiple knowledge bases for different topics
+   - Monitor search analytics and performance
+   - Export/import knowledge bases for backup
+   - Configure RAG settings for optimal results
+7. **Advanced Features**:
+   - Copy text from clipboard, then select prompts with `{content}` for automatic insertion
+   - Use MCP servers for extended functionality
+   - Access chat history and memory management
+   - Customize themes and transparency settings
 
-## 📋 Keyboard Shortcuts
+## 🔑 Keyboard Shortcuts & Quick Actions
 
 | Shortcut | Action |
 |----------|--------|
 | `Ctrl+Shift+L` | Open/Show LittleLLM Modern Interface |
 | `Ctrl+Shift+Space` | Open Action Menu (Prompts) |
-| `Ctrl+Shift+V` | Process Clipboard |
+| `Ctrl+Shift+V` | Process Clipboard Content |
 | `Esc` | Close overlays/dialogs |
 | `Enter` | Send message |
 | `Shift+Enter` | New line in chat input |
-| `Ctrl+V` | Paste (including images) |
+| `Ctrl+V` | Paste (including images and files) |
+| `Ctrl+K` | Quick knowledge base search (when enabled) |
+| `Ctrl+A` | Quick agent selection menu |
+| `F11` | Toggle fullscreen mode |
+
+### Quick Access Features
+- **Knowledge Base Toggle**: Click the brain icon to enable/disable RAG
+- **Agent Switching**: Use the agent dropdown for instant agent selection
+- **Tool Calling**: Toggle tools on/off with the wrench icon
+- **MCP Servers**: Manage MCP server connections from settings
+- **File Upload**: Drag & drop files anywhere or use the paperclip icon
+- **Screenshot**: Camera icon for instant screen capture
 
 ## 🎨 Themes
 
@@ -291,68 +327,90 @@ npm run dist:linux          # Linux (AppImage)
 - Make executable: `chmod +x LittleLLM-<version>.AppImage`
 - Run the AppImage directly on most modern Linux distributions
 
-## 🆕 What's New in v4.1.0
+## 🆕 What's New in v4.2.0
 
-### 🎨 **Modern UI** ✨
+### 🧠 **Enhanced Knowledge Base Management** ✨
 
-- **Complete UI Overhaul**: New modern interface with Magic UI components and Framer Motion animations
-- **Sidebar Navigation**: Intuitive left sidebar with quick access to all features
-- **Real-time Animations**: Smooth transitions and visual feedback throughout the application
-- **Unified Interface**: Single cohesive modern interface replacing all legacy components
-- **Enhanced User Experience**: Improved layouts, better visual hierarchy, and intuitive controls
+- **Knowledge Base Registry**: Centralized management system for multiple knowledge bases with metadata tracking
+- **Advanced Document Processing**: Support for Google Docs URLs, batch processing, and improved text extraction
+- **Migration & Backup System**: Complete knowledge base export/import with version control and data integrity
+- **Performance Optimization**: Enhanced chunking strategies, improved search algorithms, and better memory management
+- **Integration Testing**: Comprehensive test suite for knowledge base operations and RAG functionality
 
-### 🧠 **Knowledge Base & RAG System** ✨
+### 🤖 **Advanced Agent Management** ✨
 
-- **Vector Database Integration**: LanceDB-powered knowledge base with semantic search
-- **Intelligent Document Processing**: Advanced parsing for PDFs, Office docs, and text files
-- **Batch Upload System**: Process multiple documents with real-time progress tracking
-- **RAG Integration**: Retrieval-Augmented Generation with relevance scoring and source attribution
-- **Smart Chunking**: Automatic text segmentation with overlap for context preservation
+- **Comprehensive Agent System**: Complete lifecycle management with creation, editing, duplication, and deletion
+- **Knowledge Base Integration**: Link agents to specific knowledge bases for enhanced RAG-powered responses
+- **Agent Templates**: Expanded template library with specialized configurations for different use cases
+- **Enhanced UI Components**: Modern interface for agent management with drag-and-drop organization
+- **Import/Export Functionality**: Share agents via JSON with dependency validation and version tracking
 
-### 🛠️ **Advanced Tool Ecosystem** ✨
+### 🔧 **System Architecture Improvements** ✨
 
-- **Internal Commands**: Secure command execution with directory-scoped permissions
-- **Web Search Integration**: Built-in web search capabilities with source attribution
-- **File Operations**: Read, write, and manipulate files with comprehensive safety restrictions
-- **Process Management**: Terminal command execution with timeout controls and monitoring
-- **System Monitoring**: CPU usage, memory stats, and detailed process information
+- **Zero Compilation Errors**: Complete TypeScript compliance across the entire codebase
+- **Enhanced IPC Communication**: Improved Electron-Next.js integration with proper type safety
+- **Service Layer Refactoring**: Modular service architecture with better separation of concerns
+- **Memory Management**: Intelligent cleanup and resource optimization for better performance
+- **Error Handling**: Comprehensive error management with detailed logging and user feedback
 
-### 🤖 **Custom Agent System** ✨
+### 📁 **File Processing Enhancements** ✨
 
-- **Agent Creation**: Build specialized AI agents with custom tool configurations
-- **Template Library**: Pre-built templates for various use cases and workflows
-- **Runtime Integration**: Select and switch agents directly from the chat interface
-- **Tool Selection**: Granular control over which tools and MCP servers each agent can access
-- **Import/Export**: Share agents via JSON files with dependency validation
+- **Document Parser Service**: Dedicated service for handling multiple file formats with improved reliability
+- **Progress Monitoring**: Real-time progress tracking for document processing and knowledge base operations
+- **Batch Operations**: Enhanced batch processing capabilities with parallel document handling
+- **Error Recovery**: Robust fallback mechanisms for failed document processing
+- **Content Parsing**: Improved text extraction with better handling of complex document structures
 
-### 🔒 **Enterprise Security & Reliability** ✨
+### 🛠️ **Development & Quality** ✨
 
-- **Zero TypeScript Errors**: Complete codebase compliance with full type safety
-- **Enhanced Error Handling**: Comprehensive error management with actionable messages
-- **Secure Storage**: Encrypted API key storage with Electron's safeStorage
-- **Permission Management**: Granular control over tool and command access
-- **Debug Logging**: Configurable logging system with privacy protection
+- **Integration Testing**: Comprehensive test suite for knowledge base and agent management features
+- **Migration Scripts**: Automated migration system for upgrading knowledge base structures
+- **Code Quality**: Enhanced TypeScript definitions, better error handling, and improved documentation
+- **Performance Analytics**: Real-time monitoring and analytics for system performance
+- **Debug Capabilities**: Enhanced logging and debugging tools for better troubleshooting
 
-### 📊 **Performance & Quality** ✨
+## 🏗️ **Architecture & Tech Stack**
 
-- **Memory Management**: Intelligent conversation memory with automatic context retrieval
-- **Real-time Monitoring**: Performance analytics and success rate tracking
-- **Batch Processing**: Efficient handling of multiple files and operations
-- **Resource Optimization**: Automatic cleanup and memory management
-- **Error Recovery**: Comprehensive fallback mechanisms with detailed reporting
+### Core Framework
+- **Frontend**: Next.js 14 with App Router, React 18, TypeScript 5.8.3
+- **Desktop**: Electron 37.1.0 with secure IPC communication and context isolation
+- **Build System**: Electron Builder 25.1.8 for cross-platform distribution
+- **Type Safety**: Complete TypeScript compliance with zero compilation errors
 
-## 🏗️ **Tech Stack**
+### UI & Styling
+- **Component Library**: Magic UI components with Framer Motion 12.23.9 animations
+- **Design System**: Radix UI primitives with custom component extensions
+- **Styling**: Tailwind CSS 3.4.1 with custom design tokens and themes
+- **Icons**: Lucide React with comprehensive icon set
+- **Responsive Design**: Adaptive layouts with drag-and-drop interfaces
 
-- **Frontend**: Next.js 14, React 18, TypeScript
-- **Desktop**: Electron 37.1.0 with secure IPC communication
-- **UI Framework**: Magic UI components with Framer Motion animations
-- **Styling**: Tailwind CSS with custom design system
-- **Database**: LanceDB for vector storage and semantic search
-- **Build**: Electron Builder for cross-platform distribution
-- **MCP Integration**: @modelcontextprotocol/sdk v1.15.1
+### Database & Storage
+- **Vector Database**: LanceDB 0.21.1 for high-performance semantic search
+- **Document Processing**: Multi-format parsers (PDF, Office, text, calendar)
+- **Secure Storage**: Electron safeStorage for encrypted API key management
+- **File System**: JSON-based configuration with atomic writes
+- **Memory Management**: Intelligent conversation context with automatic cleanup
 
-- **Memory**: JSON-based memory system with intelligent retrieval
-- **Security**: Electron safeStorage for encrypted API key management
+### AI & ML Integration
+- **Embeddings**: @xenova/transformers 2.17.2 for local text embeddings
+- **MCP Protocol**: @modelcontextprotocol/sdk 1.15.1 for tool integration
+- **Multi-Provider**: 13+ LLM providers with unified interface
+- **RAG System**: Advanced retrieval-augmented generation with relevance scoring
+- **Agent Framework**: Custom agent creation with template system
+
+### Document Processing
+- **PDF**: pdf-parse 1.1.1 with pdfjs-dist 5.4.54 for comprehensive text extraction
+- **Office**: mammoth 1.9.1 (Word), xlsx 0.18.5 (Excel), node-pptx-parser (PowerPoint)
+- **Text Formats**: RTF parser, XML2JS, HTML parser with intelligent content extraction
+- **Images**: Sharp 0.34.3 for optimization and vision model integration
+- **Calendar**: ical.js 2.2.0 for ICS file processing
+
+### Security & Performance
+- **Encrypted Storage**: Electron safeStorage with secure key management
+- **Process Isolation**: Sandboxed renderer with secure IPC channels
+- **Memory Safety**: Automatic resource cleanup and leak prevention
+- **Error Handling**: Comprehensive error management with detailed logging
+- **Performance Monitoring**: Real-time analytics and optimization insights
 
 ## 📄 License
 
@@ -367,7 +425,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**LittleLLM v4.1.0** - Your modern, enterprise-grade AI companion.
+**LittleLLM v4.2.0** - Your modern, enterprise-grade AI companion.
 
-With advanced knowledge base, tool ecosystem, and beautiful UI. 🚀
+With advanced knowledge base management, custom agent creation, and comprehensive tool ecosystem. 🚀
 
