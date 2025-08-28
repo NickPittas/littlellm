@@ -3,15 +3,17 @@ import { pipeline, FeatureExtractionPipeline } from '@xenova/transformers';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { documentParserService } from './DocumentParserService.js';
+import { knowledgeBaseRegistry } from './KnowledgeBaseRegistry.js';
+import {
+  KnowledgeBase,
+  KnowledgeBaseRecord,
+  MultiKBSearchResult,
+  SearchOptions,
+  KnowledgeBaseOperationProgress,
+  KnowledgeBaseStats
+} from '../types/knowledgeBase.js';
 
-interface KnowledgeBaseRecord {
-  id: string;
-  text: string;
-  vector: number[];
-  source: string;
-  metadata?: Record<string, unknown>;
-  [key: string]: unknown;
-}
+
 
 interface ExportData {
   version: string;
@@ -25,15 +27,29 @@ interface ExportData {
 }
 
 /**
- * Manages the local knowledge base for the application.
- * This service handles the creation, management, and querying of a local vector database,
- * allowing AI models to access a shared, user-enrichable knowledge source.
+ * Enhanced Knowledge Base Service for managing multiple topic-based knowledge bases.
+ * This service handles the creation, management, and querying of multiple vector databases,
+ * allowing AI models to access organized, topic-specific knowledge sources.
  */
 export class KnowledgeBaseService {
+  // Constants for frequently used error messages
+  private static readonly KNOWLEDGE_BASE_NOT_FOUND_ERROR = 'Knowledge base with ID';
+  private static readonly UNKNOWN_ERROR_FALLBACK = 'error instanceof Error ? error.message : \'Unknown error\'';
+  private static readonly NO_DEFAULT_KNOWLEDGE_BASE_ERROR = 'No default knowledge base found. Please create a knowledge base first.';
+  
+  /**
+   * Helper method to extract error message safely
+   */
+  private static getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : 'Unknown error';
+  }
+  
   private static instance: KnowledgeBaseService;
-    private db: lancedb.Connection | undefined;
-  private table: lancedb.Table | undefined;
+  private db: lancedb.Connection | undefined;
+  private tables: Map<string, lancedb.Table> = new Map(); // tableName -> table
   private embedder: FeatureExtractionPipeline | undefined;
+  private dbPath = '';
+  private initialized = false;
 
   private constructor() {}
 
@@ -49,37 +65,158 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Checks if the knowledge base is initialized.
-   * @returns {boolean} True if the knowledge base is initialized, false otherwise.
+   * Checks if the knowledge base system is initialized.
+   * @returns {boolean} True if the knowledge base system is initialized, false otherwise.
    */
   public isInitialized(): boolean {
-    return this.db !== undefined && this.table !== undefined && this.embedder !== undefined;
+    return this.initialized && this.db !== undefined && this.embedder !== undefined;
   }
 
   /**
-   * Initializes the connection to the LanceDB vector database.
-   * Creates the database and necessary tables if they don't exist.
+   * Initializes the connection to the LanceDB vector database and knowledge base registry.
+   * Creates the database and loads existing knowledge bases from the registry.
    * @param dbPath - The local file system path to store the database.
    */
-    public async initialize(dbPath: string): Promise<void> {
+  public async initialize(dbPath: string): Promise<void> {
+    if (this.initialized) return;
+
+    this.dbPath = dbPath;
     this.db = await lancedb.connect(dbPath);
-    // Using a pre-trained model for local embeddings
+    
+    // Initialize embedding pipeline
     this.embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
 
-    const tableNames = await this.db.tableNames();
-    if (!tableNames.includes('vectors')) {
-      // The first time we create the table, we need to provide data.
-      // We'll use a dummy entry to define the schema.
-      const initialData = [{ 
-        vector: await this.createEmbedding('initial'), 
-        text: 'initial', 
-        source: 'system' 
-      }];
-      this.table = await this.db.createTable('vectors', initialData);
-      console.log('Knowledge base table "vectors" created.');
-    } else {
-      this.table = await this.db.openTable('vectors');
-      console.log('Connected to existing knowledge base table "vectors".');
+    // Initialize knowledge base registry
+    const registryPath = path.join(path.dirname(dbPath), 'knowledge-base-registry.json');
+    await knowledgeBaseRegistry.initialize(registryPath);
+
+    // Load existing knowledge base tables
+    await this.loadExistingTables();
+    
+    this.initialized = true;
+    console.log('✅ Multi-Knowledge Base Service initialized');
+  }
+
+  /**
+   * Loads existing knowledge base tables from the database
+   */
+  private async loadExistingTables(): Promise<void> {
+    try {
+      const tableNames = await this.db!.tableNames();
+      const knowledgeBases = await knowledgeBaseRegistry.listKnowledgeBases();
+      
+      for (const kb of knowledgeBases) {
+        if (tableNames.includes(kb.tableName)) {
+          try {
+            const table = await this.db!.openTable(kb.tableName);
+            this.tables.set(kb.tableName, table);
+            console.log(`📊 Loaded knowledge base table: ${kb.name} (${kb.tableName})`);
+          } catch (error) {
+            console.warn(`⚠️ Failed to load table for KB ${kb.name}:`, error);
+          }
+        }
+      }
+      
+      console.log(`📋 Loaded ${this.tables.size} knowledge base tables`);
+    } catch (error) {
+      console.error('❌ Failed to load existing tables:', error);
+    }
+  }
+
+  /**
+   * Creates a new table for a knowledge base
+   */
+  private async createKnowledgeBaseTable(knowledgeBase: KnowledgeBase): Promise<lancedb.Table> {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+
+    // Create initial dummy record to define schema
+    const initialRecord = {
+      id: 'initial',
+      vector: await this.createEmbedding('initial'),
+      text: 'initial',
+      source: 'system',
+      knowledgeBaseId: knowledgeBase.id,
+      chunkIndex: 0,
+      documentId: 'initial_doc',
+      metadata: {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    const table = await this.db.createTable(knowledgeBase.tableName, [initialRecord]);
+    this.tables.set(knowledgeBase.tableName, table);
+    
+    console.log(`✅ Created knowledge base table: ${knowledgeBase.name} (${knowledgeBase.tableName})`);
+    return table;
+  }
+
+  /**
+   * Gets or creates a table for a knowledge base
+   */
+  private async getKnowledgeBaseTable(knowledgeBaseId: string): Promise<lancedb.Table> {
+    const knowledgeBase = await knowledgeBaseRegistry.getKnowledgeBase(knowledgeBaseId);
+    if (!knowledgeBase) {
+      throw new Error(`Knowledge base with ID "${knowledgeBaseId}" not found`);
+    }
+
+    // Check if table is already loaded
+    if (this.tables.has(knowledgeBase.tableName)) {
+      return this.tables.get(knowledgeBase.tableName)!;
+    }
+
+    // Try to open existing table
+    try {
+      const table = await this.db!.openTable(knowledgeBase.tableName);
+      this.tables.set(knowledgeBase.tableName, table);
+      return table;
+    } catch {
+      // Table doesn't exist, create it
+      return await this.createKnowledgeBaseTable(knowledgeBase);
+    }
+  }
+
+  /**
+   * Gets all available knowledge bases
+   */
+  public async getAvailableKnowledgeBases(): Promise<KnowledgeBase[]> {
+    return await knowledgeBaseRegistry.listKnowledgeBases();
+  }
+
+  /**
+   * Gets statistics for a specific knowledge base
+   */
+  public async getKnowledgeBaseStats(knowledgeBaseId: string): Promise<KnowledgeBaseStats> {
+    const knowledgeBase = await knowledgeBaseRegistry.getKnowledgeBase(knowledgeBaseId);
+    if (!knowledgeBase) {
+      throw new Error(`${KnowledgeBaseService.KNOWLEDGE_BASE_NOT_FOUND_ERROR} "${knowledgeBaseId}" not found`);
+    }
+
+    try {
+      const table = await this.getKnowledgeBaseTable(knowledgeBaseId);
+      
+      // Get all records to calculate stats
+      const dummyEmbedding = new Array(384).fill(0);
+      const records = await table.search(dummyEmbedding).limit(50000).execute();
+      
+      // Count unique documents
+      const uniqueSources = new Set(records.map(r => (r as any).source));
+      
+      return {
+        totalRecords: records.length,
+        totalDocuments: uniqueSources.size,
+        databaseSize: records.length * 1000, // Rough estimate
+        lastUpdated: knowledgeBase.lastUpdated
+      };
+    } catch (error) {
+      console.error(`Error getting stats for KB ${knowledgeBase.name}:`, error);
+      return {
+        totalRecords: 0,
+        totalDocuments: 0,
+        databaseSize: 0,
+        lastUpdated: knowledgeBase.lastUpdated
+      };
     }
   }
 
@@ -138,63 +275,87 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Adds a document to the knowledge base.
+   * Adds a document to a specific knowledge base.
    * The document is processed, chunked, embedded, and stored in the vector database.
-   * @param filePath - The path to the file to be added (e.g., a PDF).
+   * @param knowledgeBaseId - The ID of the knowledge base to add the document to.
+   * @param filePath - The path to the file to be added.
    * @param metadata - Optional metadata to include with the document.
    * @param progressCallback - Optional callback for progress updates.
    */
-  public async addDocument(
+  public async addDocumentToKnowledgeBase(
+    knowledgeBaseId: string,
     filePath: string,
     metadata?: Record<string, unknown>,
-    progressCallback?: (progress: {step: string, message: string, current?: number, total?: number, chunkCount?: number}) => void
+    progressCallback?: (progress: KnowledgeBaseOperationProgress) => void
   ): Promise<void>;
 
   /**
-   * Adds a document to the knowledge base from a File object.
+   * Adds a document to a specific knowledge base from a File object.
    * The document is processed, chunked, embedded, and stored in the vector database.
+   * @param knowledgeBaseId - The ID of the knowledge base to add the document to.
    * @param file - The File object to be added.
    * @param metadata - Optional metadata to include with the document.
    * @param progressCallback - Optional callback for progress updates.
    */
-  public async addDocument(
+  public async addDocumentToKnowledgeBase(
+    knowledgeBaseId: string,
     file: File,
     metadata?: Record<string, unknown>,
-    progressCallback?: (progress: {step: string, message: string, current?: number, total?: number, chunkCount?: number}) => void
+    progressCallback?: (progress: KnowledgeBaseOperationProgress) => void
   ): Promise<void>;
 
-  public async addDocument(
+  public async addDocumentToKnowledgeBase(
+    knowledgeBaseId: string,
     filePathOrFile: string | File,
     metadata?: Record<string, unknown>,
-    progressCallback?: (progress: {step: string, message: string, current?: number, total?: number, chunkCount?: number}) => void
+    progressCallback?: (progress: KnowledgeBaseOperationProgress) => void
   ): Promise<void> {
-    if (!this.table) {
-      throw new Error('Knowledge base is not initialized.');
+    const knowledgeBase = await knowledgeBaseRegistry.getKnowledgeBase(knowledgeBaseId);
+    if (!knowledgeBase) {
+      throw new Error(`${KnowledgeBaseService.KNOWLEDGE_BASE_NOT_FOUND_ERROR} "${knowledgeBaseId}" not found`);
     }
 
+    const table = await this.getKnowledgeBaseTable(knowledgeBaseId);
+    
     try {
       let text: string;
       let documentSource: string;
       let documentMetadata: Record<string, unknown> = metadata || {};
 
+      progressCallback?.({
+        step: 'starting',
+        message: `Starting document processing for ${knowledgeBase.name}`,
+        knowledgeBaseId,
+        knowledgeBaseName: knowledgeBase.name,
+        status: 'processing'
+      });
+
       if (typeof filePathOrFile === 'string') {
-        // Handle file path (existing PDF functionality)
+        // Handle file path
         const filePath = filePathOrFile;
         documentSource = path.basename(filePath);
-        progressCallback?.({step: 'reading', message: `Reading file: ${documentSource}`});
+        progressCallback?.({
+          step: 'reading',
+          message: `Reading file: ${documentSource}`,
+          knowledgeBaseId,
+          knowledgeBaseName: knowledgeBase.name,
+          status: 'processing'
+        });
         console.log(`Starting to process document from path: ${filePath}`);
 
-        // Check if file exists
         const fileBuffer = await fs.readFile(filePath);
         console.log(`File read successfully, size: ${fileBuffer.length} bytes`);
 
-        // Determine file type and parse accordingly
         const fileExtension = path.extname(filePath).toLowerCase();
-
-        progressCallback?.({step: 'parsing', message: `Parsing ${fileExtension.toUpperCase()} file: ${documentSource}`});
+        progressCallback?.({
+          step: 'parsing',
+          message: `Parsing ${fileExtension.toUpperCase()} file: ${documentSource}`,
+          knowledgeBaseId,
+          knowledgeBaseName: knowledgeBase.name,
+          status: 'processing'
+        });
 
         if (fileExtension === '.pdf') {
-          // Use existing PDF parsing logic
           try {
             const pdfParse = await this.importPdfParseSafely();
             const pdfData = await pdfParse(fileBuffer);
@@ -206,22 +367,31 @@ export class KnowledgeBaseService {
             throw new Error(`Failed to parse PDF: ${pdfError instanceof Error ? pdfError.message : 'Unknown error'}`);
           }
         } else {
-          // For non-PDF files from file path, read as text
           const textContent = await fs.readFile(filePath, 'utf-8');
           text = textContent;
           documentMetadata = { ...documentMetadata, format: 'Text', characterCount: text.length };
         }
       } else {
-        // Handle File object (new functionality)
+        // Handle File object
         const file = filePathOrFile;
         documentSource = file.name;
-        progressCallback?.({step: 'reading', message: `Reading file: ${documentSource}`});
+        progressCallback?.({
+          step: 'reading',
+          message: `Reading file: ${documentSource}`,
+          knowledgeBaseId,
+          knowledgeBaseName: knowledgeBase.name,
+          status: 'processing'
+        });
         console.log(`Starting to process document from File object: ${file.name}`);
-        console.log(`File size: ${file.size} bytes, type: ${file.type}`);
 
-        progressCallback?.({step: 'parsing', message: `Parsing file: ${documentSource}`});
+        progressCallback?.({
+          step: 'parsing',
+          message: `Parsing file: ${documentSource}`,
+          knowledgeBaseId,
+          knowledgeBaseName: knowledgeBase.name,
+          status: 'processing'
+        });
 
-        // Use DocumentParserService to parse the file
         const parsedDocument = await documentParserService.parseDocument(file);
         text = parsedDocument.text;
         documentMetadata = {
@@ -231,59 +401,176 @@ export class KnowledgeBaseService {
           fileType: file.type,
           uploadDate: new Date().toISOString()
         };
-
-        console.log(`Document parsed successfully, text length: ${text.length} characters`);
       }
 
       if (!text || text.trim().length === 0) {
         throw new Error('No text content found in the document');
       }
 
-      progressCallback?.({step: 'chunking', message: `Chunking text for: ${documentSource}`});
+      progressCallback?.({
+        step: 'chunking',
+        message: `Chunking text for: ${documentSource}`,
+        knowledgeBaseId,
+        knowledgeBaseName: knowledgeBase.name,
+        status: 'processing'
+      });
+      
       const chunks = this.chunkText(text);
       console.log(`Document chunked into ${chunks.length} pieces.`);
-      progressCallback?.({step: 'chunking', message: `Generated ${chunks.length} chunks for: ${documentSource}`, chunkCount: chunks.length});
+      
+      progressCallback?.({
+        step: 'chunking',
+        message: `Generated ${chunks.length} chunks for: ${documentSource}`,
+        knowledgeBaseId,
+        knowledgeBaseName: knowledgeBase.name,
+        chunkCount: chunks.length,
+        status: 'processing'
+      });
 
-      const records = [];
-      console.log(`Using document source: ${documentSource}`);
+      const records: KnowledgeBaseRecord[] = [];
+      const documentId = this.generateDocumentId(documentSource);
+      const now = new Date();
 
-      progressCallback?.({step: 'embedding', message: `Creating embeddings for: ${documentSource}`, current: 0, total: chunks.length});
+      progressCallback?.({
+        step: 'embedding',
+        message: `Creating embeddings for: ${documentSource}`,
+        knowledgeBaseId,
+        knowledgeBaseName: knowledgeBase.name,
+        current: 0,
+        total: chunks.length,
+        status: 'processing'
+      });
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
-        console.log(`Processing chunk ${i + 1}/${chunks.length}`);
-        progressCallback?.({step: 'embedding', message: `Processing chunk ${i + 1}/${chunks.length} for: ${documentSource}`, current: i + 1, total: chunks.length});
+        progressCallback?.({
+          step: 'embedding',
+          message: `Processing chunk ${i + 1}/${chunks.length} for: ${documentSource}`,
+          knowledgeBaseId,
+          knowledgeBaseName: knowledgeBase.name,
+          current: i + 1,
+          total: chunks.length,
+          status: 'processing'
+        });
 
         const embedding = await this.createEmbedding(chunk);
         records.push({
+          id: `${documentId}_chunk_${i}`,
           vector: embedding,
           text: chunk,
           source: documentSource,
+          knowledgeBaseId,
+          chunkIndex: i,
+          documentId,
           metadata: documentMetadata,
-          chunkIndex: i
+          createdAt: now,
+          updatedAt: now
         });
       }
 
-      progressCallback?.({step: 'storing', message: `Storing ${records.length} records for: ${documentSource}`});
-      console.log(`Adding ${records.length} records to the knowledge base...`);
-      await this.table.add(records);
-      console.log(`Successfully added ${records.length} records to the knowledge base for document: ${documentSource}`);
-
-      // Verify the records were added by checking the count
-      const dummyEmbedding = new Array(384).fill(0); // MiniLM-L6-v2 has 384 dimensions
-      const allRecords = await this.table.search(dummyEmbedding).limit(10000).execute();
-      const documentRecords = allRecords.filter(r => (r as {source: string}).source === documentSource);
-      console.log(`Verification: Found ${documentRecords.length} records for document ${documentSource} in the database`);
-
-      progressCallback?.({step: 'complete', message: `Successfully processed: ${documentSource}`, chunkCount: chunks.length});
+      progressCallback?.({
+        step: 'storing',
+        message: `Storing ${records.length} records for: ${documentSource}`,
+        knowledgeBaseId,
+        knowledgeBaseName: knowledgeBase.name,
+        status: 'processing'
+      });
+      
+      console.log(`Adding ${records.length} records to knowledge base: ${knowledgeBase.name}`);
+      await table.add(records as unknown as Record<string, unknown>[]);
+      
+      // Update document count
+      await this.updateKnowledgeBaseDocumentCount(knowledgeBaseId);
+      
+      progressCallback?.({
+        step: 'complete',
+        message: `Successfully processed: ${documentSource}`,
+        knowledgeBaseId,
+        knowledgeBaseName: knowledgeBase.name,
+        chunkCount: chunks.length,
+        status: 'success'
+      });
+      
+      console.log(`✅ Successfully added ${records.length} records to knowledge base: ${knowledgeBase.name}`);
 
     } catch (error) {
       const errorMessage = typeof filePathOrFile === 'string' ? filePathOrFile : filePathOrFile.name;
-      console.error(`Error adding document ${errorMessage}:`, error);
-      progressCallback?.({step: 'error', message: `Failed to process: ${errorMessage} - ${error instanceof Error ? error.message : 'Unknown error'}`});
+      console.error(`Error adding document ${errorMessage} to KB ${knowledgeBase.name}:`, error);
+      
+      progressCallback?.({
+        step: 'error',
+        message: `Failed to process: ${errorMessage} - ${KnowledgeBaseService.getErrorMessage(error)}`,
+        knowledgeBaseId,
+        knowledgeBaseName: knowledgeBase.name,
+        status: 'error',
+        error: KnowledgeBaseService.getErrorMessage(error)
+      });
+      
       throw error;
     }
   }
+
+  /**
+   * Generates a unique document ID
+   */
+  private generateDocumentId(source: string): string {
+    const timestamp = Date.now();
+    const sourceHash = Buffer.from(source).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 8);
+    return `doc_${sourceHash}_${timestamp}`;
+  }
+
+  /**
+   * Updates the document count for a knowledge base
+   */
+  private async updateKnowledgeBaseDocumentCount(knowledgeBaseId: string): Promise<void> {
+    try {
+      const table = await this.getKnowledgeBaseTable(knowledgeBaseId);
+      
+      // Count unique documents by source
+      const dummyEmbedding = new Array(384).fill(0);
+      const records = await table.search(dummyEmbedding).limit(50000).execute();
+      const uniqueSources = new Set(records.map(r => (r as any).source));
+      
+      await knowledgeBaseRegistry.updateDocumentCount(knowledgeBaseId, uniqueSources.size);
+    } catch (error) {
+      console.warn(`Failed to update document count for KB ${knowledgeBaseId}:`, error);
+    }
+  }
+
+  /**
+   * Legacy method for backward compatibility - adds document to default knowledge base
+   */
+  public async addDocument(
+    filePathOrFile: string | File,
+    metadata?: Record<string, unknown>,
+    progressCallback?: (progress: {step: string, message: string, current?: number, total?: number, chunkCount?: number}) => void
+  ): Promise<void> {
+    // Get default knowledge base
+    const defaultKB = await knowledgeBaseRegistry.getDefaultKnowledgeBase();
+    if (!defaultKB) {
+      throw new Error(KnowledgeBaseService.NO_DEFAULT_KNOWLEDGE_BASE_ERROR);
+    }
+
+    // Convert legacy progress callback to new format
+    const enhancedProgressCallback = progressCallback ? (progress: KnowledgeBaseOperationProgress) => {
+      progressCallback({
+        step: progress.step,
+        message: progress.message,
+        current: progress.current,
+        total: progress.total,
+        chunkCount: progress.chunkCount
+      });
+    } : undefined;
+
+    // Handle string vs File input appropriately
+    if (typeof filePathOrFile === 'string') {
+      await this.addDocumentToKnowledgeBase(defaultKB.id, filePathOrFile, metadata, enhancedProgressCallback);
+    } else {
+      await this.addDocumentToKnowledgeBase(defaultKB.id, filePathOrFile, metadata, enhancedProgressCallback);
+    }
+  }
+
+
 
   /**
    * Adds multiple documents to the knowledge base with real-time progress updates.
@@ -304,8 +591,8 @@ export class KnowledgeBaseService {
       error?: string;
     }) => void
   ): Promise<{success: boolean, results: Array<{filePath: string, success: boolean, error?: string, chunkCount?: number}>, summary: string}> {
-    if (!this.table) {
-      throw new Error('Knowledge base is not initialized.');
+    if (!this.initialized) {
+      throw new Error('Knowledge base service not initialized.');
     }
 
     const results: Array<{filePath: string, success: boolean, error?: string, chunkCount?: number}> = [];
@@ -372,7 +659,7 @@ export class KnowledgeBaseService {
         });
 
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorMessage = KnowledgeBaseService.getErrorMessage(error);
 
         results.push({
           filePath,
@@ -415,14 +702,113 @@ export class KnowledgeBaseService {
   }
 
   /**
+   * Searches a specific knowledge base for content relevant to a given query.
+   * @param knowledgeBaseId - The ID of the knowledge base to search.
+   * @param queryText - The text to search for.
+   * @param limit - The maximum number of relevant chunks to return.
+   * @returns Promise resolving to an array of search results.
+   */
+  public async searchKnowledgeBase(
+    knowledgeBaseId: string, 
+    queryText: string, 
+    limit = 5
+  ): Promise<MultiKBSearchResult[]> {
+    const knowledgeBase = await knowledgeBaseRegistry.getKnowledgeBase(knowledgeBaseId);
+    if (!knowledgeBase) {
+      throw new Error(`${KnowledgeBaseService.KNOWLEDGE_BASE_NOT_FOUND_ERROR} "${knowledgeBaseId}" not found`);
+    }
+
+    const table = await this.getKnowledgeBaseTable(knowledgeBaseId);
+    const queryEmbedding = await this.createEmbedding(queryText);
+
+    const results = await table
+      .search(queryEmbedding)
+      .limit(limit)
+      .execute();
+
+    return results.map(r => ({
+      text: String(r.text),
+      source: String(r.source),
+      knowledgeBaseName: knowledgeBase.name,
+      knowledgeBaseId: knowledgeBase.id,
+      relevanceScore: Number(r.score || 0),
+      chunkIndex: Number(r.chunkIndex || 0),
+      documentId: String(r.documentId || ''),
+      metadata: (r.metadata as Record<string, unknown>) || {}
+    }));
+  }
+
+  /**
+   * Searches multiple knowledge bases for content relevant to a given query.
+   * @param knowledgeBaseIds - Array of knowledge base IDs to search.
+   * @param queryText - The text to search for.
+   * @param options - Search options including limits and thresholds.
+   * @returns Promise resolving to aggregated and ranked search results.
+   */
+  public async searchMultipleKnowledgeBases(
+    knowledgeBaseIds: string[], 
+    queryText: string, 
+    options: SearchOptions = {
+      maxResultsPerKB: 3,
+      relevanceThreshold: 0.1,
+      includeSourceAttribution: true,
+      contextWindowTokens: 2000
+    }
+  ): Promise<MultiKBSearchResult[]> {
+    if (knowledgeBaseIds.length === 0) {
+      return [];
+    }
+
+    const allResults: MultiKBSearchResult[] = [];
+    
+    // Search each knowledge base
+    for (const kbId of knowledgeBaseIds) {
+      try {
+        const kbResults = await this.searchKnowledgeBase(kbId, queryText, options.maxResultsPerKB);
+        allResults.push(...kbResults);
+      } catch (error) {
+        console.warn(`Failed to search knowledge base ${kbId}:`, error);
+      }
+    }
+
+    // Filter by relevance threshold
+    const filteredResults = allResults.filter(r => r.relevanceScore >= options.relevanceThreshold);
+    
+    // Sort by relevance score (descending)
+    const sortedResults = filteredResults.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    
+    // Estimate token count and truncate if needed
+    if (options.contextWindowTokens > 0) {
+      let totalTokens = 0;
+      const finalResults: MultiKBSearchResult[] = [];
+      
+      for (const result of sortedResults) {
+        const estimatedTokens = Math.ceil(result.text.length / 4); // Rough token estimation
+        if (totalTokens + estimatedTokens <= options.contextWindowTokens) {
+          finalResults.push(result);
+          totalTokens += estimatedTokens;
+        } else {
+          break;
+        }
+      }
+      
+      return finalResults;
+    }
+    
+    return sortedResults;
+  }
+
+  /**
    * Adds a document to the knowledge base from a Google Docs URL.
    * The document is processed, chunked, embedded, and stored in the vector database.
    * @param url - The Google Docs URL to import.
    * @param metadata - Optional metadata to include with the document.
    */
   public async addDocumentFromUrl(url: string, metadata?: Record<string, unknown>): Promise<void> {
-    if (!this.table) {
-      throw new Error('Knowledge base is not initialized.');
+    // Get default knowledge base
+    const defaultKB = await knowledgeBaseRegistry.getDefaultKnowledgeBase();
+    if (!defaultKB) {
+      throw new Error(KnowledgeBaseService.NO_DEFAULT_KNOWLEDGE_BASE_ERROR);
     }
 
     try {
@@ -469,26 +855,35 @@ export class KnowledgeBaseService {
       const records = [];
       console.log(`Using document source: ${documentSource}`);
 
+      const documentId = `googledocs-${Date.now()}`;
+      const now = new Date();
+
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         console.log(`Processing chunk ${i + 1}/${chunks.length}`);
         const embedding = await this.createEmbedding(chunk);
         records.push({
+          id: `${documentId}-chunk-${i}`,
           vector: embedding,
           text: chunk,
           source: documentSource,
+          knowledgeBaseId: defaultKB.id,
+          chunkIndex: i,
+          documentId,
           metadata: documentMetadata,
-          chunkIndex: i
+          createdAt: now,
+          updatedAt: now
         });
       }
 
       console.log(`Adding ${records.length} records to the knowledge base...`);
-      await this.table.add(records);
+      const table = await this.getKnowledgeBaseTable(defaultKB.id);
+      await table.add(records);
       console.log(`Successfully added ${records.length} records to the knowledge base for document: ${documentSource}`);
 
       // Verify the records were added by checking the count
       const dummyEmbedding = new Array(384).fill(0); // MiniLM-L6-v2 has 384 dimensions
-      const allRecords = await this.table.search(dummyEmbedding).limit(10000).execute();
+      const allRecords = await table.search(dummyEmbedding).limit(10000).execute();
       const documentRecords = allRecords.filter(r => (r as {source: string}).source === documentSource);
       console.log(`Verification: Found ${documentRecords.length} records for document ${documentSource} in the database`);
 
@@ -561,28 +956,32 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Searches the knowledge base for content relevant to a given query.
+   * Legacy search method for backward compatibility - searches the default knowledge base.
    * @param queryText - The text to search for.
    * @param limit - The maximum number of relevant chunks to return.
-   * @returns {Promise<Array<{text: string, source: string, score: number}>>} A promise that resolves to an array of relevant document chunks.
+   * @returns Promise resolving to an array of relevant document chunks.
    */
-    public async search(queryText: string, limit = 5): Promise<Array<{text: string, source: string, score: number}>> {
-    if (!this.table) {
-      throw new Error('Knowledge base is not initialized.');
+  public async search(queryText: string, limit = 5): Promise<Array<{text: string, source: string, score: number}>> {
+    // Get default knowledge base
+    const defaultKB = await knowledgeBaseRegistry.getDefaultKnowledgeBase();
+    if (!defaultKB) {
+      console.warn('No default knowledge base found for legacy search');
+      return [];
     }
 
-    const queryEmbedding = await this.createEmbedding(queryText);
-
-    const results = await this.table
-      .search(queryEmbedding)
-      .limit(limit)
-      .execute();
-
-    return results.map(r => ({
-      text: String(r.text),
-      source: String(r.source),
-      score: Number(r.score)
-    }));
+    try {
+      const results = await this.searchKnowledgeBase(defaultKB.id, queryText, limit);
+      
+      // Convert to legacy format
+      return results.map(r => ({
+        text: r.text,
+        source: r.source,
+        score: r.relevanceScore
+      }));
+    } catch (error) {
+      console.error('Error in legacy search:', error);
+      return [];
+    }
   }
 
   /**
@@ -591,12 +990,15 @@ export class KnowledgeBaseService {
    * @returns {Promise<void>} A promise that resolves when the document is removed.
    */
   public async removeDocument(documentId: string): Promise<void> {
-    if (!this.table) {
-      throw new Error('Knowledge base is not initialized.');
+    // Get default knowledge base
+    const defaultKB = await knowledgeBaseRegistry.getDefaultKnowledgeBase();
+    if (!defaultKB) {
+      throw new Error(KnowledgeBaseService.NO_DEFAULT_KNOWLEDGE_BASE_ERROR);
     }
 
     // Remove all chunks that belong to this document
-    await this.table.delete(`source = '${documentId}'`);
+    const table = await this.getKnowledgeBaseTable(defaultKB.id);
+    await table.delete(`source = '${documentId}'`);
     console.log(`Removed document: ${documentId}`);
   }
 
@@ -605,15 +1007,20 @@ export class KnowledgeBaseService {
    * @returns {Promise<string[]>} A promise that resolves to an array of document identifiers.
    */
   public async getDocuments(): Promise<string[]> {
-    if (!this.table) {
-      throw new Error('Knowledge base is not initialized.');
+    // Get default knowledge base
+    const defaultKB = await knowledgeBaseRegistry.getDefaultKnowledgeBase();
+    if (!defaultKB) {
+      console.warn('No default knowledge base found for getDocuments');
+      return [];
     }
 
     try {
+      const table = await this.getKnowledgeBaseTable(defaultKB.id);
+      
       // Use search with a dummy embedding to get all records
       // This is the correct way to get all records from a LanceDB table
       const dummyEmbedding = new Array(384).fill(0); // MiniLM-L6-v2 has 384 dimensions
-      const results = await this.table
+      const results = await table
         .search(dummyEmbedding)
         .limit(10000)
         .execute();
@@ -637,14 +1044,19 @@ export class KnowledgeBaseService {
    * @returns {Promise<Array<{source: string, metadata: Record<string, unknown>, chunkCount: number}>>} A promise that resolves to an array of documents with metadata.
    */
   public async getDocumentsWithMetadata(): Promise<Array<{source: string, metadata: Record<string, unknown>, chunkCount: number, addedAt?: string}>> {
-    if (!this.table) {
-      throw new Error('Knowledge base is not initialized.');
+    // Get default knowledge base
+    const defaultKB = await knowledgeBaseRegistry.getDefaultKnowledgeBase();
+    if (!defaultKB) {
+      console.warn('No default knowledge base found for getDocumentsWithMetadata');
+      return [];
     }
 
     try {
+      const table = await this.getKnowledgeBaseTable(defaultKB.id);
+      
       // Use search with a dummy embedding to get all records
       const dummyEmbedding = new Array(384).fill(0); // MiniLM-L6-v2 has 384 dimensions
-      const results = await this.table
+      const results = await table
         .search(dummyEmbedding)
         .limit(10000)
         .execute();
@@ -689,9 +1101,11 @@ export class KnowledgeBaseService {
    * @param progressCallback - Optional callback to report export progress.
    * @returns {Promise<{data: ExportData, stats: {totalRecords: number, totalDocuments: number, exportSize: number, exportTime: number}}>} The exported data and statistics.
    */
-  public async exportKnowledgeBase(progressCallback?: (progress: {step: string, current: number, total: number, message: string}) => void): Promise<{data: ExportData, stats: {totalRecords: number, totalDocuments: number, exportSize: number, exportTime: number}}> {
-    if (!this.table) {
-      throw new Error('Knowledge base is not initialized.');
+  public async exportKnowledgeBase(progressCallback?: (progress: {step: string, current: number, total: number, message: string}) => void): Promise<{data: any, stats: {totalRecords: number, totalDocuments: number, exportSize: number, exportTime: number}}> {
+    // Get default knowledge base
+    const defaultKB = await knowledgeBaseRegistry.getDefaultKnowledgeBase();
+    if (!defaultKB) {
+      throw new Error(KnowledgeBaseService.NO_DEFAULT_KNOWLEDGE_BASE_ERROR);
     }
 
     const startTime = Date.now();
@@ -700,8 +1114,9 @@ export class KnowledgeBaseService {
     try {
       // Get all records from the database
       progressCallback?.({step: 'fetching', current: 10, total: 100, message: 'Fetching all records from database...'});
+      const table = await this.getKnowledgeBaseTable(defaultKB.id);
       const dummyEmbedding = new Array(384).fill(0); // MiniLM-L6-v2 has 384 dimensions
-      const allRecords = await this.table.search(dummyEmbedding).limit(50000).execute();
+      const allRecords = await table.search(dummyEmbedding).limit(50000).execute();
 
       progressCallback?.({step: 'processing', current: 30, total: 100, message: `Processing ${allRecords.length} records...`});
 
@@ -770,8 +1185,10 @@ export class KnowledgeBaseService {
     options: {mode: 'replace' | 'merge', validateEmbeddings?: boolean} = {mode: 'replace', validateEmbeddings: true},
     progressCallback?: (progress: {step: string, current: number, total: number, message: string}) => void
   ): Promise<{success: boolean, stats: {importedRecords: number, importedDocuments: number, skippedRecords: number, importTime: number}}> {
-    if (!this.table) {
-      throw new Error('Knowledge base is not initialized.');
+    // Get default knowledge base
+    const defaultKB = await knowledgeBaseRegistry.getDefaultKnowledgeBase();
+    if (!defaultKB) {
+      throw new Error(KnowledgeBaseService.NO_DEFAULT_KNOWLEDGE_BASE_ERROR);
     }
 
     const startTime = Date.now();
@@ -824,7 +1241,8 @@ export class KnowledgeBaseService {
           });
 
           if (validBatch.length > 0) {
-            await this.table.add(validBatch);
+            const table = await this.getKnowledgeBaseTable(defaultKB.id);
+            await table.add(validBatch as unknown as Record<string, unknown>[]);
             importedRecords += validBatch.length;
             validBatch.forEach((record: KnowledgeBaseRecord) => uniqueSources.add(record.source));
           }
@@ -892,20 +1310,24 @@ export class KnowledgeBaseService {
    * @returns {Promise<void>} A promise that resolves when the knowledge base is cleared.
    */
   public async clearKnowledgeBase(): Promise<void> {
-    if (!this.table) {
-      throw new Error('Knowledge base is not initialized.');
+    // Get default knowledge base
+    const defaultKB = await knowledgeBaseRegistry.getDefaultKnowledgeBase();
+    if (!defaultKB) {
+      throw new Error(KnowledgeBaseService.NO_DEFAULT_KNOWLEDGE_BASE_ERROR);
     }
 
     try {
+      const table = await this.getKnowledgeBaseTable(defaultKB.id);
+      
       // Get all records to delete them
       const dummyEmbedding = new Array(384).fill(0);
-      const allRecords = await this.table.search(dummyEmbedding).limit(50000).execute();
+      const allRecords = await table.search(dummyEmbedding).limit(50000).execute();
 
       // Delete all non-system records
       for (const record of allRecords) {
         const source = (record as {source: string}).source;
         if (source !== 'system') {
-          await this.table.delete(`source = '${source}'`);
+          await table.delete(`source = '${source}'`);
         }
       }
 
@@ -917,17 +1339,21 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Gets statistics about the current knowledge base.
+   * Gets statistics about the current knowledge base (legacy method for backward compatibility).
    * @returns {Promise<{totalRecords: number, totalDocuments: number, databaseSize: number}>} Knowledge base statistics.
    */
-  public async getKnowledgeBaseStats(): Promise<{totalRecords: number, totalDocuments: number, databaseSize: number}> {
-    if (!this.table) {
-      throw new Error('Knowledge base is not initialized.');
+  public async getLegacyKnowledgeBaseStats(): Promise<{totalRecords: number, totalDocuments: number, databaseSize: number}> {
+    // Get default knowledge base
+    const defaultKB = await knowledgeBaseRegistry.getDefaultKnowledgeBase();
+    if (!defaultKB) {
+      console.warn('No default knowledge base found for getKnowledgeBaseStats');
+      return { totalRecords: 0, totalDocuments: 0, databaseSize: 0 };
     }
 
     try {
+      const table = await this.getKnowledgeBaseTable(defaultKB.id);
       const dummyEmbedding = new Array(384).fill(0);
-      const allRecords = await this.table.search(dummyEmbedding).limit(50000).execute();
+      const allRecords = await table.search(dummyEmbedding).limit(50000).execute();
 
       const validRecords = allRecords.filter(r => (r as {source: string}).source !== 'system');
       const uniqueSources = new Set(validRecords.map(r => (r as {source: string}).source));

@@ -18,12 +18,33 @@ import { Card, CardContent } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { cn } from '@/lib/utils';
-import { AgentConfiguration, AgentTool, UpdateAgentRequest } from '../../types/agent';
-import { agentService } from '../../services/agentService';
+import { AgentConfiguration, AgentTool, UpdateAgentRequest, PromptGenerationResponse } from '../../types/agent';
+import { KnowledgeBase } from '../../types/knowledgeBase';
 import { mcpService } from '../../services/mcpService';
 import { llmService } from '../../services/llmService';
 import { chatService } from '../../services/chatService';
 import { secureApiKeyService } from '../../services/secureApiKeyService';
+import { KnowledgeBaseSelector } from './KnowledgeBaseSelector';
+
+// Constants for frequently used strings
+const AGENT_SERVICE_NOT_AVAILABLE_MESSAGE = 'Agent service not available';
+
+// Conditionally import agentService only in browser environment
+let agentService: {
+  getAvailableTools: () => Promise<AgentTool[]>;
+  validateAgent: (id: string) => Promise<any>;
+  updateAgent: (request: UpdateAgentRequest) => Promise<boolean>;
+  generatePrompt: (request: any) => Promise<PromptGenerationResponse>;
+  getAvailableKnowledgeBases: () => Promise<KnowledgeBase[]>;
+} | null = null;
+
+if (typeof window !== 'undefined') {
+  import('../../services/agentService').then(module => {
+    agentService = module.agentService;
+  }).catch(error => {
+    console.warn('AgentService not available in browser environment:', error);
+  });
+}
 
 interface EditAgentDialogProps {
   open: boolean;
@@ -48,12 +69,22 @@ export function EditAgentDialog({
     defaultModel: 'claude-3-sonnet-20240229',
     temperature: 0.7,
     maxTokens: 4000,
-    tags: [] as string[]
+    tags: [] as string[],
+    // Knowledge base settings
+    selectedKnowledgeBaseIds: [] as string[],
+    ragEnabled: true,
+    ragSettings: {
+      maxResultsPerKB: 3,
+      relevanceThreshold: 0.5,
+      contextWindowTokens: 2000,
+      aggregationStrategy: 'relevance' as 'relevance' | 'balanced' | 'comprehensive'
+    }
   });
   const [availableTools, setAvailableTools] = useState<AgentTool[]>([]);
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const [availableMCPServers, setAvailableMCPServers] = useState<any[]>([]);
   const [selectedMCPServers, setSelectedMCPServers] = useState<string[]>([]);
+  const [availableKnowledgeBases, setAvailableKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [isRegeneratingPrompt, setIsRegeneratingPrompt] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [providers, setProviders] = useState<any[]>([]);
@@ -71,14 +102,21 @@ export function EditAgentDialog({
 
   const loadData = async () => {
     try {
-      const [tools, mcpServers, providersData] = await Promise.all([
+      if (!agentService) {
+        console.warn(AGENT_SERVICE_NOT_AVAILABLE_MESSAGE);
+        return;
+      }
+      
+      const [tools, mcpServers, providersData, knowledgeBases] = await Promise.all([
         agentService.getAvailableTools(),
         mcpService.getServers(),
-        llmService.getProviders()
+        llmService.getProviders(),
+        agentService.getAvailableKnowledgeBases()
       ]);
       setAvailableTools(tools);
       setAvailableMCPServers(mcpServers);
       setProviders(providersData);
+      setAvailableKnowledgeBases(knowledgeBases);
 
       // Validate agent
       const validation = await agentService.validateAgent(agent.id);
@@ -142,13 +180,26 @@ export function EditAgentDialog({
       defaultModel: agent.defaultModel,
       temperature: agent.temperature || 0.7,
       maxTokens: agent.maxTokens || 4000,
-      tags: agent.tags || []
+      tags: agent.tags || [],
+      selectedKnowledgeBaseIds: agent.selectedKnowledgeBases || [],
+      ragEnabled: agent.ragEnabled ?? true,
+      ragSettings: agent.ragSettings || {
+        maxResultsPerKB: 3,
+        relevanceThreshold: 0.5,
+        contextWindowTokens: 2000,
+        aggregationStrategy: 'relevance' as 'relevance' | 'balanced' | 'comprehensive'
+      }
     });
     setSelectedTools(agent.selectedTools.map(tool => tool.name));
     setSelectedMCPServers([...agent.enabledMCPServers]);
   };
 
   const handleRegeneratePrompt = async () => {
+    if (!agentService) {
+      console.warn(AGENT_SERVICE_NOT_AVAILABLE_MESSAGE);
+      return;
+    }
+    
     if (!formData.userDescription.trim()) {
       alert('Please provide a description to regenerate the prompt.');
       return;
@@ -194,6 +245,11 @@ export function EditAgentDialog({
   };
 
   const handleSave = async () => {
+    if (!agentService) {
+      console.warn(AGENT_SERVICE_NOT_AVAILABLE_MESSAGE);
+      return;
+    }
+    
     setIsSaving(true);
     try {
       const request: UpdateAgentRequest = {
@@ -205,6 +261,9 @@ export function EditAgentDialog({
         systemPrompt: formData.systemPrompt,
         selectedTools,
         enabledMCPServers: selectedMCPServers,
+        selectedKnowledgeBases: formData.selectedKnowledgeBaseIds,
+        ragEnabled: formData.ragEnabled,
+        ragSettings: formData.ragSettings,
         defaultProvider: formData.defaultProvider,
         defaultModel: formData.defaultModel,
         temperature: formData.temperature,
@@ -270,9 +329,10 @@ export function EditAgentDialog({
           )}
 
           <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 bg-gray-900">
+            <TabsList className="grid w-full grid-cols-5 bg-gray-900">
               <TabsTrigger value="basic" className="text-gray-300">Basic Info</TabsTrigger>
               <TabsTrigger value="tools" className="text-gray-300">Tools & MCP</TabsTrigger>
+              <TabsTrigger value="knowledge" className="text-gray-300">Knowledge Base</TabsTrigger>
               <TabsTrigger value="prompt" className="text-gray-300">System Prompt</TabsTrigger>
               <TabsTrigger value="settings" className="text-gray-300">Settings</TabsTrigger>
             </TabsList>
@@ -418,6 +478,143 @@ export function EditAgentDialog({
                   ))}
                 </div>
               </div>
+            </TabsContent>
+
+            <TabsContent value="knowledge" className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Knowledge Base Configuration</h3>
+                <p className="text-gray-400 text-sm mb-6">
+                  Configure knowledge base integration and RAG settings for this agent.
+                </p>
+              </div>
+
+              {/* RAG Enable/Disable */}
+              <div className="flex items-center gap-3 p-4 bg-gray-900 rounded-lg">
+                <input
+                  type="checkbox"
+                  id="ragEnabled"
+                  checked={formData.ragEnabled}
+                  onChange={(e) => setFormData(prev => ({ ...prev, ragEnabled: e.target.checked }))}
+                  className="rounded"
+                />
+                <div>
+                  <label htmlFor="ragEnabled" className="font-medium text-white cursor-pointer">
+                    Enable Knowledge Base Integration (RAG)
+                  </label>
+                  <p className="text-xs text-gray-400">
+                    Allow this agent to search and use content from selected knowledge bases
+                  </p>
+                </div>
+              </div>
+
+              {formData.ragEnabled && (
+                <>
+                  {/* Knowledge Base Selection */}
+                  <div className="space-y-3">
+                    <Label className="text-sm font-medium">Selected Knowledge Bases</Label>
+                    <KnowledgeBaseSelector
+                      selectedKnowledgeBaseIds={formData.selectedKnowledgeBaseIds}
+                      onSelectionChange={(selectedIds) => 
+                        setFormData(prev => ({ ...prev, selectedKnowledgeBaseIds: selectedIds }))
+                      }
+                      availableKnowledgeBases={availableKnowledgeBases}
+                      maxSelections={5}
+                      placeholder="Select knowledge bases for this agent..."
+                      showCreateButton={false}
+                      showManageButton={true}
+                    />
+                    <p className="text-xs text-gray-400">
+                      This agent will search through the selected knowledge bases when answering questions
+                    </p>
+                  </div>
+
+                  {/* RAG Settings */}
+                  <div className="space-y-4 p-4 bg-gray-900 rounded-lg">
+                    <h4 className="font-medium text-white">RAG Configuration</h4>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm">Max Results per Knowledge Base</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={formData.ragSettings.maxResultsPerKB}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            ragSettings: {
+                              ...prev.ragSettings,
+                              maxResultsPerKB: parseInt(e.target.value) || 3
+                            }
+                          }))}
+                          className="bg-gray-800 border-gray-600"
+                        />
+                        <p className="text-xs text-gray-400">How many relevant chunks to retrieve from each knowledge base</p>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label className="text-sm">Relevance Threshold</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.1"
+                          value={formData.ragSettings.relevanceThreshold}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            ragSettings: {
+                              ...prev.ragSettings,
+                              relevanceThreshold: parseFloat(e.target.value) || 0.5
+                            }
+                          }))}
+                          className="bg-gray-800 border-gray-600"
+                        />
+                        <p className="text-xs text-gray-400">Minimum relevance score for including content (0.0-1.0)</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm">Context Window Tokens</Label>
+                      <Input
+                        type="number"
+                        min="500"
+                        max="8000"
+                        step="100"
+                        value={formData.ragSettings.contextWindowTokens}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev,
+                          ragSettings: {
+                            ...prev.ragSettings,
+                            contextWindowTokens: parseInt(e.target.value) || 2000
+                          }
+                        }))}
+                        className="bg-gray-800 border-gray-600"
+                      />
+                      <p className="text-xs text-gray-400">Maximum tokens to use for knowledge base context</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm">Aggregation Strategy</Label>
+                      <select
+                        value={formData.ragSettings.aggregationStrategy}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev,
+                          ragSettings: {
+                            ...prev.ragSettings,
+                            aggregationStrategy: e.target.value as 'relevance' | 'balanced' | 'comprehensive'
+                          }
+                        }))}
+                        className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white"
+                      >
+                        <option value="relevance">Relevance - Most relevant results first</option>
+                        <option value="balanced">Balanced - Mix of relevance and diversity</option>
+                        <option value="comprehensive">Comprehensive - Broader context coverage</option>
+                      </select>
+                      <p className="text-xs text-gray-400">How to combine and prioritize results from multiple knowledge bases</p>
+                    </div>
+                  </div>
+                </>
+              )}
             </TabsContent>
 
             <TabsContent value="prompt" className="space-y-4">

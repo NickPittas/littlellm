@@ -3,8 +3,11 @@ import { llmService, type LLMSettings } from './llmService';
 import { sessionService } from './sessionService';
 import { settingsService } from './settingsService';
 import { debugLogger } from './debugLogger';
+import { AgentConfiguration, AgentChatContext } from '../types/agent';
+import { RAGOptions } from '../types/knowledgeBase';
 
 // Constants for duplicate strings
+const UNKNOWN_ERROR_MESSAGE = 'Unknown error';
 const PARSING_STATUS_SUCCESS = '✅ Parsing Status: Success';
 const PARSING_STATUS_FAILED = '❌ Parsing Status: Failed';
 const PARSING_STATUS_ERROR = '❌ Parsing Status: Error';
@@ -23,6 +26,50 @@ let documentParserService: {
   getStats: () => { totalAttempts: number; successfulParses: number; failedParses: number; fallbacksUsed: number; averageProcessingTime: number; errorsByType: Record<string, number> };
   resetStats: () => void;
 } | null = null;
+let agentService: {
+  getAgent: (id: string) => Promise<AgentConfiguration | null>;
+  getAgentChatContext: (id: string) => Promise<AgentChatContext | null>;
+  getAgentRAGContext: (agentId: string, query: string) => Promise<Array<{text: string; source: string; knowledgeBaseName: string; relevanceScore: number}>>;
+} | null = null;
+
+// RAG service is now handled via IPC instead of dynamic import
+const ragService = {
+  async augmentPromptWithMultipleKnowledgeBases(prompt: string, kbIds: string[], options?: RAGOptions): Promise<string> {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      try {
+        const result = await window.electronAPI.augmentPromptWithRAG(prompt, kbIds, options);
+        if (result.success) {
+          return result.augmentedPrompt;
+        } else {
+          console.error('🧠 RAG augmentation failed:', result.error);
+          return prompt;
+        }
+      } catch (error) {
+        console.error('🧠 RAG augmentation error:', error);
+        return prompt;
+      }
+    }
+    return prompt;
+  },
+  
+  async validateKnowledgeBaseIds(kbIds: string[]): Promise<string[]> {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      try {
+        const result = await window.electronAPI.validateKnowledgeBaseIds(kbIds);
+        if (result.success) {
+          return result.validIds;
+        } else {
+          console.error('🧠 KB validation failed:', result.error);
+          return [];
+        }
+      } catch (error) {
+        console.error('🧠 KB validation error:', error);
+        return [];
+      }
+    }
+    return [];
+  }
+};
 
 if (typeof window !== 'undefined') {
   import('./secureApiKeyService').then(module => {
@@ -36,6 +83,15 @@ if (typeof window !== 'undefined') {
   }).catch(error => {
     console.warn('DocumentParserService not available in browser environment:', error);
   });
+
+  import('./agentService').then(module => {
+    agentService = module.agentService;
+  }).catch(error => {
+    console.warn('AgentService not available in browser environment:', error);
+  });
+  
+  // RAG service is now handled via IPC - no dynamic import needed
+  console.log('✅ RAG service configured via IPC bridge');
 }
 
 // Type for content array items used in vision API
@@ -196,7 +252,7 @@ export const chatService = {
             return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n${PARSING_STATUS_SUCCESS}\nPages: ${result.metadata?.pages || 1}\n\nContent:\n${result.text}`;
           } else {
             console.error('📄 PDF parsing failed:', result.error);
-            return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n${PARSING_STATUS_FAILED}\nError: ${result.error || 'Unknown error'}\n\nThe PDF file was uploaded but text extraction failed. You can:\n• Describe the content you'd like me to analyze\n• Copy and paste text from the PDF\n• Convert the PDF to a text file and upload that instead`;
+            return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n${PARSING_STATUS_FAILED}\nError: ${result.error || UNKNOWN_ERROR_MESSAGE}\n\nThe PDF file was uploaded but text extraction failed. You can:\n• Describe the content you'd like me to analyze\n• Copy and paste text from the PDF\n• Convert the PDF to a text file and upload that instead`;
           }
         } else {
           // Fallback if electronAPI is not available
@@ -205,7 +261,7 @@ export const chatService = {
         }
       } catch (error) {
         console.error('📄 PDF parsing error:', error);
-        return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n${PARSING_STATUS_ERROR}\nError: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease describe what you'd like me to analyze about this PDF.`;
+        return `[PDF Document: ${file.name} - ${Math.round(file.size / 1024)}KB]\n${PARSING_STATUS_ERROR}\nError: ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}\n\nPlease describe what you'd like me to analyze about this PDF.`;
       }
     } else if (supportedFormats.includes(fileExtension)) {
       // Use DocumentParserService for supported document formats
@@ -248,7 +304,7 @@ export const chatService = {
         return result;
       } catch (error) {
         console.error(`❌ Failed to parse document ${file.name}:`, error);
-        return `[${file.name} - ${Math.round(file.size / 1024)}KB]\nError: Failed to parse document - ${error instanceof Error ? error.message : 'Unknown error'}\nPlease describe the content you'd like me to analyze.`;
+        return `[${file.name} - ${Math.round(file.size / 1024)}KB]\nError: Failed to parse document - ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}\nPlease describe the content you'd like me to analyze.`;
       }
     } else {
       return `[File: ${file.name} - ${Math.round(file.size / 1024)}KB]\nFile type: ${file.type}\nNote: Text extraction not supported for this file type.`;
@@ -278,7 +334,8 @@ export const chatService = {
     onStream?: (chunk: string) => void,
     signal?: AbortSignal,
     conversationId?: string, // Add conversation ID for tool optimization
-    onKnowledgeBaseSearch?: (isSearching: boolean, query?: string) => void
+    onKnowledgeBaseSearch?: (isSearching: boolean, query?: string) => void,
+    selectedKnowledgeBaseIds?: string[] // Add selected knowledge base IDs
   ): Promise<Message> {
     debugLogger.info('CHAT', 'sendMessage called', {
       message: message.substring(0, 100) + '...',
@@ -304,79 +361,66 @@ export const chatService = {
       let augmentedMessage = message;
       let sources: Source[] = [];
 
-      if (settings.ragEnabled && typeof window !== 'undefined' && window.electronAPI) {
+      if (settings.ragEnabled && selectedKnowledgeBaseIds && selectedKnowledgeBaseIds.length > 0) {
         try {
-          console.log('🧠 RAG enabled, searching knowledge base for:', message.substring(0, 100));
+          console.log('🧠 RAG enabled, searching knowledge bases for:', message.substring(0, 100));
+          console.log('🧠 Selected knowledge bases:', selectedKnowledgeBaseIds);
+          console.log('🧠 RAG service available via IPC:', !!(typeof window !== 'undefined' && window.electronAPI));
 
           // Notify UI that knowledge base search is starting
           onKnowledgeBaseSearch?.(true, message);
 
-          // Detect if this is a comprehensive query that needs all documents
-          const isComprehensiveQuery = /\b(all|total|sum|add|combine|every|each)\b/i.test(message);
-          const searchLimit = isComprehensiveQuery ? 20 : 5; // Higher limit for comprehensive queries
-
-          const ragResult = await window.electronAPI.searchKnowledgeBase(message, searchLimit);
-          
-          if (ragResult.success && ragResult.results && ragResult.results.length > 0) {
-            console.log(`🧠 Found ${ragResult.results.length} relevant knowledge base chunks (comprehensive: ${isComprehensiveQuery})`);
-            
-            let selectedChunks;
-            
-            if (isComprehensiveQuery) {
-              // For comprehensive queries, ensure we get chunks from different documents
-              const chunksBySource = new Map<string, RAGResult[]>();
-
-              // Group chunks by source document
-              ragResult.results.forEach((result: RAGResult) => {
-                if (!chunksBySource.has(result.source)) {
-                  chunksBySource.set(result.source, []);
-                }
-                chunksBySource.get(result.source)!.push(result);
-              });
+          // Use the IPC-based RAG service if ElectronAPI is available
+          if (typeof window !== 'undefined' && window.electronAPI) {
+            try {
+              // Validate knowledge base IDs
+              const validKBIds = await ragService.validateKnowledgeBaseIds(selectedKnowledgeBaseIds);
               
-              // Take the best chunk from each document, up to 8 total chunks
-              selectedChunks = [];
-              for (const [, chunks] of chunksBySource.entries()) {
-                selectedChunks.push(chunks[0]); // Best chunk from this document
-                if (selectedChunks.length >= 8) break;
+              if (validKBIds.length > 0) {
+                // Use the multi-KB RAG system
+                const ragOptions = {
+                  maxResultsPerKB: 3,
+                  relevanceThreshold: 0.1,
+                  includeSourceAttribution: true,
+                  contextWindowTokens: 4000,
+                  aggregationStrategy: 'relevance' as const
+                };
+                
+                augmentedMessage = await ragService.augmentPromptWithMultipleKnowledgeBases(
+                  message,
+                  validKBIds,
+                  ragOptions
+                );
+                
+                console.log('🧠 Message augmented with multi-KB RAG context:', {
+                  originalLength: message.length,
+                  augmentedLength: augmentedMessage.length,
+                  knowledgeBases: validKBIds.length
+                });
+                
+                // Create sources from knowledge bases used
+                sources = validKBIds.map(kbId => ({
+                  type: 'knowledge_base' as const,
+                  title: `Knowledge Base: ${kbId}`,
+                  snippet: 'Multi-knowledge base search results'
+                }));
+              } else {
+                console.log('🧠 No valid knowledge bases found for search');
               }
-              
-              console.log(`🧠 Selected chunks from ${chunksBySource.size} different documents`);
-            } else {
-              // For specific queries, use top 3 most relevant chunks
-              selectedChunks = ragResult.results.slice(0, 3);
+            } catch (ragError) {
+              console.error('🧠 Multi-KB RAG search failed:', ragError);
+              // Fallback to legacy single KB search
+              console.log('🧠 Falling back to legacy knowledge base search');
+              const legacyResult = await this.performLegacyRAGSearch(message);
+              augmentedMessage = legacyResult.augmentedMessage;
+              sources = legacyResult.sources;
             }
-            
-            // Extract relevant text chunks and format them as context
-            const contextChunks = selectedChunks
-              .map((result: RAGResult, index: number) =>
-                `[Context ${index + 1} from ${result.source}]:\n${result.text}`
-              )
-              .join('\n\n');
-            
-            // Augment the original message with context
-            const contextIntro = isComprehensiveQuery 
-              ? `Based on the following context from ALL documents in your knowledge base`
-              : `Based on the following context from your knowledge base`;
-            
-            augmentedMessage = `${contextIntro}:\n\n${contextChunks}\n\n---\n\nUser Question: ${message}`;
-            
-            // Collect sources from RAG results
-            sources = selectedChunks.map((result: RAGResult) => ({
-              type: 'knowledge_base' as const,
-              title: result.source,
-              score: result.score,
-              snippet: result.text.substring(0, 150) + (result.text.length > 150 ? '...' : '')
-            }));
-
-            console.log('🧠 Message augmented with RAG context:', {
-              originalLength: message.length,
-              augmentedLength: augmentedMessage.length,
-              contextChunks: ragResult.results.length,
-              sources: sources.length
-            });
           } else {
-            console.log('🧠 No relevant context found in knowledge base');
+            // Fallback to legacy single KB search if ElectronAPI not available
+            console.log('🧠 ElectronAPI not available, using legacy search');
+            const legacyResult = await this.performLegacyRAGSearch(message);
+            augmentedMessage = legacyResult.augmentedMessage;
+            sources = legacyResult.sources;
           }
 
           // Notify UI that knowledge base search is complete
@@ -695,7 +739,7 @@ export const chatService = {
       return assistantMessage;
     } catch (error) {
       console.error('❌ Chat service error:', error);
-      throw new Error(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Failed to send message: ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}`);
     }
   },
 
@@ -1011,5 +1055,245 @@ export const chatService = {
     }
 
     return contentArray;
+  },
+
+  /**
+   * Sends a message with agent-specific configuration
+   * This method enforces agent's provider/model selection and knowledge base integration
+   */
+  async sendMessageWithAgent(
+    agentId: string,
+    message: string,
+    files?: FileList,
+    onStream?: (chunk: string) => void,
+    signal?: AbortSignal,
+    conversationId?: string,
+    onKnowledgeBaseSearch?: (isSearching: boolean, query?: string) => void
+  ): Promise<Message> {
+    debugLogger.info('CHAT', 'sendMessageWithAgent called', {
+      agentId,
+      message: message.substring(0, 100) + '...',
+      filesCount: files?.length || 0
+    });
+
+    try {
+      // Get agent configuration
+      if (!agentService) {
+        throw new Error('Agent service not available. Please ensure you are in a browser environment.');
+      }
+
+      const agentContext = await agentService.getAgentChatContext(agentId);
+      if (!agentContext) {
+        throw new Error(`Agent with ID "${agentId}" not found or could not load context`);
+      }
+
+      // Create agent-specific chat settings
+      // Get current settings for provider configurations
+      const currentSettings = settingsService.getSettings();
+
+      const agentChatSettings: ChatSettings = {
+        provider: agentContext.provider,
+        model: agentContext.model,
+        temperature: agentContext.temperature,
+        maxTokens: agentContext.maxTokens,
+        systemPrompt: agentContext.systemPrompt,
+        ragEnabled: agentContext.ragEnabled,
+        toolCallingEnabled: agentContext.toolCallingEnabled,
+        providers: currentSettings.chat.providers || {} // Will be populated from current settings
+      };
+
+      // Update providers configuration
+      agentChatSettings.providers = currentSettings.chat.providers;
+
+      debugLogger.info('CHAT', 'Agent settings configured', {
+        provider: agentContext.provider,
+        model: agentContext.model,
+        ragEnabled: agentContext.ragEnabled,
+        selectedKBs: agentContext.selectedKnowledgeBases.length
+      });
+
+      // Handle agent-specific RAG integration
+      let augmentedMessage = message;
+      if (agentContext.ragEnabled && agentContext.selectedKnowledgeBases.length > 0) {
+        try {
+          if (typeof window === 'undefined' || !window.electronAPI) {
+            console.warn('🧠 ElectronAPI not available, proceeding without RAG augmentation');
+          } else {
+            console.log(`🧠 Agent RAG enabled, searching ${agentContext.selectedKnowledgeBases.length} knowledge bases`);
+            
+            // Notify UI that knowledge base search is starting
+            onKnowledgeBaseSearch?.(true, message);
+
+            // Use agent-specific RAG options
+            const ragOptions: RAGOptions = {
+              maxResultsPerKB: agentContext.ragSettings.maxResultsPerKB,
+              relevanceThreshold: agentContext.ragSettings.relevanceThreshold,
+              contextWindowTokens: agentContext.ragSettings.contextWindowTokens,
+              aggregationStrategy: agentContext.ragSettings.aggregationStrategy,
+              includeSourceAttribution: true
+            };
+
+            augmentedMessage = await ragService.augmentPromptWithMultipleKnowledgeBases(
+              message,
+              agentContext.selectedKnowledgeBases,
+              ragOptions
+            );
+
+            console.log('🧠 Agent message augmented with RAG context:', {
+              originalLength: message.length,
+              augmentedLength: augmentedMessage.length,
+              kbCount: agentContext.selectedKnowledgeBases.length
+            });
+
+            // Notify UI that knowledge base search is complete
+            onKnowledgeBaseSearch?.(false);
+          }
+        } catch (ragError) {
+          console.error('🧠 Agent RAG search failed:', ragError);
+          onKnowledgeBaseSearch?.(false);
+          // Continue with original message if RAG fails
+        }
+      }
+
+      // Use the enhanced sendMessage method with agent-configured settings
+      return await this.sendMessage(
+        augmentedMessage,
+        Array.from(files || []),
+        agentChatSettings,
+        [], // conversationHistory
+        onStream,
+        signal,
+        conversationId,
+        onKnowledgeBaseSearch,
+        agentContext.selectedKnowledgeBases // Pass agent's selected knowledge bases
+      );
+
+    } catch (error) {
+      console.error('❌ sendMessageWithAgent failed:', error);
+      
+      // Return error message
+      const errorMessage: Message = {
+        id: `error_${Date.now()}`,
+        content: `Failed to send message with agent: ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}`,
+        role: 'assistant',
+        timestamp: new Date()
+      };
+      
+      return errorMessage;
+    }
+  },
+
+  /**
+   * Gets available knowledge bases for agent configuration
+   */
+  async getAvailableKnowledgeBasesForAgent(): Promise<Array<{id: string; name: string; description: string; color: string; icon: string}>> {
+    try {
+      if (!agentService) {
+        console.warn('Agent service not available');
+        return [];
+      }
+
+      // This would call a method on agentService to get available KBs
+      // For now, return empty array as the method needs to be implemented
+      console.log('📚 Getting available knowledge bases for agent configuration');
+      return [];
+    } catch (error) {
+      console.error('Failed to get available knowledge bases:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Validates if specified knowledge bases are available for an agent
+   */
+  async validateAgentKnowledgeBases(knowledgeBaseIds: string[]): Promise<{valid: string[]; invalid: string[]}> {
+    try {
+      if (typeof window === 'undefined' || !window.electronAPI) {
+        console.warn('ElectronAPI not available for validation');
+        return { valid: [], invalid: knowledgeBaseIds };
+      }
+
+      const validIds = await ragService.validateKnowledgeBaseIds(knowledgeBaseIds);
+      const invalidIds = knowledgeBaseIds.filter(id => !validIds.includes(id));
+
+      return { valid: validIds, invalid: invalidIds };
+    } catch (error) {
+      console.error('Failed to validate knowledge bases:', error);
+      return { valid: [], invalid: knowledgeBaseIds };
+    }
+  },
+
+  /**
+   * Helper method for legacy RAG search (fallback)
+   */
+  async performLegacyRAGSearch(
+    originalMessage: string
+  ): Promise<{ augmentedMessage: string; sources: Source[] }> {
+    let augmentedMessage = originalMessage;
+    let sources: Source[] = [];
+    
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      try {
+        const isComprehensiveQuery = /\b(all|total|sum|add|combine|every|each)\b/i.test(originalMessage);
+        const searchLimit = isComprehensiveQuery ? 20 : 10; // Increased from 5 to 10 for better context
+
+        const ragResult = await window.electronAPI.searchKnowledgeBase(originalMessage, searchLimit);
+        
+        if (ragResult.success && ragResult.results && ragResult.results.length > 0) {
+          console.log(`🧠 Legacy search found ${ragResult.results.length} relevant chunks`);
+          
+          let selectedChunks;
+          
+          if (isComprehensiveQuery) {
+            const chunksBySource = new Map<string, RAGResult[]>();
+            ragResult.results.forEach((result: RAGResult) => {
+              if (!chunksBySource.has(result.source)) {
+                chunksBySource.set(result.source, []);
+              }
+              chunksBySource.get(result.source)!.push(result);
+            });
+            
+            selectedChunks = [];
+            for (const [, chunks] of chunksBySource.entries()) {
+              selectedChunks.push(chunks[0]);
+              if (selectedChunks.length >= 8) break;
+            }
+          } else {
+            selectedChunks = ragResult.results.slice(0, 5); // Increased from 3 to 5 for richer context
+          }
+          
+          const contextChunks = selectedChunks
+            .map((result: RAGResult, index: number) =>
+              `[Context ${index + 1} from ${result.source}]:\n${result.text}`
+            )
+            .join('\n\n');
+          
+          const contextIntro = isComprehensiveQuery 
+            ? `You are an expert assistant with access to comprehensive documentation. Based on the following AUTHORITATIVE context from ALL documents in the knowledge base, provide a detailed and accurate response`
+            : `You are an expert assistant with access to specialized documentation. Based on the following AUTHORITATIVE context from the knowledge base, provide an accurate and detailed response. Use ONLY the information provided in the context below, and clearly indicate if the context doesn't contain sufficient information to answer the question`;
+          
+          augmentedMessage = `${contextIntro}:
+
+===== KNOWLEDGE BASE CONTEXT (PRIORITY SOURCE) =====
+${contextChunks}
+===== END KNOWLEDGE BASE CONTEXT =====
+
+IMPORTANT: Answer based primarily on the knowledge base context above. If the context doesn't contain the needed information, clearly state what's missing.
+
+User Question: ${originalMessage}`;
+          
+          sources = selectedChunks.map((result: RAGResult) => ({
+            type: 'knowledge_base' as const,
+            title: result.source,
+            score: result.score,
+            snippet: result.text.substring(0, 150) + (result.text.length > 150 ? '...' : '')
+          }));
+        }
+      } catch (legacyError) {
+        console.error('🧠 Legacy RAG search failed:', legacyError);
+      }
+    }
+    
+    return { augmentedMessage, sources };
   }
 };

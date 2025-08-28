@@ -36,6 +36,15 @@ const DEFAULT_SETTINGS: AppSettings = {
     maxTokens: 8192,
     toolCallingEnabled: false, // Disabled by default for security and user control
     ragEnabled: false,
+    // Multi-knowledge base defaults
+    selectedKnowledgeBaseIds: [],
+    ragOptions: {
+      maxResultsPerKB: 3,
+      relevanceThreshold: 0.5,
+      contextWindowTokens: 2000,
+      aggregationStrategy: 'relevance',
+      includeSourceAttribution: true
+    },
     providers: {
       openai: { lastSelectedModel: '' },
       anthropic: { lastSelectedModel: '' },
@@ -582,6 +591,112 @@ class SettingsService {
   // Removed utility methods to prevent automatic saves
   // All settings changes should go through the main updateSettings method
   // which is only called when user clicks "Save Settings"
+
+  // Knowledge Base Management Methods
+  getSelectedKnowledgeBaseIds(): string[] {
+    if (!this.initialized) {
+      console.warn('⚠️ getSelectedKnowledgeBaseIds: Not initialized, returning empty array');
+      return [];
+    }
+    return this.settings.chat.selectedKnowledgeBaseIds || [];
+  }
+
+  async updateSelectedKnowledgeBases(knowledgeBaseIds: string[]): Promise<boolean> {
+    if (!this.initialized) {
+      console.warn('⚠️ updateSelectedKnowledgeBases: Not initialized');
+      return false;
+    }
+
+    const updates = {
+      chat: {
+        ...this.settings.chat,
+        selectedKnowledgeBaseIds: knowledgeBaseIds
+      }
+    };
+
+    return await this.updateSettings(updates);
+  }
+
+  getRagOptions() {
+    if (!this.initialized) {
+      console.warn('⚠️ getRagOptions: Not initialized, returning defaults');
+      return {
+        maxResultsPerKB: 3,
+        relevanceThreshold: 0.5,
+        contextWindowTokens: 2000,
+        aggregationStrategy: 'relevance' as const,
+        includeSourceAttribution: true
+      };
+    }
+    return this.settings.chat.ragOptions || {
+      maxResultsPerKB: 3,
+      relevanceThreshold: 0.5,
+      contextWindowTokens: 2000,
+      aggregationStrategy: 'relevance' as const,
+      includeSourceAttribution: true
+    };
+  }
+
+  async updateRagOptions(ragOptions: {
+    maxResultsPerKB: number;
+    relevanceThreshold: number;
+    contextWindowTokens: number;
+    aggregationStrategy: 'relevance' | 'balanced' | 'comprehensive';
+    includeSourceAttribution: boolean;
+  }): Promise<boolean> {
+    if (!this.initialized) {
+      console.warn('⚠️ updateRagOptions: Not initialized');
+      return false;
+    }
+
+    const updates = {
+      chat: {
+        ...this.settings.chat,
+        ragOptions
+      }
+    };
+
+    return await this.updateSettings(updates);
+  }
+
+  isRagEnabled(): boolean {
+    if (!this.initialized) {
+      console.warn('⚠️ isRagEnabled: Not initialized, returning false');
+      return false;
+    }
+    return this.settings.chat.ragEnabled || false;
+  }
+
+  async updateRagEnabled(enabled: boolean): Promise<boolean> {
+    if (!this.initialized) {
+      console.warn('⚠️ updateRagEnabled: Not initialized');
+      return false;
+    }
+
+    const updates = {
+      chat: {
+        ...this.settings.chat,
+        ragEnabled: enabled
+      }
+    };
+
+    return await this.updateSettings(updates);
+  }
+
+  // Helper method to check if any knowledge bases are selected
+  hasSelectedKnowledgeBases(): boolean {
+    const selectedKBs = this.getSelectedKnowledgeBaseIds();
+    return selectedKBs.length > 0;
+  }
+
+  // Helper method to get knowledge base configuration for chat
+  getKnowledgeBaseConfig() {
+    return {
+      enabled: this.isRagEnabled(),
+      selectedKnowledgeBaseIds: this.getSelectedKnowledgeBaseIds(),
+      ragOptions: this.getRagOptions()
+    };
+  }
 
   // Validation methods
   validateApiKey(provider: string, apiKey: string): boolean {

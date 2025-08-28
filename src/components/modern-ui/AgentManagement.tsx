@@ -19,8 +19,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui
 import { Badge } from '../ui/badge';
 import { cn } from '@/lib/utils';
 import { AgentConfiguration, AgentTemplate } from '../../types/agent';
-import { agentService } from '../../services/agentService';
 import { CreateAgentDialog } from './CreateAgentDialog';
+
+// Constants
+const AGENT_SERVICE_NOT_AVAILABLE_MESSAGE = 'Agent service not available';
+
+// Conditionally import agentService only in browser environment
+let agentService: {
+  getAgents: () => Promise<AgentConfiguration[]>;
+  getTemplates: () => Promise<AgentTemplate[]>;
+  deleteAgent: (id: string) => Promise<boolean>;
+  duplicateAgent: (id: string) => Promise<string>;
+  exportAgent: (id: string) => Promise<any>;
+  importAgent: (data: any) => Promise<{ success: boolean; warnings?: string[]; errors?: string[] }>;
+} | null = null;
+
+if (typeof window !== 'undefined') {
+  import('../../services/agentService').then(module => {
+    agentService = module.agentService as typeof agentService;
+  }).catch(error => {
+    console.warn('AgentService not available in browser environment:', error);
+  });
+}
 import { EditAgentDialog } from './EditAgentDialog';
 
 interface AgentManagementProps {
@@ -50,6 +70,11 @@ export function AgentManagement({
 
   const loadData = async () => {
     try {
+      if (!agentService) {
+        console.warn(AGENT_SERVICE_NOT_AVAILABLE_MESSAGE);
+        return;
+      }
+      
       setLoading(true);
       const [agentsData, templatesData] = await Promise.all([
         agentService.getAgents(),
@@ -96,6 +121,11 @@ export function AgentManagement({
   };
 
   const handleDeleteAgent = async (agent: AgentConfiguration) => {
+    if (!agentService) {
+      console.warn(AGENT_SERVICE_NOT_AVAILABLE_MESSAGE);
+      return;
+    }
+    
     if (confirm(`Are you sure you want to delete "${agent.name}"?`)) {
       try {
         await agentService.deleteAgent(agent.id);
@@ -107,6 +137,11 @@ export function AgentManagement({
   };
 
   const handleDuplicateAgent = async (agent: AgentConfiguration) => {
+    if (!agentService) {
+      console.warn(AGENT_SERVICE_NOT_AVAILABLE_MESSAGE);
+      return;
+    }
+    
     try {
       await agentService.duplicateAgent(agent.id);
       await loadData();
@@ -116,6 +151,11 @@ export function AgentManagement({
   };
 
   const handleExportAgent = async (agent: AgentConfiguration) => {
+    if (!agentService) {
+      console.warn(AGENT_SERVICE_NOT_AVAILABLE_MESSAGE);
+      return;
+    }
+    
     try {
       const exportData = await agentService.exportAgent(agent.id);
       if (exportData) {
@@ -135,6 +175,11 @@ export function AgentManagement({
   };
 
   const handleImportAgent = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!agentService) {
+      console.warn(AGENT_SERVICE_NOT_AVAILABLE_MESSAGE);
+      return;
+    }
+    
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -145,7 +190,8 @@ export function AgentManagement({
       
       if (result.success) {
         await loadData();
-        alert(`Agent imported successfully! ${result.warnings?.length ? `\nWarnings: ${result.warnings.join(', ')}` : ''}`);
+        const warningText = result.warnings?.length ? `\nWarnings: ${result.warnings.join(', ')}` : '';
+        alert(`Agent imported successfully! ${warningText}`);
       } else {
         alert(`Failed to import agent: ${result.errors?.join(', ')}`);
       }

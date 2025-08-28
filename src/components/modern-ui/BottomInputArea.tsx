@@ -14,6 +14,19 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { cn } from '@/lib/utils';
+import { KnowledgeBaseSelector } from './KnowledgeBaseSelector';
+
+// Knowledge base types
+interface KnowledgeBase {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  icon: string;
+  documentCount: number;
+  lastUpdated: Date;
+  tags: string[];
+}
 
 interface BottomInputAreaProps {
   className?: string;
@@ -32,6 +45,13 @@ interface BottomInputAreaProps {
   onToggleTools?: (enabled: boolean) => void;
   mcpEnabled?: boolean;
   onToggleMCP?: (enabled: boolean) => void;
+  // Updated knowledge base props
+  selectedKnowledgeBaseIds?: string[];
+  onKnowledgeBaseSelectionChange?: (selectedIds: string[]) => void;
+  availableKnowledgeBases?: KnowledgeBase[];
+  onManageKnowledgeBases?: () => void;
+  onCreateKnowledgeBase?: () => void;
+  // Legacy prop for backward compatibility
   knowledgeBaseEnabled?: boolean;
   onToggleKnowledgeBase?: (enabled: boolean) => void;
   onStartNewChat?: () => void;
@@ -57,6 +77,13 @@ export function BottomInputArea({
   onToggleTools,
   mcpEnabled = false,
   onToggleMCP,
+  // Updated knowledge base props
+  selectedKnowledgeBaseIds = [],
+  onKnowledgeBaseSelectionChange,
+  availableKnowledgeBases = [],
+  onManageKnowledgeBases,
+  onCreateKnowledgeBase,
+  // Legacy props for backward compatibility
   knowledgeBaseEnabled = false,
   onToggleKnowledgeBase,
   onStartNewChat,
@@ -385,21 +412,36 @@ export function BottomInputArea({
             <Wrench style={{ width: '16px', height: '16px', color: 'inherit', minWidth: '16px', minHeight: '16px' }} />
           </Button>
 
-          {/* Knowledge Base Toggle */}
-          <Button
-            variant={knowledgeBaseEnabled ? "default" : "ghost"}
-            size="sm"
-            onClick={() => onToggleKnowledgeBase?.(!knowledgeBaseEnabled)}
-            className={cn(
-              "h-7 w-7 p-0 transition-colors",
-              knowledgeBaseEnabled
-                ? "bg-purple-600 text-white hover:bg-purple-700"
-                : "text-gray-400 hover:text-white hover:bg-gray-800/50"
-            )}
-            title={knowledgeBaseEnabled ? "Disable Knowledge Base" : "Enable Knowledge Base"}
-          >
-            <Database style={{ width: '16px', height: '16px', color: 'inherit', minWidth: '16px', minHeight: '16px' }} />
-          </Button>
+          {/* Knowledge Base Selector - Replace toggle with multi-select */}
+          {onKnowledgeBaseSelectionChange ? (
+            <KnowledgeBaseSelector
+              selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
+              onSelectionChange={onKnowledgeBaseSelectionChange}
+              availableKnowledgeBases={availableKnowledgeBases}
+              onManageKnowledgeBases={onManageKnowledgeBases}
+              onCreateKnowledgeBase={onCreateKnowledgeBase}
+              maxSelections={5}
+              showCreateButton={true}
+              showManageButton={true}
+              placeholder="Select knowledge bases..."
+            />
+          ) : (
+            /* Legacy Knowledge Base Toggle for backward compatibility */
+            <Button
+              variant={knowledgeBaseEnabled ? "default" : "ghost"}
+              size="sm"
+              onClick={() => onToggleKnowledgeBase?.(!knowledgeBaseEnabled)}
+              className={cn(
+                "h-7 w-7 p-0 transition-colors",
+                knowledgeBaseEnabled
+                  ? "bg-purple-600 text-white hover:bg-purple-700"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800/50"
+              )}
+              title={knowledgeBaseEnabled ? "Disable Knowledge Base" : "Enable Knowledge Base"}
+            >
+              <Database style={{ width: '16px', height: '16px', color: 'inherit', minWidth: '16px', minHeight: '16px' }} />
+            </Button>
+          )}
 
           {/* Screenshot Button */}
           <Button

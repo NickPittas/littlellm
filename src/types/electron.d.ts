@@ -140,15 +140,28 @@ export interface ElectronAPI {
   addDocument: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   addDocumentsBatch: (filePaths: string[]) => Promise<{ success: boolean; results?: Array<{filePath: string, success: boolean, error?: string}>; summary?: string; error?: string }>;
   addDocumentFromUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
+  addDocumentToKB: (knowledgeBaseId: string, fileBuffer: ArrayBuffer, fileName: string, metadata?: Record<string, unknown>) => Promise<{ success: boolean; chunkCount?: number; error?: string }>;
   removeDocument: (documentId: string) => Promise<{ success: boolean; error?: string }>;
   getDocuments: () => Promise<{ success: boolean; documents: string[]; error?: string }>;
   getDocumentsWithMetadata: () => Promise<{ success: boolean; documents: Array<{source: string, metadata: Record<string, unknown>, chunkCount: number, addedAt?: string}>; error?: string }>;
   searchKnowledgeBase: (query: string, limit?: number) => Promise<{ success: boolean; results: Array<{text: string, source: string, score?: number}>; error?: string }>;
+  
+  // RAG operations
+  augmentPromptWithRAG: (prompt: string, knowledgeBaseIds: string[], options?: any) => Promise<{ success: boolean; augmentedPrompt: string; error?: string }>;
+  validateKnowledgeBaseIds: (knowledgeBaseIds: string[]) => Promise<{ success: boolean; validIds: string[]; error?: string }>;
+  
   exportKnowledgeBase: () => Promise<{ success: boolean; filePath?: string; stats?: {totalRecords: number, totalDocuments: number, exportSize: number, exportTime: number}; error?: string }>;
   importKnowledgeBase: (options?: {mode: 'replace' | 'merge'}) => Promise<{ success: boolean; stats?: {importedRecords: number, importedDocuments: number, skippedRecords: number, importTime: number}; filePath?: string; error?: string }>;
   getKnowledgeBaseStats: () => Promise<{ success: boolean; stats?: {totalRecords: number, totalDocuments: number, databaseSize: number}; error?: string }>;
   openFileDialog: () => Promise<string | null>;
   openKnowledgebaseFileDialog: () => Promise<string[]>;
+
+  // Knowledge Base Registry operations
+  listKnowledgeBases: () => Promise<{ success: boolean; knowledgeBases: Array<{id: string, name: string, description: string, color: string, icon: string, tableName: string, documentCount: number, lastUpdated: string, createdAt: string, tags: string[], metadata: Record<string, unknown>, isDefault?: boolean}>; error?: string }>;
+  createKnowledgeBase: (request: {name: string, description: string, color?: string, icon?: string, tags?: string[], metadata?: Record<string, unknown>, isDefault?: boolean}) => Promise<{ success: boolean; knowledgeBase?: {id: string, name: string, description: string, color: string, icon: string, tableName: string, documentCount: number, lastUpdated: string, createdAt: string, tags: string[], metadata: Record<string, unknown>, isDefault?: boolean}; error?: string }>;
+  getKnowledgeBase: (id: string) => Promise<{ success: boolean; knowledgeBase?: {id: string, name: string, description: string, color: string, icon: string, tableName: string, documentCount: number, lastUpdated: string, createdAt: string, tags: string[], metadata: Record<string, unknown>, isDefault?: boolean} | null; error?: string }>;
+  updateKnowledgeBase: (id: string, updates: {name?: string, description?: string, color?: string, icon?: string, tags?: string[], metadata?: Record<string, unknown>}) => Promise<{ success: boolean; knowledgeBase?: {id: string, name: string, description: string, color: string, icon: string, tableName: string, documentCount: number, lastUpdated: string, createdAt: string, tags: string[], metadata: Record<string, unknown>, isDefault?: boolean}; error?: string }>;
+  deleteKnowledgeBase: (id: string) => Promise<{ success: boolean; error?: string }>;
 
   // Progress monitoring
   onExportProgress: (callback: (progress: {step: string, current: number, total: number, message: string}) => void) => () => void;

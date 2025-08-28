@@ -59,6 +59,15 @@ export interface ChatSettings {
   systemPrompt?: string;
   toolCallingEnabled: boolean;
   ragEnabled?: boolean;
+  // Multi-knowledge base support
+  selectedKnowledgeBaseIds?: string[];
+  ragOptions?: {
+    maxResultsPerKB: number;
+    relevanceThreshold: number;
+    contextWindowTokens: number;
+    aggregationStrategy: 'relevance' | 'balanced' | 'comprehensive';
+    includeSourceAttribution: boolean;
+  };
   providers: ProvidersConfig;
   projectId?: string; // Add project ID for memory context
 }

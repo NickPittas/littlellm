@@ -8,9 +8,9 @@ import { RightPanel } from './RightPanel';
 import { SettingsModal } from './SettingsModal';
 import { ChatHistoryPanel } from './ChatHistoryPanel';
 import { FloatingProviderSelector } from './FloatingProviderSelector';
+import { KnowledgeBaseManagement } from './KnowledgeBaseManagement';
 import { AttachmentPreview } from '../AttachmentPreview';
 import { AgentManagement } from './AgentManagement';
-import { agentService } from '../../services/agentService';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
@@ -20,9 +20,112 @@ import { cn } from '@/lib/utils';
 // Import existing services
 import { chatService, type ChatSettings, type Message, type ContentItem } from '../../services/chatService';
 import type { AgentConfiguration } from '../../types/agent';
+import type { KnowledgeBase } from '../../types/knowledgeBase';
 import { settingsService } from '../../services/settingsService';
 import { conversationHistoryService } from '../../services/conversationHistoryService';
 import { secureApiKeyService } from '../../services/secureApiKeyService';
+
+// Conditionally import agentService only in browser environment
+let agentService: {
+  getAgents: () => Promise<AgentConfiguration[]>;
+  getAgent: (id: string) => Promise<AgentConfiguration | null>;
+} | null = null;
+
+// Knowledge base registry API using IPC
+const knowledgeBaseRegistryAPI = {
+  async listKnowledgeBases(): Promise<KnowledgeBase[]> {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      const result = await window.electronAPI.listKnowledgeBases();
+      if (result.success) {
+        // Convert string dates to Date objects
+        return result.knowledgeBases.map(kb => ({
+          ...kb,
+          lastUpdated: new Date(kb.lastUpdated),
+          createdAt: new Date(kb.createdAt)
+        }));
+      } else {
+        console.warn('Failed to list knowledge bases:', result.error);
+        return [];
+      }
+    }
+    return [];
+  },
+
+  async createKnowledgeBase(request: any): Promise<KnowledgeBase> {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      const result = await window.electronAPI.createKnowledgeBase(request);
+      if (result.success && result.knowledgeBase) {
+        // Convert string dates to Date objects
+        return {
+          ...result.knowledgeBase,
+          lastUpdated: new Date(result.knowledgeBase.lastUpdated),
+          createdAt: new Date(result.knowledgeBase.createdAt)
+        };
+      } else {
+        throw new Error(result.error || 'Failed to create knowledge base');
+      }
+    }
+    throw new Error('ElectronAPI not available');
+  },
+
+  async updateKnowledgeBase(id: string, updates: any): Promise<KnowledgeBase> {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      const result = await window.electronAPI.updateKnowledgeBase(id, updates);
+      if (result.success && result.knowledgeBase) {
+        // Convert string dates to Date objects
+        return {
+          ...result.knowledgeBase,
+          lastUpdated: new Date(result.knowledgeBase.lastUpdated),
+          createdAt: new Date(result.knowledgeBase.createdAt)
+        };
+      } else {
+        throw new Error(result.error || 'Failed to update knowledge base');
+      }
+    }
+    throw new Error('ElectronAPI not available');
+  },
+
+  async getKnowledgeBase(id: string): Promise<KnowledgeBase | null> {
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      const result = await window.electronAPI.getKnowledgeBase(id);
+      if (result.success) {
+        if (result.knowledgeBase) {
+          // Convert string dates to Date objects
+          return {
+            ...result.knowledgeBase,
+            lastUpdated: new Date(result.knowledgeBase.lastUpdated),
+            createdAt: new Date(result.knowledgeBase.createdAt)
+          };
+        }
+        return null;
+      } else {
+        console.warn('Failed to get knowledge base:', result.error);
+        return null;
+      }
+    }
+    return null;
+  }
+};
+
+// Import migration script
+let migrationScript: {
+  runMigrationIfNeeded: () => Promise<any>;
+} | null = null;
+
+if (typeof window !== 'undefined') {
+  import('../../services/agentService').then(module => {
+    agentService = module.agentService;
+  }).catch(error => {
+    console.warn('AgentService not available in browser environment:', error);
+  });
+
+  // Import migration script
+  import('../../scripts/migrationScript').then(module => {
+    migrationScript = module;
+  }).catch(error => {
+    console.warn('Migration script not available in browser environment:', error);
+  });
+}
 
 // Constants
 const DEFAULT_MODEL = 'gemma3:gpu';
@@ -98,6 +201,11 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   const [toolsEnabled, setToolsEnabled] = useState(false);
   const [mcpEnabled, setMcpEnabled] = useState(false);
   const [knowledgeBaseEnabled, setKnowledgeBaseEnabled] = useState(false);
+
+  // Knowledge Base Management State
+  const [availableKnowledgeBases, setAvailableKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [selectedKnowledgeBaseIds, setSelectedKnowledgeBaseIds] = useState<string[]>([]);
+  const [knowledgeBaseManagementOpen, setKnowledgeBaseManagementOpen] = useState(false);
 
   // Handle settings updates
   const updateSettings = useCallback((newSettings: Partial<ChatSettings>) => {
@@ -218,6 +326,11 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         }
         setToolsEnabled(savedSettings.toolCallingEnabled ?? false); // Use nullish coalescing to respect explicit false
         setKnowledgeBaseEnabled(savedSettings.ragEnabled ?? false);
+        
+        // Load saved knowledge base selections
+        if (savedSettings.selectedKnowledgeBaseIds && savedSettings.selectedKnowledgeBaseIds.length > 0) {
+          setSelectedKnowledgeBaseIds(savedSettings.selectedKnowledgeBaseIds);
+        }
 
         // Try to get the last selected model for this provider
         let modelToUse = savedSettings.model || DEFAULT_MODEL;
@@ -250,8 +363,18 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
   useEffect(() => {
     const loadAgents = async () => {
       try {
-        const agents = await agentService.getAgents();
-        setAvailableAgents(agents);
+        if (agentService) {
+          const agents = await agentService.getAgents();
+          setAvailableAgents(agents);
+        } else {
+          // Wait a bit for dynamic import to complete
+          setTimeout(async () => {
+            if (agentService) {
+              const agents = await agentService.getAgents();
+              setAvailableAgents(agents);
+            }
+          }, 100);
+        }
       } catch {
         setAvailableAgents([]);
       }
@@ -260,12 +383,81 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     loadAgents();
   }, []);
 
+  // Load available knowledge bases on mount
+  useEffect(() => {
+    const initializeKnowledgeBases = async () => {
+      // Add a small delay to ensure ElectronAPI is fully loaded
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      try {
+        // First, run migration if needed
+        if (migrationScript) {
+          try {
+            console.log('📚 Running knowledge base migration check...');
+            const migrationResult = await migrationScript.runMigrationIfNeeded();
+            
+            if (migrationResult.success) {
+              console.log('✅ Knowledge base system ready:', migrationResult.message);
+            } else {
+              console.error('❌ Migration failed:', migrationResult.errors);
+              // Don't return early - still try to load existing knowledge bases
+            }
+          } catch (error) {
+            console.error('❌ Failed to run migration:', error);
+            // Don't return early - still try to load existing knowledge bases
+          }
+        } else {
+          console.warn('⚠️ Migration script not loaded, skipping migration check');
+        }
+        
+        // Load knowledge bases using IPC API
+        const knowledgeBases = await knowledgeBaseRegistryAPI.listKnowledgeBases();
+        setAvailableKnowledgeBases(knowledgeBases);
+        
+        // Only auto-select default knowledge base on first load if no selection was made yet
+        // This allows users to explicitly clear selection later
+        if (selectedKnowledgeBaseIds.length === 0 && knowledgeBases.length > 0) {
+          const defaultKB = knowledgeBases.find(kb => kb.isDefault);
+          if (defaultKB && !sessionStorage.getItem('kb-selection-cleared')) {
+            setSelectedKnowledgeBaseIds([defaultKB.id]);
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to initialize knowledge bases:', error);
+        setAvailableKnowledgeBases([]);
+      }
+    };
+
+    initializeKnowledgeBases();
+  }, [selectedKnowledgeBaseIds.length]);
+
+  // Handle knowledge base selection changes
+  const handleKnowledgeBaseSelectionChange = useCallback((selectedIds: string[]) => {
+    setSelectedKnowledgeBaseIds(selectedIds);
+    // Set flag when user explicitly clears all selections
+    if (selectedIds.length === 0) {
+      sessionStorage.setItem('kb-selection-cleared', 'true');
+    } else {
+      sessionStorage.removeItem('kb-selection-cleared');
+    }
+    // Update RAG settings to reflect selection
+    const ragEnabled = selectedIds.length > 0;
+    setKnowledgeBaseEnabled(ragEnabled);
+    updateSettings({ 
+      ragEnabled,
+      selectedKnowledgeBaseIds: selectedIds // Save selected KBs to settings
+    });
+  }, [updateSettings]);
+
   // Handle sidebar item clicks
   const handleSidebarItemClick = (itemId: string) => {
     // Handle different sidebar actions
     switch (itemId) {
       case 'agents':
         setAgentManagementOpen(true);
+        break;
+      case 'knowledge-bases':
+        setKnowledgeBaseManagementOpen(true);
         break;
       case 'settings':
         setSettingsModalOpen(true);
@@ -314,7 +506,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
     const currentSettings = {
       ...settings,
       model: selectedModel,
-      provider: selectedProvider
+      provider: selectedProvider,
+      ragEnabled: knowledgeBaseEnabled // Ensure RAG flag is included
     };
 
     const messageContent = message.trim();
@@ -410,6 +603,13 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
       // Get conversation history (exclude the current user message we just added)
       const conversationHistory = updatedMessages.slice(0, -1); // Exclude the current user message
 
+      // Debug: Log RAG configuration before sending message
+      console.log('🧠 Sending message with RAG config:', {
+        ragEnabled: currentSettings.ragEnabled,
+        selectedKnowledgeBaseIds,
+        knowledgeBaseCount: selectedKnowledgeBaseIds.length
+      });
+
       const response = await chatService.sendMessage(
         messageContent,
         filesToSend,
@@ -442,7 +642,8 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         () => {
           // Handle knowledge base search indicator
           // TODO: Add knowledge base search indicator to UI
-        }
+        },
+        selectedKnowledgeBaseIds // Pass selected knowledge base IDs for multi-KB RAG
       );
 
       // Update final response with usage, toolCalls, and sources
@@ -1125,6 +1326,13 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
           onToggleTools={handleToggleTools}
           mcpEnabled={mcpEnabled}
           onToggleMCP={handleToggleMCP}
+          // New multi-knowledge base props
+          selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
+          onKnowledgeBaseSelectionChange={handleKnowledgeBaseSelectionChange}
+          availableKnowledgeBases={availableKnowledgeBases}
+          onManageKnowledgeBases={() => setKnowledgeBaseManagementOpen(true)}
+          onCreateKnowledgeBase={() => setKnowledgeBaseManagementOpen(true)}
+          // Legacy props for backward compatibility
           knowledgeBaseEnabled={knowledgeBaseEnabled}
           onToggleKnowledgeBase={handleToggleKnowledgeBase}
           onStartNewChat={handleStartNewChat}
@@ -1183,6 +1391,34 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
             <AgentManagement
               onAgentSelect={handleAgentSelect}
               onClose={() => setAgentManagementOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Knowledge Base Management Modal */}
+      {knowledgeBaseManagementOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop with blur */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setKnowledgeBaseManagementOpen(false)}
+          />
+
+          {/* Knowledge Base Management Modal */}
+          <div className="relative w-[95vw] h-[95vh] max-w-7xl max-h-[900px] bg-background border border-border rounded-2xl shadow-2xl overflow-hidden">
+            <KnowledgeBaseManagement
+              onClose={() => setKnowledgeBaseManagementOpen(false)}
+              selectedKnowledgeBaseId={selectedKnowledgeBaseIds[0]} // Pass first selected for editing
+              onKnowledgeBaseSelect={async () => {
+                // Refresh knowledge bases list after changes
+                try {
+                  const knowledgeBases = await knowledgeBaseRegistryAPI.listKnowledgeBases();
+                  setAvailableKnowledgeBases(knowledgeBases);
+                } catch (error) {
+                  console.warn('Failed to refresh knowledge bases:', error);
+                }
+              }}
             />
           </div>
         </div>
