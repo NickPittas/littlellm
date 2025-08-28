@@ -15,11 +15,34 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { cn } from '@/lib/utils';
-import { AgentTemplate, AgentTool, CreateAgentRequest } from '../../types/agent';
-import { agentService } from '../../services/agentService';
+import { AgentTemplate, AgentTool, CreateAgentRequest, PromptGenerationResponse } from '../../types/agent';
+import { KnowledgeBase } from '../../types/knowledgeBase';
 import { llmService } from '../../services/llmService';
 import { chatService } from '../../services/chatService';
 import { secureApiKeyService } from '../../services/secureApiKeyService';
+import { KnowledgeBaseSelector } from './KnowledgeBaseSelector';
+
+// Constants for frequently used strings
+const AGENT_SERVICE_NOT_AVAILABLE_MESSAGE = 'Agent service not available';
+const BORDER_INACTIVE_CLASSES = 'border-gray-700 hover:border-gray-600';
+const DEFAULT_CLAUDE_MODEL = 'claude-3-sonnet-20240229';
+
+// Conditionally import agentService only in browser environment
+let agentService: {
+  getAvailableTools: () => Promise<AgentTool[]>;
+  createAgent: (request: CreateAgentRequest) => Promise<string>;
+  updateAgent: (request: { id: string; systemPrompt?: string }) => Promise<boolean>;
+  generatePrompt: (request: any) => Promise<PromptGenerationResponse>;
+  getAvailableKnowledgeBases: () => Promise<KnowledgeBase[]>;
+} | null = null;
+
+if (typeof window !== 'undefined') {
+  import('../../services/agentService').then(module => {
+    agentService = module.agentService;
+  }).catch(error => {
+    console.warn('AgentService not available in browser environment:', error);
+  });
+}
 
 interface CreateAgentDialogProps {
   open: boolean;
@@ -34,21 +57,49 @@ export function CreateAgentDialog({
   onSuccess,
   templates
 }: CreateAgentDialogProps) {
-  const [step, setStep] = useState<'template' | 'configure' | 'tools' | 'prompt' | 'review'>('template');
+  const [step, setStep] = useState<'template' | 'configure' | 'tools' | 'knowledge' | 'prompt' | 'review'>('template');
   const [selectedTemplate, setSelectedTemplate] = useState<AgentTemplate | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    description: string;
+    icon: string;
+    userDescription: string;
+    defaultProvider: string;
+    defaultModel: string;
+    temperature: number;
+    maxTokens: number;
+    tags: string[];
+    selectedKnowledgeBaseIds: string[];
+    ragEnabled: boolean;
+    ragSettings: {
+      maxResultsPerKB: number;
+      relevanceThreshold: number;
+      contextWindowTokens: number;
+      aggregationStrategy: 'relevance' | 'balanced' | 'comprehensive';
+    };
+  }>({
     name: '',
     description: '',
     icon: '🤖',
     userDescription: '',
     defaultProvider: 'anthropic',
-    defaultModel: 'claude-3-sonnet-20240229',
+    defaultModel: DEFAULT_CLAUDE_MODEL,
     temperature: 0.7,
     maxTokens: 4000,
-    tags: [] as string[]
+    tags: [] as string[],
+    // Knowledge base settings
+    selectedKnowledgeBaseIds: [] as string[],
+    ragEnabled: true,
+    ragSettings: {
+      maxResultsPerKB: 3,
+      relevanceThreshold: 0.5,
+      contextWindowTokens: 2000,
+      aggregationStrategy: 'relevance'
+    }
   });
   const [availableTools, setAvailableTools] = useState<AgentTool[]>([]);
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
+  const [availableKnowledgeBases, setAvailableKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [generatedPrompt, setGeneratedPrompt] = useState('');
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -67,12 +118,19 @@ export function CreateAgentDialog({
 
   const loadData = async () => {
     try {
-      const [tools, providersData] = await Promise.all([
+      if (!agentService) {
+        console.warn(AGENT_SERVICE_NOT_AVAILABLE_MESSAGE);
+        return;
+      }
+      
+      const [tools, providersData, knowledgeBases] = await Promise.all([
         agentService.getAvailableTools(),
-        llmService.getProviders()
+        llmService.getProviders(),
+        agentService.getAvailableKnowledgeBases()
       ]);
       setAvailableTools(tools);
       setProviders(providersData);
+      setAvailableKnowledgeBases(knowledgeBases);
 
       // Load models for the default provider
       if (formData.defaultProvider) {
@@ -135,10 +193,18 @@ export function CreateAgentDialog({
       icon: '🤖',
       userDescription: '',
       defaultProvider: 'anthropic',
-      defaultModel: 'claude-3-sonnet-20240229',
+      defaultModel: DEFAULT_CLAUDE_MODEL,
       temperature: 0.7,
       maxTokens: 4000,
-      tags: []
+      tags: [],
+      selectedKnowledgeBaseIds: [],
+      ragEnabled: true,
+      ragSettings: {
+        maxResultsPerKB: 3,
+        relevanceThreshold: 0.5,
+        contextWindowTokens: 2000,
+        aggregationStrategy: 'relevance'
+      }
     });
     setSelectedTools([]);
     setGeneratedPrompt('');
@@ -153,10 +219,19 @@ export function CreateAgentDialog({
         description: template.description,
         icon: template.icon,
         defaultProvider: template.defaultProvider || 'anthropic',
-        defaultModel: template.defaultModel || 'claude-3-sonnet-20240229',
+        defaultModel: template.defaultModel || DEFAULT_CLAUDE_MODEL,
         temperature: template.temperature || 0.7,
         maxTokens: template.maxTokens || 4000,
-        tags: [template.category]
+        tags: [template.category],
+        // Apply template knowledge base settings
+        selectedKnowledgeBaseIds: template.suggestedKnowledgeBases || [],
+        ragEnabled: template.ragEnabled ?? true,
+        ragSettings: template.ragSettings || {
+          maxResultsPerKB: 3,
+          relevanceThreshold: 0.5,
+          contextWindowTokens: 2000,
+          aggregationStrategy: 'relevance' as const
+        }
       }));
       setSelectedTools(template.suggestedTools);
     }
@@ -164,6 +239,11 @@ export function CreateAgentDialog({
   };
 
   const handleGeneratePrompt = async () => {
+    if (!agentService) {
+      console.warn(AGENT_SERVICE_NOT_AVAILABLE_MESSAGE);
+      return;
+    }
+    
     if (!formData.userDescription.trim()) {
       alert('Please provide a description of what you want the agent to do.');
       return;
@@ -227,6 +307,11 @@ export function CreateAgentDialog({
 
 
   const handleCreateAgent = async () => {
+    if (!agentService) {
+      console.warn(AGENT_SERVICE_NOT_AVAILABLE_MESSAGE);
+      return;
+    }
+    
     setIsCreating(true);
     try {
       const request: CreateAgentRequest = {
@@ -236,6 +321,9 @@ export function CreateAgentDialog({
         userDescription: formData.userDescription,
         selectedTools,
         enabledMCPServers: [], // Empty for now - tools are unified
+        selectedKnowledgeBases: formData.selectedKnowledgeBaseIds,
+        ragEnabled: formData.ragEnabled,
+        ragSettings: formData.ragSettings,
         defaultProvider: formData.defaultProvider,
         defaultModel: formData.defaultModel,
         temperature: formData.temperature,
@@ -275,7 +363,7 @@ export function CreateAgentDialog({
         <Card
           className={cn(
             "cursor-pointer border-2 transition-colors bg-gray-900",
-            !selectedTemplate ? "border-blue-500" : "border-gray-700 hover:border-gray-600"
+            !selectedTemplate ? "border-blue-500" : BORDER_INACTIVE_CLASSES
           )}
           onClick={() => handleTemplateSelect(null)}
         >
@@ -292,7 +380,7 @@ export function CreateAgentDialog({
             key={template.id}
             className={cn(
               "cursor-pointer border-2 transition-colors bg-gray-900",
-              selectedTemplate?.id === template.id ? "border-blue-500" : "border-gray-700 hover:border-gray-600"
+              selectedTemplate?.id === template.id ? "border-blue-500" : BORDER_INACTIVE_CLASSES
             )}
             onClick={() => handleTemplateSelect(template)}
           >
@@ -421,7 +509,7 @@ export function CreateAgentDialog({
               key={tool.name}
               className={cn(
                 "border transition-colors bg-gray-900",
-                selectedTools.includes(tool.name) ? "border-blue-500 bg-blue-950/20" : "border-gray-700 hover:border-gray-600"
+                selectedTools.includes(tool.name) ? "border-blue-500 bg-blue-950/20" : BORDER_INACTIVE_CLASSES
               )}
             >
               <CardContent className="p-3">
@@ -477,8 +565,122 @@ export function CreateAgentDialog({
           ))}
         </div>
       </div>
+    </div>
+  );
 
+  const renderKnowledgeStep = () => (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold mb-2">Knowledge Base Configuration</h3>
+        <p className="text-gray-400 text-sm mb-6">
+          Select knowledge bases for your agent to use and configure RAG settings.
+        </p>
+      </div>
 
+      {/* RAG Enable/Disable */}
+      <div className="flex items-center gap-3 p-4 bg-gray-900 rounded-lg">
+        <input
+          type="checkbox"
+          id="ragEnabled"
+          checked={formData.ragEnabled}
+          onChange={(e) => setFormData(prev => ({ ...prev, ragEnabled: e.target.checked }))}
+          className="rounded"
+        />
+        <div>
+          <label htmlFor="ragEnabled" className="font-medium text-white cursor-pointer">
+            Enable Knowledge Base Integration (RAG)
+          </label>
+          <p className="text-xs text-gray-400">
+            Allow this agent to search and use content from selected knowledge bases
+          </p>
+        </div>
+      </div>
+
+      {formData.ragEnabled && (
+        <>
+          {/* Knowledge Base Selection */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Selected Knowledge Bases</Label>
+            <KnowledgeBaseSelector
+              selectedKnowledgeBaseIds={formData.selectedKnowledgeBaseIds}
+              onSelectionChange={(selectedIds) => 
+                setFormData(prev => ({ ...prev, selectedKnowledgeBaseIds: selectedIds }))
+              }
+              availableKnowledgeBases={availableKnowledgeBases}
+              maxSelections={5}
+              placeholder="Select knowledge bases for this agent..."
+              showCreateButton={false}
+              showManageButton={false}
+            />
+            <p className="text-xs text-gray-400">
+              Select up to 5 knowledge bases that this agent can search through
+            </p>
+          </div>
+
+          {/* RAG Settings */}
+          <div className="space-y-4 p-4 bg-gray-900 rounded-lg">
+            <h4 className="font-medium text-white">RAG Settings</h4>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm">Max Results per KB</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={formData.ragSettings.maxResultsPerKB}
+                  onChange={(e) => setFormData(prev => ({
+                    ...prev,
+                    ragSettings: {
+                      ...prev.ragSettings,
+                      maxResultsPerKB: parseInt(e.target.value) || 3
+                    }
+                  }))}
+                  className="bg-gray-800 border-gray-600"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label className="text-sm">Relevance Threshold</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={formData.ragSettings.relevanceThreshold}
+                  onChange={(e) => setFormData(prev => ({
+                    ...prev,
+                    ragSettings: {
+                      ...prev.ragSettings,
+                      relevanceThreshold: parseFloat(e.target.value) || 0.5
+                    }
+                  }))}
+                  className="bg-gray-800 border-gray-600"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm">Aggregation Strategy</Label>
+              <select
+                value={formData.ragSettings.aggregationStrategy}
+                onChange={(e) => setFormData(prev => ({
+                  ...prev,
+                  ragSettings: {
+                    ...prev.ragSettings,
+                    aggregationStrategy: e.target.value as 'relevance' | 'balanced' | 'comprehensive'
+                  }
+                }))}
+                className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-white"
+              >
+                <option value="relevance">Relevance - Most relevant results first</option>
+                <option value="balanced">Balanced - Mix of relevance and diversity</option>
+                <option value="comprehensive">Comprehensive - Broader context coverage</option>
+              </select>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 
@@ -495,7 +697,7 @@ export function CreateAgentDialog({
         <div className="space-y-6">
           {/* Progress Steps */}
           <div className="flex items-center justify-center space-x-4">
-            {['template', 'configure', 'tools', 'prompt', 'review'].map((stepName, index) => (
+            {['template', 'configure', 'tools', 'knowledge', 'prompt', 'review'].map((stepName, index) => (
               <div key={stepName} className="flex items-center">
                 <div className={cn(
                   "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium",
@@ -503,7 +705,7 @@ export function CreateAgentDialog({
                 )}>
                   {index + 1}
                 </div>
-                {index < 4 && <div className="w-8 h-px bg-gray-700 mx-2" />}
+                {index < 5 && <div className="w-8 h-px bg-gray-700 mx-2" />}
               </div>
             ))}
           </div>
@@ -512,6 +714,7 @@ export function CreateAgentDialog({
           {step === 'template' && renderTemplateStep()}
           {step === 'configure' && renderConfigureStep()}
           {step === 'tools' && renderToolsStep()}
+          {step === 'knowledge' && renderKnowledgeStep()}
           
           {step === 'prompt' && (
             <div className="space-y-4">
@@ -579,8 +782,10 @@ export function CreateAgentDialog({
                   setStep('template');
                 } else if (step === 'tools') {
                   setStep('configure');
-                } else if (step === 'prompt') {
+                } else if (step === 'knowledge') {
                   setStep('tools');
+                } else if (step === 'prompt') {
+                  setStep('knowledge');
                 } else if (step === 'review') {
                   setStep('prompt');
                 }
@@ -598,6 +803,8 @@ export function CreateAgentDialog({
                 } else if (step === 'configure') {
                   setStep('tools');
                 } else if (step === 'tools') {
+                  setStep('knowledge');
+                } else if (step === 'knowledge') {
                   setStep('prompt');
                 } else if (step === 'prompt') {
                   // Generate prompt step

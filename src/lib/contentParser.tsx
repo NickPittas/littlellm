@@ -409,6 +409,98 @@ export function parseMarkdownContent(text: string): React.ReactNode {
   );
 }
 
+/**
+ * Component that renders text with only URLs parsed (no code parsing)
+ * @param children - The text content to parse and render
+ * @param className - CSS classes to apply to the container
+ * @param style - Inline styles to apply to the container
+ */
+export function ParsedContentURLsOnly({ children, className, style }: ParsedContentProps) {
+  const segments = parseContentSegmentsURLsOnly(children);
+  const elements = renderContentSegments(children, segments);
+
+  return (
+    <div className={className} style={style}>
+      {elements.length > 0 ? elements : children}
+    </div>
+  );
+}
+
+/**
+ * Parses text and identifies only URL segments (no code parsing)
+ * @param text - The input text to parse
+ * @returns Array of content segments
+ */
+function parseContentSegmentsURLsOnly(text: string): ContentSegment[] {
+  const segments: ContentSegment[] = [];
+
+  // Find all image URLs first (higher priority than regular links)
+  IMAGE_URL_REGEX.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = IMAGE_URL_REGEX.exec(text)) !== null) {
+    segments.push({
+      type: 'image',
+      content: match[0],
+      url: match[0],
+      index: match.index,
+      length: match[0].length
+    });
+  }
+
+  // Find all HTTP/HTTPS URLs (excluding images already found)
+  URL_REGEX.lastIndex = 0;
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    // Skip if this URL is already covered by an image
+    const isInsideImage = segments.some(segment =>
+      segment.type === 'image' &&
+      match!.index >= segment.index &&
+      match!.index < segment.index + segment.length
+    );
+
+    if (!isInsideImage) {
+      segments.push({
+        type: 'link',
+        content: match[0],
+        url: match[0],
+        index: match.index,
+        length: match[0].length
+      });
+    }
+  }
+
+  // Find all domain-only URLs
+  DOMAIN_REGEX.lastIndex = 0;
+  while ((match = DOMAIN_REGEX.exec(text)) !== null) {
+    const domainMatch = match[2];
+    const domainIndex = match.index + match[1].length;
+    
+    // Remove trailing punctuation
+    const cleanDomain = domainMatch.replace(/[)\]}.,:;!?]*$/, '');
+    
+    // Skip if this domain is already covered by a full URL
+    const isInsideCovered = segments.some(segment => 
+      segment.type === 'link' &&
+      domainIndex >= segment.index && domainIndex < segment.index + segment.length
+    );
+    
+    if (!isInsideCovered && cleanDomain) {
+      const fullUrl = cleanDomain.startsWith('http') ? cleanDomain : `https://${cleanDomain}`;
+      segments.push({
+        type: 'link',
+        content: cleanDomain,
+        url: fullUrl,
+        index: domainIndex,
+        length: cleanDomain.length
+      });
+    }
+  }
+
+  // Sort segments by index to process them in order
+  segments.sort((a, b) => a.index - b.index);
+
+  return segments;
+}
+
 export function parseTextWithContent(
   text: string,
   className?: string,
@@ -419,8 +511,8 @@ export function parseTextWithContent(
     .replace(/\n{3,}/g, '\n\n') // Replace 3+ consecutive newlines with 2
     .replace(/[ \t]+/g, ' '); // Replace multiple spaces/tabs with single space
 
-  // Check if the text contains markdown elements
-  const hasMarkdown = /^#{1,6}\s|^\*\s|^\d+\.\s|^>\s|^\|.*\||```|`[^`]+`|\*\*.*\*\*|\*.*\*|_.*_|\[.*\]\(.*\)/m.test(cleanText);
+  // Check if the text contains markdown elements with more precise patterns
+  const hasMarkdown = /^#{1,6}\s|^\*\s|^\d+\.\s|^>\s|^\|.*\||```[\s\S]*?```|\*\*[^*\n]+\*\*|\*[^*\s][^*\n]*[^*\s]\*|_[^_\s][^_\n]*[^_\s]_|\[.*?\]\(.*?\)/m.test(cleanText);
 
   if (hasMarkdown) {
     return (
@@ -430,10 +522,23 @@ export function parseTextWithContent(
     );
   }
 
-  // Fallback to the original parser for simple text
+  // For simple text without markdown, check if it has URLs and parse only those
+  URL_REGEX.lastIndex = 0;
+  DOMAIN_REGEX.lastIndex = 0;
+  const hasUrls = URL_REGEX.test(cleanText) || DOMAIN_REGEX.test(cleanText);
+  
+  if (hasUrls) {
+    return (
+      <ParsedContentURLsOnly className={className} style={style}>
+        {cleanText}
+      </ParsedContentURLsOnly>
+    );
+  }
+
+  // For plain text without markdown or URLs, render as plain text
   return (
-    <ParsedContent className={className} style={style}>
+    <div className={className} style={style}>
       {cleanText}
-    </ParsedContent>
+    </div>
   );
 }

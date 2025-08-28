@@ -11,12 +11,37 @@ import {
   AgentTool,
   PromptGenerationRequest,
   PromptGenerationResponse,
-  DEFAULT_AGENT_TEMPLATES
+  DEFAULT_AGENT_TEMPLATES,
+  AgentChatContext
 } from '../types/agent';
+import { KnowledgeBase, ContextResult, RAGOptions } from '../types/knowledgeBase';
 import { mcpService } from './mcpService';
 import { llmService } from './llmService';
 import { secureApiKeyService } from './secureApiKeyService';
 import { v4 as uuidv4 } from 'uuid';
+
+// Conditionally import services only in Electron environment
+let knowledgeBaseRegistry: {
+  listKnowledgeBases: () => Promise<KnowledgeBase[]>;
+} | null = null;
+
+let ragService: {
+  getRelevantContext: (query: string, kbIds: string[], options: RAGOptions) => Promise<ContextResult[]>;
+} | null = null;
+
+if (typeof window !== 'undefined') {
+  import('./KnowledgeBaseRegistry').then(module => {
+    knowledgeBaseRegistry = module.knowledgeBaseRegistry;
+  }).catch(error => {
+    console.warn('KnowledgeBaseRegistry not available in browser environment:', error);
+  });
+
+  import('./RAGService').then(module => {
+    ragService = module.RAGService.getInstance();
+  }).catch(error => {
+    console.warn('RAGService not available in browser environment:', error);
+  });
+}
 
 class AgentService {
   private agents: AgentConfiguration[] = [];
@@ -266,7 +291,7 @@ ${toolDescriptions}
 Provide only the system prompt text, without any additional commentary or formatting.`;
   }
 
-  // Create new agent
+  // Create new agent with knowledge base support
   async createAgent(request: CreateAgentRequest): Promise<string> {
     await this.initialize();
 
@@ -278,6 +303,17 @@ Provide only the system prompt text, without any additional commentary or format
     const selectedTools = availableTools.filter(tool => 
       request.selectedTools.includes(tool.name)
     );
+
+    // Validate knowledge base IDs if provided
+    const validKBIds = await this.validateKnowledgeBaseIds(request.selectedKnowledgeBases || []);
+
+    // Set default RAG settings if not provided
+    const defaultRAGSettings = {
+      maxResultsPerKB: 3,
+      relevanceThreshold: 0.1,
+      contextWindowTokens: 2000,
+      aggregationStrategy: 'relevance' as const
+    };
 
     const agent: AgentConfiguration = {
       id: agentId,
@@ -291,6 +327,11 @@ Provide only the system prompt text, without any additional commentary or format
       selectedTools,
       toolCallingEnabled: selectedTools.length > 0,
       enabledMCPServers: request.enabledMCPServers,
+      // Knowledge Base Configuration
+      selectedKnowledgeBases: validKBIds,
+      ragEnabled: request.ragEnabled || false,
+      ragSettings: request.ragSettings || defaultRAGSettings,
+      // Runtime Settings
       temperature: request.temperature || 0.7,
       maxTokens: request.maxTokens || 4000,
       createdAt: now,
@@ -302,7 +343,7 @@ Provide only the system prompt text, without any additional commentary or format
     this.agents.push(agent);
     await this.saveAgents();
 
-    console.log(`✅ Created agent: ${agent.name} (${agentId})`);
+    console.log(`✅ Created agent with KB support: ${agent.name} (${agentId})`);
     return agentId;
   }
 
@@ -343,11 +384,168 @@ Provide only the system prompt text, without any additional commentary or format
       updates.toolCallingEnabled = updates.selectedTools.length > 0;
     }
 
+    // Update knowledge base configuration if provided
+    if (request.selectedKnowledgeBases !== undefined) {
+      const validKBIds = await this.validateKnowledgeBaseIds(request.selectedKnowledgeBases);
+      updates.selectedKnowledgeBases = validKBIds;
+    }
+    if (request.ragEnabled !== undefined) updates.ragEnabled = request.ragEnabled;
+    if (request.ragSettings !== undefined) updates.ragSettings = request.ragSettings;
+
     this.agents[agentIndex] = { ...agent, ...updates };
     await this.saveAgents();
 
     console.log(`✅ Updated agent: ${agent.name} (${request.id})`);
     return true;
+  }
+
+  // ========================================
+  // KNOWLEDGE BASE INTEGRATION METHODS
+  // ========================================
+
+  /**
+   * Gets all available knowledge bases for agent selection
+   */
+  async getAvailableKnowledgeBases(): Promise<KnowledgeBase[]> {
+    try {
+      if (!knowledgeBaseRegistry) {
+        console.warn('Knowledge base registry not available');
+        return [];
+      }
+      
+      return await knowledgeBaseRegistry.listKnowledgeBases();
+    } catch (error) {
+      console.error('❌ Failed to get available knowledge bases:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Updates an agent's knowledge base selection
+   */
+  async updateAgentKnowledgeBases(
+    agentId: string,
+    selectedKBIds: string[],
+    ragEnabled?: boolean,
+    ragSettings?: AgentConfiguration['ragSettings']
+  ): Promise<boolean> {
+    await this.initialize();
+
+    const agentIndex = this.agents.findIndex(agent => agent.id === agentId);
+    if (agentIndex === -1) {
+      console.error(`❌ Agent not found: ${agentId}`);
+      return false;
+    }
+
+    const agent = this.agents[agentIndex];
+    
+    // Validate knowledge base IDs
+    const validKBIds = await this.validateKnowledgeBaseIds(selectedKBIds);
+
+    // Update agent configuration
+    this.agents[agentIndex] = {
+      ...agent,
+      selectedKnowledgeBases: validKBIds,
+      ragEnabled: ragEnabled !== undefined ? ragEnabled : agent.ragEnabled,
+      ragSettings: ragSettings || agent.ragSettings,
+      updatedAt: new Date()
+    };
+
+    await this.saveAgents();
+    
+    console.log(`✅ Updated KB selection for agent: ${agent.name} (${agentId})`);
+    return true;
+  }
+
+  /**
+   * Gets RAG context for an agent based on its knowledge base selection
+   */
+  async getAgentRAGContext(
+    agentId: string,
+    query: string
+  ): Promise<ContextResult[]> {
+    const agent = await this.getAgent(agentId);
+    if (!agent || !agent.ragEnabled || agent.selectedKnowledgeBases.length === 0) {
+      return [];
+    }
+
+    try {
+      if (!ragService) {
+        console.warn('RAG service not available');
+        return [];
+      }
+      
+      // Use agent's RAG settings for search
+      const ragOptions: RAGOptions = {
+        maxResultsPerKB: agent.ragSettings.maxResultsPerKB,
+        relevanceThreshold: agent.ragSettings.relevanceThreshold,
+        contextWindowTokens: agent.ragSettings.contextWindowTokens,
+        aggregationStrategy: agent.ragSettings.aggregationStrategy,
+        includeSourceAttribution: true
+      };
+
+      return await ragService.getRelevantContext(query, agent.selectedKnowledgeBases, ragOptions);
+    } catch (error) {
+      console.error(`❌ Failed to get RAG context for agent ${agentId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Gets an agent's chat context including knowledge base configuration
+   */
+  async getAgentChatContext(agentId: string): Promise<AgentChatContext | null> {
+    const agent = await this.getAgent(agentId);
+    if (!agent) {
+      return null;
+    }
+
+    return {
+      agentId: agent.id,
+      agentName: agent.name,
+      systemPrompt: agent.systemPrompt,
+      enabledTools: agent.selectedTools.map(t => t.name),
+      enabledMCPServers: agent.enabledMCPServers,
+      selectedKnowledgeBases: agent.selectedKnowledgeBases,
+      ragEnabled: agent.ragEnabled,
+      ragSettings: agent.ragSettings,
+      provider: agent.defaultProvider,
+      model: agent.defaultModel,
+      temperature: agent.temperature || 0.7,
+      maxTokens: agent.maxTokens || 4000,
+      toolCallingEnabled: agent.toolCallingEnabled
+    };
+  }
+
+  /**
+   * Validates that knowledge base IDs exist and are accessible
+   */
+  private async validateKnowledgeBaseIds(kbIds: string[]): Promise<string[]> {
+    if (!kbIds || kbIds.length === 0) {
+      return [];
+    }
+
+    try {
+      if (!knowledgeBaseRegistry) {
+        console.warn('Knowledge base registry not available');
+        return [];
+      }
+      
+      const availableKBs = await knowledgeBaseRegistry.listKnowledgeBases();
+      const availableIds = new Set(availableKBs.map((kb: KnowledgeBase) => kb.id));
+      
+      return kbIds.filter(id => {
+        if (availableIds.has(id)) {
+          return true;
+        } else {
+          console.warn(`❌ Knowledge base with ID "${id}" not found or not accessible`);
+          return false;
+        }
+      });
+    } catch (error) {
+      console.error('❌ Failed to validate knowledge base IDs:', error);
+      return [];
+    }
   }
 
   // Delete agent
@@ -369,13 +567,14 @@ Provide only the system prompt text, without any additional commentary or format
   }
 
   // Duplicate agent
-  async duplicateAgent(id: string, newName?: string): Promise<string | null> {
+  async duplicateAgent(id: string, newName?: string): Promise<string> {
     await this.initialize();
 
     const originalAgent = this.agents.find(agent => agent.id === id);
     if (!originalAgent) {
-      console.error(`❌ Agent not found: ${id}`);
-      return null;
+      const error = `Agent not found: ${id}`;
+      console.error(`❌ ${error}`);
+      throw new Error(error);
     }
 
     const duplicateRequest: CreateAgentRequest = {
@@ -385,6 +584,9 @@ Provide only the system prompt text, without any additional commentary or format
       userDescription: originalAgent.userDescription || '',
       selectedTools: originalAgent.selectedTools.map(tool => tool.name),
       enabledMCPServers: [...originalAgent.enabledMCPServers],
+      selectedKnowledgeBases: [...originalAgent.selectedKnowledgeBases],
+      ragEnabled: originalAgent.ragEnabled,
+      ragSettings: originalAgent.ragSettings,
       defaultProvider: originalAgent.defaultProvider,
       defaultModel: originalAgent.defaultModel,
       temperature: originalAgent.temperature,
@@ -429,6 +631,9 @@ Provide only the system prompt text, without any additional commentary or format
         selectedTools: agent.selectedTools,
         toolCallingEnabled: agent.toolCallingEnabled,
         enabledMCPServers: agent.enabledMCPServers,
+        selectedKnowledgeBases: agent.selectedKnowledgeBases,
+        ragEnabled: agent.ragEnabled,
+        ragSettings: agent.ragSettings,
         temperature: agent.temperature,
         maxTokens: agent.maxTokens,
         version: agent.version,
@@ -477,6 +682,9 @@ Provide only the system prompt text, without any additional commentary or format
           .filter(tool => availableToolNames.includes(tool.name))
           .map(tool => tool.name),
         enabledMCPServers: exportData.agent.enabledMCPServers.filter(server => availableMCPServers.includes(server)),
+        selectedKnowledgeBases: exportData.agent.selectedKnowledgeBases || [],
+        ragEnabled: exportData.agent.ragEnabled || false,
+        ragSettings: exportData.agent.ragSettings,
         defaultProvider: exportData.agent.defaultProvider,
         defaultModel: exportData.agent.defaultModel,
         temperature: exportData.agent.temperature,

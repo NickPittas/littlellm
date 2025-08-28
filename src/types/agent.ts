@@ -31,6 +31,16 @@ export interface AgentConfiguration {
   // MCP Configuration
   enabledMCPServers: string[]; // Server IDs to enable for this agent
   
+  // Knowledge Base Configuration
+  selectedKnowledgeBases: string[]; // Knowledge base IDs to use with this agent
+  ragEnabled: boolean; // Whether RAG is enabled for this agent
+  ragSettings: {
+    maxResultsPerKB: number; // Max results per knowledge base
+    relevanceThreshold: number; // Minimum relevance score
+    contextWindowTokens: number; // Max context tokens
+    aggregationStrategy: 'relevance' | 'balanced' | 'comprehensive';
+  };
+  
   // Runtime Settings
   temperature?: number;
   maxTokens?: number;
@@ -53,6 +63,7 @@ export interface AgentTemplate {
   // Template configuration
   suggestedTools: string[]; // Tool names to pre-select
   suggestedMCPServers: string[]; // MCP server IDs to pre-enable
+  suggestedKnowledgeBases: string[]; // Knowledge base IDs to pre-select
   promptTemplate: string; // Template for generating the system prompt
   
   // Default settings
@@ -60,6 +71,13 @@ export interface AgentTemplate {
   defaultModel?: string;
   temperature?: number;
   maxTokens?: number;
+  ragEnabled?: boolean;
+  ragSettings?: {
+    maxResultsPerKB: number;
+    relevanceThreshold: number;
+    contextWindowTokens: number;
+    aggregationStrategy: 'relevance' | 'balanced' | 'comprehensive';
+  };
 }
 
 export interface AgentData {
@@ -76,6 +94,14 @@ export interface CreateAgentRequest {
   userDescription: string; // Natural language description for prompt generation
   selectedTools: string[]; // Tool names
   enabledMCPServers: string[]; // Server IDs
+  selectedKnowledgeBases: string[]; // Knowledge base IDs
+  ragEnabled: boolean;
+  ragSettings?: {
+    maxResultsPerKB: number;
+    relevanceThreshold: number;
+    contextWindowTokens: number;
+    aggregationStrategy: 'relevance' | 'balanced' | 'comprehensive';
+  };
   defaultProvider: string;
   defaultModel: string;
   temperature?: number;
@@ -91,6 +117,14 @@ export interface UpdateAgentRequest {
   userDescription?: string;
   selectedTools?: string[];
   enabledMCPServers?: string[];
+  selectedKnowledgeBases?: string[];
+  ragEnabled?: boolean;
+  ragSettings?: {
+    maxResultsPerKB: number;
+    relevanceThreshold: number;
+    contextWindowTokens: number;
+    aggregationStrategy: 'relevance' | 'balanced' | 'comprehensive';
+  };
   defaultProvider?: string;
   defaultModel?: string;
   systemPrompt?: string;
@@ -113,6 +147,14 @@ export interface AgentChatContext {
   systemPrompt: string;
   enabledTools: string[];
   enabledMCPServers: string[];
+  selectedKnowledgeBases: string[];
+  ragEnabled: boolean;
+  ragSettings: {
+    maxResultsPerKB: number;
+    relevanceThreshold: number;
+    contextWindowTokens: number;
+    aggregationStrategy: 'relevance' | 'balanced' | 'comprehensive';
+  };
   provider: string;
   model: string;
   temperature: number;

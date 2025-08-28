@@ -21,8 +21,10 @@
   "include": [
     "main.ts",
     "../src/services/KnowledgeBaseService.ts",
+    "../src/services/KnowledgeBaseRegistry.ts",
     "../src/services/RAGService.ts",
-    "../src/services/DocumentParserService.ts"
+    "../src/services/DocumentParserService.ts",
+    "../src/types/knowledgeBase.ts"
   ],
   "exclude": [
     "node_modules"

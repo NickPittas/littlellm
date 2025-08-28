@@ -73,15 +73,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
   addDocument: (filePath: string) => ipcRenderer.invoke('knowledge-base:add-document', filePath),
   addDocumentsBatch: (filePaths: string[]) => ipcRenderer.invoke('knowledge-base:add-documents-batch', filePaths),
   addDocumentFromUrl: (url: string) => ipcRenderer.invoke('knowledge-base:add-document-from-url', url),
+  addDocumentToKB: (knowledgeBaseId: string, fileBuffer: ArrayBuffer, fileName: string, metadata?: Record<string, unknown>) => 
+    ipcRenderer.invoke('knowledge-base:add-document-to-kb', knowledgeBaseId, fileBuffer, fileName, metadata),
   removeDocument: (documentId: string) => ipcRenderer.invoke('knowledge-base:remove-document', documentId),
   getDocuments: () => ipcRenderer.invoke('knowledge-base:get-documents'),
   getDocumentsWithMetadata: () => ipcRenderer.invoke('knowledge-base:get-documents-with-metadata'),
   searchKnowledgeBase: (query: string, limit?: number) => ipcRenderer.invoke('knowledge-base:search', query, limit),
+  
+  // RAG operations
+  augmentPromptWithRAG: (prompt: string, knowledgeBaseIds: string[], options?: any) => 
+    ipcRenderer.invoke('rag:augment-prompt', prompt, knowledgeBaseIds, options),
+  validateKnowledgeBaseIds: (knowledgeBaseIds: string[]) => 
+    ipcRenderer.invoke('rag:validate-knowledge-base-ids', knowledgeBaseIds),
+  
   exportKnowledgeBase: () => ipcRenderer.invoke('knowledge-base:export'),
   importKnowledgeBase: (options?: {mode: 'replace' | 'merge'}) => ipcRenderer.invoke('knowledge-base:import', options),
   getKnowledgeBaseStats: () => ipcRenderer.invoke('knowledge-base:get-stats'),
   openFileDialog: () => ipcRenderer.invoke('dialog:open-file'),
   openKnowledgebaseFileDialog: () => ipcRenderer.invoke('dialog:open-knowledgebase-files'),
+
+  // Knowledge Base Registry operations
+  listKnowledgeBases: () => ipcRenderer.invoke('knowledge-base-registry:list'),
+  createKnowledgeBase: (request: any) => ipcRenderer.invoke('knowledge-base-registry:create', request),
+  getKnowledgeBase: (id: string) => ipcRenderer.invoke('knowledge-base-registry:get', id),
+  updateKnowledgeBase: (id: string, updates: any) => ipcRenderer.invoke('knowledge-base-registry:update', id, updates),
+  deleteKnowledgeBase: (id: string) => ipcRenderer.invoke('knowledge-base-registry:delete', id),
 
   // Progress monitoring
   onExportProgress: (callback: (progress: any) => void) => {

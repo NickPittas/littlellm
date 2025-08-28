@@ -2,6 +2,17 @@
 import React, { useState, useEffect } from 'react';
 import { ProgressLogPanel } from './ProgressLogPanel';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
+
+// Constants for duplicate strings
+const UNKNOWN_ERROR_MESSAGE = 'Unknown error';
+const IMPORTING_TEXT = 'Importing...';
+const IMPORT_TEXT = 'Import';
+const PROCESSING_TEXT = 'Processing...';
+const EXPORT_FAILED_MESSAGE = 'Export failed';
+const IMPORT_FAILED_MESSAGE = 'Import failed';
+const RECORDS_SKIPPED_MESSAGE = 'records skipped';
+const TIME_UNIT = 's';
 
 interface UploadProgress {
   fileName: string;
@@ -212,7 +223,7 @@ const KnowledgeBaseSettings = () => {
       }
     } catch (error) {
       console.error('Error adding document:', error);
-      const errorMessage = `Error adding document: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      const errorMessage = `Error adding document: ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}`;
       setMessage(errorMessage);
       addProgressEntry('error', 'single-upload', errorMessage);
     } finally {
@@ -285,13 +296,13 @@ const KnowledgeBaseSettings = () => {
       }
     } catch (error) {
       console.error('Error adding documents:', error);
-      setMessage(`Error adding documents: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setMessage(`Error adding documents: ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}`);
 
       // Update progress to show error
       const errorProgress = uploadProgress.map(p => ({
         ...p,
         status: 'error' as const,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE
       }));
       setUploadProgress(errorProgress);
     } finally {
@@ -327,7 +338,7 @@ const KnowledgeBaseSettings = () => {
       }
     } catch (error) {
       console.error('Error importing from Google Docs:', error);
-      const errorMessage = `Error importing from Google Docs: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      const errorMessage = `Error importing from Google Docs: ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}`;
       setMessage(errorMessage);
       addProgressEntry('error', 'google-docs-import', errorMessage);
     } finally {
@@ -362,13 +373,13 @@ const KnowledgeBaseSettings = () => {
 
         await loadKnowledgeBaseStats(); // Refresh stats
       } else {
-        const errorMessage = `Export failed: ${result.error}`;
+        const errorMessage = `${EXPORT_FAILED_MESSAGE}: ${result.error}`;
         setMessage(`❌ ${errorMessage}`);
         addProgressEntry('error', operationId, errorMessage);
       }
     } catch (error) {
       console.error('Error exporting knowledge base:', error);
-      const errorMessage = `Export error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      const errorMessage = `Export error: ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}`;
       setMessage(`❌ ${errorMessage}`);
       addProgressEntry('error', 'export', errorMessage);
     } finally {
@@ -390,7 +401,10 @@ const KnowledgeBaseSettings = () => {
 
       if (result.success && result.stats) {
         const timeInSeconds = (result.stats.importTime / 1000).toFixed(1);
-        const successMessage = `Import completed: ${result.stats.importedDocuments} documents, ${result.stats.importedRecords} chunks imported. ${result.stats.skippedRecords > 0 ? `${result.stats.skippedRecords} records skipped. ` : ''}Time: ${timeInSeconds}s`;
+        const skippedMessage = result.stats.skippedRecords > 0 
+          ? `${result.stats.skippedRecords} ${RECORDS_SKIPPED_MESSAGE}. `
+          : '';
+        const successMessage = `Import completed: ${result.stats.importedDocuments} documents, ${result.stats.importedRecords} chunks imported. ${skippedMessage}Time: ${timeInSeconds}${TIME_UNIT}`;
 
         setMessage(`✅ ${successMessage}`);
         addProgressEntry('success', operationId, successMessage, undefined, {
@@ -409,13 +423,13 @@ const KnowledgeBaseSettings = () => {
         await loadDocuments(); // Refresh document list
         await loadKnowledgeBaseStats(); // Refresh stats
       } else {
-        const errorMessage = `Import failed: ${result.error}`;
+        const errorMessage = `${IMPORT_FAILED_MESSAGE}: ${result.error}`;
         setMessage(`❌ ${errorMessage}`);
         addProgressEntry('error', operationId, errorMessage);
       }
     } catch (error) {
       console.error('Error importing knowledge base:', error);
-      const errorMessage = `Import error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      const errorMessage = `Import error: ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}`;
       setMessage(`❌ ${errorMessage}`);
       addProgressEntry('error', 'import', errorMessage);
     } finally {
@@ -437,7 +451,7 @@ const KnowledgeBaseSettings = () => {
       }
     } catch (error) {
       console.error('Error removing document:', error);
-      setMessage(`Error removing document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setMessage(`Error removing document: ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}`);
     } finally {
       setIsLoading(false);
     }
@@ -459,7 +473,7 @@ const KnowledgeBaseSettings = () => {
             size="sm"
             className="h-7 text-xs"
           >
-            {isLoading ? 'Processing...' : 'Add Single PDF'}
+            {isLoading ? PROCESSING_TEXT : 'Add Single PDF'}
           </Button>
 
           <Button
@@ -469,14 +483,14 @@ const KnowledgeBaseSettings = () => {
             size="sm"
             className="h-7 text-xs"
           >
-            {isLoading ? 'Processing...' : 'Add Multiple Documents'}
+            {isLoading ? PROCESSING_TEXT : 'Add Multiple Documents'}
           </Button>
         </div>
 
         {/* Supported file types info */}
-        <div className="mb-2 p-2 bg-muted rounded text-xs">
-          <p className="font-medium mb-1 text-foreground">Supported file types:</p>
-          <p className="text-muted-foreground">
+        <div className="mb-2 p-3 bg-muted/50 border border-border rounded-md text-xs">
+          <p className="font-medium mb-2 text-foreground">Supported file types:</p>
+          <p className="text-muted-foreground leading-relaxed">
             • PDF documents (.pdf)<br/>
             • Text files (.txt)<br/>
             • Markdown files (.md)<br/>
@@ -485,43 +499,43 @@ const KnowledgeBaseSettings = () => {
         </div>
 
         {/* Google Docs Import Section */}
-        <div className="mb-4 p-4 border border-gray-300 rounded">
-          <h4 className="font-medium mb-2">Import from Google Docs</h4>
-          <div className="flex items-center space-x-2 mb-2">
-            <input
+        <div className="mb-4 p-4 border border-border rounded-lg bg-card">
+          <h4 className="font-medium mb-3 text-card-foreground">Import from Google Docs</h4>
+          <div className="flex items-center space-x-2 mb-3">
+            <Input
               type="text"
               value={googleDocsUrl}
               onChange={(e) => setGoogleDocsUrl(e.target.value)}
               placeholder="Paste Google Docs URL here..."
               disabled={isLoading || isUrlImporting}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded text-black"
+              className="flex-1"
             />
-            <button
+            <Button
               onClick={handleAddFromGoogleDocs}
               disabled={isLoading || isUrlImporting || !googleDocsUrl.trim()}
-              className="bg-purple-500 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded"
+              size="default"
             >
-              {isUrlImporting ? 'Importing...' : 'Import'}
-            </button>
+              {isUrlImporting ? IMPORTING_TEXT : IMPORT_TEXT}
+            </Button>
           </div>
-          <p className="text-xs text-gray-500">
-            Note: The Google Docs document must be publicly accessible (shared with "Anyone with the link can view")
+          <p className="text-xs text-muted-foreground">
+            Note: The Google Docs document must be publicly accessible (shared with &quot;Anyone with the link can view&quot;)
           </p>
         </div>
 
         {/* Upload Progress */}
         {uploadProgress.length > 0 && (
-          <div className="mb-4 p-3 border border-gray-300 rounded">
-            <h4 className="font-medium mb-2">Upload Progress</h4>
+          <div className="mb-4 p-3 border border-border rounded-lg bg-card">
+            <h4 className="font-medium mb-2 text-card-foreground">Upload Progress</h4>
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {uploadProgress.map((progress, index) => (
                 <div key={index} className="flex items-center justify-between text-sm">
-                  <span className="truncate flex-1">{progress.fileName}</span>
-                  <span className={`ml-2 px-2 py-1 rounded text-xs ${
-                    progress.status === 'success' ? 'bg-green-100 text-green-800' :
-                    progress.status === 'error' ? 'bg-red-100 text-red-800' :
-                    progress.status === 'processing' ? 'bg-blue-100 text-blue-800' :
-                    'bg-gray-100 text-gray-800'
+                  <span className="truncate flex-1 text-foreground">{progress.fileName}</span>
+                  <span className={`ml-2 px-2 py-1 rounded-md text-xs font-medium ${
+                    progress.status === 'success' ? 'bg-green-500/10 text-green-700 dark:text-green-400 border border-green-500/20' :
+                    progress.status === 'error' ? 'bg-destructive/10 text-destructive border border-destructive/20' :
+                    progress.status === 'processing' ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20' :
+                    'bg-muted text-muted-foreground border border-border'
                   }`}>
                     {progress.status === 'success' ? '✓ Success' :
                      progress.status === 'error' ? '✗ Error' :
@@ -534,7 +548,7 @@ const KnowledgeBaseSettings = () => {
           </div>
         )}
 
-        {message && <p className="text-sm text-gray-500">{message}</p>}
+        {message && <p className="text-sm text-muted-foreground">{message}</p>}
       </div>
 
       {/* Knowledge Base Management Section */}
@@ -543,73 +557,76 @@ const KnowledgeBaseSettings = () => {
 
         {/* Statistics Display */}
         {kbStats && (
-          <div className="mb-4 p-3 bg-muted rounded text-sm">
-            <p className="font-medium mb-1 text-foreground">Current Knowledge Base:</p>
-            <div className="text-muted-foreground space-y-1">
-              <div className="flex justify-between">
+          <div className="mb-4 p-4 bg-muted/50 border border-border rounded-lg text-sm">
+            <p className="font-medium mb-3 text-foreground">Current Knowledge Base:</p>
+            <div className="text-muted-foreground space-y-2">
+              <div className="flex justify-between items-center">
                 <span>Documents:</span>
-                <span className="font-medium">{kbStats.totalDocuments.toLocaleString()}</span>
+                <span className="font-semibold text-foreground">{kbStats.totalDocuments.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span>Chunks:</span>
-                <span className="font-medium">{kbStats.totalRecords.toLocaleString()}</span>
+                <span className="font-semibold text-foreground">{kbStats.totalRecords.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span>Estimated Size:</span>
-                <span className="font-medium">{(kbStats.databaseSize / (1024 * 1024)).toFixed(1)} MB</span>
+                <span className="font-semibold text-foreground">{(kbStats.databaseSize / (1024 * 1024)).toFixed(1)} MB</span>
               </div>
             </div>
           </div>
         )}
 
         {/* Export/Import Controls */}
-        <div className="flex items-center space-x-4 mb-4">
-          <button
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          <Button
             onClick={handleExportKnowledgeBase}
             disabled={isLoading || isExporting || isImporting || isUrlImporting}
-            className="bg-blue-500 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded"
+            size="sm"
+            variant="default"
           >
             {isExporting ? 'Exporting...' : 'Export Knowledge Base'}
-          </button>
+          </Button>
 
-          <button
+          <Button
             onClick={() => handleImportKnowledgeBase('replace')}
             disabled={isLoading || isExporting || isImporting || isUrlImporting}
-            className="bg-orange-500 hover:bg-orange-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded"
+            size="sm"
+            variant="destructive"
           >
-            {isImporting ? 'Importing...' : 'Import (Replace)'}
-          </button>
+            {isImporting ? IMPORTING_TEXT : 'Import (Replace)'}
+          </Button>
 
-          <button
+          <Button
             onClick={() => handleImportKnowledgeBase('merge')}
             disabled={isLoading || isExporting || isImporting || isUrlImporting}
-            className="bg-green-500 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded"
+            size="sm"
+            variant="secondary"
           >
-            {isImporting ? 'Importing...' : 'Import (Merge)'}
-          </button>
+            {isImporting ? IMPORTING_TEXT : 'Import (Merge)'}
+          </Button>
         </div>
 
         {/* Export/Import Progress */}
         {(exportProgress || importProgress) && (
-          <div className="mb-4 p-3 border border-gray-300 rounded">
-            <h4 className="font-medium mb-2">
+          <div className="mb-4 p-3 border border-border rounded-lg bg-card">
+            <h4 className="font-medium mb-2 text-card-foreground">
               {exportProgress ? 'Export Progress' : 'Import Progress'}
             </h4>
             {(exportProgress || importProgress) && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span>{(exportProgress || importProgress)?.message}</span>
-                  <span className="font-medium">
+                  <span className="text-foreground">{(exportProgress || importProgress)?.message}</span>
+                  <span className="font-medium text-foreground">
                     {(exportProgress || importProgress)?.current}% / {(exportProgress || importProgress)?.total}%
                   </span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-muted rounded-full h-2">
                   <div
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    className="bg-primary h-2 rounded-full transition-all duration-300"
                     style={{ width: `${(exportProgress || importProgress)?.current || 0}%` }}
                   ></div>
                 </div>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-muted-foreground">
                   Step: {(exportProgress || importProgress)?.step}
                 </p>
               </div>
@@ -618,11 +635,11 @@ const KnowledgeBaseSettings = () => {
         )}
 
         {/* Import Mode Information */}
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
-          <p className="font-medium mb-1 text-yellow-800">Import Modes:</p>
-          <div className="text-yellow-700 space-y-1">
-            <p><strong>Replace:</strong> Clears existing knowledge base and imports new data</p>
-            <p><strong>Merge:</strong> Adds imported data to existing knowledge base</p>
+        <div className="mb-4 p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-lg text-sm">
+          <p className="font-medium mb-2 text-yellow-800 dark:text-yellow-300">Import Modes:</p>
+          <div className="text-yellow-700 dark:text-yellow-400 space-y-1.5">
+            <p><strong className="text-foreground">Replace:</strong> Clears existing knowledge base and imports new data</p>
+            <p><strong className="text-foreground">Merge:</strong> Adds imported data to existing knowledge base</p>
           </div>
         </div>
       </div>
@@ -640,13 +657,13 @@ const KnowledgeBaseSettings = () => {
 
       {/* Documents List Section */}
       <div>
-        <h3 className="text-md font-semibold mb-2">Documents in Knowledge Base</h3>
+        <h3 className="text-md font-semibold mb-2 text-foreground">Documents in Knowledge Base</h3>
         {isLoading && uploadProgress.length === 0 ? (
-          <p className="text-sm text-gray-500">Loading documents...</p>
+          <p className="text-sm text-muted-foreground">Loading documents...</p>
         ) : documents.length === 0 ? (
-          <div className="p-4 bg-gray-50 rounded text-center">
-            <p className="text-sm text-gray-500 mb-2">No documents added yet.</p>
-            <p className="text-xs text-gray-400">
+          <div className="p-4 bg-muted rounded-lg text-center">
+            <p className="text-sm text-muted-foreground mb-2">No documents added yet.</p>
+            <p className="text-xs text-muted-foreground">
               Add documents using the buttons above to start building your knowledge base.
             </p>
           </div>
@@ -679,12 +696,12 @@ const KnowledgeBaseSettings = () => {
               };
 
               return (
-                <div key={index} className="flex items-center justify-between p-3 bg-muted border border-border rounded">
+                <div key={index} className="flex items-center justify-between p-3 bg-card border border-border rounded-lg">
                   <div className="flex items-center flex-1">
                     <span className="mr-3 text-lg">{getFileTypeIcon(fileExtension, format)}</span>
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-foreground block truncate">{doc.source}</span>
-                      <div className="text-xs text-gray-500 space-y-1">
+                      <span className="text-sm font-medium text-card-foreground block truncate">{doc.source}</span>
+                      <div className="text-xs text-muted-foreground space-y-1">
                         <div className="flex items-center space-x-4">
                           <span>{format}</span>
                           <span>•</span>
@@ -706,13 +723,15 @@ const KnowledgeBaseSettings = () => {
                       </div>
                     </div>
                   </div>
-                  <button
+                  <Button
                     onClick={() => handleRemoveDocument(doc.source)}
                     disabled={isLoading || isUrlImporting}
-                    className="bg-red-500 hover:bg-red-700 disabled:bg-gray-400 text-white text-xs py-1 px-3 rounded ml-2"
+                    variant="destructive"
+                    size="sm"
+                    className="ml-2"
                   >
                     Remove
-                  </button>
+                  </Button>
                 </div>
               );
             })}

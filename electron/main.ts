@@ -3293,6 +3293,83 @@ function setupIPC() {
     }
   });
 
+  // IPC handler for adding a document to a specific knowledge base (multi-KB system)
+  ipcMain.handle('knowledge-base:add-document-to-kb', async (event, knowledgeBaseId: string, fileBuffer: ArrayBuffer, fileName: string, metadata?: Record<string, unknown>) => {
+    try {
+      console.log(`📚 Starting to add document to knowledge base: ${knowledgeBaseId}, file: ${fileName}`);
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        console.log('📚 Knowledge base not initialized, initializing...');
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
+        await knowledgeBaseService.initialize(dbPath);
+        console.log('📚 Knowledge base initialized successfully');
+      }
+
+      // Create a temporary file from the buffer
+      const tempDir = path.join(app.getPath('temp'), 'littlellm-uploads');
+      await fsPromises.mkdir(tempDir, { recursive: true });
+      
+      const tempFilePath = path.join(tempDir, `${Date.now()}_${fileName}`);
+      await fsPromises.writeFile(tempFilePath, Buffer.from(fileBuffer));
+
+      try {
+        console.log('📚 Adding document to specific knowledge base...');
+        
+        // Use the new multi-KB method if available
+        if (typeof knowledgeBaseService.addDocumentToKnowledgeBase === 'function') {
+          let chunkCount = 0;
+          await knowledgeBaseService.addDocumentToKnowledgeBase(
+            knowledgeBaseId,
+            tempFilePath,
+            metadata,
+            (progress) => {
+              // Send progress updates to the renderer process
+              event.sender.send('knowledge-base:upload-progress', {
+                fileName,
+                knowledgeBaseId,
+                ...progress
+              });
+              if (progress.chunkCount) {
+                chunkCount = progress.chunkCount;
+              }
+            }
+          );
+          
+          console.log(`📚 Document added successfully with ${chunkCount} chunks`);
+          return { success: true, chunkCount };
+        } else {
+          // Fallback to legacy method
+          console.warn('Multi-KB method not available, using legacy method');
+          await knowledgeBaseService.addDocument(tempFilePath);
+          
+          // Estimate chunk count based on file size
+          const stats = await fsPromises.stat(tempFilePath);
+          const estimatedChunks = Math.max(1, Math.floor(stats.size / 2000));
+          
+          console.log(`📚 Document added successfully (legacy method, estimated ${estimatedChunks} chunks)`);
+          return { success: true, chunkCount: estimatedChunks };
+        }
+      } finally {
+        // Clean up temporary file
+        try {
+          await fsPromises.unlink(tempFilePath);
+        } catch (cleanupError) {
+          console.warn('Failed to clean up temporary file:', cleanupError);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to add document to knowledge base:', error);
+      console.error('❌ Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : undefined
+      });
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
   // IPC handler for adding multiple documents to the knowledge base
   ipcMain.handle('knowledge-base:add-documents-batch', async (event, filePaths: string[]) => {
     try {
@@ -3439,7 +3516,7 @@ function setupIPC() {
         await knowledgeBaseService.initialize(dbPath);
       }
 
-      const stats = await knowledgeBaseService.getKnowledgeBaseStats();
+      const stats = await knowledgeBaseService.getLegacyKnowledgeBaseStats();
       return { success: true, stats };
     } catch (error) {
       console.error('Failed to get knowledge base stats:', error);
@@ -3520,6 +3597,171 @@ function setupIPC() {
     } catch (error) {
       console.error('Failed to search knowledge base:', error);
       return { success: false, error: (error as Error).message, results: [] };
+    }
+  });
+
+  // IPC handler for multi-KB RAG augmentation
+  ipcMain.handle('rag:augment-prompt', async (_, prompt: string, knowledgeBaseIds: string[], options: any) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+      
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
+        await knowledgeBaseService.initialize(dbPath);
+      }
+      
+      // Import RAG service after initialization
+      const { RAGService } = await import('../src/services/RAGService.js');
+      const ragService = RAGService.getInstance();
+      
+      const augmentedPrompt = await ragService.augmentPromptWithMultipleKnowledgeBases(
+        prompt,
+        knowledgeBaseIds,
+        options
+      );
+      
+      return { success: true, augmentedPrompt };
+    } catch (error) {
+      console.error('Failed to augment prompt with RAG:', error);
+      return { success: false, error: (error as Error).message, augmentedPrompt: prompt };
+    }
+  });
+
+  // IPC handler for validating knowledge base IDs
+  ipcMain.handle('rag:validate-knowledge-base-ids', async (_, knowledgeBaseIds: string[]) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+      
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
+        await knowledgeBaseService.initialize(dbPath);
+      }
+      
+      // Import RAG service after initialization
+      const { RAGService } = await import('../src/services/RAGService.js');
+      const ragService = RAGService.getInstance();
+      
+      const validIds = await ragService.validateKnowledgeBaseIds(knowledgeBaseIds);
+      
+      return { success: true, validIds };
+    } catch (error) {
+      console.error('Failed to validate knowledge base IDs:', error);
+      return { success: false, error: (error as Error).message, validIds: [] };
+    }
+  });
+
+  // Knowledge Base Registry IPC handlers
+  // These handlers provide access to the multi-KB registry system
+  
+  // IPC handler for listing all knowledge bases
+  ipcMain.handle('knowledge-base-registry:list', async () => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+      
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
+        await knowledgeBaseService.initialize(dbPath);
+      }
+      
+      // Import the registry after initialization
+      const { knowledgeBaseRegistry } = await import('../src/services/KnowledgeBaseRegistry.js');
+      const knowledgeBases = await knowledgeBaseRegistry.listKnowledgeBases();
+      
+      return { success: true, knowledgeBases };
+    } catch (error) {
+      console.error('Failed to list knowledge bases:', error);
+      return { success: false, error: (error as Error).message, knowledgeBases: [] };
+    }
+  });
+  
+  // IPC handler for creating a new knowledge base
+  ipcMain.handle('knowledge-base-registry:create', async (_, request) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+      
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
+        await knowledgeBaseService.initialize(dbPath);
+      }
+      
+      // Import the registry after initialization
+      const { knowledgeBaseRegistry } = await import('../src/services/KnowledgeBaseRegistry.js');
+      const knowledgeBase = await knowledgeBaseRegistry.createKnowledgeBase(request);
+      
+      return { success: true, knowledgeBase };
+    } catch (error) {
+      console.error('Failed to create knowledge base:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+  
+  // IPC handler for getting a specific knowledge base
+  ipcMain.handle('knowledge-base-registry:get', async (_, id: string) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+      
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
+        await knowledgeBaseService.initialize(dbPath);
+      }
+      
+      // Import the registry after initialization
+      const { knowledgeBaseRegistry } = await import('../src/services/KnowledgeBaseRegistry.js');
+      const knowledgeBase = await knowledgeBaseRegistry.getKnowledgeBase(id);
+      
+      return { success: true, knowledgeBase };
+    } catch (error) {
+      console.error('Failed to get knowledge base:', error);
+      return { success: false, error: (error as Error).message, knowledgeBase: null };
+    }
+  });
+  
+  // IPC handler for deleting a knowledge base
+  ipcMain.handle('knowledge-base-registry:delete', async (_, id: string) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+      
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
+        await knowledgeBaseService.initialize(dbPath);
+      }
+      
+      // Import the registry after initialization
+      const { knowledgeBaseRegistry } = await import('../src/services/KnowledgeBaseRegistry.js');
+      await knowledgeBaseRegistry.deleteKnowledgeBase(id);
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to delete knowledge base:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+  
+  // IPC handler for updating a knowledge base
+  ipcMain.handle('knowledge-base-registry:update', async (_, id: string, updates: any) => {
+    try {
+      const knowledgeBaseService = KnowledgeBaseService.getInstance();
+      
+      // Ensure knowledge base is initialized
+      if (!knowledgeBaseService.isInitialized()) {
+        const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
+        await knowledgeBaseService.initialize(dbPath);
+      }
+      
+      // Import the registry after initialization
+      const { knowledgeBaseRegistry } = await import('../src/services/KnowledgeBaseRegistry.js');
+      const updatedKB = await knowledgeBaseRegistry.updateKnowledgeBase(id, updates);
+      
+      return { success: true, knowledgeBase: updatedKB };
+    } catch (error) {
+      console.error('Failed to update knowledge base:', error);
+      return { success: false, error: (error as Error).message };
     }
   });
 

@@ -11,7 +11,8 @@ import {
   Terminal,
   Bot,
   Volume2,
-  VolumeX
+  VolumeX,
+  Database
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { cn } from '@/lib/utils';
@@ -91,6 +92,12 @@ export function LeftSidebar({
       label: 'CUSTOM AGENTS',
       icon: Bot,
       onClick: () => handleItemClick('agents')
+    },
+    {
+      id: 'knowledge-bases',
+      label: 'KNOWLEDGE BASES',
+      icon: Database,
+      onClick: () => handleItemClick('knowledge-bases')
     },
     {
       id: 'mcp-servers',
