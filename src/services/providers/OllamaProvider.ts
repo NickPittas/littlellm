@@ -311,8 +311,8 @@ export class OllamaProvider extends BaseProvider {
             images.push(base64Data);
           }
         } else if (item.type === 'document') {
-          // Handle documents as text for Ollama
-          textContent += `\n\n[Document: ${item.document?.name || 'document'}]`;
+          // Documents are always parsed to text upstream; ignore here
+          // No-op
         }
       }
 

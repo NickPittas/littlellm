@@ -218,6 +218,21 @@ export const chatService = {
     // Check if this is a supported document format for parsing
     const supportedFormats = ['.docx', '.doc', '.xlsx', '.xls', '.ods', '.csv', '.html', '.htm', '.ics', '.json', '.rtf', '.xml', '.pptx', '.ppt'];
 
+    // Centralized parsing in Electron main process for all supported types
+    if (typeof window !== 'undefined' && (window as any).electronAPI && (window as any).electronAPI.parseDocumentFile) {
+      try {
+        const fileBuffer = await file.arrayBuffer();
+        const result = await (window as any).electronAPI.parseDocumentFile(fileBuffer, file.name, file.type);
+        if (result && result.success && result.text) {
+          return result.text as string;
+        }
+        // Fall through to local parsing if main process failed
+        console.warn('Electron parseDocumentFile failed or returned no text; falling back locally:', result?.error);
+      } catch (err) {
+        console.warn('Electron parseDocumentFile error; falling back locally:', err);
+      }
+    }
+
     if (file.type === 'text/plain' || fileExtension === '.txt' || fileExtension === '.md' || fileExtension === '.log') {
       // For plain text files, return content directly
       return new Promise((resolve, reject) => {
@@ -446,50 +461,8 @@ export const chatService = {
         console.log('Sending files directly to provider:', provider);
 
         if (provider === 'mistral') {
-          // Use Mistral's native file processing capabilities
-          console.log('🔍 Using Mistral native file processing');
-          const mistralProvider = this.getProviderInstance('mistral');
-          console.log('🔍 Mistral provider instance:', mistralProvider);
-          console.log('🔍 Has processFiles method:', mistralProvider && 'processFiles' in mistralProvider);
-
-          if (mistralProvider && 'processFiles' in mistralProvider) {
-            try {
-              console.log('🔍 Calling Mistral processFiles with:', {
-                filesCount: files.length,
-                fileNames: Array.from(files).map(f => f.name),
-                provider: this.getProviderConfig(provider)
-              });
-
-              const processedFiles = await (mistralProvider as {processFiles: (files: File[], settings: ChatSettings, config: unknown) => Promise<unknown[]>}).processFiles(
-                Array.from(files),
-                settings,
-                this.getProviderConfig(provider)
-              );
-
-              const contentArray: Array<ContentItem> = [
-                {
-                  type: 'text',
-                  text: message || DEFAULT_ANALYZE_MESSAGE
-                },
-                ...(processedFiles as ContentItem[])
-              ];
-
-              messageContent = contentArray;
-              console.log('✅ Mistral files processed successfully:', {
-                processedCount: processedFiles.length,
-                contentTypes: processedFiles.map((f: unknown) => (f as {type: string}).type)
-              });
-            } catch (error) {
-              console.error('❌ Mistral file processing failed:', error);
-              // Fallback to generic processing
-              console.log('🔄 Falling back to generic processing');
-              messageContent = await this.processFilesGeneric(files, augmentedMessage, provider);
-            }
-          } else {
-            // Fallback to generic processing
-            console.log('🔄 No Mistral provider or processFiles method, using generic processing');
-            messageContent = await this.processFilesGeneric(files, augmentedMessage, provider);
-          }
+          // Always parse files to text for Mistral as well
+          messageContent = await this.processFilesGeneric(files, augmentedMessage, provider);
         } else if (provider === 'openai' || provider === 'anthropic' || provider === 'gemini' || provider === 'deepseek' || provider === 'openrouter' || provider === 'replicate' || provider === 'requesty' || provider === 'n8n') {
           messageContent = await this.processFilesGeneric(files, augmentedMessage, provider);
         } else if (provider === 'ollama') {
@@ -1027,30 +1000,11 @@ export const chatService = {
           }
         });
       } else {
-        const nativelySupported = file.type === 'application/pdf' || file.type.startsWith('text/') || file.type === 'text/csv';
-
-        // Check if provider supports this file type natively
-        if (nativelySupported && provider === 'anthropic') {
-          // Anthropic supports native document handling for PDFs and text files
-          console.log('Sending document to Anthropic:', file.name);
-          const base64 = await this.fileToBase64(file);
-          const base64Data = base64.split(',')[1]; // Remove data URL prefix
-
-          contentArray.push({
-            type: 'document',
-            document: {
-              name: file.name,
-              media_type: file.type,
-              data: base64Data
-            }
-          } as ContentItem);
-        } else {
-          // For all other cases, extract text content using DocumentParserService
-          console.log('Extracting text content for provider:', provider, file.name);
-          const textContent = await this.extractTextFromFile(file);
-          console.log('Text extracted, length:', textContent.length);
-          contentArray[0].text += `\n\n[File: ${file.name}]\n${textContent}`;
-        }
+        // Always extract text content using DocumentParserService for non-image files
+        console.log('Extracting text content for provider:', provider, file.name);
+        const textContent = await this.extractTextFromFile(file);
+        console.log('Text extracted, length:', textContent.length);
+        contentArray[0].text += `\n\n[File: ${file.name}]\n${textContent}`;
       }
     }
 

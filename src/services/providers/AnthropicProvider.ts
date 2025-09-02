@@ -249,17 +249,10 @@ export class AnthropicProvider extends BaseProvider {
             }
           };
         } else if (item.type === 'document') {
-          // Handle document format for Anthropic
-          return {
-            type: 'document',
-            source: {
-              type: 'base64',
-              media_type: item.document?.media_type || 'application/pdf',
-              data: item.document?.data || ''
-            }
-          };
+          // Documents are always parsed to text upstream; ignore native document handling
+          return { type: 'text', text: '' };
         }
-        return item; // Pass through other types as-is
+        return item as any; // Pass through other types as-is
       });
 
       messages.push({ role: 'user', content: anthropicContent });

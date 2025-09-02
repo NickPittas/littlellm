@@ -104,9 +104,24 @@ export class ProviderAdapter {
     // Inject dependencies into the provider instance
     await this.injectDependencies(providerInstance);
 
+    // Normalize message content across all providers:
+    // - If message is an array and contains no images, flatten to a single string
+    //   so providers that expect plain text receive the parsed file content reliably.
+    let normalizedMessage: MessageContent = message;
+    if (Array.isArray(message)) {
+      const hasImages = message.some(item => item.type === 'image_url');
+      if (!hasImages) {
+        const combinedText = message
+          .filter(item => item.type === 'text')
+          .map(item => item.text || '')
+          .join('\n\n');
+        normalizedMessage = combinedText;
+      }
+    }
+
     // Use the provider's sendMessage method
     return providerInstance.sendMessage(
-      message,
+      normalizedMessage,
       settings,
       provider,
       conversationHistory,

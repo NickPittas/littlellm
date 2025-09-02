@@ -124,6 +124,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // PDF parsing for chat attachments
   parsePdfFile: (fileBuffer: ArrayBuffer, fileName: string) => ipcRenderer.invoke('parse-pdf-file', fileBuffer, fileName),
 
+  // General document parsing for chat attachments (handled in Electron main)
+  parseDocumentFile: (fileBuffer: ArrayBuffer, fileName: string, mimeType?: string) =>
+    ipcRenderer.invoke('parse-document-file', fileBuffer, fileName, mimeType),
+
   // Directory selection API
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
 

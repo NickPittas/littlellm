@@ -130,24 +130,9 @@ export class OpenAIProvider extends BaseProvider {
       for (const item of message) {
         if (item.type === 'text') {
           textContent += item.text + '\n';
-        } else if (item.type === 'document' && this.fileService && item.document?.data) {
-          try {
-            const binaryString = atob(item.document.data);
-            const bytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-            const file = new File([bytes], item.document.name || 'document', {
-              type: item.document.media_type || 'application/octet-stream'
-            });
-            // Upload the file and add it to the vector store
-            const uploadedFile = await this.fileService.uploadFile(file, 'assistants');
-            await this.addFileToVectorStore(this.vectorStoreId!, uploadedFile.id, settings);
-            attachments.push({ file_id: uploadedFile.id, tools: [{ type: 'file_search' }] });
-          } catch (error) {
-            console.error('Error uploading document to OpenAI:', error);
-            textContent += `\n[Error uploading document: ${item.document.name}]`;
-          }
+        } else if (item.type === 'document') {
+          // Documents are always parsed to text upstream; do not upload natively
+          // No action needed here
         }
       }
     }
@@ -223,7 +208,17 @@ export class OpenAIProvider extends BaseProvider {
       }
     } else if (Array.isArray(message)) {
       // Handle ContentItem array format (images, text)
-      messages.push({ role: 'user', content: message });
+      const hasImages = message.some(item => item.type === 'image_url');
+      if (hasImages) {
+        messages.push({ role: 'user', content: message });
+      } else {
+        // To maximize compatibility with models/providers, flatten to a single string when no images
+        const combinedText = message
+          .filter(item => item.type === 'text')
+          .map(item => item.text || '')
+          .join('\n\n');
+        messages.push({ role: 'user', content: combinedText });
+      }
       if (cachingEnabled) {
         const totalTextLength = message.filter(item => item.type === 'text').reduce((sum, item) => sum + (item.text?.length || 0), 0);
         if (totalTextLength > 4096) {

@@ -48,23 +48,12 @@ export function AttachmentPreview({ files, onRemoveFile, currentProvider = 'open
   };
 
   const getProcessingType = (file: File): 'native' | 'parsed' | 'unsupported' => {
-    const extension = getFileExtension(file.name);
-    const capabilities = PROVIDER_CAPABILITIES[currentProvider as keyof typeof PROVIDER_CAPABILITIES];
-
-    if (!capabilities) return 'parsed';
-
-    const nativeSupport = capabilities.nativeDocumentSupport as string[];
-    const parsingRequired = capabilities.documentParsingRequired as string[];
-
-    if (nativeSupport?.includes(extension)) {
-      return 'native';
-    } else if (parsingRequired?.includes(extension)) {
-      return 'parsed';
-    } else if (file.type.startsWith('image/')) {
-      return capabilities.supportsVision ? 'native' : 'unsupported';
+    // New rule: Always parse non-image files for all providers
+    if (file.type.startsWith('image/')) {
+      const capabilities = PROVIDER_CAPABILITIES[currentProvider as keyof typeof PROVIDER_CAPABILITIES];
+      return capabilities?.supportsVision ? 'native' : 'unsupported';
     }
-
-    return 'unsupported';
+    return 'parsed';
   };
 
   const getProcessingIndicator = (file: File) => {

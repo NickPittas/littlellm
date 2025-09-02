@@ -597,8 +597,18 @@ export function ModernChatInterface({ className }: ModernChatInterfaceProps) {
         timestamp: new Date()
       };
 
-      // Add the assistant message immediately for streaming
-      setMessages(prev => [...prev, assistantMessage]);
+      // Add a confirmation that files were parsed and sent, then add assistant message for streaming
+      if (filesToSend.length > 0) {
+        const infoMessage: Message = {
+          id: (Date.now() + 2).toString(),
+          role: 'assistant',
+          content: `📁 Parsed and sent to LLM: ${filesToSend.map(f => f.name).join(', ')}`,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, infoMessage, assistantMessage]);
+      } else {
+        setMessages(prev => [...prev, assistantMessage]);
+      }
 
       // Get conversation history (exclude the current user message we just added)
       const conversationHistory = updatedMessages.slice(0, -1); // Exclude the current user message

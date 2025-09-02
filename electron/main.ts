@@ -1028,7 +1028,7 @@ function getAllMCPTools(): (MCPTool & { serverId: string })[] {
       if (!tool || !tool.name) {
         continue;
       }
-      
+
       allTools.push({
         ...tool,
         serverId
@@ -3310,13 +3310,13 @@ function setupIPC() {
       // Create a temporary file from the buffer
       const tempDir = path.join(app.getPath('temp'), 'littlellm-uploads');
       await fsPromises.mkdir(tempDir, { recursive: true });
-      
+
       const tempFilePath = path.join(tempDir, `${Date.now()}_${fileName}`);
       await fsPromises.writeFile(tempFilePath, Buffer.from(fileBuffer));
 
       try {
         console.log('📚 Adding document to specific knowledge base...');
-        
+
         // Use the new multi-KB method if available
         if (typeof knowledgeBaseService.addDocumentToKnowledgeBase === 'function') {
           let chunkCount = 0;
@@ -3336,18 +3336,18 @@ function setupIPC() {
               }
             }
           );
-          
+
           console.log(`📚 Document added successfully with ${chunkCount} chunks`);
           return { success: true, chunkCount };
         } else {
           // Fallback to legacy method
           console.warn('Multi-KB method not available, using legacy method');
           await knowledgeBaseService.addDocument(tempFilePath);
-          
+
           // Estimate chunk count based on file size
           const stats = await fsPromises.stat(tempFilePath);
           const estimatedChunks = Math.max(1, Math.floor(stats.size / 2000));
-          
+
           console.log(`📚 Document added successfully (legacy method, estimated ${estimatedChunks} chunks)`);
           return { success: true, chunkCount: estimatedChunks };
         }
@@ -3604,23 +3604,23 @@ function setupIPC() {
   ipcMain.handle('rag:augment-prompt', async (_, prompt: string, knowledgeBaseIds: string[], options: any) => {
     try {
       const knowledgeBaseService = KnowledgeBaseService.getInstance();
-      
+
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
         const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
-      
+
       // Import RAG service after initialization
       const { RAGService } = await import('../src/services/RAGService.js');
       const ragService = RAGService.getInstance();
-      
+
       const augmentedPrompt = await ragService.augmentPromptWithMultipleKnowledgeBases(
         prompt,
         knowledgeBaseIds,
         options
       );
-      
+
       return { success: true, augmentedPrompt };
     } catch (error) {
       console.error('Failed to augment prompt with RAG:', error);
@@ -3632,19 +3632,19 @@ function setupIPC() {
   ipcMain.handle('rag:validate-knowledge-base-ids', async (_, knowledgeBaseIds: string[]) => {
     try {
       const knowledgeBaseService = KnowledgeBaseService.getInstance();
-      
+
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
         const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
-      
+
       // Import RAG service after initialization
       const { RAGService } = await import('../src/services/RAGService.js');
       const ragService = RAGService.getInstance();
-      
+
       const validIds = await ragService.validateKnowledgeBaseIds(knowledgeBaseIds);
-      
+
       return { success: true, validIds };
     } catch (error) {
       console.error('Failed to validate knowledge base IDs:', error);
@@ -3654,110 +3654,110 @@ function setupIPC() {
 
   // Knowledge Base Registry IPC handlers
   // These handlers provide access to the multi-KB registry system
-  
+
   // IPC handler for listing all knowledge bases
   ipcMain.handle('knowledge-base-registry:list', async () => {
     try {
       const knowledgeBaseService = KnowledgeBaseService.getInstance();
-      
+
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
         const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
-      
+
       // Import the registry after initialization
       const { knowledgeBaseRegistry } = await import('../src/services/KnowledgeBaseRegistry.js');
       const knowledgeBases = await knowledgeBaseRegistry.listKnowledgeBases();
-      
+
       return { success: true, knowledgeBases };
     } catch (error) {
       console.error('Failed to list knowledge bases:', error);
       return { success: false, error: (error as Error).message, knowledgeBases: [] };
     }
   });
-  
+
   // IPC handler for creating a new knowledge base
   ipcMain.handle('knowledge-base-registry:create', async (_, request) => {
     try {
       const knowledgeBaseService = KnowledgeBaseService.getInstance();
-      
+
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
         const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
-      
+
       // Import the registry after initialization
       const { knowledgeBaseRegistry } = await import('../src/services/KnowledgeBaseRegistry.js');
       const knowledgeBase = await knowledgeBaseRegistry.createKnowledgeBase(request);
-      
+
       return { success: true, knowledgeBase };
     } catch (error) {
       console.error('Failed to create knowledge base:', error);
       return { success: false, error: (error as Error).message };
     }
   });
-  
+
   // IPC handler for getting a specific knowledge base
   ipcMain.handle('knowledge-base-registry:get', async (_, id: string) => {
     try {
       const knowledgeBaseService = KnowledgeBaseService.getInstance();
-      
+
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
         const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
-      
+
       // Import the registry after initialization
       const { knowledgeBaseRegistry } = await import('../src/services/KnowledgeBaseRegistry.js');
       const knowledgeBase = await knowledgeBaseRegistry.getKnowledgeBase(id);
-      
+
       return { success: true, knowledgeBase };
     } catch (error) {
       console.error('Failed to get knowledge base:', error);
       return { success: false, error: (error as Error).message, knowledgeBase: null };
     }
   });
-  
+
   // IPC handler for deleting a knowledge base
   ipcMain.handle('knowledge-base-registry:delete', async (_, id: string) => {
     try {
       const knowledgeBaseService = KnowledgeBaseService.getInstance();
-      
+
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
         const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
-      
+
       // Import the registry after initialization
       const { knowledgeBaseRegistry } = await import('../src/services/KnowledgeBaseRegistry.js');
       await knowledgeBaseRegistry.deleteKnowledgeBase(id);
-      
+
       return { success: true };
     } catch (error) {
       console.error('Failed to delete knowledge base:', error);
       return { success: false, error: (error as Error).message };
     }
   });
-  
+
   // IPC handler for updating a knowledge base
   ipcMain.handle('knowledge-base-registry:update', async (_, id: string, updates: any) => {
     try {
       const knowledgeBaseService = KnowledgeBaseService.getInstance();
-      
+
       // Ensure knowledge base is initialized
       if (!knowledgeBaseService.isInitialized()) {
         const dbPath = path.join(app.getPath(USER_DATA_PATH), KNOWLEDGEBASE_DB_NAME);
         await knowledgeBaseService.initialize(dbPath);
       }
-      
+
       // Import the registry after initialization
       const { knowledgeBaseRegistry } = await import('../src/services/KnowledgeBaseRegistry.js');
       const updatedKB = await knowledgeBaseRegistry.updateKnowledgeBase(id, updates);
-      
+
       return { success: true, knowledgeBase: updatedKB };
     } catch (error) {
       console.error('Failed to update knowledge base:', error);
@@ -3909,6 +3909,38 @@ function setupIPC() {
       await writeLog(`📄 Parsing PDF file for chat: ${fileName}, buffer size: ${fileBuffer.byteLength} bytes`);
       console.log(`📄 Parsing PDF file for chat: ${fileName}, buffer size: ${fileBuffer.byteLength} bytes`);
 
+      // Single-parser policy for chat PDFs: use pdfjs-dist only, no fallbacks
+      try {
+        const { getDocument } = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as any;
+        const loadingTask = getDocument({ data: new Uint8Array(fileBuffer) });
+        const pdf = await loadingTask.promise;
+        let aggregated = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const strings = (content.items || []).map((it: any) => it.str).join(' ');
+          aggregated += `\n\n==== Page ${i} ====\n` + strings;
+        }
+        if (!aggregated || aggregated.trim().length === 0) {
+          return {
+            success: false,
+            error: 'PDF has no extractable text (likely scanned/encrypted). OCR is not enabled.'
+          };
+        }
+        return {
+          success: true,
+          text: aggregated,
+          metadata: { format: 'PDF', title: fileName, pages: pdf.numPages }
+        };
+      } catch (e) {
+        return { success: false, error: `PDF parsing error (pdfjs-dist): ${e instanceof Error ? e.message : String(e)}` };
+      }
+
+      // Legacy pdf-parse/KB block disabled below (single-parser policy)
+
+
+      /* LEGACY_PDF_PARSE_BLOCK (disabled): pdf-parse/KB fallback code below is intentionally commented out to enforce single-parser policy
+
       // First try direct pdf-parse import in Electron main process
       await writeLog(`📄 Attempting direct pdf-parse import in Electron main process...`);
       console.log(`📄 Attempting direct pdf-parse import in Electron main process...`);
@@ -3958,8 +3990,34 @@ function setupIPC() {
           const buffer = Buffer.from(fileBuffer);
           const pdfData = await pdfParse(buffer);
 
+          // If direct parsing yields empty text, try pdfjs-dist fallback
+          let finalText = pdfData.text || '';
+          let finalPages = pdfData.numpages;
+          if (!finalText || finalText.trim().length === 0) {
+            console.log('📄 pdf-parse returned empty text, attempting pdfjs-dist fallback...');
+            try {
+              const { getDocument } = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as any;
+              const loadingTask = getDocument({ data: new Uint8Array(buffer) });
+              const pdf = await loadingTask.promise;
+              let aggregated = '';
+              for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                const strings = (content.items || []).map((it: any) => it.str).join(' ');
+                aggregated += `\n\n==== Page ${i} ====\n` + strings;
+              }
+              if (aggregated.trim().length > 0) {
+                finalText = aggregated;
+                finalPages = pdf.numPages;
+                console.log('📄 pdfjs-dist fallback succeeded.');
+              }
+            } catch (pdfjsErr) {
+              console.warn('⚠️ pdfjs-dist fallback failed:', pdfjsErr);
+            }
+          }
+
           console.log(`📄 Direct PDF parsing successful: ${fileName}`);
-          console.log(`📄 Result: text length: ${pdfData.text.length}, pages: ${pdfData.numpages}`);
+          console.log(`📄 Result: text length: ${finalText.length}, pages: ${finalPages}`);
           console.log(`📄 Text preview: "${pdfData.text.substring(0, 100)}..."`);
 
           return {
@@ -4016,8 +4074,35 @@ function setupIPC() {
         const pdfData = await pdfParse(fileBuffer);
         console.log(`📄 PDF parser returned data, checking result...`);
 
+        // If pdf-parse yielded empty or fallback text, try pdfjs-dist extraction
+        let finalText = pdfData.text || '';
+        let finalPages = pdfData.numpages;
+        const looksLikeFallback = finalText.includes('PDF text extraction is not available') || finalText.includes('PDF parsing module could not be loaded');
+        if (!finalText.trim() || looksLikeFallback) {
+          try {
+            console.log('📄 pdf-parse output empty/fallback; attempting pdfjs-dist...');
+            const { getDocument } = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as any;
+            const loadingTask = getDocument({ data: new Uint8Array(fileBuffer) });
+            const pdf = await loadingTask.promise;
+            let aggregated = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const page = await pdf.getPage(i);
+              const content = await page.getTextContent();
+              const strings = (content.items || []).map((it: any) => it.str).join(' ');
+              aggregated += `\n\n==== Page ${i} ====\n` + strings;
+            }
+            if (aggregated.trim().length > 0) {
+              finalText = aggregated;
+              finalPages = pdf.numPages;
+              console.log('📄 pdfjs-dist fallback succeeded.');
+            }
+          } catch (pdfjsErr) {
+            console.warn('⚠️ pdfjs-dist fallback failed:', pdfjsErr);
+          }
+        }
+
         console.log(`📄 PDF parsing completed: ${fileName}`);
-        console.log(`📄 Result: text length: ${pdfData.text.length}, pages: ${pdfData.numpages}`);
+        console.log(`📄 Result: text length: ${finalText.length}, pages: ${finalPages}`);
         console.log(`📄 Text preview: "${pdfData.text.substring(0, 100)}..."`);
 
         // Check if this is the fallback message indicating PDF parsing failed
@@ -4051,8 +4136,8 @@ function setupIPC() {
           } catch (cleanupError) {
             console.warn(`📄 Failed to clean up temp file: ${tempFilePath}`, cleanupError);
           }
-        }
-      }
+*/
+
 
     } catch (error) {
       console.error(`📄 Failed to parse PDF ${fileName}:`, error);
@@ -4065,6 +4150,156 @@ function setupIPC() {
         error: error instanceof Error ? error.message : String(error),
         text: `[PDF Document: ${fileName}]\nNote: PDF text extraction failed - ${error instanceof Error ? error.message : UNKNOWN_ERROR_MESSAGE}`
       };
+    }
+  });
+
+
+  // General document parsing handler for chat attachments (centralized in main)
+  ipcMain.handle('parse-document-file', async (_: unknown, fileBuffer: ArrayBuffer, fileName: string, mimeType?: string) => {
+    try {
+      const buffer = Buffer.from(new Uint8Array(fileBuffer));
+      const ext = path.extname(fileName || '').toLowerCase();
+      const title = fileName || 'document';
+
+      const success = (text: string, metadata: Record<string, unknown> = {}) => ({ success: true, text, metadata: { title, ...metadata } });
+      const failure = (error: string) => ({ success: false, error });
+
+      if (ext === '.pdf' || (mimeType || '').includes('pdf')) {
+        try {
+          const { getDocument } = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as any;
+          const loadingTask = getDocument({ data: new Uint8Array(buffer) });
+          const pdf = await loadingTask.promise;
+          let aggregated = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const strings = (content.items || []).map((it: any) => it.str).join(' ');
+            aggregated += `\n\n==== Page ${i} ====\n` + strings;
+          }
+          if (!aggregated || aggregated.trim().length === 0) {
+            return failure('PDF has no extractable text (likely scanned/encrypted). OCR is not enabled.');
+          }
+          return success(aggregated, { format: 'PDF', pages: pdf.numPages });
+        } catch (e) {
+          return failure(`PDF parsing error (pdfjs-dist): ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+
+      if (ext === '.txt' || ext === '.md' || ext === '.log' || (mimeType || '').startsWith('text/')) {
+        const text = buffer.toString('utf8');
+        return success(text, { format: ext === '.md' ? 'Markdown' : 'Plain Text' });
+      }
+
+      if (ext === '.csv' || (mimeType || '') === 'text/csv') {
+        const raw = buffer.toString('utf8');
+        const lines = raw.split(/\r?\n/).filter(l => l.length > 0);
+        if (lines.length === 0) return success('[CSV] (empty file)', { format: 'CSV', rows: 0, columns: 0 });
+        const headers = lines[0].split(',').map(h => h.trim());
+        let out = `Headers: ${headers.join(', ')}\n\n`;
+        const maxRows = Math.min(lines.length - 1, 500);
+        for (let i = 1; i <= maxRows; i++) {
+          const cols = lines[i].split(',');
+          out += `Row ${i}:\n`;
+          for (let c = 0; c < headers.length; c++) {
+            const val = (cols[c] ?? '').trim();
+            out += `  ${headers[c]}: ${val}\n`;
+          }
+          out += '\n';
+        }
+        if (lines.length - 1 > maxRows) out += `... (${(lines.length - 1) - maxRows} more rows truncated)\n`;
+        return success(out, { format: 'CSV', rows: lines.length - 1, columns: headers.length, headers });
+      }
+
+      if (ext === '.json' || (mimeType || '').includes('json')) {
+        const jsonData = JSON.parse(buffer.toString('utf8'));
+        return success(JSON.stringify(jsonData, null, 2), { format: 'JSON', type: Array.isArray(jsonData) ? 'Array' : typeof jsonData });
+      }
+
+      if (ext === '.xml' || (mimeType || '').includes('xml')) {
+        const { parseString } = await import('xml2js');
+        const xmlContent = buffer.toString('utf8');
+        const formatted = await new Promise<string>((resolve, reject) => {
+          parseString(xmlContent, (err: Error | null, result: unknown) => {
+            if (err) reject(err); else resolve(JSON.stringify(result, null, 2));
+          });
+        });
+        return success(formatted, { format: 'XML' });
+      }
+
+      if (ext === '.html' || ext === '.htm') {
+        const { parse: parseHtml } = await import('node-html-parser');
+        const root = parseHtml(buffer.toString('utf8'));
+        root.querySelectorAll('script, style').forEach((el: any) => el.remove());
+        const text = root.text;
+        const titleTag = root.querySelector('title')?.text || title;
+        return success(text, { format: 'HTML', title: titleTag });
+      }
+
+      if (ext === '.ics') {
+        const ICAL = (await import('ical.js')).default;
+        const jcalData = ICAL.parse(buffer.toString('utf8'));
+        const comp = new ICAL.Component(jcalData);
+        const events = comp.getAllSubcomponents('vevent');
+        let out = 'Calendar Events:\n\n';
+        events.forEach((ev: any, idx: number) => {
+          const vevent = new ICAL.Event(ev);
+          out += `Event ${idx + 1}:\n`;
+          out += `  Title: ${vevent.summary}\n`;
+          if (vevent.startDate) out += `  Start: ${vevent.startDate.toJSDate()}\n`;
+          if (vevent.endDate) out += `  End: ${vevent.endDate.toJSDate()}\n`;
+          if (vevent.description) out += `  Description: ${vevent.description}\n`;
+          if (vevent.location) out += `  Location: ${vevent.location}\n`;
+          out += '\n';
+        });
+        return success(out, { format: 'Calendar (ICS)', eventCount: events.length });
+      }
+
+      if (ext === '.docx' || ext === '.doc') {
+        const mammoth = (await import('mammoth')).default;
+        const result = await mammoth.extractRawText({ buffer });
+        return success(result.value || '', { format: 'Word Document', warnings: (result.messages || []).map((m: any) => m.message) });
+      }
+
+      if (ext === '.xlsx' || ext === '.xls' || ext === '.ods') {
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const sheets: string[] = [];
+        let combined = '';
+        workbook.SheetNames.forEach((sheetName: string) => {
+          sheets.push(sheetName);
+          const ws = workbook.Sheets[sheetName];
+          const csv = XLSX.utils.sheet_to_csv(ws);
+          combined += `\n\n=== Sheet: ${sheetName} ===\n` + csv;
+        });
+        return success(combined.trim(), { format: 'Spreadsheet', sheets, sheetCount: sheets.length });
+      }
+
+      if (ext === '.rtf') {
+        const rtf = (await import('rtf-parser')).default;
+        try {
+          const doc = await rtf.parseRTF(buffer.toString('utf8'));
+          const extract = (d: any): string => {
+            if (!d) return ''; if (typeof d === 'string') return d; if (Array.isArray(d)) return d.map(extract).join('');
+            if (typeof d === 'object') {
+              if (d.text) return String(d.text);
+              if (d.content) return Array.isArray(d.content) ? d.content.map(extract).join('') : extract(d.content);
+            }
+            return '';
+          };
+          const text = extract(doc);
+          return success(text, { format: 'RTF' });
+        } catch (err) {
+          return failure(`Failed to parse RTF: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      if (ext === '.pptx' || ext === '.ppt') {
+        return success(`[PowerPoint parsing not supported]. Please convert to PDF or text.`, { format: 'PowerPoint' });
+      }
+
+      return success(`[File: ${title}]\nFile type: ${mimeType || 'Unknown'}\nNote: Text extraction not supported for this file type.`, { format: 'Unknown' });
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 
@@ -4508,12 +4743,12 @@ console.debug = (...args: unknown[]) => {
               window.addEventListener('DOMContentLoaded', () => {
                 console.log('History window loaded, electronAPI available:', !!window.electronAPI);
               });
-              
+
               // Handle click events
               document.addEventListener('click', (e) => {
                 const historyItem = e.target.closest('.history-item');
                 const deleteButton = e.target.closest('.history-item-delete');
-                
+
                 if (deleteButton) {
                   e.stopPropagation();
                   const conversationId = deleteButton.dataset.conversationId;
@@ -4531,7 +4766,7 @@ console.debug = (...args: unknown[]) => {
                   }
                 }
               });
-              
+
               // Handle clear all history
               function clearAllHistory() {
                 if (confirm('Are you sure you want to clear all chat history? This cannot be undone.')) {
@@ -4542,7 +4777,7 @@ console.debug = (...args: unknown[]) => {
                   }
                 }
               }
-              
+
               function closeHistoryWindow() {
                 if (window.electronAPI) {
                   console.log('Closing history window');

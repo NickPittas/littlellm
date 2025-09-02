@@ -188,34 +188,8 @@ export class MistralProvider extends BaseProvider {
             image_url: { url: item.image_url?.url || '' }
           };
         } else if (item.type === 'document') {
-          // For documents, use Mistral's native capabilities
-          if (this.fileService && item.document?.data) {
-            try {
-              // Convert base64 back to file for processing
-              const binaryString = atob(item.document.data);
-              const bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-              const file = new File([bytes], item.document.name || 'document', {
-                type: item.document.media_type || 'application/pdf'
-              });
-
-              // Use Mistral's file service to prepare the document
-              return await this.fileService.prepareFileForVision(file);
-            } catch (error) {
-              console.error('❌ Error processing document with Mistral:', error);
-              return {
-                type: 'text',
-                text: `[Document: ${item.document?.name || 'document'} - Processing failed: ${error}]`
-              };
-            }
-          } else {
-            return {
-              type: 'text',
-              text: `[Document: ${item.document?.name || 'document'}]`
-            };
-          }
+          // Documents are always parsed to text upstream; ignore native handling for Mistral
+          return { type: 'text', text: '' };
         }
         return item; // Pass through other types as-is
       }));

@@ -111,11 +111,8 @@ export class GeminiProvider extends BaseProvider {
             }
           });
         } else if (item.type === 'document') {
-          // For documents, convert to text or handle as needed
-          // Gemini doesn't have native document support like Anthropic
-          parts.push({
-            text: `[Document: ${item.document?.name || 'document'}]`
-          });
+          // Documents are always parsed to text upstream; nothing to add here
+          // Keeping placeholder as empty to avoid altering content order
         }
       }
 
